@@ -1,0 +1,12 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+const listUsers = async () => {};
+const createUser = async () => {};
+
+fastify.get("/users", listUsers);
+fastify.post('/users', createUser);
+fastify.route({ method: "PATCH", url: "/users/:id", handler: updateUser });
+
+function updateUser() {}

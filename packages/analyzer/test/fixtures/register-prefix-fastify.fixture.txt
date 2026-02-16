@@ -1,0 +1,19 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function listV1Users() {}
+function showV1User() {}
+
+const accountPlugin = async (app) => {
+  app.get("/accounts", listAccounts);
+};
+
+function listAccounts() {}
+
+fastify.register(async function routes(instance) {
+  instance.get("/users", listV1Users);
+  instance.route({ method: "GET", path: "/users/:id", handler: showV1User });
+}, { prefix: "/v1" });
+
+fastify.register(accountPlugin, { prefix: "/v1/admin" });
