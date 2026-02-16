@@ -78,6 +78,21 @@ test("handles nested register + prefix + route-object variants without policy de
   assert.equal(ir.diagnostics.length, 0);
 });
 
+test("handles nested route schema object (AST benefit over regex slicing)", () => {
+  const ir = analyzeFastifyEntry(
+    fixture("ast-nested-route-object-fastify.fixture.txt"),
+  );
+
+  assert.deepEqual(ir.routes, [
+    {
+      method: "GET",
+      path: "/users/advanced",
+      handlerRef: "listUsersAdvanced",
+    },
+  ]);
+  assert.equal(ir.diagnostics.length, 0);
+});
+
 test("keeps analyzer as semantic extractor/diagnostics only (SSoT boundary)", () => {
   const ir = analyzeFastifyEntry(fixture("ssot-boundary-fastify.fixture.txt"));
 
