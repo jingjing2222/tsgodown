@@ -118,7 +118,17 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
             let mut actual_diag_details = ir
                 .diagnostics
                 .iter()
-                .map(|d| (d.code.as_str(), d.message.as_str(), d.level.as_str()))
+                .map(|d| {
+                    (
+                        d.code.as_str(),
+                        d.message.as_str(),
+                        d.level.as_str(),
+                        d.source
+                            .as_ref()
+                            .map(|source| source.file.as_str())
+                            .unwrap_or("<missing-source-file>"),
+                    )
+                })
                 .collect::<Vec<_>>();
             actual_diag_details.sort();
 
@@ -127,23 +137,26 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
                     "ANALYZER_UNRESOLVED_PLUGIN",
                     "register plugin 'externalPlugin' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
                     "warn",
+                    file.as_str(),
                 ),
                 (
                     "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
                     "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
                     "warn",
+                    file.as_str(),
                 ),
                 (
                     "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
                     "unsupported non-reference handler in fastify.post('/inline', handler). Extract handler to a named function and pass its identifier.",
                     "warn",
+                    file.as_str(),
                 ),
             ];
             expected_diag_details.sort();
 
             assert_eq!(
                 actual_diag_details, expected_diag_details,
-                "diagnostic message/level contract drifted for fixture: {}",
+                "diagnostic code/message/level/source.file contract drifted for fixture: {}",
                 case.name
             );
         }
