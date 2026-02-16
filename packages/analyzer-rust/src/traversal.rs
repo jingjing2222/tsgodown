@@ -22,10 +22,46 @@ pub(crate) fn analyze_scope(
     while let Some(pos) = body[idx..].find(&format!("{}.", instance_name)) {
         let start = idx + pos;
         let tail = &body[start + instance_name.len() + 1..];
-        let mut advanced = false;
+
+        if let Some(consumed) = analyze_call_chain(
+            tail,
+            file,
+            instance_name,
+            prefix,
+            plugin_defs,
+            handler_defs,
+            routes,
+            handlers,
+            diagnostics,
+        ) {
+            idx = start + instance_name.len() + 1 + consumed;
+            continue;
+        }
+
+        idx = start + 1;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn analyze_call_chain(
+    mut chain: &str,
+    file: &str,
+    instance_name: &str,
+    prefix: &str,
+    plugin_defs: &HashMap<String, PluginDef>,
+    handler_defs: &HashMap<String, HandlerDef>,
+    routes: &mut Vec<RouteIR>,
+    handlers: &mut Vec<HandlerIR>,
+    diagnostics: &mut Vec<DiagnosticIR>,
+) -> Option<usize> {
+    let original_len = chain.len();
+    let mut matched_any = false;
+
+    loop {
+        let mut matched_here = false;
 
         for method in ["get", "post", "put", "delete", "patch"] {
-            if let Some(args) = capture_call_args(tail, method) {
+            if let Some(args) = capture_call_args(chain, method) {
                 extract_shorthand_route(
                     &args,
                     file,
@@ -37,46 +73,68 @@ pub(crate) fn analyze_scope(
                     handler_defs,
                     diagnostics,
                 );
-                idx = start + instance_name.len() + 1 + method.len() + args.len() + 2;
-                advanced = true;
+                let consumed = method.len() + args.len() + 2;
+                chain = &chain[consumed..];
+                matched_any = true;
+                matched_here = true;
                 break;
             }
         }
-        if advanced {
-            continue;
+
+        if !matched_here {
+            if let Some(args) = capture_call_args(chain, "route") {
+                extract_route_object(
+                    &args,
+                    file,
+                    instance_name,
+                    prefix,
+                    routes,
+                    handlers,
+                    handler_defs,
+                    diagnostics,
+                );
+                let consumed = "route".len() + args.len() + 2;
+                chain = &chain[consumed..];
+                matched_any = true;
+                matched_here = true;
+            }
         }
 
-        if let Some(args) = capture_call_args(tail, "route") {
-            extract_route_object(
-                &args,
-                file,
-                instance_name,
-                prefix,
-                routes,
-                handlers,
-                handler_defs,
-                diagnostics,
-            );
-            idx = start + instance_name.len() + 1 + "route".len() + args.len() + 2;
-            continue;
+        if !matched_here {
+            if let Some(args) = capture_call_args(chain, "register") {
+                analyze_register_call(
+                    &args,
+                    file,
+                    instance_name,
+                    prefix,
+                    plugin_defs,
+                    handler_defs,
+                    routes,
+                    handlers,
+                    diagnostics,
+                );
+                let consumed = "register".len() + args.len() + 2;
+                chain = &chain[consumed..];
+                matched_any = true;
+                matched_here = true;
+            }
         }
 
-        if let Some(args) = capture_call_args(tail, "register") {
-            analyze_register_call(
-                &args,
-                file,
-                instance_name,
-                prefix,
-                plugin_defs,
-                handler_defs,
-                routes,
-                handlers,
-                diagnostics,
-            );
-            idx = start + instance_name.len() + 1 + "register".len() + args.len() + 2;
-            continue;
+        if !matched_here {
+            break;
         }
 
-        idx = start + 1;
+        let trimmed = chain.trim_start();
+        if !trimmed.starts_with('.') {
+            chain = trimmed;
+            break;
+        }
+        chain = &trimmed[1..];
+    }
+
+    if matched_any {
+        Some(original_len - chain.len())
+    } else {
+        None
     }
 }

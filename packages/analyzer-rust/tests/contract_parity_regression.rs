@@ -88,6 +88,56 @@ fn contract_fixtures() -> Vec<ContractFixture> {
             expected_diag_codes: vec![],
         },
         ContractFixture {
+            name: "chaining-routes-fastify.fixture.txt",
+            expected_routes: vec![
+                ("GET", "/users", "listUsers"),
+                ("POST", "/users", "createUser"),
+                ("PATCH", "/users/:id", "updateUser"),
+            ],
+            expected_handlers: vec![
+                ("listUsers", vec![], false, "unknown"),
+                ("createUser", vec![], true, "unknown"),
+                ("updateUser", vec![], false, "unknown"),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
+            name: "nested-plugin-chaining-fastify.fixture.txt",
+            expected_routes: vec![
+                ("GET", "/api/users", "listApiUsers"),
+                ("POST", "/api/users", "createApiUser"),
+                ("GET", "/api/v2/users", "listNestedUsers"),
+            ],
+            expected_handlers: vec![
+                ("listApiUsers", vec![("req", "request")], false, "unknown"),
+                ("createApiUser", vec![("req", "request")], false, "unknown"),
+                (
+                    "listNestedUsers",
+                    vec![("request", "request")],
+                    false,
+                    "unknown",
+                ),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
+            name: "single-param-function-plugin-fastify.fixture.txt",
+            expected_routes: vec![
+                ("GET", "/admin/audit/logs", "listAuditLogs"),
+                ("POST", "/admin/audit/logs", "createAuditLog"),
+            ],
+            expected_handlers: vec![
+                ("listAuditLogs", vec![("req", "request")], false, "unknown"),
+                (
+                    "createAuditLog",
+                    vec![("reply", "response")],
+                    false,
+                    "unknown",
+                ),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
             name: "unsupported-fastify.fixture.txt",
             expected_routes: vec![],
             expected_handlers: vec![],
