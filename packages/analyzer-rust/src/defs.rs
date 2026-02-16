@@ -42,7 +42,7 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
     }
 
     let arrow_re = Regex::new(
-        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>\s*\{",
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*\{",
     )
     .unwrap();
     for cap in arrow_re.captures_iter(src) {
@@ -51,7 +51,11 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
         let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else {
             continue;
         };
-        let params = cap[2]
+        let params = cap
+            .get(2)
+            .map(|m| m.as_str())
+            .or_else(|| cap.get(3).map(|m| m.as_str()))
+            .unwrap_or("")
             .split(',')
             .map(|v| v.trim())
             .filter(|v| !v.is_empty())
@@ -111,11 +115,12 @@ pub(crate) fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerD
         );
     }
 
-    let var_fn_re = Regex::new(r"(?s)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(async\s+)?(?:function\s*\(([^)]*)\)|\(([^)]*)\)\s*=>)\s*\{").unwrap();
+    let var_fn_re = Regex::new(r"(?s)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(async\s+)?(?:function\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*=>)\s*\{").unwrap();
     for cap in var_fn_re.captures_iter(src) {
         let params_src = cap
             .get(3)
             .or_else(|| cap.get(4))
+            .or_else(|| cap.get(5))
             .map(|m| m.as_str())
             .unwrap_or("");
         map.insert(

@@ -4,10 +4,18 @@ use std::path::PathBuf;
 use analyzer_rust::analyze_fastify_entry;
 use pretty_assertions::assert_eq;
 
+type HandlerContract = (
+    &'static str,
+    Vec<(&'static str, &'static str)>,
+    bool,
+    &'static str,
+);
+
 #[derive(Debug)]
 struct ContractFixture {
     name: &'static str,
     expected_routes: Vec<(&'static str, &'static str, &'static str)>,
+    expected_handlers: Vec<HandlerContract>,
     expected_diag_codes: Vec<&'static str>,
 }
 
@@ -28,6 +36,11 @@ fn contract_fixtures() -> Vec<ContractFixture> {
                 ("POST", "/users", "createUser"),
                 ("PATCH", "/users/:id", "updateUser"),
             ],
+            expected_handlers: vec![
+                ("listUsers", vec![], true, "unknown"),
+                ("createUser", vec![], true, "unknown"),
+                ("updateUser", vec![], false, "unknown"),
+            ],
             expected_diag_codes: vec![],
         },
         ContractFixture {
@@ -39,6 +52,13 @@ fn contract_fixtures() -> Vec<ContractFixture> {
                 ("POST", "/private/devices", "createPrivateDevice"),
                 ("GET", "/internal/metrics", "listInternalMetrics"),
             ],
+            expected_handlers: vec![
+                ("listApiUsers", vec![], false, "unknown"),
+                ("listApiUserById", vec![], false, "unknown"),
+                ("listPrivateDevices", vec![], false, "unknown"),
+                ("createPrivateDevice", vec![], false, "unknown"),
+                ("listInternalMetrics", vec![], false, "unknown"),
+            ],
             expected_diag_codes: vec![],
         },
         ContractFixture {
@@ -48,11 +68,29 @@ fn contract_fixtures() -> Vec<ContractFixture> {
                 ("GET", "/v1/users/:id", "showV1User"),
                 ("GET", "/v1/admin/accounts", "listAccounts"),
             ],
+            expected_handlers: vec![
+                ("listV1Users", vec![], false, "unknown"),
+                ("showV1User", vec![], false, "unknown"),
+                ("listAccounts", vec![], false, "unknown"),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
+            name: "single-param-arrow-fastify.fixture.txt",
+            expected_routes: vec![
+                ("GET", "/api/v1/users", "listUsers"),
+                ("PATCH", "/api/v1/users/:id", "updateUser"),
+            ],
+            expected_handlers: vec![
+                ("listUsers", vec![("req", "request")], true, "unknown"),
+                ("updateUser", vec![("reply", "response")], false, "unknown"),
+            ],
             expected_diag_codes: vec![],
         },
         ContractFixture {
             name: "unsupported-fastify.fixture.txt",
             expected_routes: vec![],
+            expected_handlers: vec![],
             expected_diag_codes: vec![
                 "ANALYZER_UNRESOLVED_PLUGIN",
                 "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
@@ -77,6 +115,31 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
         assert_eq!(
             actual_routes, case.expected_routes,
             "route contract drifted for fixture: {}",
+            case.name
+        );
+
+        let actual_handlers = ir
+            .handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                    h.semantics
+                        .as_ref()
+                        .map(|s| s.response_mode.as_str())
+                        .unwrap_or("<missing>"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual_handlers, case.expected_handlers,
+            "handler contract drifted for fixture: {}",
             case.name
         );
 
