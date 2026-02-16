@@ -1,0 +1,67 @@
+{
+  "build": {
+    "command": "build",
+    "ok": true,
+    "stages": ["load-config", "analyze", "emit", "onSuccess"],
+    "targets": [
+      {
+        "configIndex": 0,
+        "entry": "src/index.ts",
+        "outDir": "dist-go",
+        "artifact": "dist-go/main.go",
+        "emitted": true,
+        "diagnostics": {
+          "routes": 2,
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "check": {
+    "command": "check",
+    "ok": true,
+    "stages": ["load-config", "analyze", "emit", "onSuccess"],
+    "targets": [
+      {
+        "configIndex": 0,
+        "entry": "src/index.ts",
+        "outDir": "dist-go",
+        "artifact": "dist-go/main.go",
+        "emitted": true,
+        "diagnostics": {
+          "routes": 2,
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "report": {
+    "command": "report",
+    "ok": true,
+    "stages": ["load-config", "analyze", "emit", "onSuccess"],
+    "targets": [
+      {
+        "configIndex": 0,
+        "entry": "src/index.ts",
+        "outDir": "dist-go",
+        "artifact": "dist-go/main.go",
+        "diagnostics": {
+          "routes": 2,
+          "warnings": []
+        }
+      }
+    ]
+  },
+  "stages": {
+    "stages": ["load-config", "analyze", "emit", "onSuccess"],
+    "targets": [
+      {
+        "configIndex": 0,
+        "entry": "src/index.ts",
+        "outDir": "dist-go",
+        "artifact": "dist-go/main.go",
+        "emitted": true
+      }
+    ]
+  }
+}

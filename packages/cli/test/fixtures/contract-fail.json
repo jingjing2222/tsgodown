@@ -1,0 +1,9 @@
+{
+  "stderrIncludes": [
+    "[tsgodown] command failed:",
+    "source:",
+    "cause:",
+    "guidance:",
+    "tsgodown.config.ts"
+  ]
+}
