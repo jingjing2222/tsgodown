@@ -46,3 +46,50 @@ test("emits explicit diagnostics for unsupported patterns", () => {
     "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
   ]);
 });
+
+test("handles nested register + prefix + route-object variants without policy decisions", () => {
+  const ir = analyzeFastifyEntry(
+    fixture("nested-register-route-object-fastify.fixture.txt"),
+  );
+
+  assert.deepEqual(ir.routes, [
+    { method: "GET", path: "/api/users", handlerRef: "listApiUsers" },
+    {
+      method: "GET",
+      path: "/api/v2/users/:id",
+      handlerRef: "listApiUserById",
+    },
+    {
+      method: "GET",
+      path: "/private/devices",
+      handlerRef: "listPrivateDevices",
+    },
+    {
+      method: "POST",
+      path: "/private/devices",
+      handlerRef: "createPrivateDevice",
+    },
+    {
+      method: "GET",
+      path: "/internal/metrics",
+      handlerRef: "listInternalMetrics",
+    },
+  ]);
+  assert.equal(ir.diagnostics.length, 0);
+});
+
+test("keeps analyzer as semantic extractor/diagnostics only (SSoT boundary)", () => {
+  const ir = analyzeFastifyEntry(fixture("ssot-boundary-fastify.fixture.txt"));
+
+  assert.deepEqual(ir.routes, [
+    { method: "GET", path: "/policy/allow", handlerRef: "allowAdminOnly" },
+    { method: "POST", path: "/policy/deny", handlerRef: "denyGuest" },
+  ]);
+
+  const diagnosticCodes = ir.diagnostics.map((d) => d.code);
+  assert.equal(diagnosticCodes.includes("CAPABILITY_UNMET"), false);
+  assert.equal(
+    diagnosticCodes.some((code) => code.startsWith("CAPABILITY_")),
+    false,
+  );
+});
