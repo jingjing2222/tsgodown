@@ -20,6 +20,26 @@ test("extracts method/path/handler from shorthand and route object", () => {
     { method: "POST", path: "/users", handlerRef: "createUser" },
     { method: "PATCH", path: "/users/:id", handlerRef: "updateUser" },
   ]);
+  assert.deepEqual(ir.handlers, [
+    {
+      id: "listUsers",
+      params: [],
+      async: true,
+      semantics: { responseMode: "unknown" },
+    },
+    {
+      id: "createUser",
+      params: [],
+      async: true,
+      semantics: { responseMode: "unknown" },
+    },
+    {
+      id: "updateUser",
+      params: [],
+      async: false,
+      semantics: { responseMode: "unknown" },
+    },
+  ]);
   assert.equal(ir.diagnostics.length, 0);
 });
 

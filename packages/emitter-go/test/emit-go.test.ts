@@ -25,7 +25,23 @@ function createOutDir() {
 
 const sampleIr: ProgramIR = {
   modules: [],
-  handlers: [],
+  handlers: [
+    {
+      id: "health",
+      params: [
+        { name: "req", role: "request" },
+        { name: "reply", role: "response" },
+      ],
+      async: false,
+      semantics: { responseMode: "response-object" },
+    },
+    {
+      id: "createUser",
+      params: [{ name: "req", role: "request" }],
+      async: true,
+      semantics: { responseMode: "return" },
+    },
+  ],
   diagnostics: [],
   routes: [
     {
@@ -54,10 +70,16 @@ test("emitGoProject emits deterministic main.go scaffold with method-aware route
   assert.match(emitted, /\/\/\s+Method:\s+GET/);
   assert.match(emitted, /\/\/\s+Path:\s+"\/health"/);
   assert.match(emitted, /\/\/\s+Handler:\s+"health"/);
+  assert.match(emitted, /\/\/\s+Handler params:\s+request:req, response:reply/);
+  assert.match(emitted, /\/\/\s+Handler async:\s+false/);
+  assert.match(emitted, /\/\/\s+Handler response mode:\s+response-object/);
   assert.match(emitted, /\/\/\s+Middleware:\s+\["auth"\]/);
   assert.match(emitted, /\/\/\s+Method:\s+POST/);
   assert.match(emitted, /\/\/\s+Path:\s+"\/users\/:id"/);
   assert.match(emitted, /\/\/\s+Handler:\s+"createUser"/);
+  assert.match(emitted, /\/\/\s+Handler params:\s+request:req/);
+  assert.match(emitted, /\/\/\s+Handler async:\s+true/);
+  assert.match(emitted, /\/\/\s+Handler response mode:\s+return/);
   assert.match(emitted, /id := req\.PathValue\("id"\)/);
   assert.match(
     emitted,

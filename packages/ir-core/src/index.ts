@@ -14,6 +14,12 @@ export interface RouteIR {
   middlewareRefs?: string[];
 }
 
+export type HandlerResponseMode =
+  | "return"
+  | "response-object"
+  | "next-callback"
+  | "unknown";
+
 export interface HandlerIR {
   id: string;
   params: Array<{
@@ -22,6 +28,9 @@ export interface HandlerIR {
   }>;
   bodyRef?: string;
   async: boolean;
+  semantics?: {
+    responseMode: HandlerResponseMode;
+  };
 }
 
 export interface DiagnosticIR {
