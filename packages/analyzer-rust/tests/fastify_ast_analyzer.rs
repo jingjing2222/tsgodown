@@ -273,3 +273,63 @@ fn handles_chained_routes_nested_plugins_and_single_param_function_plugins() {
         );
     }
 }
+
+#[test]
+fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_patterns() {
+    let (file, src) = fixture("unsupported-route-object-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert!(ir.routes.is_empty());
+
+    let actual = ir
+        .diagnostics
+        .iter()
+        .map(|d| {
+            (
+                d.code.as_str(),
+                d.message.as_str(),
+                d.level.as_str(),
+                d.source
+                    .as_ref()
+                    .map(|s| s.file.as_str())
+                    .unwrap_or("<missing-source-file>"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual,
+        vec![
+            (
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
+                "unsupported route object pattern in fastify.route(...). Provide an inline object literal (e.g. { method: 'GET', url: '/users', handler: listUsers }).",
+                "warn",
+                file.as_str(),
+            ),
+            (
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+                "unsupported route object method in fastify.route({...}): missing string 'method'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                "warn",
+                file.as_str(),
+            ),
+            (
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+                "unsupported route object method in fastify.route({...}): 'OPTIONS'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                "warn",
+                file.as_str(),
+            ),
+            (
+                "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+                "unsupported route object path in fastify.route({...}). Provide string literal 'url' or 'path' (e.g. '/users/:id').",
+                "warn",
+                file.as_str(),
+            ),
+            (
+                "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+                "unsupported route object handler in fastify.route({...}). Provide named handler reference in 'handler' field.",
+                "warn",
+                file.as_str(),
+            ),
+        ]
+    );
+}

@@ -159,10 +159,11 @@ pub(crate) fn extract_object_string_prop(obj: &str, key: &str) -> Option<String>
 
 pub(crate) fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String> {
     let pattern = format!(
-        r#"(?s)(?:\b{}\b|"{}")\s*:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)"#,
+        r#"(?s)(?:\b{}\b|"{}")\s*:\s*([^,}}]+)"#,
         regex::escape(key),
         regex::escape(key)
     );
     let re = Regex::new(&pattern).unwrap();
-    re.captures(obj).map(|c| c[1].to_string())
+    let expr = re.captures(obj).map(|c| c[1].trim().to_string())?;
+    extract_handler_ref(&expr)
 }

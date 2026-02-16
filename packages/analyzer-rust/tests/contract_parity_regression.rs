@@ -159,6 +159,18 @@ fn contract_fixtures() -> Vec<ContractFixture> {
                 "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
             ],
         },
+        ContractFixture {
+            name: "unsupported-route-object-fastify.fixture.txt",
+            expected_routes: vec![],
+            expected_handlers: vec![],
+            expected_diag_codes: vec![
+                "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+                "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
+            ],
+        },
     ]
 }
 

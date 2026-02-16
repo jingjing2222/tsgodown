@@ -71,9 +71,9 @@ pub(crate) fn extract_route_object(
     let Some(obj) = first_object_literal(args) else {
         diagnostics.push(diag(
             file,
-            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
             &format!(
-                "unsupported route object method in {}.route({{...}})",
+                "unsupported route object pattern in {}.route(...). Provide an inline object literal (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).",
                 instance_name
             ),
         ));
@@ -90,7 +90,7 @@ pub(crate) fn extract_route_object(
     let Some(method) = method else {
         diagnostics.push(diag(
             file,
-            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
             &format!(
                 "unsupported route object method in {}.route({{...}}): missing string 'method'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 instance_name
@@ -101,7 +101,7 @@ pub(crate) fn extract_route_object(
     if !supported.contains(method.as_str()) {
         diagnostics.push(diag(
             file,
-            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
             &format!(
                 "unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 instance_name,
