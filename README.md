@@ -35,7 +35,8 @@ Generated output:
 
 ## Migration Note
 - Legacy package `@tsgodown/ir` is deprecated and intentionally inactive.
-- Active IR model/package is `@tsgodown/ir-core`.
+- Legacy TypeScript core analyze/capability/emit paths are deprecated and disabled in `@tsgodown/core`/`@tsgodown/pipeline` (orchestration/UI only).
+- Active IR model/package is `@tsgodown/ir-core` and policy SSoT remains `IR_SPEC.md` + `CAPABILITY_MATRIX.md`.
 
 ## License
 MIT

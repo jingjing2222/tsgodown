@@ -9,7 +9,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@tsgodown/analyzer": "workspace:*",
     "@tsgodown/config": "workspace:*",
     "@tsgodown/pipeline": "workspace:*"
   },

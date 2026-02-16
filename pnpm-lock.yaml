@@ -40,9 +40,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@tsgodown/analyzer':
-        specifier: workspace:*
-        version: link:../analyzer
       '@tsgodown/config':
         specifier: workspace:*
         version: link:../config
@@ -68,18 +65,9 @@ importers:
 
   packages/pipeline:
     dependencies:
-      '@tsgodown/analyzer':
-        specifier: workspace:*
-        version: link:../analyzer
       '@tsgodown/config':
         specifier: workspace:*
         version: link:../config
-      '@tsgodown/emitter-go':
-        specifier: workspace:*
-        version: link:../emitter-go
-      '@tsgodown/node-compat':
-        specifier: workspace:*
-        version: link:../node-compat
       '@tsgodown/tsdown-driver':
         specifier: workspace:*
         version: link:../tsdown-driver

@@ -143,7 +143,12 @@ test("cli dist entry runs build/check/report/stages commands", () => {
   }
 
   assert.ok(
+    fs.existsSync(path.join(cwd, "artifacts", "manifests", "manifest.json")),
+    "build command should emit artifact manifest via rust adapter",
+  );
+  assert.equal(
     fs.existsSync(path.join(cwd, "dist-go", "main.go")),
-    "build command should emit dist-go/main.go",
+    false,
+    "legacy TS core emitter should be inactive after rust cutover",
   );
 });

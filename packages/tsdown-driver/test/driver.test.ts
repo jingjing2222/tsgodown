@@ -93,6 +93,36 @@ test("runBuild invokes rust adapter with JSON request contract", async () => {
   }
 });
 
+test("runBuild fails with explicit diagnostic when rust engine bin is missing", async () => {
+  const prev = process.env.TSGODOWN_RUST_ENGINE_BIN;
+  Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
+
+  try {
+    await assert.rejects(
+      runBuild("/repo", "tsdown.config.ts"),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /source=rust-engine-bin-env/);
+        assert.match(
+          error.message,
+          /cause=TSGODOWN_RUST_ENGINE_BIN is not set/,
+        );
+        assert.match(
+          error.message,
+          /guidance=Set TSGODOWN_RUST_ENGINE_BIN to the Rust engine executable path\./,
+        );
+        return true;
+      },
+    );
+  } finally {
+    if (prev === undefined) {
+      Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
+    } else {
+      process.env.TSGODOWN_RUST_ENGINE_BIN = prev;
+    }
+  }
+});
+
 test("runBuild reports rust engine error in source/cause/guidance format", async () => {
   await assert.rejects(
     runBuild("/repo", "tsdown.config.ts", {

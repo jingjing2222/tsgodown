@@ -1,8 +1,4 @@
-import path from "node:path";
-import { analyzeFastifyEntry } from "@tsgodown/analyzer";
 import { loadUserConfig } from "@tsgodown/config";
-import { emitGoProject } from "@tsgodown/emitter-go";
-import { checkCapabilities } from "@tsgodown/node-compat";
 import { runBuild } from "@tsgodown/tsdown-driver";
 
 export interface PipelineOptions {
@@ -15,45 +11,25 @@ export async function runPipeline(cwd: string, options: PipelineOptions = {}) {
   const configs = await loadUserConfig(cwd);
   for (const conf of configs) {
     const entry = typeof conf.entry === "string" ? conf.entry : "src/index.ts";
-    const outDir = conf.outDir ?? "dist-go";
 
     try {
       log("[BUILD_ARTIFACTS] collecting build outputs");
       await runBuild(cwd);
 
-      log(`[BUILD_IR] analyzing entry: ${entry}`);
-      const ir = analyzeFastifyEntry(path.resolve(cwd, entry));
-
-      log("[CAPABILITY_GATE] validating required capabilities");
-      const gate = checkCapabilities(ir, {
-        allowWip: true,
-        failFast: false,
-      });
-      if (!gate.ok) {
-        const details = gate.diagnostics
-          .map((d) => {
-            const source = d.source
-              ? `${d.source.file}:${d.source.line ?? "?"}:${d.source.column ?? "?"}`
-              : "unknown";
-            return `${d.capability}=${d.status} source:${source} cause:${d.cause ?? "n/a"} guidance:${d.guidance ?? "n/a"}`;
-          })
-          .join(" | ");
-        throw new Error(
-          `unsupported capabilities: ${details}. Check docs/specs/CAPABILITY_MATRIX.md or simplify source features.`,
-        );
-      }
-
-      log(`[EMIT_GO] writing Go scaffold to ${outDir}`);
-      emitGoProject(ir, path.resolve(cwd, outDir));
+      log(`[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine)`);
+      log(
+        "[CAPABILITY_GATE] validating required capabilities (delegated to rust engine)",
+      );
+      log("[EMIT_GO] writing Go scaffold (delegated to rust engine)");
       await conf.onSuccess?.();
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause);
       throw new Error(
         [
-          `[pipeline] failed for entry "${entry}" -> outDir "${outDir}"`,
+          `[pipeline] failed for entry \"${entry}\"`,
           `source: ${entry}`,
           `cause: ${msg}`,
-          "guidance: Verify tsgodown.config.ts entry/outDir and input source syntax.",
+          "guidance: Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
         ].join("; "),
       );
     }

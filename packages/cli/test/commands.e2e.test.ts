@@ -36,6 +36,39 @@ function setupProject(
   return dir;
 }
 
+function createRustLauncher(cwd: string) {
+  const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
+  fs.writeFileSync(
+    stubPath,
+    [
+      "for await (const _ of process.stdin) { /* drain */ }",
+      "const response = {",
+      "  ok: true,",
+      "  diagnostics: ['engine=rust-binary-stub'],",
+      "  manifest: {",
+      "    buildId: '1122334455667788',",
+      "    entries: ['src/index.ts'],",
+      "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+      "    types: ['dist/index.d.ts'],",
+      "    tsconfigPath: 'tsconfig.json'",
+      "  }",
+      "};",
+      "process.stdout.write(JSON.stringify(response));",
+    ].join("\n"),
+  );
+
+  const launcherPath = path.join(
+    cwd,
+    `rust-launcher-${crypto.randomUUID()}.sh`,
+  );
+  fs.writeFileSync(
+    launcherPath,
+    `#!/usr/bin/env bash\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(stubPath)}\n`,
+  );
+  fs.chmodSync(launcherPath, 0o755);
+  return launcherPath;
+}
+
 function runCli(
   cwd: string,
   command: "build" | "check" | "report" | "stages",
@@ -44,9 +77,31 @@ function runCli(
   const result = spawnSync(process.execPath, [cliEntry, command, "--json"], {
     cwd,
     encoding: "utf8",
-    env,
+    env: {
+      ...process.env,
+      ...env,
+    },
   });
   return result;
+}
+
+function createRustEngineLauncher(
+  cwd: string,
+  responseScript: string[],
+): string {
+  const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
+  fs.writeFileSync(stubPath, responseScript.join("\n"));
+
+  const launcherPath = path.join(
+    cwd,
+    `rust-launcher-${crypto.randomUUID()}.sh`,
+  );
+  fs.writeFileSync(
+    launcherPath,
+    `#!/usr/bin/env bash\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(stubPath)}\n`,
+  );
+  fs.chmodSync(launcherPath, 0o755);
+  return launcherPath;
 }
 
 function parseJsonStdout(stdout: string) {
@@ -131,8 +186,28 @@ test("CLI JSON contract fixtures: success path", () => {
     fs.readFileSync(path.join(fixturesDir, "contract-success.json"), "utf8"),
   ) as Record<string, unknown>;
 
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "const response = {",
+    "  ok: true,",
+    "  diagnostics: ['engine=rust-binary-stub'],",
+    "  manifest: {",
+    "    buildId: '1122334455667788',",
+    "    entries: ['src/index.ts'],",
+    "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+    "    types: ['dist/index.d.ts'],",
+    "    tsconfigPath: 'tsconfig.json'",
+    "  }",
+    "};",
+    "process.stdout.write(JSON.stringify(response));",
+  ]);
+
   for (const command of ["build", "check", "report", "stages"] as const) {
-    const result = runCli(cwd, command);
+    const env =
+      command === "build"
+        ? { ...process.env, TSGODOWN_RUST_ENGINE_BIN: rustLauncher }
+        : undefined;
+    const result = runCli(cwd, command, env);
     assert.equal(result.status, 0, `${command} failed: ${result.stderr}`);
 
     const parsed = parseJsonStdout(result.stdout);
@@ -140,26 +215,22 @@ test("CLI JSON contract fixtures: success path", () => {
     assertSubset(normalized, fixture[command], command);
   }
 
+  const manifestPath = path.join(
+    cwd,
+    "artifacts",
+    "manifests",
+    "manifest.json",
+  );
+  assert.equal(fs.existsSync(manifestPath), true);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+    buildId: string;
+    entries: string[];
+  };
+  assert.match(manifest.buildId, /^[a-f0-9]{16}$/);
+  assert.deepEqual(manifest.entries, ["src/index.ts"]);
+
   const goPath = path.join(cwd, "dist-go", "main.go");
-  assert.equal(fs.existsSync(goPath), true);
-  const go = fs.readFileSync(goPath, "utf8");
-  assert.ok(go.includes('mux.HandleFunc("GET /users", route0)'));
-  assert.ok(go.includes('mux.HandleFunc("GET /users/{id}", route1)'));
-  assert.ok(!go.includes("if req.Method != http.MethodGet {"));
-  assert.ok(go.includes("// Route metadata:"));
-  assert.ok(go.includes("//   Method: GET"));
-  assert.ok(go.includes('//   Path: "/users"'));
-  assert.ok(go.includes('//   Handler: "listUsers"'));
-  assert.ok(
-    go.includes(
-      'fmt.Fprintln(w, "TODO implement handler listUsers for GET /users")',
-    ),
-  );
-  assert.ok(
-    go.includes(
-      'fmt.Fprintln(w, "TODO implement handler getUser for GET /users/:id")',
-    ),
-  );
+  assert.equal(fs.existsSync(goPath), false);
 });
 
 test("CLI JSON contract fixtures: warn path", () => {
@@ -174,8 +245,27 @@ test("CLI JSON contract fixtures: warn path", () => {
     fs.readFileSync(path.join(fixturesDir, "contract-warn.json"), "utf8"),
   ) as Record<string, unknown>;
 
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "const response = {",
+    "  ok: true,",
+    "  diagnostics: ['engine=rust-binary-stub'],",
+    "  manifest: {",
+    "    buildId: '1122334455667788',",
+    "    entries: ['src/index.ts'],",
+    "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+    "    types: ['dist/index.d.ts'],",
+    "    tsconfigPath: 'tsconfig.json'",
+    "  }",
+    "};",
+    "process.stdout.write(JSON.stringify(response));",
+  ]);
+
   for (const command of ["check", "report"] as const) {
-    const result = runCli(cwd, command);
+    const result = runCli(cwd, command, {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
     assert.equal(result.status, 0, `${command} failed: ${result.stderr}`);
     const parsed = parseJsonStdout(result.stdout);
     const normalized = normalizeResult(cwd, parsed);
@@ -193,7 +283,23 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
     fs.readFileSync(path.join(fixturesDir, "contract-fail.json"), "utf8"),
   ) as { stderrIncludes: string[] };
 
-  const result = runCli(cwd, "build");
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "const response = {",
+    "  ok: false,",
+    "  error: {",
+    "    source: 'rust-engine-adapter',",
+    "    cause: 'ENOENT: missing entry src/missing.ts',",
+    "    guidance: 'Verify tsgodown.config.ts entry path and file existence.'",
+    "  }",
+    "};",
+    "process.stdout.write(JSON.stringify(response));",
+  ]);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
   assert.notEqual(result.status, 0, "build should fail for missing entry");
 
   for (const token of fixture.stderrIncludes) {
@@ -202,6 +308,26 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
       new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
+});
+
+test("CLI fails with explicit diagnostic when rust engine bin env is missing", () => {
+  const cwd = setupProject([
+    "const fastify = {} as any;",
+    "const health = () => {};",
+    "fastify.get('/health', health);",
+  ]);
+
+  const env = { ...process.env };
+  Reflect.deleteProperty(env, "TSGODOWN_RUST_ENGINE_BIN");
+
+  const result = runCli(cwd, "build", env);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source=rust-engine-bin-env/);
+  assert.match(result.stderr, /cause=TSGODOWN_RUST_ENGINE_BIN is not set/);
+  assert.match(
+    result.stderr,
+    /guidance=Set TSGODOWN_RUST_ENGINE_BIN to the Rust engine executable path\./,
+  );
 });
 
 test("CLI build routes through rust adapter binary with JSON contract", () => {
