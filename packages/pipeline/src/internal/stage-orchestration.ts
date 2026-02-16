@@ -1,4 +1,5 @@
 import type { UserConfig } from "@tsgodown/config";
+import type { RunBuildResult } from "@tsgodown/tsdown-driver";
 
 import { formatPipelineFailure, resolveEntry } from "./result-normalization.js";
 import { runBuildArtifactsViaRustAdapter } from "./rust-adapter-boundary.js";
@@ -20,11 +21,7 @@ export async function orchestratePipelineStages({
     try {
       log("[BUILD_ARTIFACTS] collecting build outputs");
       const buildResult = await runBuildArtifactsViaRustAdapter(cwd);
-      if (!buildResult.manifestPath || !buildResult.manifestIndexPath) {
-        throw new Error(
-          "rust adapter contract violation: missing manifest or manifest index path",
-        );
-      }
+      assertBuildArtifactContract(buildResult);
 
       log(
         `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
@@ -37,5 +34,31 @@ export async function orchestratePipelineStages({
     } catch (cause) {
       throw formatPipelineFailure(entry, cause);
     }
+  }
+}
+
+export function assertBuildArtifactContract(buildResult: RunBuildResult): void {
+  const violations: string[] = [];
+
+  if (!buildResult.manifestPath?.trim()) {
+    violations.push("manifestPath must be a non-empty string");
+  }
+
+  if (!buildResult.manifestIndexPath?.trim()) {
+    violations.push("manifestIndexPath must be a non-empty string");
+  }
+
+  if (!buildResult.manifest?.buildId?.trim()) {
+    violations.push("manifest.buildId must be a non-empty string");
+  }
+
+  if (!Array.isArray(buildResult.manifest?.entries)) {
+    violations.push("manifest.entries must be an array");
+  }
+
+  if (violations.length > 0) {
+    throw new Error(
+      `rust adapter artifact contract violation: ${violations.join("; ")}`,
+    );
   }
 }

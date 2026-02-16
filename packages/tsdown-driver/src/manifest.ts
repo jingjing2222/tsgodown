@@ -44,6 +44,8 @@ export async function writeManifestArtifacts(
     generatedAt: new Date().toISOString(),
   };
 
+  assertManifestIndexContract(manifest, manifestIndex);
+
   await fs.writeFile(
     manifestIndexPath,
     `${JSON.stringify(manifestIndex, null, 2)}\n`,
@@ -54,4 +56,49 @@ export async function writeManifestArtifacts(
     manifestPath,
     manifestIndexPath,
   };
+}
+
+export function assertManifestIndexContract(
+  manifest: ArtifactManifest,
+  manifestIndex: ArtifactManifestIndex,
+): void {
+  const violations: string[] = [];
+
+  if (!manifest.buildId?.trim()) {
+    violations.push("manifest.buildId must be a non-empty string");
+  }
+
+  if (!manifestIndex.buildId?.trim()) {
+    violations.push("manifest index buildId must be a non-empty string");
+  }
+
+  if (
+    manifest.buildId?.trim() &&
+    manifestIndex.buildId?.trim() &&
+    manifestIndex.buildId !== manifest.buildId
+  ) {
+    violations.push(
+      `manifest index buildId mismatch (manifest=${manifest.buildId}, index=${manifestIndex.buildId})`,
+    );
+  }
+
+  if (manifestIndex.manifest !== "manifest.json") {
+    violations.push(
+      `manifest index manifest must equal \"manifest.json\" (received=${manifestIndex.manifest})`,
+    );
+  }
+
+  if (!manifestIndex.generatedAt?.trim()) {
+    violations.push("manifest index generatedAt must be a non-empty string");
+  } else if (Number.isNaN(Date.parse(manifestIndex.generatedAt))) {
+    violations.push(
+      `manifest index generatedAt must be ISO-8601 parseable (received=${manifestIndex.generatedAt})`,
+    );
+  }
+
+  if (violations.length > 0) {
+    throw new Error(
+      `[tsdown-driver] artifact contract violation: ${violations.join("; ")}`,
+    );
+  }
 }

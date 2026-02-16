@@ -1,4 +1,5 @@
 export {
+  assertManifestIndexContract,
   buildManifestFromBundles,
   writeManifest,
   writeManifestArtifacts,
