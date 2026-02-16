@@ -72,6 +72,44 @@ interface DiagnosticIR {
 }
 ```
 
+## analyzer-rust Fastify boundary (M1)
+`packages/analyzer-rust`는 M1에서 **extract/diagnose only** 범위를 유지한다.
+
+### Supported boundary (현재 추출 보장 범위)
+- Shorthand route: `fastify.<method>('literal-path', namedHandler)`
+  - method: `GET|POST|PUT|DELETE|PATCH`
+  - path: 문자열 리터럴
+  - handler: 식별자 기반 named reference
+- Route object: `fastify.route({ method, url|path, handler })`
+  - object: inline object literal
+  - method: 문자열 + `GET|POST|PUT|DELETE|PATCH`
+  - `url` 또는 `path`: 문자열 리터럴
+  - `handler`: named reference
+- Register/plugin:
+  - inline plugin callback 또는 same-file named plugin reference
+  - `register(..., { prefix: '/v1' })` prefix 누적 반영
+
+### Unsupported boundary → DiagnosticIR.code mapping
+- `DYNAMIC_IMPORT_DETECTED`
+  - trigger: `import(...)` 동적 import 사용
+- `ANALYZER_UNRESOLVED_PLUGIN`
+  - trigger: `register(pluginRef, ...)`에서 same-file plugin 정의를 해석하지 못함
+- `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
+  - trigger: inline callback/same-file named reference가 아닌 register callback 패턴
+- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`
+  - trigger: route path(`url`/`path` 포함)가 문자열 리터럴이 아님
+- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
+  - trigger: handler가 named reference가 아님(예: inline function)
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
+  - trigger: `fastify.route(...)`가 inline object literal 형태가 아님
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
+  - trigger: route object의 `method` 누락/비문자열/allowlist 외 값
+
+### SSoT boundary
+- analyzer-rust는 capability/policy 판정을 수행하지 않는다.
+- `CAPABILITY_*` 계열 코드는 analyzer-rust에서 emit하지 않는다.
+- 관련 계약은 `packages/analyzer-rust/tests/contract_parity_regression.rs`에서 고정한다.
+
 ## Data sources
 - tsdown 산출물(JS bundle)
 - source map
