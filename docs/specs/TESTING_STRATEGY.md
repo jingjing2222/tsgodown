@@ -19,6 +19,19 @@
 - Integration: rust adapter contract + pipeline orchestration
 - E2E: 실제 예제 프로젝트 변환 후 CLI/build contract 검증
 
+## M1 acceptance scenario (Fastify -> Go compile success path)
+M1 수용 기준은 아래 단일 성공 경로를 명확히 고정한다.
+
+1. 입력: Fastify scaffold TypeScript 엔트리(`src/index.ts`)
+2. 실행: `runPipeline` 또는 CLI `build`를 Rust adapter 경유로 실행
+3. 산출: `dist-go/main.go` 생성 확인
+4. 가독성 고정 assertion:
+   - Go scaffold shape (`package main`, `func main()`, `GET /health` route binding)
+   - Go toolchain 존재 시 `go mod init` + `go build ./...` 성공
+
+주의: 이 시나리오 검증은 acceptance naming/assertion clarity 범위에 한정하며,
+`analyzer-rust` / `emitter-go` 내부 구현 세부사항은 테스트 대상에서 제외한다.
+
 ## Required checks per PR/turn
 - `npm run build` (or `pnpm run build`)
 - `npm run test` (or `pnpm run test`)
