@@ -807,7 +807,7 @@ test("rust-only fixture matrix keeps build/check/report/stages deterministic", (
   }
 });
 
-test("M1 acceptance: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)", () => {
+test("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)", () => {
   const cwd = setupProjectFromFixture("fastify-min");
   const rustLauncher = createRealRustEngineLauncherWithGoMain(cwd);
 

@@ -15,7 +15,8 @@
     "typecheck": "pnpm run build",
     "lint": "biome lint .",
     "format:check": "biome check . --linter-enabled=false",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "gate:m1": "./scripts/m1-release-gate.sh"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
