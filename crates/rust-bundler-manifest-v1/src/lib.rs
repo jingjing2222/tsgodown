@@ -118,8 +118,7 @@ pub fn build_manifest(input: BuildInput) -> BuildManifestOutput {
                 code: "MISSING_SOURCEMAP_LINK".to_string(),
                 message: format!(
                     "bundle '{}' is missing sourcemap link '{}'.",
-                    file,
-                    format!("{}.map", file)
+                    file, map_link
                 )
                 .trim_end_matches('.')
                 .to_string(),
@@ -198,7 +197,9 @@ fn has_matching_types(bundle: &str, chunk_set: &BTreeSet<String>) -> bool {
         format!("{base}.d.mts"),
         format!("{base}.d.cts"),
     ];
-    candidates.iter().any(|candidate| chunk_set.contains(candidate))
+    candidates
+        .iter()
+        .any(|candidate| chunk_set.contains(candidate))
 }
 
 fn bundle_base_no_ext(path: &str) -> String {
