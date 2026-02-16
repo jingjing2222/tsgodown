@@ -31,8 +31,13 @@ export async function runPipeline(cwd: string, options: PipelineOptions = {}) {
       });
       if (!gate.ok) {
         const details = gate.diagnostics
-          .map((d) => `${d.capability}=${d.status}`)
-          .join(", ");
+          .map((d) => {
+            const source = d.source
+              ? `${d.source.file}:${d.source.line ?? "?"}:${d.source.column ?? "?"}`
+              : "unknown";
+            return `${d.capability}=${d.status} source:${source} cause:${d.cause ?? "n/a"} guidance:${d.guidance ?? "n/a"}`;
+          })
+          .join(" | ");
         throw new Error(
           `unsupported capabilities: ${details}. Check docs/specs/CAPABILITY_MATRIX.md or simplify source features.`,
         );
@@ -44,7 +49,12 @@ export async function runPipeline(cwd: string, options: PipelineOptions = {}) {
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause);
       throw new Error(
-        `[pipeline] failed for entry "${entry}" -> outDir "${outDir}": ${msg}. Verify tsgodown.config.ts entry/outDir and input source syntax.`,
+        [
+          `[pipeline] failed for entry "${entry}" -> outDir "${outDir}"`,
+          `source: ${entry}`,
+          `cause: ${msg}`,
+          "guidance: Verify tsgodown.config.ts entry/outDir and input source syntax.",
+        ].join("; "),
       );
     }
   }

@@ -1,0 +1,26 @@
+{
+  "check": {
+    "command": "check",
+    "ok": true,
+    "targets": [
+      {
+        "diagnostics": {
+          "routes": 1,
+          "warnings": ["dynamic import detected"]
+        }
+      }
+    ]
+  },
+  "report": {
+    "command": "report",
+    "ok": true,
+    "targets": [
+      {
+        "diagnostics": {
+          "routes": 1,
+          "warnings": ["dynamic import detected"]
+        }
+      }
+    ]
+  }
+}
