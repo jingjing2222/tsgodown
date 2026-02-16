@@ -138,6 +138,18 @@ fn contract_fixtures() -> Vec<ContractFixture> {
             expected_diag_codes: vec![],
         },
         ContractFixture {
+            name: "put-delete-chaining-fastify.fixture.txt",
+            expected_routes: vec![
+                ("PUT", "/users/:id", "replaceUser"),
+                ("DELETE", "/users/:id", "removeUser"),
+            ],
+            expected_handlers: vec![
+                ("replaceUser", vec![], false, "unknown"),
+                ("removeUser", vec![], true, "unknown"),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
             name: "unsupported-fastify.fixture.txt",
             expected_routes: vec![],
             expected_handlers: vec![],
