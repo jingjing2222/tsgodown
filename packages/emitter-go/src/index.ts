@@ -46,7 +46,9 @@ function extractPathParamNames(pathname: string): string[] {
     }
   }
 
-  for (const match of normalized.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)(?:\.\.\.)?\}/g)) {
+  for (const match of normalized.matchAll(
+    /\{([A-Za-z_][A-Za-z0-9_]*)(?:\.\.\.)?\}/g,
+  )) {
     const name = match[1];
     if (!seen.has(name)) {
       seen.add(name);

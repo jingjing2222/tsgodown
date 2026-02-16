@@ -335,7 +335,10 @@ test("CLI fails with explicit diagnostic when rust engine binary cannot spawn", 
     "app.get('/health', () => ({ ok: true }));",
   ]);
 
-  const missingBinary = path.join(cwd, `missing-rust-bin-${crypto.randomUUID()}`);
+  const missingBinary = path.join(
+    cwd,
+    `missing-rust-bin-${crypto.randomUUID()}`,
+  );
   const result = runCli(cwd, "build", {
     ...process.env,
     TSGODOWN_RUST_ENGINE_BIN: missingBinary,
@@ -369,7 +372,10 @@ test("CLI fails with explicit diagnostic when rust engine exits non-zero", () =>
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /source=rust-engine-binary/);
-  assert.match(result.stderr, /cause=exit=17 stderr=fatal: fixture forced non-zero exit/);
+  assert.match(
+    result.stderr,
+    /cause=exit=17 stderr=fatal: fixture forced non-zero exit/,
+  );
   assert.match(
     result.stderr,
     /guidance=Inspect rust engine logs and JSON response contract\./,
