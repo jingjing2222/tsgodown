@@ -125,17 +125,17 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
             let mut expected_diag_details = vec![
                 (
                     "ANALYZER_UNRESOLVED_PLUGIN",
-                    "register plugin 'externalPlugin' could not be resolved in current file",
+                    "register plugin 'externalPlugin' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
                     "warn",
                 ),
                 (
                     "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-                    "unsupported dynamic path in fastify.get(...)",
+                    "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
                     "warn",
                 ),
                 (
                     "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
-                    "unsupported non-reference handler in fastify.post('/inline', handler)",
+                    "unsupported non-reference handler in fastify.post('/inline', handler). Extract handler to a named function and pass its identifier.",
                     "warn",
                 ),
             ];
