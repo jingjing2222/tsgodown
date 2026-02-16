@@ -60,10 +60,19 @@ test("build/check/report/stages produce stable command payloads and deterministi
   const goPath = path.join(cwd, "dist-go", "main.go");
   assert.equal(fs.existsSync(goPath), true);
   const go = fs.readFileSync(goPath, "utf8");
-  assert.ok(go.includes('http.HandleFunc("/users", route0)'));
-  assert.ok(go.includes('http.HandleFunc("/users/:id", route1)'));
-  assert.ok(go.includes('fmt.Fprintln(w, "TODO GET /users -> listUsers")'));
-  assert.ok(go.includes('fmt.Fprintln(w, "TODO GET /users/:id -> getUser")'));
+  assert.ok(go.includes('mux.HandleFunc("/users", route0)'));
+  assert.ok(go.includes('mux.HandleFunc("/users/:id", route1)'));
+  assert.ok(go.includes("if req.Method != http.MethodGet {"));
+  assert.ok(
+    go.includes(
+      'fmt.Fprintln(w, "TODO implement handler listUsers for GET /users")',
+    ),
+  );
+  assert.ok(
+    go.includes(
+      'fmt.Fprintln(w, "TODO implement handler getUser for GET /users/:id")',
+    ),
+  );
 
   const checkResult = await check(cwd);
   assert.equal(checkResult.command, "check");
