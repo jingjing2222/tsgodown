@@ -86,7 +86,10 @@ test("workspace package runtime entries point to emitted dist files", () => {
   }
 });
 
-test("legacy TS analyzer is not part of root TS build ownership paths", () => {
+test("legacy TS analyzer package is physically pruned", () => {
+  const analyzerPackageRoot = path.join(packagesDir, "analyzer");
+  assert.equal(fs.existsSync(analyzerPackageRoot), false);
+
   const rootTsconfig = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "tsconfig.json"), "utf8"),
   );
