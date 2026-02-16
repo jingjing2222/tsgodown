@@ -22,6 +22,13 @@
 ## M1 acceptance scenario (Fastify -> Go compile success path)
 M1 수용 기준은 아래 단일 성공 경로를 명확히 고정한다.
 
+## analyzer-rust boundary contract (M1)
+- `packages/analyzer-rust/tests/contract_parity_regression.rs`를 analyzer-rust SSoT 계약 고정 테스트로 유지한다.
+- 지원 경계(supported extraction shape)와 비지원 경계(unsupported shape)는 fixture 기반으로 고정한다.
+- 비지원 경계는 **DiagnosticIR.code 매핑까지 포함해** 회귀 방지한다.
+  - 예: `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`, `ANALYZER_UNSUPPORTED_INLINE_HANDLER`, `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD` 등
+- analyzer-rust는 capability policy 진단(`CAPABILITY_*`)을 emit하지 않는다.
+
 1. 입력: Fastify scaffold TypeScript 엔트리(`src/index.ts`)
 2. 실행: `runPipeline` 또는 CLI `build`를 Rust adapter 경유로 실행
 3. 산출: `dist-go/main.go` 생성 확인
