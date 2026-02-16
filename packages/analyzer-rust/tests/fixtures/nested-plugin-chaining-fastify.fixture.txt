@@ -1,0 +1,16 @@
+import Fastify from "fastify";
+
+const app = Fastify();
+
+const listApiUsers = req => {};
+const createApiUser = req => {};
+const listNestedUsers = request => {};
+
+app.register(scope => {
+  scope.get("/users", listApiUsers)
+    .post("/users", createApiUser);
+
+  scope.register(inner => {
+    inner.get("/users", listNestedUsers);
+  }, { prefix: "/v2" });
+}, { prefix: "/api" });

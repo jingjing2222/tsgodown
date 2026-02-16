@@ -217,3 +217,52 @@ fn handles_single_param_arrow_plugins_and_handlers() {
 
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn handles_chained_routes_nested_plugins_and_single_param_function_plugins() {
+    let cases = vec![
+        (
+            "chaining-routes-fastify.fixture.txt",
+            vec![
+                ("GET", "/users", "listUsers"),
+                ("POST", "/users", "createUser"),
+                ("PATCH", "/users/:id", "updateUser"),
+            ],
+        ),
+        (
+            "nested-plugin-chaining-fastify.fixture.txt",
+            vec![
+                ("GET", "/api/users", "listApiUsers"),
+                ("POST", "/api/users", "createApiUser"),
+                ("GET", "/api/v2/users", "listNestedUsers"),
+            ],
+        ),
+        (
+            "single-param-function-plugin-fastify.fixture.txt",
+            vec![
+                ("GET", "/admin/audit/logs", "listAuditLogs"),
+                ("POST", "/admin/audit/logs", "createAuditLog"),
+            ],
+        ),
+    ];
+
+    for (name, expected_routes) in cases {
+        let (file, src) = fixture(name);
+        let ir = analyze_fastify_entry(&file, &src);
+
+        assert_eq!(
+            ir.routes
+                .iter()
+                .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+                .collect::<Vec<_>>(),
+            expected_routes,
+            "route extraction drifted for fixture: {}",
+            name
+        );
+        assert!(
+            ir.diagnostics.is_empty(),
+            "unexpected diagnostics for fixture: {}",
+            name
+        );
+    }
+}
