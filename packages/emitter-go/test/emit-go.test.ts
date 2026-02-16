@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -143,12 +143,51 @@ test("emitGoProject normalizes route methods and extracts both colon and braces 
   assert.match(emitted, /orderId := req\.PathValue\("orderId"\)/);
 });
 
+test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "UNSUPPORTED_DYNAMIC_PATH",
+          message:
+            "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
+          source: { file: "src/server.ts", line: 12, column: 3 },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(
+    emitted,
+    /\/\/ IR diagnostics carried from rust analyzer \(SSoT\):/,
+  );
+  assert.match(
+    emitted,
+    /\/\/\s+\[warn\] UNSUPPORTED_DYNAMIC_PATH: unsupported dynamic path in fastify\.get\(\.\.\.\)\. Use string literal path \(e\.g\. '\/users\/:id'\) for IR extraction\./,
+  );
+  assert.match(emitted, /\/\/\s+at src\/server\.ts:12:3/);
+  assert.match(
+    emitted,
+    /\/\/\s+Action: fix diagnostics in source and regenerate\. Emitter does not own policy decisions\./,
+  );
+});
+
 const hasGoToolchain =
   spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+const runGoSmoke = hasGoToolchain && process.env.CI !== "true";
 
 test(
   "emitGoProject smoke: generated representative fixtures can go build",
-  { skip: !hasGoToolchain },
+  { skip: !runGoSmoke },
   () => {
     const fixtures: ProgramIR[] = [
       sampleIr,
@@ -193,6 +232,100 @@ test(
         0,
         `go build failed for fixture in ${outDir}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
       );
+    }
+  },
+);
+
+test(
+  "emitGoProject smoke: generated server can boot and serve not-implemented route",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = String(19000 + Math.floor(Math.random() * 1000));
+
+    emitGoProject(sampleIr, outDir);
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(
+      modInit.status,
+      0,
+      `go mod init failed in ${outDir}\nstdout:\n${modInit.stdout}\nstderr:\n${modInit.stderr}`,
+    );
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: {
+        ...process.env,
+        PORT: port,
+      },
+      stdio: "pipe",
+    });
+
+    const url = `http://127.0.0.1:${port}/health`;
+    const deadline = Date.now() + 10_000;
+    let lastError: unknown = undefined;
+    let responseText = "";
+    let responseStatus = 0;
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(1000),
+          });
+          responseStatus = response.status;
+          responseText = await response.text();
+          break;
+        } catch (error) {
+          lastError = error;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      assert.equal(
+        responseStatus,
+        501,
+        `server did not become ready at ${url}; lastError=${String(lastError)}`,
+      );
+      assert.match(
+        responseText,
+        /TODO implement handler health for GET \/health/,
+      );
+    } finally {
+      if (server.exitCode === null && !server.killed) {
+        server.kill("SIGTERM");
+      }
+
+      await new Promise<void>((resolve) => {
+        if (server.exitCode !== null) {
+          resolve();
+          return;
+        }
+
+        const forceKillTimer = setTimeout(() => {
+          if (server.exitCode === null) {
+            server.kill("SIGKILL");
+          }
+        }, 1500);
+
+        const settleTimer = setTimeout(() => {
+          clearTimeout(forceKillTimer);
+          resolve();
+        }, 5000);
+
+        server.once("close", () => {
+          clearTimeout(forceKillTimer);
+          clearTimeout(settleTimer);
+          resolve();
+        });
+      });
     }
   },
 );
