@@ -1,0 +1,11 @@
+[BUILD_ARTIFACTS] collecting build outputs
+{
+  "ok": false,
+  "error": {
+    "message": "[pipeline] failed for entry \"src/index.ts\"; source: pipeline-entry(src/index.ts); stage: BUILD_ARTIFACTS; cause: [tsdown-driver] rust engine failed; source=rust-engine-adapter; cause=invalid build graph; guidance=Check Rust engine JSON contract and retry.; guidance: Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
+    "source": "pipeline-entry(src/index.ts)",
+    "stage": "BUILD_ARTIFACTS",
+    "cause": "[tsdown-driver] rust engine failed",
+    "guidance": "Verify rust engine build/analyze contract and tsgodown.config.ts settings."
+  }
+}

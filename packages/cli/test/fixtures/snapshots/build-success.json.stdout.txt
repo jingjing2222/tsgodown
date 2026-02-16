@@ -1,0 +1,30 @@
+[BUILD_ARTIFACTS] collecting build outputs
+[BUILD_IR] analyzing entry: src/index.ts (delegated to rust engine, buildId=1122334455667788)
+[CAPABILITY_GATE] validating required capabilities (delegated to rust engine)
+[EMIT_GO] writing Go scaffold (delegated to rust engine)
+{
+  "ok": true,
+  "cwd": "<CWD>",
+  "command": "build",
+  "stages": [
+    "load-config",
+    "analyze",
+    "emit",
+    "onSuccess"
+  ],
+  "targets": [
+    {
+      "configIndex": 0,
+      "entry": "<CWD>/src/index.ts",
+      "outDir": "<CWD>/dist-go",
+      "artifact": "<CWD>/artifacts/manifests/manifest.json",
+      "emitted": true,
+      "diagnostics": {
+        "routes": 0,
+        "warnings": [
+          "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine."
+        ]
+      }
+    }
+  ]
+}
