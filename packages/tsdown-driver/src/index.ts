@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { type InlineConfig, type TsdownBundle, build } from "tsdown";
 
 export type BundleFormat = "esm" | "cjs";
 
@@ -19,76 +20,107 @@ export interface ArtifactManifest {
   tsconfigPath: string;
 }
 
-const KNOWN_OUTPUT_DIRS = ["bundle", "dist", "build", "out"];
-
 export interface RunBuildResult {
-  mode: "fallback-adapter";
+  mode: "tsdown-programmatic";
   manifestPath: string;
   manifest: ArtifactManifest;
   diagnostics: string[];
 }
 
-export async function runBuild(
-  cwd: string,
-  configPath?: string,
-): Promise<RunBuildResult> {
-  const diagnostics = [
-    "[tsdown-driver] TODO: real tsdown integration is not implemented; using fallback adapter scan mode.",
-  ];
+interface BuildChunkLike {
+  fileName?: string;
+}
 
-  const manifest = await collectArtifacts(cwd, configPath);
-  const manifestPath = await writeManifest(cwd, manifest);
-
-  for (const diagnostic of diagnostics) {
-    console.warn(diagnostic);
-  }
-
-  return {
-    mode: "fallback-adapter",
-    manifestPath,
-    manifest,
-    diagnostics,
+export interface TsdownBundleLike {
+  chunks: BuildChunkLike[];
+  config?: {
+    entry?: Record<string, string>;
+    tsconfig?: false | string;
   };
 }
 
-export async function collectArtifacts(
+interface RunBuildOptions {
+  executeBuild?: (inlineConfig: InlineConfig) => Promise<TsdownBundleLike[]>;
+}
+
+export async function runBuild(
   cwd: string,
   configPath?: string,
-): Promise<ArtifactManifest> {
-  const dirs = await existingOutputDirs(cwd);
+  options: RunBuildOptions = {},
+): Promise<RunBuildResult> {
+  const inlineConfig: InlineConfig = {
+    cwd,
+    ...(configPath ? { config: configPath } : {}),
+  };
 
-  const bundleCandidates: string[] = [];
-  const typeCandidates: string[] = [];
-
-  for (const dir of dirs) {
-    const files = await walkFiles(path.join(cwd, dir));
-    for (const absFile of files) {
-      const relFile = toPosix(path.relative(cwd, absFile));
-      if (relFile.endsWith(".d.ts")) {
-        typeCandidates.push(relFile);
-      }
-
-      if (isBundleFile(relFile)) {
-        bundleCandidates.push(relFile);
-      }
-    }
+  let bundles: TsdownBundleLike[];
+  try {
+    const executeBuild =
+      options.executeBuild ??
+      ((config) => build(config) as Promise<TsdownBundle[]>);
+    bundles = await executeBuild(inlineConfig);
+  } catch (error) {
+    throw new Error(
+      `[tsdown-driver] build failed (source=tsdown.build cwd=${toPosix(cwd)} config=${toPosix(configPath ?? "auto")}): ${formatErrorWithCause(error)}`,
+      { cause: error },
+    );
   }
 
-  const bundles = await toBundles(cwd, uniqueSorted(bundleCandidates));
-  const types = uniqueSorted(typeCandidates);
-  const entries = await detectEntries(cwd);
+  const manifest = buildManifestFromBundles(cwd, bundles, configPath);
+  const manifestPath = await writeManifest(cwd, manifest);
+
+  return {
+    mode: "tsdown-programmatic",
+    manifestPath,
+    manifest,
+    diagnostics: [],
+  };
+}
+
+export function buildManifestFromBundles(
+  cwd: string,
+  bundles: TsdownBundleLike[],
+  configPath?: string,
+): ArtifactManifest {
+  const chunkFiles = uniqueSorted(
+    bundles
+      .flatMap((bundle) => bundle.chunks ?? [])
+      .map((chunk) => normalizeChunkFile(cwd, chunk.fileName))
+      .filter((file): file is string => Boolean(file)),
+  );
+
+  const chunkSet = new Set(chunkFiles);
+  const bundleFiles = chunkFiles.filter(isBundleFile);
+  const bundlesOut = bundleFiles.map((file) => ({
+    file,
+    map: chunkSet.has(`${file}.map`) ? `${file}.map` : undefined,
+    format: file.endsWith(".cjs") ? ("cjs" as const) : ("esm" as const),
+    exports: [],
+  }));
+
+  const typeFiles = chunkFiles.filter(isTypeFile);
+
+  const entries = uniqueSorted(
+    bundles.flatMap((bundle) => {
+      const entryMap = bundle.config?.entry;
+      if (!entryMap) return [];
+      return Object.values(entryMap)
+        .map((entryPath) => normalizeChunkFile(cwd, entryPath))
+        .filter((entry): entry is string => Boolean(entry));
+    }),
+  );
+
+  const tsconfigPath = resolveTsconfigPath(cwd, bundles, configPath);
 
   const manifestBase = {
     entries,
-    bundles,
-    types,
-    tsconfigPath: toPosix(configPath ?? "tsconfig.json"),
+    bundles: bundlesOut,
+    types: typeFiles,
+    tsconfigPath,
   };
 
-  const buildId = createBuildId(manifestBase);
-
   return {
-    buildId,
+    buildId: createBuildId(manifestBase),
     ...manifestBase,
   };
 }
@@ -109,6 +141,23 @@ export async function writeManifest(
   return manifestPath;
 }
 
+function resolveTsconfigPath(
+  cwd: string,
+  bundles: TsdownBundleLike[],
+  configPath?: string,
+): string {
+  if (configPath) return toPosix(configPath);
+
+  for (const bundle of bundles) {
+    const tsconfig = bundle.config?.tsconfig;
+    if (typeof tsconfig === "string") {
+      return normalizeChunkFile(cwd, tsconfig) ?? toPosix(tsconfig);
+    }
+  }
+
+  return "tsconfig.json";
+}
+
 function createBuildId(input: Omit<ArtifactManifest, "buildId">): string {
   const normalized = JSON.stringify(input);
   return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
@@ -123,84 +172,23 @@ function isBundleFile(relFile: string): boolean {
   );
 }
 
-async function toBundles(
-  cwd: string,
-  files: string[],
-): Promise<ArtifactBundle[]> {
-  const bundles: ArtifactBundle[] = [];
-
-  for (const file of files) {
-    const absMap = path.join(cwd, `${file}.map`);
-    const hasMap = await fileExists(absMap);
-    bundles.push({
-      file,
-      map: hasMap ? toPosix(`${file}.map`) : undefined,
-      format: file.endsWith(".cjs") ? "cjs" : "esm",
-      exports: [],
-    });
-  }
-
-  return bundles;
-}
-
-async function existingOutputDirs(cwd: string): Promise<string[]> {
-  const dirs: string[] = [];
-
-  for (const dir of KNOWN_OUTPUT_DIRS) {
-    const absDir = path.join(cwd, dir);
-    if (await directoryExists(absDir)) dirs.push(dir);
-  }
-
-  return dirs;
-}
-
-async function detectEntries(cwd: string): Promise<string[]> {
-  const preferred = path.join(cwd, "src", "index.ts");
-  if (await fileExists(preferred)) return ["src/index.ts"];
-
-  const srcDir = path.join(cwd, "src");
-  if (!(await directoryExists(srcDir))) return [];
-
-  const files = await walkFiles(srcDir);
-  return uniqueSorted(
-    files
-      .map((f) => toPosix(path.relative(cwd, f)))
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts")),
+function isTypeFile(relFile: string): boolean {
+  return (
+    relFile.endsWith(".d.ts") ||
+    relFile.endsWith(".d.mts") ||
+    relFile.endsWith(".d.cts")
   );
 }
 
-async function walkFiles(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const abs = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...(await walkFiles(abs)));
-    } else if (entry.isFile()) {
-      out.push(abs);
-    }
-  }
-
-  return out;
-}
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(p);
-    return stat.isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function directoryExists(p: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(p);
-    return stat.isDirectory();
-  } catch {
-    return false;
-  }
+function normalizeChunkFile(
+  cwd: string,
+  fileName?: string,
+): string | undefined {
+  if (!fileName) return undefined;
+  const normalized = path.isAbsolute(fileName)
+    ? path.relative(cwd, fileName)
+    : fileName;
+  return toPosix(normalized);
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -209,4 +197,22 @@ function uniqueSorted(values: string[]): string[] {
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
+}
+
+function formatErrorWithCause(error: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = error;
+
+  while (current) {
+    if (current instanceof Error) {
+      messages.push(`${current.name}: ${current.message}`);
+      current = current.cause;
+      continue;
+    }
+
+    messages.push(String(current));
+    break;
+  }
+
+  return messages.join(" <- cause: ");
 }
