@@ -35,3 +35,23 @@ jobs:
 
       - name: Test
         run: pnpm run test
+
+      - name: Setup Rust
+        if: ${{ hashFiles('Cargo.toml') != '' }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        if: ${{ hashFiles('Cargo.toml') != '' }}
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cargo fmt check
+        if: ${{ hashFiles('Cargo.toml') != '' }}
+        run: cargo fmt --all --check
+
+      - name: Cargo clippy
+        if: ${{ hashFiles('Cargo.toml') != '' }}
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Cargo test
+        if: ${{ hashFiles('Cargo.toml') != '' }}
+        run: cargo test --workspace --all-targets
