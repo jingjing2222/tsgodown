@@ -149,78 +149,174 @@ test("runBuild reports rust engine error in source/cause/guidance format", async
   );
 });
 
-test("runBuild accepts status-envelope success payload and normalizes diagnostics", async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
+test("runBuild accepts status-envelope success variants and normalizes diagnostics", async () => {
+  const fixtures: Array<{
+    name: string;
+    status: "ok" | "success";
+    buildId: string;
+  }> = [
+    { name: "status=ok", status: "ok", buildId: "0011223344556677" },
+    {
+      name: "status=success",
+      status: "success",
+      buildId: "8899aabbccddeeff",
+    },
+  ];
 
-  try {
-    const result = await runBuild(cwd, "tsdown.config.ts", {
-      executeRustEngine: async () => ({
-        status: "success",
-        manifest: {
-          buildId: "0011223344556677",
-          entries: ["src/index.ts"],
-          bundles: [
-            {
-              file: "dist/index.mjs",
-              map: "dist/index.mjs.map",
-              format: "esm",
-              exports: [],
-            },
-          ],
-          types: ["dist/index.d.ts"],
-          tsconfigPath: "tsconfig.json",
-        },
-        diagnostics: ["  keep-me  ", "", 42],
-      }),
-    });
+  for (const fixture of fixtures) {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
 
-    assert.equal(result.manifest.buildId, "0011223344556677");
-    assert.deepEqual(result.diagnostics, ["keep-me"]);
-  } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
+    try {
+      const result = await runBuild(cwd, "tsdown.config.ts", {
+        executeRustEngine: async () => ({
+          status: fixture.status,
+          manifest: {
+            buildId: fixture.buildId,
+            entries: ["src/index.ts"],
+            bundles: [
+              {
+                file: "dist/index.mjs",
+                map: "dist/index.mjs.map",
+                format: "esm",
+                exports: [],
+              },
+            ],
+            types: ["dist/index.d.ts"],
+            tsconfigPath: "tsconfig.json",
+          },
+          diagnostics: ["  keep-me  ", "", 42],
+        }),
+      });
+
+      assert.equal(
+        result.manifest.buildId,
+        fixture.buildId,
+        `manifest.buildId drifted for fixture: ${fixture.name}`,
+      );
+      assert.deepEqual(
+        result.diagnostics,
+        ["keep-me"],
+        `diagnostics normalization drifted for fixture: ${fixture.name}`,
+      );
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
   }
 });
 
-test("runBuild maps invalid status envelope to deterministic contract error", async () => {
-  await assert.rejects(
-    runBuild("/repo", "tsdown.config.ts", {
-      executeRustEngine: async () =>
-        ({ status: "maybe" }) as unknown as RustEngineResponse,
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.match(error.message, /source=rust-engine-binary-contract/);
-      assert.match(error.message, /cause=missing or invalid status envelope/);
-      assert.match(
-        error.message,
-        /guidance=Ensure rust engine returns deterministic status or ok envelope\./,
-      );
-      return true;
+test("runBuild maps malformed responses to deterministic contract errors", async () => {
+  const fixtures: Array<{
+    name: string;
+    response: unknown;
+    expectedCause: RegExp;
+  }> = [
+    {
+      name: "invalid status value",
+      response: { status: "maybe" },
+      expectedCause: /cause=missing or invalid status envelope/,
     },
-  );
+    {
+      name: "non-object payload",
+      response: "not-json-object",
+      expectedCause: /cause=missing or invalid status envelope/,
+    },
+    {
+      name: "ok envelope missing manifest",
+      response: { status: "ok" },
+      expectedCause: /cause=ok envelope missing valid manifest payload/,
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    await assert.rejects(
+      runBuild("/repo", "tsdown.config.ts", {
+        executeRustEngine: async () => fixture.response as RustEngineResponse,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(
+          error.message,
+          /source=rust-engine-binary-contract/,
+          `source drifted for fixture: ${fixture.name}`,
+        );
+        assert.match(
+          error.message,
+          fixture.expectedCause,
+          `cause drifted for fixture: ${fixture.name}`,
+        );
+        assert.match(
+          error.message,
+          /guidance=Ensure rust engine returns deterministic status or ok envelope\./,
+          `guidance drifted for fixture: ${fixture.name}`,
+        );
+        return true;
+      },
+      `fixture should fail: ${fixture.name}`,
+    );
+  }
 });
 
-test("runBuild maps failed status-envelope to deterministic source/cause/guidance", async () => {
-  await assert.rejects(
-    runBuild("/repo", "tsdown.config.ts", {
-      executeRustEngine: async () => ({
+test("runBuild maps failed status-envelope variants to deterministic source/cause/guidance", async () => {
+  const fixtures: Array<{
+    name: string;
+    response: RustEngineResponse;
+    source: RegExp;
+    cause: RegExp;
+    guidance: RegExp;
+  }> = [
+    {
+      name: "status=failed top-level fallbacks",
+      response: {
         status: "failed",
         source: "  ",
         cause: "",
-      }),
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.match(error.message, /source=rust-engine-binary/);
-      assert.match(
-        error.message,
-        /cause=rust engine returned error without cause/,
-      );
-      assert.match(
-        error.message,
+      },
+      source: /source=rust-engine-binary/,
+      cause: /cause=rust engine returned error without cause/,
+      guidance:
         /guidance=Inspect rust engine logs and JSON response contract\./,
-      );
-      return true;
     },
-  );
+    {
+      name: "status=error nested error object",
+      response: {
+        status: "error",
+        error: {
+          source: "rust-engine-adapter",
+          cause: "invalid graph",
+          guidance: "Retry with fixed config.",
+        },
+      },
+      source: /source=rust-engine-adapter/,
+      cause: /cause=invalid graph/,
+      guidance: /guidance=Retry with fixed config\./,
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    await assert.rejects(
+      runBuild("/repo", "tsdown.config.ts", {
+        executeRustEngine: async () => fixture.response,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(
+          error.message,
+          fixture.source,
+          `source drifted for fixture: ${fixture.name}`,
+        );
+        assert.match(
+          error.message,
+          fixture.cause,
+          `cause drifted for fixture: ${fixture.name}`,
+        );
+        assert.match(
+          error.message,
+          fixture.guidance,
+          `guidance drifted for fixture: ${fixture.name}`,
+        );
+        return true;
+      },
+      `fixture should fail: ${fixture.name}`,
+    );
+  }
 });
