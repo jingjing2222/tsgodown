@@ -9,10 +9,10 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@tsgodown/config": "0.0.1",
-    "@tsgodown/analyzer": "0.0.1",
-    "@tsgodown/node-compat": "0.0.1",
-    "@tsgodown/emitter-go": "0.0.1",
-    "@tsgodown/tsdown-driver": "0.0.1"
+    "@tsgodown/config": "workspace:*",
+    "@tsgodown/analyzer": "workspace:*",
+    "@tsgodown/node-compat": "workspace:*",
+    "@tsgodown/emitter-go": "workspace:*",
+    "@tsgodown/tsdown-driver": "workspace:*"
   }
 }

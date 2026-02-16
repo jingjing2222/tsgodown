@@ -13,6 +13,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@tsgodown/core": "0.0.1"
+    "@tsgodown/core": "workspace:*"
   }
 }

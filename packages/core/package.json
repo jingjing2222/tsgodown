@@ -9,6 +9,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@tsgodown/pipeline": "0.0.1"
+    "@tsgodown/pipeline": "workspace:*"
   }
 }
