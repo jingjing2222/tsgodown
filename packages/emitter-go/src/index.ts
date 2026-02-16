@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { HandlerIR, ProgramIR, RouteIR } from "@tsgodown/ir-core";
+import type {
+  DiagnosticIR,
+  HandlerIR,
+  ProgramIR,
+  RouteIR,
+} from "@tsgodown/ir-core";
 
 function routeHandlerName(index: number): string {
   return `route${index}`;
@@ -80,6 +85,44 @@ function formatHandlerParams(handler: HandlerIR | undefined): string {
   return handler.params.map((p) => `${p.role}:${p.name}`).join(", ");
 }
 
+function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
+  const source = diagnostic.source;
+  if (!source) return undefined;
+
+  const line = source.line ?? "?";
+  const column = source.column ?? "?";
+  return `${source.file}:${line}:${column}`;
+}
+
+function emitDiagnosticsComments(diagnostics: DiagnosticIR[]): string[] {
+  if (diagnostics.length === 0) {
+    return [];
+  }
+
+  const lines = [
+    "// IR diagnostics carried from rust analyzer (SSoT):",
+    "// Generated Go may be scaffold-only until these diagnostics are resolved.",
+  ];
+
+  for (const diagnostic of diagnostics) {
+    lines.push(
+      `// [${diagnostic.level}] ${diagnostic.code}: ${diagnostic.message}`,
+    );
+
+    const source = formatDiagnosticSource(diagnostic);
+    if (source) {
+      lines.push(`//   at ${source}`);
+    }
+  }
+
+  lines.push(
+    "// Action: fix diagnostics in source and regenerate. Emitter does not own policy decisions.",
+    "",
+  );
+
+  return lines;
+}
+
 function emitRoute(
   route: RouteIR,
   index: number,
@@ -128,7 +171,18 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   const lines: string[] = [];
 
   lines.push("package main", "");
-  lines.push("import (", '\t"fmt"', '\t"net/http"', ")", "");
+  lines.push(
+    "import (",
+    '\t"fmt"',
+    '\t"net/http"',
+    '\t"os"',
+    '\t"strings"',
+    '\t"time"',
+    ")",
+    "",
+  );
+
+  lines.push(...emitDiagnosticsComments(ir.diagnostics));
 
   lines.push("func registerRoutes(mux *http.ServeMux) {");
   for (const [index, route] of ir.routes.entries()) {
@@ -138,11 +192,34 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   }
   lines.push("}", "");
 
+  lines.push("func resolveListenAddr() string {");
+  lines.push(
+    '\tif addr := strings.TrimSpace(os.Getenv("TSGODOWN_ADDR")); addr != "" {',
+  );
+  lines.push("\t\treturn addr");
+  lines.push("\t}");
+  lines.push('\tif port := strings.TrimSpace(os.Getenv("PORT")); port != "" {');
+  lines.push('\t\tif strings.Contains(port, ":") {');
+  lines.push("\t\t\treturn port");
+  lines.push("\t\t}");
+  lines.push('\t\treturn ":" + port');
+  lines.push("\t}");
+  lines.push('\treturn ":18081"');
+  lines.push("}", "");
+
   lines.push("func main() {");
   lines.push("\tmux := http.NewServeMux()");
   lines.push("\tregisterRoutes(mux)");
-  lines.push('\tfmt.Println("tsgodown scaffold listening on :18081")');
-  lines.push('\tif err := http.ListenAndServe(":18081", mux); err != nil {');
+  lines.push("\taddr := resolveListenAddr()");
+  lines.push('\tfmt.Println("tsgodown scaffold listening on", addr)');
+  lines.push("\tserver := &http.Server{");
+  lines.push("\t\tAddr:              addr,");
+  lines.push("\t\tHandler:           mux,");
+  lines.push("\t\tReadHeaderTimeout: 5 * time.Second,");
+  lines.push("\t}");
+  lines.push(
+    "\tif err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {",
+  );
   lines.push('\t\tfmt.Println("server exited:", err)');
   lines.push("\t}");
   lines.push("}", "");
