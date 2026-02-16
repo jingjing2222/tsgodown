@@ -1,0 +1,20 @@
+{
+  "buildId": "a6c16dbfc7cb1955",
+  "entries": ["src/admin.ts", "src/index.ts"],
+  "bundles": [
+    {
+      "file": "dist/admin.mjs",
+      "map": "dist/admin.mjs.map",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/index.mjs",
+      "map": "dist/index.mjs.map",
+      "format": "esm",
+      "exports": []
+    }
+  ],
+  "types": ["dist/admin.d.ts", "dist/index.d.ts"],
+  "tsconfigPath": "tsconfig.build.json"
+}

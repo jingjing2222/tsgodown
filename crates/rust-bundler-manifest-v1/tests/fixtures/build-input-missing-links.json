@@ -1,0 +1,5 @@
+{
+  "entries": ["src/index.ts"],
+  "chunks": ["dist/orphan.mjs.map", "dist/index.mjs"],
+  "tsconfigPath": "tsconfig.json"
+}
