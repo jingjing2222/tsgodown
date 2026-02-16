@@ -52,15 +52,26 @@ function setupProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-pipeline-e2e-"));
   tempDirs.push(dir);
 
-  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "src", "routes"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "src", "routes", "users.ts"),
+    [
+      "export const health = () => ({ ok: true });",
+      "export const createUser = () => ({ id: 'u1' });",
+      "",
+    ].join("\n"),
+  );
+
   fs.writeFileSync(
     path.join(dir, "src", "index.ts"),
     [
-      "const fastify = {} as any;",
-      "const health = () => {};",
-      "const createUser = () => {};",
-      "fastify.get('/health', health);",
-      "fastify.post('/users', createUser);",
+      "import { health, createUser } from './routes/users';",
+      "const app = {",
+      "  get: (_path: string, _handler: () => unknown) => undefined,",
+      "  post: (_path: string, _handler: () => unknown) => undefined,",
+      "};",
+      "app.get('/health', health);",
+      "app.post('/users', createUser);",
       "",
     ].join("\n"),
   );

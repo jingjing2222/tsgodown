@@ -203,11 +203,10 @@ test("CLI JSON contract fixtures: success path", () => {
   ]);
 
   for (const command of ["build", "check", "report", "stages"] as const) {
-    const env =
-      command === "build"
-        ? { ...process.env, TSGODOWN_RUST_ENGINE_BIN: rustLauncher }
-        : undefined;
-    const result = runCli(cwd, command, env);
+    const result = runCli(cwd, command, {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
     assert.equal(result.status, 0, `${command} failed: ${result.stderr}`);
 
     const parsed = parseJsonStdout(result.stdout);
@@ -327,6 +326,59 @@ test("CLI fails with explicit diagnostic when rust engine bin env is missing", (
   assert.match(
     result.stderr,
     /guidance=Set TSGODOWN_RUST_ENGINE_BIN to the Rust engine executable path\./,
+  );
+});
+
+test("CLI fails with explicit diagnostic when rust engine binary cannot spawn", () => {
+  const cwd = setupProject([
+    "const app = { get: (_path: string, _handler: () => unknown) => undefined };",
+    "app.get('/health', () => ({ ok: true }));",
+  ]);
+
+  const missingBinary = path.join(
+    cwd,
+    `missing-rust-bin-${crypto.randomUUID()}`,
+  );
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: missingBinary,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source=rust-engine-binary-spawn/);
+  assert.match(result.stderr, /cause=Error: spawn .* ENOENT/);
+  assert.match(
+    result.stderr,
+    /guidance=Check TSGODOWN_RUST_ENGINE_BIN points to an executable binary\./,
+  );
+});
+
+test("CLI fails with explicit diagnostic when rust engine exits non-zero", () => {
+  const cwd = setupProject([
+    "const app = { get: (_path: string, _handler: () => unknown) => undefined };",
+    "app.get('/health', () => ({ ok: true }));",
+  ]);
+
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "process.stderr.write('fatal: fixture forced non-zero exit\\n');",
+    "process.exit(17);",
+  ]);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source=rust-engine-binary/);
+  assert.match(
+    result.stderr,
+    /cause=exit=17 stderr=fatal: fixture forced non-zero exit/,
+  );
+  assert.match(
+    result.stderr,
+    /guidance=Inspect rust engine logs and JSON response contract\./,
   );
 });
 

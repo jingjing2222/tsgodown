@@ -206,7 +206,7 @@ fn extract_shorthand_route(
             file,
             "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
             &format!(
-                "unsupported dynamic path in {}.{}(...)",
+                "unsupported dynamic path in {}.{}(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
                 instance_name, method
             ),
         ));
@@ -220,7 +220,7 @@ fn extract_shorthand_route(
             file,
             "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
             &format!(
-                "unsupported non-reference handler in {}.{}('{}', handler)",
+                "unsupported non-reference handler in {}.{}('{}', handler). Extract handler to a named function and pass its identifier.",
                 instance_name, method, path
             ),
         ));
@@ -259,7 +259,8 @@ fn extract_route_object(
         return;
     };
 
-    let method = extract_object_string_prop(&obj, "method").map(|m| m.to_ascii_uppercase());
+    let raw_method = extract_object_string_prop(&obj, "method");
+    let method = raw_method.as_deref().map(|m| m.to_ascii_uppercase());
     let path = extract_object_string_prop(&obj, "url")
         .or_else(|| extract_object_string_prop(&obj, "path"));
     let handler_ref = extract_object_handler_ref(&obj, "handler");
@@ -270,7 +271,7 @@ fn extract_route_object(
             file,
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
             &format!(
-                "unsupported route object method in {}.route({{...}})",
+                "unsupported route object method in {}.route({{...}}): missing string 'method'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 instance_name
             ),
         ));
@@ -281,8 +282,9 @@ fn extract_route_object(
             file,
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
             &format!(
-                "unsupported route object method in {}.route({{...}})",
-                instance_name
+                "unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                instance_name,
+                raw_method.unwrap_or_else(|| "<unknown>".to_string())
             ),
         ));
         return;
@@ -293,7 +295,7 @@ fn extract_route_object(
             file,
             "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
             &format!(
-                "unsupported route object path in {}.route({{...}})",
+                "unsupported route object path in {}.route({{...}}). Provide string literal 'url' or 'path' (e.g. '/users/:id').",
                 instance_name
             ),
         ));
@@ -305,7 +307,7 @@ fn extract_route_object(
             file,
             "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
             &format!(
-                "unsupported route object handler in {}.route({{...}})",
+                "unsupported route object handler in {}.route({{...}}). Provide named handler reference in 'handler' field.",
                 instance_name
             ),
         ));
@@ -374,7 +376,7 @@ fn analyze_register_call(
             file,
             "ANALYZER_UNRESOLVED_PLUGIN",
             &format!(
-                "register plugin '{}' could not be resolved in current file",
+                "register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
                 plugin_ref
             ),
         ));
@@ -385,7 +387,7 @@ fn analyze_register_call(
         file,
         "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
         &format!(
-            "unsupported register callback pattern on {}.register(...)",
+            "unsupported register callback pattern on {}.register(...). Use inline function(plugin) {{ ... }} or named local plugin reference.",
             instance_name
         ),
     ));
