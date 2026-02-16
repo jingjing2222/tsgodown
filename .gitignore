@@ -1,0 +1,7 @@
+node_modules/
+dist/
+artifacts/
+examples/**/dist-go/
+examples/**/artifacts/
+.DS_Store
+*.log
