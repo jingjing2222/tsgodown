@@ -59,7 +59,11 @@ fn emits_explicit_diagnostics_for_unsupported_patterns() {
     let (file, src) = fixture("unsupported-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);
 
-    let mut codes = ir.diagnostics.into_iter().map(|d| d.code).collect::<Vec<_>>();
+    let mut codes = ir
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect::<Vec<_>>();
     codes.sort();
     assert_eq!(
         codes,
@@ -143,15 +147,15 @@ fn keeps_ssot_boundary_extraction_and_diagnostics_only() {
                 "/policy/allow".into(),
                 "allowAdminOnly".into(),
             ),
-            (
-                "POST".into(),
-                "/policy/deny".into(),
-                "denyGuest".into(),
-            ),
+            ("POST".into(), "/policy/deny".into(), "denyGuest".into(),),
         ]
     );
 
-    let codes = ir.diagnostics.into_iter().map(|d| d.code).collect::<Vec<_>>();
+    let codes = ir
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect::<Vec<_>>();
     assert!(!codes.iter().any(|c| c == "CAPABILITY_UNMET"));
     assert!(!codes.iter().any(|c| c.starts_with("CAPABILITY_")));
 }

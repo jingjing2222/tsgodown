@@ -97,10 +97,19 @@ pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
     );
 
     if src.contains("import(") {
-        diagnostics.push(diag(file, "DYNAMIC_IMPORT_DETECTED", "dynamic import detected"));
+        diagnostics.push(diag(
+            file,
+            "DYNAMIC_IMPORT_DETECTED",
+            "dynamic import detected",
+        ));
     }
 
-    ProgramIR { modules: vec![], routes, handlers, diagnostics }
+    ProgramIR {
+        modules: vec![],
+        routes,
+        handlers,
+        diagnostics,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -196,7 +205,10 @@ fn extract_shorthand_route(
         diagnostics.push(diag(
             file,
             "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-            &format!("unsupported dynamic path in {}.{}(...)", instance_name, method),
+            &format!(
+                "unsupported dynamic path in {}.{}(...)",
+                instance_name, method
+            ),
         ));
         return;
     }
@@ -239,36 +251,72 @@ fn extract_route_object(
         diagnostics.push(diag(
             file,
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
-            &format!("unsupported route object method in {}.route({{...}})", instance_name),
+            &format!(
+                "unsupported route object method in {}.route({{...}})",
+                instance_name
+            ),
         ));
         return;
     };
 
     let method = extract_object_string_prop(&obj, "method").map(|m| m.to_ascii_uppercase());
-    let path = extract_object_string_prop(&obj, "url").or_else(|| extract_object_string_prop(&obj, "path"));
+    let path = extract_object_string_prop(&obj, "url")
+        .or_else(|| extract_object_string_prop(&obj, "path"));
     let handler_ref = extract_object_handler_ref(&obj, "handler");
 
     let supported = HashSet::from(["GET", "POST", "PUT", "DELETE", "PATCH"]);
     let Some(method) = method else {
-        diagnostics.push(diag(file, "ANALYZER_UNSUPPORTED_ROUTE_OBJECT", &format!("unsupported route object method in {}.route({{...}})", instance_name)));
+        diagnostics.push(diag(
+            file,
+            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+            &format!(
+                "unsupported route object method in {}.route({{...}})",
+                instance_name
+            ),
+        ));
         return;
     };
     if !supported.contains(method.as_str()) {
-        diagnostics.push(diag(file, "ANALYZER_UNSUPPORTED_ROUTE_OBJECT", &format!("unsupported route object method in {}.route({{...}})", instance_name)));
+        diagnostics.push(diag(
+            file,
+            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+            &format!(
+                "unsupported route object method in {}.route({{...}})",
+                instance_name
+            ),
+        ));
         return;
     }
 
     let Some(path) = path else {
-        diagnostics.push(diag(file, "ANALYZER_UNSUPPORTED_DYNAMIC_PATH", &format!("unsupported route object path in {}.route({{...}})", instance_name)));
+        diagnostics.push(diag(
+            file,
+            "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+            &format!(
+                "unsupported route object path in {}.route({{...}})",
+                instance_name
+            ),
+        ));
         return;
     };
 
     let Some(handler_ref) = handler_ref else {
-        diagnostics.push(diag(file, "ANALYZER_UNSUPPORTED_INLINE_HANDLER", &format!("unsupported route object handler in {}.route({{...}})", instance_name)));
+        diagnostics.push(diag(
+            file,
+            "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+            &format!(
+                "unsupported route object handler in {}.route({{...}})",
+                instance_name
+            ),
+        ));
         return;
     };
 
-    routes.push(RouteIR { method, path: join_path(prefix, &path), handler_ref: handler_ref.clone() });
+    routes.push(RouteIR {
+        method,
+        path: join_path(prefix, &path),
+        handler_ref: handler_ref.clone(),
+    });
     upsert_handler(handlers, handler_defs, &handler_ref);
 }
 
@@ -287,7 +335,8 @@ fn analyze_register_call(
     let parts = split_top_level(args, ',');
     let plugin_expr = parts.first().map(|s| s.trim()).unwrap_or("");
     let options_expr = parts.get(1).map(|s| s.as_str()).unwrap_or("");
-    let prefix_from_register = extract_object_string_prop(options_expr, "prefix").unwrap_or_default();
+    let prefix_from_register =
+        extract_object_string_prop(options_expr, "prefix").unwrap_or_default();
     let next_prefix = join_path(prefix, &prefix_from_register);
 
     if let Some(inline) = parse_inline_plugin(plugin_expr) {
@@ -324,7 +373,10 @@ fn analyze_register_call(
         diagnostics.push(diag(
             file,
             "ANALYZER_UNRESOLVED_PLUGIN",
-            &format!("register plugin '{}' could not be resolved in current file", plugin_ref),
+            &format!(
+                "register plugin '{}' could not be resolved in current file",
+                plugin_ref
+            ),
         ));
         return;
     }
@@ -332,7 +384,10 @@ fn analyze_register_call(
     diagnostics.push(diag(
         file,
         "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
-        &format!("unsupported register callback pattern on {}.register(...)", instance_name),
+        &format!(
+            "unsupported register callback pattern on {}.register(...)",
+            instance_name
+        ),
     ));
 }
 
@@ -343,7 +398,9 @@ fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef> {
     for cap in fn_re.captures_iter(src) {
         let Some(m0) = cap.get(0) else { continue };
         let open_idx = m0.end() - 1;
-        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else { continue };
+        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else {
+            continue;
+        };
         let params = cap[2]
             .split(',')
             .map(|v| v.trim())
@@ -360,11 +417,16 @@ fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef> {
         }
     }
 
-    let arrow_re = Regex::new(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>\s*\{").unwrap();
+    let arrow_re = Regex::new(
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>\s*\{",
+    )
+    .unwrap();
     for cap in arrow_re.captures_iter(src) {
         let Some(m0) = cap.get(0) else { continue };
         let open_idx = m0.end() - 1;
-        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else { continue };
+        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else {
+            continue;
+        };
         let params = cap[2]
             .split(',')
             .map(|v| v.trim())
@@ -381,11 +443,16 @@ fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef> {
         }
     }
 
-    let var_fn_re = Regex::new(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)\s*\{").unwrap();
+    let var_fn_re = Regex::new(
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)\s*\{",
+    )
+    .unwrap();
     for cap in var_fn_re.captures_iter(src) {
         let Some(m0) = cap.get(0) else { continue };
         let open_idx = m0.end() - 1;
-        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else { continue };
+        let Some((body, _)) = capture_balanced(&src[open_idx + 1..], '{', '}') else {
+            continue;
+        };
         let params = cap[2]
             .split(',')
             .map(|v| v.trim())
@@ -408,7 +475,8 @@ fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef> {
 fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerDef> {
     let mut map = HashMap::new();
 
-    let fn_re = Regex::new(r"(?s)(async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{").unwrap();
+    let fn_re =
+        Regex::new(r"(?s)(async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{").unwrap();
     for cap in fn_re.captures_iter(src) {
         map.insert(
             cap[2].to_string(),
@@ -421,7 +489,11 @@ fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerDef> {
 
     let var_fn_re = Regex::new(r"(?s)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(async\s+)?(?:function\s*\(([^)]*)\)|\(([^)]*)\)\s*=>)\s*\{").unwrap();
     for cap in var_fn_re.captures_iter(src) {
-        let params_src = cap.get(3).or_else(|| cap.get(4)).map(|m| m.as_str()).unwrap_or("");
+        let params_src = cap
+            .get(3)
+            .or_else(|| cap.get(4))
+            .map(|m| m.as_str())
+            .unwrap_or("");
         map.insert(
             cap[1].to_string(),
             HandlerDef {
@@ -531,13 +603,20 @@ fn split_top_level(src: &str, delim: char) -> Vec<String> {
 }
 
 fn parse_inline_plugin(expr: &str) -> Option<PluginDef> {
-    let re_arrow = Regex::new(r"(?s)^(?:async\s+)?\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>\s*\{(.*)\}$").unwrap();
+    let re_arrow =
+        Regex::new(r"(?s)^(?:async\s+)?\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>\s*\{(.*)\}$").unwrap();
     if let Some(cap) = re_arrow.captures(expr.trim()) {
-        return Some(PluginDef { param_name: cap[1].to_string(), body: cap[2].to_string() });
+        return Some(PluginDef {
+            param_name: cap[1].to_string(),
+            body: cap[2].to_string(),
+        });
     }
 
     let re_fn = Regex::new(r"(?s)^(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(\s*([A-Za-z_$][\w$]*)\s*[^)]*\)\s*\{(.*)\}$").unwrap();
-    re_fn.captures(expr.trim()).map(|cap| PluginDef { param_name: cap[1].to_string(), body: cap[2].to_string() })
+    re_fn.captures(expr.trim()).map(|cap| PluginDef {
+        param_name: cap[1].to_string(),
+        body: cap[2].to_string(),
+    })
 }
 
 fn first_object_literal(src: &str) -> Option<String> {
@@ -551,7 +630,9 @@ fn first_object_literal(src: &str) -> Option<String> {
 
 fn extract_quoted_string(v: &str) -> Option<String> {
     let t = v.trim();
-    if t.len() >= 2 && ((t.starts_with('"') && t.ends_with('"')) || (t.starts_with('\'') && t.ends_with('\''))) {
+    if t.len() >= 2
+        && ((t.starts_with('"') && t.ends_with('"')) || (t.starts_with('\'') && t.ends_with('\'')))
+    {
         return Some(t[1..t.len() - 1].to_string());
     }
     None
@@ -568,25 +649,39 @@ fn extract_handler_ref(v: &str) -> Option<String> {
 }
 
 fn extract_object_string_prop(obj: &str, key: &str) -> Option<String> {
-    let pattern = format!(r#"(?s)(?:\b{}\b|"{}")\s*:\s*("[^"]*"|'[^']*')"#, regex::escape(key), regex::escape(key));
+    let pattern = format!(
+        r#"(?s)(?:\b{}\b|"{}")\s*:\s*("[^"]*"|'[^']*')"#,
+        regex::escape(key),
+        regex::escape(key)
+    );
     let re = Regex::new(&pattern).unwrap();
     re.captures(obj).and_then(|c| extract_quoted_string(&c[1]))
 }
 
 fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String> {
-    let pattern = format!(r#"(?s)(?:\b{}\b|"{}")\s*:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)"#, regex::escape(key), regex::escape(key));
+    let pattern = format!(
+        r#"(?s)(?:\b{}\b|"{}")\s*:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)"#,
+        regex::escape(key),
+        regex::escape(key)
+    );
     let re = Regex::new(&pattern).unwrap();
     re.captures(obj).map(|c| c[1].to_string())
 }
 
-fn upsert_handler(handlers: &mut Vec<HandlerIR>, defs: &HashMap<String, HandlerDef>, handler_ref: &str) {
+fn upsert_handler(
+    handlers: &mut Vec<HandlerIR>,
+    defs: &HashMap<String, HandlerDef>,
+    handler_ref: &str,
+) {
     if handler_ref.contains('.') {
         return;
     }
     if handlers.iter().any(|h| h.id == handler_ref) {
         return;
     }
-    let Some(def) = defs.get(handler_ref) else { return };
+    let Some(def) = defs.get(handler_ref) else {
+        return;
+    };
     handlers.push(HandlerIR {
         id: handler_ref.to_string(),
         params: def
@@ -605,7 +700,11 @@ fn upsert_handler(handlers: &mut Vec<HandlerIR>, defs: &HashMap<String, HandlerD
 }
 
 fn split_params(src: &str) -> Vec<String> {
-    src.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).map(ToString::to_string).collect()
+    src.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn infer_param_role(name: &str) -> String {
@@ -645,6 +744,8 @@ fn diag(file: &str, code: &str, message: &str) -> DiagnosticIR {
         level: "warn".to_string(),
         code: code.to_string(),
         message: message.to_string(),
-        source: Some(DiagnosticSourceIR { file: file.to_string() }),
+        source: Some(DiagnosticSourceIR {
+            file: file.to_string(),
+        }),
     }
 }
