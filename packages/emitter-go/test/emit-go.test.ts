@@ -143,6 +143,36 @@ test("emitGoProject normalizes route methods and extracts both colon and braces 
   assert.match(emitted, /orderId := req\.PathValue\("orderId"\)/);
 });
 
+test("emitGoProject avoids Go-unsafe path param bindings while preserving PathValue lookups", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "keywordParams", params: [], async: false }],
+      diagnostics: [],
+      routes: [
+        {
+          method: "GET",
+          path: "/things/:type/:req/:w/:pathParamType",
+          handlerRef: "keywordParams",
+        },
+      ],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(emitted, /pathParamType := req\.PathValue\("type"\)/);
+  assert.match(emitted, /pathParamReq := req\.PathValue\("req"\)/);
+  assert.match(emitted, /pathParamW := req\.PathValue\("w"\)/);
+  assert.match(emitted, /pathParamType2 := req\.PathValue\("pathParamType"\)/);
+  assert.doesNotMatch(emitted, /\stype := req\.PathValue\("type"\)/);
+  assert.doesNotMatch(emitted, /\sreq := req\.PathValue\("req"\)/);
+  assert.doesNotMatch(emitted, /\sw := req\.PathValue\("w"\)/);
+});
+
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
   const outDir = createOutDir();
 
