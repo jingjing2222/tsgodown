@@ -11,11 +11,12 @@ export function normalizePipelineCause(cause: unknown): string {
 }
 
 export function formatPipelineFailure(entry: string, cause: unknown): Error {
-  const message = normalizePipelineCause(cause);
+  const message =
+    normalizePipelineCause(cause).trim() || "unknown pipeline failure";
   return new Error(
     [
       `[pipeline] failed for entry \"${entry}\"`,
-      `source: ${entry}`,
+      `source: pipeline-entry(${entry})`,
       `cause: ${message}`,
       "guidance: Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
     ].join("; "),
