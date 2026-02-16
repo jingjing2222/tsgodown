@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   type RustEngineRequest,
+  type RustEngineResponse,
   buildManifestFromBundles,
   runBuild,
 } from "../src/index.ts";
@@ -142,6 +143,82 @@ test("runBuild reports rust engine error in source/cause/guidance format", async
       assert.match(
         error.message,
         /guidance=Verify tsgodown\.config\.ts entry path and file existence\./,
+      );
+      return true;
+    },
+  );
+});
+
+test("runBuild accepts status-envelope success payload and normalizes diagnostics", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
+
+  try {
+    const result = await runBuild(cwd, "tsdown.config.ts", {
+      executeRustEngine: async () => ({
+        status: "success",
+        manifest: {
+          buildId: "0011223344556677",
+          entries: ["src/index.ts"],
+          bundles: [
+            {
+              file: "dist/index.mjs",
+              map: "dist/index.mjs.map",
+              format: "esm",
+              exports: [],
+            },
+          ],
+          types: ["dist/index.d.ts"],
+          tsconfigPath: "tsconfig.json",
+        },
+        diagnostics: ["  keep-me  ", "", 42],
+      }),
+    });
+
+    assert.equal(result.manifest.buildId, "0011223344556677");
+    assert.deepEqual(result.diagnostics, ["keep-me"]);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runBuild maps invalid status envelope to deterministic contract error", async () => {
+  await assert.rejects(
+    runBuild("/repo", "tsdown.config.ts", {
+      executeRustEngine: async () =>
+        ({ status: "maybe" }) as unknown as RustEngineResponse,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /source=rust-engine-binary-contract/);
+      assert.match(error.message, /cause=missing or invalid status envelope/);
+      assert.match(
+        error.message,
+        /guidance=Ensure rust engine returns deterministic status or ok envelope\./,
+      );
+      return true;
+    },
+  );
+});
+
+test("runBuild maps failed status-envelope to deterministic source/cause/guidance", async () => {
+  await assert.rejects(
+    runBuild("/repo", "tsdown.config.ts", {
+      executeRustEngine: async () => ({
+        status: "failed",
+        source: "  ",
+        cause: "",
+      }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /source=rust-engine-binary/);
+      assert.match(
+        error.message,
+        /cause=rust engine returned error without cause/,
+      );
+      assert.match(
+        error.message,
+        /guidance=Inspect rust engine logs and JSON response contract\./,
       );
       return true;
     },
