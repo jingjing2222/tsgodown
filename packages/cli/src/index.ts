@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import { isCommand, parseArgv } from "./argv.js";
 import { executeCommand } from "./command-executor.js";
+import {
+  extractCommandErrorDetails,
+  printHumanError,
+  printJson,
+} from "./output/index.js";
 
 async function main() {
   const { command, json } = parseArgv(process.argv.slice(2));
@@ -16,7 +21,22 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  const msg = error instanceof Error ? error.message : String(error);
-  console.error(`[tsgodown] command failed: ${msg}`);
+  const details = extractCommandErrorDetails(error);
+  const { json } = parseArgv(process.argv.slice(2));
+
+  if (json) {
+    printJson({
+      ok: false,
+      error: {
+        message: details.message,
+        source: details.source,
+        stage: details.stage,
+        cause: details.cause,
+        guidance: details.guidance,
+      },
+    });
+  } else {
+    printHumanError(details);
+  }
   process.exit(1);
 }

@@ -455,12 +455,65 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
   });
   assert.notEqual(result.status, 0, "build should fail for missing entry");
 
+  const parsed = parseJsonStdout(result.stdout) as {
+    error: Record<string, string>;
+  };
+  const haystack = JSON.stringify(parsed.error);
   for (const token of fixture.stderrIncludes) {
     assert.match(
-      result.stderr,
+      haystack,
       new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
+});
+
+test("CLI --json failure output keeps source/stage/cause/guidance consistent", () => {
+  const cwd = setupProject(
+    ["const fastify = {} as any;", "fastify.get('/health', () => {});"],
+    'export default { entry: "src/missing.ts", outDir: "dist-go" };\n',
+  );
+
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "const response = {",
+    "  ok: false,",
+    "  error: {",
+    "    source: 'rust-engine-adapter',",
+    "    cause: 'ENOENT: missing entry src/missing.ts',",
+    "    guidance: 'Verify tsgodown.config.ts entry path and file existence.'",
+    "  }",
+    "};",
+    "process.stdout.write(JSON.stringify(response));",
+  ]);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
+
+  assert.notEqual(result.status, 0, "build should fail for missing entry");
+  const parsed = parseJsonStdout(result.stdout) as {
+    ok: boolean;
+    error: {
+      source?: string;
+      stage?: string;
+      cause?: string;
+      guidance?: string;
+      message: string;
+    };
+  };
+
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.error.source, "pipeline-entry(src/missing.ts)");
+  assert.equal(parsed.error.stage, "BUILD_ARTIFACTS");
+  assert.match(
+    parsed.error.cause ?? "",
+    /\[tsdown-driver\] rust engine failed/,
+  );
+  assert.equal(
+    parsed.error.guidance,
+    "Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
+  );
 });
 
 test("CLI fails with explicit diagnostic when rust engine bin env is missing", () => {
@@ -475,10 +528,16 @@ test("CLI fails with explicit diagnostic when rust engine bin env is missing", (
 
   const result = runCli(cwd, "build", env);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source=rust-engine-bin-env/);
-  assert.match(result.stderr, /cause=TSGODOWN_RUST_ENGINE_BIN is not set/);
+  const parsed = parseJsonStdout(result.stdout) as {
+    error: { message: string };
+  };
+  assert.match(parsed.error.message, /source=rust-engine-bin-env/);
   assert.match(
-    result.stderr,
+    parsed.error.message,
+    /cause=TSGODOWN_RUST_ENGINE_BIN is not set/,
+  );
+  assert.match(
+    parsed.error.message,
     /guidance=Set TSGODOWN_RUST_ENGINE_BIN to the Rust engine executable path\./,
   );
 });
@@ -499,10 +558,13 @@ test("CLI fails with explicit diagnostic when rust engine binary cannot spawn", 
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source=rust-engine-binary-spawn/);
-  assert.match(result.stderr, /cause=Error: spawn .* ENOENT/);
+  const parsed = parseJsonStdout(result.stdout) as {
+    error: { message: string };
+  };
+  assert.match(parsed.error.message, /source=rust-engine-binary-spawn/);
+  assert.match(parsed.error.message, /cause=Error: spawn .* ENOENT/);
   assert.match(
-    result.stderr,
+    parsed.error.message,
     /guidance=Check TSGODOWN_RUST_ENGINE_BIN points to an executable binary\./,
   );
 });
@@ -525,13 +587,16 @@ test("CLI fails with explicit diagnostic when rust engine exits non-zero", () =>
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source=rust-engine-binary/);
+  const parsed = parseJsonStdout(result.stdout) as {
+    error: { message: string };
+  };
+  assert.match(parsed.error.message, /source=rust-engine-binary/);
   assert.match(
-    result.stderr,
+    parsed.error.message,
     /cause=exit=17 stderr=fatal: fixture forced non-zero exit/,
   );
   assert.match(
-    result.stderr,
+    parsed.error.message,
     /guidance=Inspect rust engine logs and JSON response contract\./,
   );
 });
@@ -635,10 +700,13 @@ test("CLI surfaces rust adapter error propagation format", () => {
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source=rust-engine-adapter/);
-  assert.match(result.stderr, /cause=invalid build graph/);
+  const parsed = parseJsonStdout(result.stdout) as {
+    error: { message: string };
+  };
+  assert.match(parsed.error.message, /source=rust-engine-adapter/);
+  assert.match(parsed.error.message, /cause=invalid build graph/);
   assert.match(
-    result.stderr,
+    parsed.error.message,
     /guidance=Check Rust engine JSON contract and retry\./,
   );
 });
@@ -785,10 +853,16 @@ test("rust-only fixture matrix surfaces deterministic contract error path", () =
       TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
     });
     assert.notEqual(result.status, 0, `${command} should fail`);
-    assert.match(result.stderr, /source=rust-engine-adapter/);
-    assert.match(result.stderr, /cause=ENOENT: missing entry src\/missing\.ts/);
+    const parsed = parseJsonStdout(result.stdout) as {
+      error: { message: string };
+    };
+    assert.match(parsed.error.message, /source=rust-engine-adapter/);
     assert.match(
-      result.stderr,
+      parsed.error.message,
+      /cause=ENOENT: missing entry src\/missing\.ts/,
+    );
+    assert.match(
+      parsed.error.message,
       /guidance=Verify tsgodown\.config\.ts entry path and file existence\./,
     );
   }
