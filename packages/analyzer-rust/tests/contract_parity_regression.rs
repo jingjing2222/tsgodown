@@ -96,6 +96,58 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
             case.name
         );
 
+        for diagnostic in &ir.diagnostics {
+            assert_eq!(
+                diagnostic.level, "warn",
+                "diagnostic level drifted for fixture: {} code={}",
+                case.name, diagnostic.code
+            );
+            assert_eq!(
+                diagnostic
+                    .source
+                    .as_ref()
+                    .map(|source| source.file.as_str()),
+                Some(file.as_str()),
+                "diagnostic source.file drifted for fixture: {} code={}",
+                case.name,
+                diagnostic.code
+            );
+        }
+
+        if case.name == "unsupported-fastify.fixture.txt" {
+            let mut actual_diag_details = ir
+                .diagnostics
+                .iter()
+                .map(|d| (d.code.as_str(), d.message.as_str(), d.level.as_str()))
+                .collect::<Vec<_>>();
+            actual_diag_details.sort();
+
+            let mut expected_diag_details = vec![
+                (
+                    "ANALYZER_UNRESOLVED_PLUGIN",
+                    "register plugin 'externalPlugin' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
+                    "warn",
+                ),
+                (
+                    "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+                    "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
+                    "warn",
+                ),
+                (
+                    "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+                    "unsupported non-reference handler in fastify.post('/inline', handler). Extract handler to a named function and pass its identifier.",
+                    "warn",
+                ),
+            ];
+            expected_diag_details.sort();
+
+            assert_eq!(
+                actual_diag_details, expected_diag_details,
+                "diagnostic message/level contract drifted for fixture: {}",
+                case.name
+            );
+        }
+
         assert_eq!(
             ir.modules.len(),
             0,
@@ -125,11 +177,12 @@ fn rust_contract_parity_ssot_boundary_extract_and_diagnose_only() {
         "route extraction drifted for SSoT boundary fixture"
     );
 
-    let diagnostic_codes = ir
+    let mut diagnostic_codes = ir
         .diagnostics
         .iter()
         .map(|d| d.code.as_str())
         .collect::<Vec<_>>();
+    diagnostic_codes.sort();
 
     assert!(
         !diagnostic_codes.contains(&"CAPABILITY_UNMET"),

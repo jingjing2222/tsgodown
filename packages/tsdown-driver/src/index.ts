@@ -27,6 +27,21 @@ export interface RunBuildResult {
   diagnostics: string[];
 }
 
+type NormalizedRustEngineResponse =
+  | {
+      ok: true;
+      manifest: ArtifactManifest;
+      diagnostics?: string[];
+    }
+  | {
+      ok: false;
+      error: {
+        source: string;
+        cause: string;
+        guidance: string;
+      };
+    };
+
 interface BuildChunkLike {
   fileName?: string;
 }
@@ -58,6 +73,22 @@ export type RustEngineResponse =
         cause: string;
         guidance: string;
       };
+    }
+  | {
+      status: "ok" | "success";
+      manifest: ArtifactManifest;
+      diagnostics?: unknown[];
+    }
+  | {
+      status: "error" | "failed";
+      error?: {
+        source?: unknown;
+        cause?: unknown;
+        guidance?: unknown;
+      };
+      source?: unknown;
+      cause?: unknown;
+      guidance?: unknown;
     };
 
 interface RunBuildOptions {
@@ -79,7 +110,10 @@ export async function runBuild(
 
   const executeRustEngine =
     options.executeRustEngine ?? ((req) => invokeRustEngine(req));
-  const response = await executeRustEngine(request);
+  const response = normalizeRustEngineResponse(
+    await executeRustEngine(request),
+    "<adapter-response>",
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -164,8 +198,8 @@ async function invokeRustBinary(
       }
 
       try {
-        const parsed = JSON.parse(out) as RustEngineResponse;
-        resolve(parsed);
+        const parsed = JSON.parse(out) as unknown;
+        resolve(normalizeRustEngineResponse(parsed, out));
       } catch (error) {
         resolve({
           ok: false,
@@ -304,6 +338,128 @@ function uniqueSorted(values: string[]): string[] {
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
+}
+
+function normalizeRustEngineResponse(
+  payload: unknown,
+  stdout: string,
+): NormalizedRustEngineResponse {
+  if (!isRecord(payload)) {
+    return contractError(
+      "rust-engine-binary-contract",
+      "missing or invalid status envelope",
+      stdout,
+    );
+  }
+
+  const status = normalizeStatus(payload);
+  if (!status) {
+    return contractError(
+      "rust-engine-binary-contract",
+      "missing or invalid status envelope",
+      stdout,
+    );
+  }
+
+  if (status === "ok") {
+    if (!isArtifactManifest(payload.manifest)) {
+      return contractError(
+        "rust-engine-binary-contract",
+        "ok envelope missing valid manifest payload",
+        stdout,
+      );
+    }
+
+    return {
+      ok: true,
+      manifest: payload.manifest,
+      diagnostics: normalizeDiagnostics(payload.diagnostics),
+    };
+  }
+
+  const errorObj = isRecord(payload.error) ? payload.error : payload;
+  return {
+    ok: false,
+    error: {
+      source: normalizeText(errorObj.source, "rust-engine-binary"),
+      cause: normalizeText(
+        errorObj.cause,
+        "rust engine returned error without cause",
+      ),
+      guidance: normalizeText(
+        errorObj.guidance,
+        "Inspect rust engine logs and JSON response contract.",
+      ),
+    },
+  };
+}
+
+function normalizeStatus(
+  payload: Record<string, unknown>,
+): "ok" | "error" | undefined {
+  if (typeof payload.ok === "boolean") {
+    return payload.ok ? "ok" : "error";
+  }
+
+  if (typeof payload.status !== "string") return undefined;
+
+  const normalized = payload.status.trim().toLowerCase();
+  if (normalized === "ok" || normalized === "success") {
+    return "ok";
+  }
+
+  if (normalized === "error" || normalized === "failed") {
+    return "error";
+  }
+
+  return undefined;
+}
+
+function isArtifactManifest(value: unknown): value is ArtifactManifest {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.buildId === "string" &&
+    Array.isArray(value.entries) &&
+    Array.isArray(value.bundles) &&
+    Array.isArray(value.types) &&
+    typeof value.tsconfigPath === "string"
+  );
+}
+
+function normalizeDiagnostics(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((diag): diag is string => typeof diag === "string")
+    .map((diag) => diag.trim())
+    .filter((diag) => diag.length > 0);
+}
+
+function contractError(
+  source: string,
+  reason: string,
+  stdout: string,
+): NormalizedRustEngineResponse {
+  return {
+    ok: false,
+    error: {
+      source,
+      cause: `${reason} stdout=${stdout || "<empty>"}`,
+      guidance:
+        "Ensure rust engine returns deterministic status or ok envelope.",
+    },
+  };
+}
+
+function normalizeText(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized || fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function formatErrorWithCause(error: unknown): string {
