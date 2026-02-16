@@ -1,3 +1,7 @@
 [workspace]
-members = ["crates/engine-core", "crates/rust-bundler-manifest-v1"]
+members = [
+  "crates/engine-core",
+  "crates/rust-bundler-manifest-v1",
+  "packages/analyzer-rust",
+]
 resolver = "2"
