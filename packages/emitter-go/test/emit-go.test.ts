@@ -183,10 +183,11 @@ test("emitGoProject surfaces IR diagnostics as actionable comments without addin
 
 const hasGoToolchain =
   spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+const runGoSmoke = hasGoToolchain && process.env.CI !== "true";
 
 test(
   "emitGoProject smoke: generated representative fixtures can go build",
-  { skip: !hasGoToolchain },
+  { skip: !runGoSmoke },
   () => {
     const fixtures: ProgramIR[] = [
       sampleIr,
@@ -237,7 +238,7 @@ test(
 
 test(
   "emitGoProject smoke: generated server can boot and serve not-implemented route",
-  { skip: !hasGoToolchain },
+  { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
     const port = String(19000 + Math.floor(Math.random() * 1000));
