@@ -7,6 +7,20 @@ const bannedPackage = "@tsgodown/analyzer";
 
 const failures = [];
 
+const baseTsconfig = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tsconfig.base.json"), "utf8"),
+);
+if (baseTsconfig.compilerOptions?.paths?.[bannedPackage] !== undefined) {
+  failures.push(`tsconfig.base.json -> paths must not include ${bannedPackage}`);
+}
+
+const rootTsconfig = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tsconfig.json"), "utf8"),
+);
+if ((rootTsconfig.references ?? []).some((ref) => ref.path === "packages/analyzer")) {
+  failures.push("tsconfig.json -> references must not include packages/analyzer");
+}
+
 for (const pkg of runtimePackages) {
   const pkgRoot = path.join(repoRoot, "packages", pkg);
   const packageJsonPath = path.join(pkgRoot, "package.json");

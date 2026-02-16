@@ -5,7 +5,6 @@
     "paths": {
       "@tsgodown/config": ["packages/config/src/index.ts"],
       "@tsgodown/core": ["packages/core/src/index.ts"],
-      "@tsgodown/analyzer": ["packages/analyzer/src/index.ts"],
       "@tsgodown/ir-core": ["packages/ir-core/src/index.ts"],
       "@tsgodown/emitter-go": ["packages/emitter-go/src/index.ts"],
       "@tsgodown/tsdown-driver": ["packages/tsdown-driver/src/index.ts"],
@@ -16,7 +15,6 @@
   "references": [
     { "path": "packages/config" },
     { "path": "packages/ir-core" },
-    { "path": "packages/analyzer" },
     { "path": "packages/emitter-go" },
     { "path": "packages/tsdown-driver" },
     { "path": "packages/node-compat" },
