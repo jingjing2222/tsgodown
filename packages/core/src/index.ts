@@ -1,8 +1,11 @@
 import fs from "node:fs";
-import path from "node:path";
 import { loadUserConfig } from "@tsgodown/config";
 import { runPipeline } from "@tsgodown/pipeline";
-import { buildTargetResult, resolveTargetPlan } from "./internal/index.js";
+import {
+  buildTargetResult,
+  resolveArtifactManifestPath,
+  resolveTargetPlan,
+} from "./internal/index.js";
 
 export const ACTIVE_STAGES = [
   "load-config",
@@ -45,12 +48,7 @@ async function run(
   const configs = await loadUserConfig(cwd);
   const targets: BuildTargetResult[] = [];
 
-  const artifactPath = path.join(
-    cwd,
-    "artifacts",
-    "manifests",
-    "manifest.json",
-  );
+  const artifactPath = resolveArtifactManifestPath(cwd);
   if (command === "build" || !fs.existsSync(artifactPath)) {
     await runPipeline(cwd);
   }
