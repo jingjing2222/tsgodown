@@ -171,6 +171,37 @@ function createRustEngineLauncherWithGoMain(cwd: string): string {
   ]);
 }
 
+function assertGoMainScaffold(goSource: string) {
+  assert.match(goSource, /^package main/m);
+  assert.match(goSource, /func main\(\)/);
+  assert.match(goSource, /http\.HandleFunc\("GET \/health"/);
+}
+
+function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
+  const hasGoToolchain =
+    spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+
+  if (!hasGoToolchain) {
+    return;
+  }
+
+  const modInit = spawnSync(
+    "go",
+    ["mod", "init", "example.com/tsgodown-cli-fastify-min"],
+    {
+      cwd: goDir,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+  const goBuild = spawnSync("go", ["build", "./..."], {
+    cwd: goDir,
+    encoding: "utf8",
+  });
+  assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
+}
+
 function parseJsonStdout(stdout: string) {
   const jsonStart = stdout.indexOf("{");
   assert.ok(jsonStart >= 0, "expected JSON output");
@@ -652,7 +683,7 @@ test("rust-only fixture matrix keeps build/check/report/stages deterministic", (
   }
 });
 
-test("CLI build fastify-min fixture emits deterministic compile-valid Go scaffold", () => {
+test("M1 acceptance: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)", () => {
   const cwd = setupProjectFromFixture("fastify-min");
   const rustLauncher = createRustEngineLauncherWithGoMain(cwd);
 
@@ -674,30 +705,8 @@ test("CLI build fastify-min fixture emits deterministic compile-valid Go scaffol
     crypto.createHash("sha256").update(goMain).digest("hex"),
     "7ee934e294fa4b3f5f5006ac4b265f8815d8d4778023e9ea226732279f6ab257",
   );
-  assert.match(goMain, /^package main/m);
-  assert.match(goMain, /func main\(\)/);
-  assert.match(goMain, /http\.HandleFunc\("GET \/health"/);
-
-  const hasGoToolchain =
-    spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
-
-  if (hasGoToolchain) {
-    const modInit = spawnSync(
-      "go",
-      ["mod", "init", "example.com/tsgodown-cli-fastify-min"],
-      {
-        cwd: path.dirname(goPath),
-        encoding: "utf8",
-      },
-    );
-    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
-
-    const goBuild = spawnSync("go", ["build", "./..."], {
-      cwd: path.dirname(goPath),
-      encoding: "utf8",
-    });
-    assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
-  }
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {

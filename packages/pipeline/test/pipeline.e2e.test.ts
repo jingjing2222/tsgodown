@@ -111,7 +111,38 @@ function setupProject() {
   return dir;
 }
 
-test("runPipeline acceptance: fastify scaffold TS input flows through rust-adapter pipeline and emits valid Go scaffold", async () => {
+function assertGoMainScaffold(goSource: string) {
+  assert.match(goSource, /^package main/m);
+  assert.match(goSource, /func main\(\)/);
+  assert.match(goSource, /http\.HandleFunc\("GET \/health"/);
+}
+
+function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
+  const hasGoToolchain =
+    spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+
+  if (!hasGoToolchain) {
+    return;
+  }
+
+  const modInit = spawnSync(
+    "go",
+    ["mod", "init", "example.com/tsgodown-pipeline"],
+    {
+      cwd: goDir,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+  const goBuild = spawnSync("go", ["build", "./..."], {
+    cwd: goDir,
+    encoding: "utf8",
+  });
+  assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
+}
+
+test("M1 acceptance: runPipeline fastify scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
   const cwd = setupProject();
   const logs: string[] = [];
   const launcherPath = createRustLauncher(cwd);
@@ -169,29 +200,8 @@ test("runPipeline acceptance: fastify scaffold TS input flows through rust-adapt
     assert.equal(fs.existsSync(goPath), true);
 
     const emittedGo = fs.readFileSync(goPath, "utf8");
-    assert.match(emittedGo, /^package main/m);
-    assert.match(emittedGo, /func main\(\)/);
-    assert.match(emittedGo, /http\.HandleFunc\("GET \/health"/);
-
-    const hasGoToolchain =
-      spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
-    if (hasGoToolchain) {
-      const modInit = spawnSync(
-        "go",
-        ["mod", "init", "example.com/tsgodown-pipeline"],
-        {
-          cwd: path.dirname(goPath),
-          encoding: "utf8",
-        },
-      );
-      assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
-
-      const goBuild = spawnSync("go", ["build", "./..."], {
-        cwd: path.dirname(goPath),
-        encoding: "utf8",
-      });
-      assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
-    }
+    assertGoMainScaffold(emittedGo);
+    assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
   } finally {
     if (prevRustBin === undefined) {
       Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
