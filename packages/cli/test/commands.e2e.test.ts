@@ -146,7 +146,7 @@ function createRustEngineLauncherWithGoMain(cwd: string): string {
     '\t_ = http.ListenAndServe(":8080", nil)',
     "}",
     "",
-  ].join("\\n");
+  ].join("\n");
 
   return createRustEngineLauncher(cwd, [
     "import fs from 'node:fs';",
@@ -672,7 +672,7 @@ test("CLI build fastify-min fixture emits deterministic compile-valid Go scaffol
   const goMain = fs.readFileSync(goPath, "utf8");
   assert.equal(
     crypto.createHash("sha256").update(goMain).digest("hex"),
-    "d0f3c26c71a24e6fd949bb91daa5d8e2cad1f6148719c44dd602676e4f159413",
+    "7ee934e294fa4b3f5f5006ac4b265f8815d8d4778023e9ea226732279f6ab257",
   );
   assert.match(goMain, /^package main/m);
   assert.match(goMain, /func main\(\)/);
