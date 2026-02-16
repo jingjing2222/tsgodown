@@ -298,14 +298,30 @@ test(
         /TODO implement handler health for GET \/health/,
       );
     } finally {
-      server.kill("SIGTERM");
+      if (server.exitCode === null && !server.killed) {
+        server.kill("SIGTERM");
+      }
+
       await new Promise<void>((resolve) => {
+        if (server.exitCode !== null) {
+          resolve();
+          return;
+        }
+
         const forceKillTimer = setTimeout(() => {
-          server.kill("SIGKILL");
+          if (server.exitCode === null) {
+            server.kill("SIGKILL");
+          }
         }, 1500);
+
+        const settleTimer = setTimeout(() => {
+          clearTimeout(forceKillTimer);
+          resolve();
+        }, 5000);
 
         server.once("close", () => {
           clearTimeout(forceKillTimer);
+          clearTimeout(settleTimer);
           resolve();
         });
       });
