@@ -1,7 +1,8 @@
 import type { RouteIR } from "@tsgodown/ir-core";
 
 export function normalizeHttpMethod(method: string): string {
-  return method.trim().toUpperCase();
+  const normalized = method.trim().toUpperCase();
+  return normalized.length > 0 ? normalized : "GET";
 }
 
 export function normalizeRoutePath(pathname: string): string {

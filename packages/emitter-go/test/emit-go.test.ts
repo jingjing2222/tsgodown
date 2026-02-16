@@ -143,6 +143,34 @@ test("emitGoProject normalizes route methods and extracts both colon and braces 
   assert.match(emitted, /orderId := req\.PathValue\("orderId"\)/);
 });
 
+test("emitGoProject falls back to GET for empty route methods to keep scaffold boot-stable", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "fallbackMethod", params: [], async: false }],
+      diagnostics: [],
+      routes: [
+        {
+          method: "   " as ProgramIR["routes"][number]["method"],
+          path: "/health",
+          handlerRef: "fallbackMethod",
+        },
+      ],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(emitted, /mux\.HandleFunc\("GET \/health", route0\)/);
+  assert.match(
+    emitted,
+    /TODO\(tsgodown\): Implement handler "fallbackMethod" for GET \/health\./,
+  );
+});
+
 test("emitGoProject avoids Go-unsafe path param bindings while preserving PathValue lookups", () => {
   const outDir = createOutDir();
 
