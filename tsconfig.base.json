@@ -13,7 +13,6 @@
       "@tsgodown/config": ["packages/config/src/index.ts"],
       "@tsgodown/core": ["packages/core/src/index.ts"],
       "@tsgodown/analyzer": ["packages/analyzer/src/index.ts"],
-      "@tsgodown/ir": ["packages/ir/src/index.ts"],
       "@tsgodown/ir-core": ["packages/ir-core/src/index.ts"],
       "@tsgodown/emitter-go": ["packages/emitter-go/src/index.ts"],
       "@tsgodown/node-compat": ["packages/node-compat/src/index.ts"],
