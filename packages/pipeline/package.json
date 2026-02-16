@@ -1,0 +1,18 @@
+{
+  "name": "@tsgodown/pipeline",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@tsgodown/config": "0.0.1",
+    "@tsgodown/analyzer": "0.0.1",
+    "@tsgodown/node-compat": "0.0.1",
+    "@tsgodown/emitter-go": "0.0.1",
+    "@tsgodown/tsdown-driver": "0.0.1"
+  }
+}

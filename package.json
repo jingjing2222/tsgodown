@@ -1,0 +1,25 @@
+{
+  "name": "tsgodown-monorepo",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev": "npm run -w tsgodown dev",
+    "tsgodown": "node --import tsx packages/cli/src/index.ts",
+    "manifest:sample": "tsx scripts/generate-manifest.ts",
+    "test": "npm run test --workspaces --if-present",
+    "test:tdd": "npm run build && npm run test",
+    "typecheck": "npm run build --workspaces",
+    "lint": "biome check .",
+    "format:check": "biome format --check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "@biomejs/biome": "^1.9.4"
+  }
+}

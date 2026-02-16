@@ -1,0 +1,87 @@
+{
+  "buildId": "bd6d689f9fc13add",
+  "entries": [],
+  "bundles": [
+    {
+      "file": "dist/analyzer/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/cli/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/config/src/defineConfig.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/config/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/config/src/load-config.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/config/src/types.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/core/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/defineConfig.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/emitter-go/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/ir/src/index.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/load-config.js",
+      "format": "esm",
+      "exports": []
+    },
+    {
+      "file": "dist/types.js",
+      "format": "esm",
+      "exports": []
+    }
+  ],
+  "types": [
+    "dist/analyzer/src/index.d.ts",
+    "dist/cli/src/index.d.ts",
+    "dist/config/src/defineConfig.d.ts",
+    "dist/config/src/index.d.ts",
+    "dist/config/src/load-config.d.ts",
+    "dist/config/src/types.d.ts",
+    "dist/core/src/index.d.ts",
+    "dist/defineConfig.d.ts",
+    "dist/emitter-go/src/index.d.ts",
+    "dist/index.d.ts",
+    "dist/ir/src/index.d.ts",
+    "dist/load-config.d.ts",
+    "dist/types.d.ts"
+  ],
+  "tsconfigPath": "tsconfig.json"
+}

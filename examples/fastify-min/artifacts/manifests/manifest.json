@@ -1,0 +1,9 @@
+{
+  "buildId": "6bd2bf749a61e4c8",
+  "entries": [
+    "src/index.ts"
+  ],
+  "bundles": [],
+  "types": [],
+  "tsconfigPath": "tsconfig.json"
+}
