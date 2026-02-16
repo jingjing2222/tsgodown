@@ -61,8 +61,8 @@ fn emits_explicit_diagnostics_for_unsupported_patterns() {
 
     let mut codes = ir
         .diagnostics
-        .into_iter()
-        .map(|d| d.code)
+        .iter()
+        .map(|d| d.code.clone())
         .collect::<Vec<_>>();
     codes.sort();
     assert_eq!(
@@ -73,6 +73,21 @@ fn emits_explicit_diagnostics_for_unsupported_patterns() {
             "ANALYZER_UNSUPPORTED_INLINE_HANDLER".to_string(),
         ]
     );
+
+    let messages = ir
+        .diagnostics
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect::<Vec<_>>();
+    assert!(messages
+        .iter()
+        .any(|m| m.contains("dynamic path") && m.contains("Use string literal path")));
+    assert!(messages.iter().any(|m| m.contains("non-reference handler")
+        && m.contains("Extract handler to a named function")));
+    assert!(messages
+        .iter()
+        .any(|m| m.contains("register plugin 'externalPlugin'")
+            && m.contains("Ensure plugin is declared in the same file")));
 }
 
 #[test]

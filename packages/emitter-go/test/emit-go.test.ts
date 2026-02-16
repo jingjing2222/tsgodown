@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -112,3 +113,71 @@ test("emitGoProject output is byte-for-byte stable across repeated runs", () => 
 
   assert.equal(first, second);
 });
+
+test("emitGoProject normalizes route methods and extracts both colon and braces path params", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "showOrder", params: [], async: false }],
+      diagnostics: [],
+      routes: [
+        {
+          method: "get" as ProgramIR["routes"][number]["method"],
+          path: "users/:userId/orders/{orderId}",
+          handlerRef: "showOrder",
+        },
+      ],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(
+    emitted,
+    /mux\.HandleFunc\("GET \/users\/\{userId\}\/orders\/\{orderId\}", route0\)/,
+  );
+  assert.match(emitted, /userId := req\.PathValue\("userId"\)/);
+  assert.match(emitted, /orderId := req\.PathValue\("orderId"\)/);
+});
+
+const hasGoToolchain =
+  spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+
+test(
+  "emitGoProject smoke: generated representative fixtures can go build",
+  { skip: !hasGoToolchain },
+  () => {
+    const fixtures: ProgramIR[] = [
+      sampleIr,
+      {
+        modules: [],
+        handlers: [{ id: "nested", params: [], async: false }],
+        diagnostics: [],
+        routes: [
+          {
+            method: "PATCH",
+            path: "/api/v2/users/:id/devices/{deviceId}",
+            handlerRef: "nested",
+          },
+        ],
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const outDir = createOutDir();
+      emitGoProject(fixture, outDir);
+      const result = spawnSync("go", ["build", "./..."], {
+        cwd: outDir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `go build failed for fixture in ${outDir}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+  },
+);

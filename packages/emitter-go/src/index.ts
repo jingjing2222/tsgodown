@@ -10,19 +10,43 @@ function quoteGo(value: string): string {
   return JSON.stringify(value);
 }
 
+function normalizeHttpMethod(method: string): string {
+  return method.trim().toUpperCase();
+}
+
+function normalizeRoutePath(pathname: string): string {
+  const trimmed = pathname.trim();
+  if (trimmed.length === 0) {
+    return "/";
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
 function toServeMuxPath(pathname: string): string {
-  return pathname.replaceAll(/:([A-Za-z_][A-Za-z0-9_]*)/g, "{$1}");
+  return normalizeRoutePath(pathname).replaceAll(
+    /:([A-Za-z_][A-Za-z0-9_]*)/g,
+    "{$1}",
+  );
 }
 
 function toServeMuxPattern(route: RouteIR): string {
-  return `${route.method} ${toServeMuxPath(route.path)}`;
+  return `${normalizeHttpMethod(route.method)} ${toServeMuxPath(route.path)}`;
 }
 
 function extractPathParamNames(pathname: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
+  const normalized = normalizeRoutePath(pathname);
 
-  for (const match of pathname.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)) {
+  for (const match of normalized.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const name = match[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  for (const match of normalized.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)(?:\.\.\.)?\}/g)) {
     const name = match[1];
     if (!seen.has(name)) {
       seen.add(name);
@@ -59,14 +83,16 @@ function emitRoute(
   index: number,
   handler: HandlerIR | undefined,
 ): string[] {
-  const todoMessage = `TODO implement handler ${route.handlerRef} for ${route.method} ${route.path}`;
+  const normalizedMethod = normalizeHttpMethod(route.method);
+  const normalizedPath = normalizeRoutePath(route.path);
+  const todoMessage = `TODO implement handler ${route.handlerRef} for ${normalizedMethod} ${normalizedPath}`;
 
   const lines: string[] = [
     `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,
     "",
     "\t// Route metadata:",
-    `\t//   Method: ${route.method}`,
-    `\t//   Path: ${quoteGo(route.path)}`,
+    `\t//   Method: ${normalizedMethod}`,
+    `\t//   Path: ${quoteGo(normalizedPath)}`,
     `\t//   Pattern: ${quoteGo(toServeMuxPattern(route))}`,
     `\t//   Handler: ${quoteGo(route.handlerRef)}`,
     `\t//   Handler params: ${formatHandlerParams(handler)}`,
@@ -79,7 +105,7 @@ function emitRoute(
   }
 
   lines.push(
-    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${route.method} ${route.path}.`,
+    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${normalizedMethod} ${normalizedPath}.`,
     "\t//   - Replace this scaffold with application logic.",
     "\t//   - Validate request input and map to domain arguments.",
     "\t//   - Write response status, headers, and body.",
