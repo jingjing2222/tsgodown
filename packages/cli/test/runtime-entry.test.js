@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,6 @@ const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const packagesDir = path.join(repoRoot, "packages");
 
 const packageExpectations = [
-  ["analyzer", ["main", "types", "exports"]],
   ["cli", ["main", "types", "exports", "bin"]],
   ["config", ["main", "types", "exports"]],
   ["core", ["main", "types", "exports"]],
@@ -84,6 +84,24 @@ test("workspace package runtime entries point to emitted dist files", () => {
       );
     }
   }
+});
+
+test("legacy TS analyzer is not part of root TS build ownership paths", () => {
+  const rootTsconfig = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tsconfig.json"), "utf8"),
+  );
+  const baseTsconfig = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tsconfig.base.json"), "utf8"),
+  );
+
+  const pathAliases = baseTsconfig.compilerOptions?.paths ?? {};
+  assert.equal(pathAliases["@tsgodown/analyzer"], undefined);
+
+  const refs = rootTsconfig.references ?? [];
+  assert.equal(
+    refs.some((ref) => ref.path === "packages/analyzer"),
+    false,
+  );
 });
 
 test("legacy @tsgodown/ir package is marked inactive", () => {
