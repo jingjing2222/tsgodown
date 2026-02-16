@@ -108,7 +108,6 @@ export function renderRoute(
 
   const lines: string[] = [
     `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,
-    "",
     "\t// Route metadata:",
     `\t//   Method: ${normalizedMethod}`,
     `\t//   Path: ${quoteGo(normalizedPath)}`,
