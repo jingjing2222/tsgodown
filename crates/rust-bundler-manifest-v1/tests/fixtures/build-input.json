@@ -1,0 +1,12 @@
+{
+  "entries": ["src/index.ts", "src/admin.ts"],
+  "chunks": [
+    "dist/admin.mjs.map",
+    "dist/index.d.ts",
+    "dist/admin.mjs",
+    "dist/index.mjs.map",
+    "dist/index.mjs",
+    "dist/admin.d.ts"
+  ],
+  "tsconfigPath": "tsconfig.build.json"
+}

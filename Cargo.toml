@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/rust-bundler-manifest-v1"]
+resolver = "2"
