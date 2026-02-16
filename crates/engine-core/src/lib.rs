@@ -1,81 +1,12 @@
-use serde::{Deserialize, Serialize};
+mod analyze;
+mod contract;
+mod normalize;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InputManifest {
-    pub entry: String,
-    #[serde(default)]
-    pub framework: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct AnalyzeConfig {
-    #[serde(default)]
-    pub profile: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AnalyzeRequest {
-    pub manifest: InputManifest,
-    #[serde(default)]
-    pub config: AnalyzeConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct IrDocument {
-    pub version: String,
-    pub entry: String,
-    #[serde(default)]
-    pub routes: Vec<Route>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Route {
-    pub method: String,
-    pub path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Diagnostic {
-    pub level: DiagnosticLevel,
-    pub code: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum DiagnosticLevel {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AnalyzeResponse {
-    pub ir: IrDocument,
-    #[serde(default)]
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
-    let framework = request
-        .manifest
-        .framework
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    AnalyzeResponse {
-        ir: IrDocument {
-            version: "0.1".to_string(),
-            entry: request.manifest.entry,
-            routes: vec![],
-        },
-        diagnostics: vec![Diagnostic {
-            level: DiagnosticLevel::Info,
-            code: "ENGINE_CORE_BOOTSTRAP".to_string(),
-            message: format!("engine-core analyze bootstrap executed (framework={framework})"),
-        }],
-    }
-}
+pub use analyze::analyze;
+pub use contract::{
+    AnalyzeConfig, AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, InputManifest,
+    IrDocument, Route,
+};
 
 #[cfg(test)]
 mod tests {
