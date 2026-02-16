@@ -137,9 +137,9 @@ test("CLI JSON contract fixtures: success path", () => {
   const goPath = path.join(cwd, "dist-go", "main.go");
   assert.equal(fs.existsSync(goPath), true);
   const go = fs.readFileSync(goPath, "utf8");
-  assert.ok(go.includes('mux.HandleFunc("/users", route0)'));
-  assert.ok(go.includes('mux.HandleFunc("/users/:id", route1)'));
-  assert.ok(go.includes("if req.Method != http.MethodGet {"));
+  assert.ok(go.includes('mux.HandleFunc("GET /users", route0)'));
+  assert.ok(go.includes('mux.HandleFunc("GET /users/{id}", route1)'));
+  assert.ok(!go.includes("if req.Method != http.MethodGet {"));
   assert.ok(go.includes("// Route metadata:"));
   assert.ok(go.includes("//   Method: GET"));
   assert.ok(go.includes('//   Path: "/users"'));
