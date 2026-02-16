@@ -27,7 +27,13 @@ Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts, with *
 - `packages/pipeline`: orchestration-only runtime pipeline
 - `packages/cli`: `tsgodown build/check/report/stages` user entry
 - `packages/core`: command-level aggregation (runtime orchestration only)
+- `packages/emitter-go`: Go emission boundary
 - `packages/analyzer-rust` and `crates/*`: Rust analysis/build core
+
+## Workspace Policy (empty package placeholders)
+- Empty placeholder package directories are prohibited.
+- Unimplemented package ideas must live in backlog/spec docs until a real scaffold is ready.
+- `packages/artifact-indexer`, `packages/go-emitter`, `packages/runtime-go`, and `packages/test-harness` are intentionally not part of the workspace.
 
 ## Migration Checklist (TS core -> Rust core)
 ### Removed from runtime path
