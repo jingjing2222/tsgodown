@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { UserConfig } from "@tsgodown/config";
 import { loadUserConfig } from "@tsgodown/config";
 import { runPipeline } from "@tsgodown/pipeline";
+import { buildTargetResult, resolveTargetPlan } from "./internal/index.js";
 
 export const ACTIVE_STAGES = [
   "load-config",
@@ -10,9 +10,6 @@ export const ACTIVE_STAGES = [
   "emit",
   "onSuccess",
 ] as const;
-
-const TS_CORE_DEPRECATION_WARNING =
-  "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.";
 
 export type BuildStage = (typeof ACTIVE_STAGES)[number];
 
@@ -41,21 +38,6 @@ export interface BuildSummary {
   targets: BuildTargetResult[];
 }
 
-function resolvePlan(
-  cwd: string,
-  conf: UserConfig,
-  configIndex: number,
-): BuildTargetPlan {
-  const entry = typeof conf.entry === "string" ? conf.entry : "src/index.ts";
-  const outDir = conf.outDir ?? "dist-go";
-  return {
-    configIndex,
-    entry: path.resolve(cwd, entry),
-    outDir: path.resolve(cwd, outDir),
-    artifact: path.join(cwd, "artifacts", "manifests", "manifest.json"),
-  };
-}
-
 async function run(
   cwd: string,
   command: "build" | "check" | "report",
@@ -74,16 +56,9 @@ async function run(
   }
 
   for (const [idx, conf] of configs.entries()) {
-    const plan = resolvePlan(cwd, conf, idx);
+    const plan = resolveTargetPlan(cwd, conf, idx);
     const artifactExists = fs.existsSync(plan.artifact);
-    targets.push({
-      ...plan,
-      emitted: artifactExists,
-      diagnostics: {
-        routes: 0,
-        warnings: [TS_CORE_DEPRECATION_WARNING],
-      },
-    });
+    targets.push(buildTargetResult(plan, artifactExists));
   }
 
   return {
@@ -115,12 +90,8 @@ export async function stages(
     cwd,
     stages: ACTIVE_STAGES,
     targets: configs.map((conf, idx) => {
-      const plan = resolvePlan(cwd, conf, idx);
-      return {
-        ...plan,
-        diagnostics: { routes: 0, warnings: [TS_CORE_DEPRECATION_WARNING] },
-        emitted: fs.existsSync(plan.artifact),
-      };
+      const plan = resolveTargetPlan(cwd, conf, idx);
+      return buildTargetResult(plan, fs.existsSync(plan.artifact));
     }),
   };
 }
