@@ -66,6 +66,10 @@ test("runPipeline executes all stages and emits deterministic Go scaffold", asyn
   assert.ok(emitted.includes('mux.HandleFunc("/users", route1)'));
   assert.ok(emitted.includes("if req.Method != http.MethodGet {"));
   assert.ok(emitted.includes("if req.Method != http.MethodPost {"));
+  assert.ok(emitted.includes("// Route metadata:"));
+  assert.ok(emitted.includes("//   Method: GET"));
+  assert.ok(emitted.includes('//   Path: "/health"'));
+  assert.ok(emitted.includes('//   Handler: "health"'));
   assert.ok(
     emitted.includes(
       'fmt.Fprintln(w, "TODO implement handler health for GET /health")',
