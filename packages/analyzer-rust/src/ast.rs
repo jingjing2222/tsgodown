@@ -94,12 +94,20 @@ pub(crate) fn split_top_level(src: &str, delim: char) -> Vec<String> {
 }
 
 pub(crate) fn parse_inline_plugin(expr: &str) -> Option<PluginDef> {
-    let re_arrow =
-        Regex::new(r"(?s)^(?:async\s+)?\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>\s*\{(.*)\}$").unwrap();
+    let re_arrow = Regex::new(
+        r"(?s)^(?:async\s+)?(?:\(\s*([A-Za-z_$][\w$]*)\s*\)|([A-Za-z_$][\w$]*))\s*=>\s*\{(.*)\}$",
+    )
+    .unwrap();
     if let Some(cap) = re_arrow.captures(expr.trim()) {
+        let param_name = cap
+            .get(1)
+            .or_else(|| cap.get(2))
+            .map(|m| m.as_str())
+            .unwrap_or_default()
+            .to_string();
         return Some(PluginDef {
-            param_name: cap[1].to_string(),
-            body: cap[2].to_string(),
+            param_name,
+            body: cap[3].to_string(),
         });
     }
 

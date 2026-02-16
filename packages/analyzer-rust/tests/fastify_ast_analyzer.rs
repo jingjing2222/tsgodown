@@ -174,3 +174,46 @@ fn keeps_ssot_boundary_extraction_and_diagnostics_only() {
     assert!(!codes.iter().any(|c| c == "CAPABILITY_UNMET"));
     assert!(!codes.iter().any(|c| c.starts_with("CAPABILITY_")));
 }
+
+#[test]
+fn handles_single_param_arrow_plugins_and_handlers() {
+    let (file, src) = fixture("single-param-arrow-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/api/v1/users", "listUsers"),
+            ("PATCH", "/api/v1/users/:id", "updateUser"),
+        ]
+    );
+
+    assert_eq!(
+        ir.handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                    h.semantics
+                        .as_ref()
+                        .map(|s| s.response_mode.as_str())
+                        .unwrap_or("<missing>"),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            ("listUsers", vec![("req", "request")], true, "unknown",),
+            ("updateUser", vec![("reply", "response")], false, "unknown",),
+        ]
+    );
+
+    assert!(ir.diagnostics.is_empty());
+}
