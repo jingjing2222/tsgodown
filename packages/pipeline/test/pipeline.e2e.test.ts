@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -17,10 +18,36 @@ after(() => {
 
 function createRustLauncher(cwd: string) {
   const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
+  const goSource = [
+    "package main",
+    "",
+    "import (",
+    '\t"fmt"',
+    '\t"net/http"',
+    ")",
+    "",
+    "func main() {",
+    '\tfmt.Println("tsgodown-fastify-stub-ready")',
+    '\thttp.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {',
+    "\t\tw.WriteHeader(http.StatusNotImplemented)",
+    '\t\tfmt.Fprintln(w, "TODO implement handler health for GET /health")',
+    "\t})",
+    '\t_ = http.ListenAndServe(":8080", nil)',
+    "}",
+    "",
+  ].join("\n");
+
   fs.writeFileSync(
     stubPath,
     [
-      "for await (const _ of process.stdin) { /* drain */ }",
+      "import fs from 'node:fs';",
+      "import path from 'node:path';",
+      "const chunks = [];",
+      "for await (const chunk of process.stdin) chunks.push(chunk);",
+      "const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));",
+      "const outDir = path.join(request.cwd, 'dist-go');",
+      "fs.mkdirSync(outDir, { recursive: true });",
+      `fs.writeFileSync(path.join(outDir, 'main.go'), ${JSON.stringify(goSource)}, 'utf8');`,
       "const response = {",
       "  ok: true,",
       "  diagnostics: ['engine=rust-binary-stub'],",
@@ -84,7 +111,7 @@ function setupProject() {
   return dir;
 }
 
-test("runPipeline delegates build/analysis/capability/emission to rust engine adapter", async () => {
+test("runPipeline acceptance: fastify scaffold TS input flows through rust-adapter pipeline and emits valid Go scaffold", async () => {
   const cwd = setupProject();
   const logs: string[] = [];
   const launcherPath = createRustLauncher(cwd);
@@ -139,11 +166,32 @@ test("runPipeline delegates build/analysis/capability/emission to rust engine ad
     assert.equal(typeof manifestIndex.generatedAt, "string");
 
     const goPath = path.join(cwd, "dist-go", "main.go");
-    assert.equal(
-      fs.existsSync(goPath),
-      false,
-      "legacy TS core emission should be disabled after rust cutover",
-    );
+    assert.equal(fs.existsSync(goPath), true);
+
+    const emittedGo = fs.readFileSync(goPath, "utf8");
+    assert.match(emittedGo, /^package main/m);
+    assert.match(emittedGo, /func main\(\)/);
+    assert.match(emittedGo, /http\.HandleFunc\("GET \/health"/);
+
+    const hasGoToolchain =
+      spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+    if (hasGoToolchain) {
+      const modInit = spawnSync(
+        "go",
+        ["mod", "init", "example.com/tsgodown-pipeline"],
+        {
+          cwd: path.dirname(goPath),
+          encoding: "utf8",
+        },
+      );
+      assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+      const goBuild = spawnSync("go", ["build", "./..."], {
+        cwd: path.dirname(goPath),
+        encoding: "utf8",
+      });
+      assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
+    }
   } finally {
     if (prevRustBin === undefined) {
       Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
