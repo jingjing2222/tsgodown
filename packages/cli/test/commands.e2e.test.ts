@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,10 +36,15 @@ function setupProject(
   return dir;
 }
 
-function runCli(cwd: string, command: "build" | "check" | "report" | "stages") {
+function runCli(
+  cwd: string,
+  command: "build" | "check" | "report" | "stages",
+  env?: NodeJS.ProcessEnv,
+) {
   const result = spawnSync(process.execPath, [cliEntry, command, "--json"], {
     cwd,
     encoding: "utf8",
+    env,
   });
   return result;
 }
@@ -196,4 +202,111 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
       new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
+});
+
+test("CLI build routes through rust adapter binary with JSON contract", () => {
+  const cwd = setupProject([
+    "const fastify = {} as any;",
+    "const health = () => {};",
+    "fastify.get('/health', health);",
+  ]);
+
+  const capturePath = path.join(cwd, `request-${crypto.randomUUID()}.json`);
+  const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
+
+  fs.writeFileSync(
+    stubPath,
+    [
+      "import fs from 'node:fs';",
+      "const chunks = [];",
+      "for await (const chunk of process.stdin) chunks.push(chunk);",
+      "const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));",
+      `fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify(request, null, 2));`,
+      "const response = {",
+      "  ok: true,",
+      "  diagnostics: ['engine=rust-binary-stub'],",
+      "  manifest: {",
+      "    buildId: '1122334455667788',",
+      "    entries: ['src/index.ts'],",
+      "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+      "    types: ['dist/index.d.ts'],",
+      "    tsconfigPath: 'tsconfig.json'",
+      "  }",
+      "};",
+      "process.stdout.write(JSON.stringify(response));",
+    ].join("\n"),
+  );
+
+  const launcherPath = path.join(
+    cwd,
+    `rust-launcher-${crypto.randomUUID()}.sh`,
+  );
+  fs.writeFileSync(
+    launcherPath,
+    `#!/usr/bin/env bash\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(stubPath)}\n`,
+  );
+  fs.chmodSync(launcherPath, 0o755);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: launcherPath,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+  const captured = JSON.parse(fs.readFileSync(capturePath, "utf8")) as {
+    action: string;
+    cwd: string;
+  };
+  assert.equal(captured.action, "build");
+  const realCwd = fs.realpathSync(cwd);
+  assert.ok(captured.cwd === cwd || captured.cwd === realCwd);
+});
+
+test("CLI surfaces rust adapter error propagation format", () => {
+  const cwd = setupProject([
+    "const fastify = {} as any;",
+    "const health = () => {};",
+    "fastify.get('/health', health);",
+  ]);
+
+  const stubPath = path.join(cwd, `rust-stub-error-${crypto.randomUUID()}.mjs`);
+
+  fs.writeFileSync(
+    stubPath,
+    [
+      "for await (const _ of process.stdin) { /* drain */ }",
+      "const response = {",
+      "  ok: false,",
+      "  error: {",
+      "    source: 'rust-engine-adapter',",
+      "    cause: 'invalid build graph',",
+      "    guidance: 'Check Rust engine JSON contract and retry.'",
+      "  }",
+      "};",
+      "process.stdout.write(JSON.stringify(response));",
+    ].join("\n"),
+  );
+
+  const launcherPath = path.join(
+    cwd,
+    `rust-launcher-error-${crypto.randomUUID()}.sh`,
+  );
+  fs.writeFileSync(
+    launcherPath,
+    `#!/usr/bin/env bash\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(stubPath)}\n`,
+  );
+  fs.chmodSync(launcherPath, 0o755);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: launcherPath,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source=rust-engine-adapter/);
+  assert.match(result.stderr, /cause=invalid build graph/);
+  assert.match(
+    result.stderr,
+    /guidance=Check Rust engine JSON contract and retry\./,
+  );
 });

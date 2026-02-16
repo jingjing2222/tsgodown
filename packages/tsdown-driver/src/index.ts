@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -21,7 +22,7 @@ export interface ArtifactManifest {
 }
 
 export interface RunBuildResult {
-  mode: "tsdown-programmatic";
+  mode: "rust-engine-adapter";
   manifestPath: string;
   manifest: ArtifactManifest;
   diagnostics: string[];
@@ -39,8 +40,32 @@ export interface TsdownBundleLike {
   };
 }
 
+export interface RustEngineRequest {
+  action: "build";
+  cwd: string;
+  configPath?: string;
+}
+
+export type RustEngineResponse =
+  | {
+      ok: true;
+      manifest: ArtifactManifest;
+      diagnostics?: string[];
+    }
+  | {
+      ok: false;
+      error: {
+        source: string;
+        cause: string;
+        guidance: string;
+      };
+    };
+
 interface RunBuildOptions {
   executeBuild?: (inlineConfig: InlineConfig) => Promise<TsdownBundleLike[]>;
+  executeRustEngine?: (
+    request: RustEngineRequest,
+  ) => Promise<RustEngineResponse>;
 }
 
 export async function runBuild(
@@ -48,9 +73,61 @@ export async function runBuild(
   configPath?: string,
   options: RunBuildOptions = {},
 ): Promise<RunBuildResult> {
-  const inlineConfig: InlineConfig = {
+  const request: RustEngineRequest = {
+    action: "build",
     cwd,
-    ...(configPath ? { config: configPath } : {}),
+    ...(configPath ? { configPath } : {}),
+  };
+
+  const executeRustEngine =
+    options.executeRustEngine ?? ((req) => invokeRustEngine(req, options));
+  const response = await executeRustEngine(request);
+
+  if (!response.ok) {
+    throw new Error(
+      `[tsdown-driver] rust engine failed source=${response.error.source} cause=${response.error.cause} guidance=${response.error.guidance}`,
+    );
+  }
+
+  const manifestPath = await writeManifest(cwd, response.manifest);
+  return {
+    mode: "rust-engine-adapter",
+    manifestPath,
+    manifest: response.manifest,
+    diagnostics: response.diagnostics ?? [],
+  };
+}
+
+async function invokeRustEngine(
+  request: RustEngineRequest,
+  options: Pick<RunBuildOptions, "executeBuild">,
+): Promise<RustEngineResponse> {
+  const rustBin = process.env.TSGODOWN_RUST_ENGINE_BIN;
+  if (rustBin) {
+    return invokeRustBinary(rustBin, request);
+  }
+
+  return runRustEngineStub(request, options);
+}
+
+async function runRustEngineStub(
+  request: RustEngineRequest,
+  options: Pick<RunBuildOptions, "executeBuild">,
+): Promise<RustEngineResponse> {
+  if (request.action !== "build") {
+    return {
+      ok: false,
+      error: {
+        source: "rust-engine-stub",
+        cause: `unsupported action: ${request.action}`,
+        guidance: "Use action=build.",
+      },
+    };
+  }
+
+  const inlineConfig: InlineConfig = {
+    cwd: request.cwd,
+    ...(request.configPath ? { config: request.configPath } : {}),
   };
 
   let bundles: TsdownBundleLike[];
@@ -60,21 +137,95 @@ export async function runBuild(
       ((config) => build(config) as Promise<TsdownBundle[]>);
     bundles = await executeBuild(inlineConfig);
   } catch (error) {
-    throw new Error(
-      `[tsdown-driver] build failed (source=tsdown.build cwd=${toPosix(cwd)} config=${toPosix(configPath ?? "auto")}): ${formatErrorWithCause(error)}`,
-      { cause: error },
-    );
+    return {
+      ok: false,
+      error: {
+        source: "rust-engine-stub(tsdown.build)",
+        cause: formatErrorWithCause(error),
+        guidance:
+          "Verify tsgodown.config.ts and entry paths, then retry build.",
+      },
+    };
   }
 
-  const manifest = buildManifestFromBundles(cwd, bundles, configPath);
-  const manifestPath = await writeManifest(cwd, manifest);
-
   return {
-    mode: "tsdown-programmatic",
-    manifestPath,
-    manifest,
-    diagnostics: [],
+    ok: true,
+    manifest: buildManifestFromBundles(
+      request.cwd,
+      bundles,
+      request.configPath,
+    ),
+    diagnostics: ["engine=rust-stub", "transport=json-io"],
   };
+}
+
+async function invokeRustBinary(
+  commandPath: string,
+  request: RustEngineRequest,
+): Promise<RustEngineResponse> {
+  return new Promise((resolve) => {
+    const child = spawn(commandPath, [], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      resolve({
+        ok: false,
+        error: {
+          source: "rust-engine-binary-spawn",
+          cause: formatErrorWithCause(error),
+          guidance:
+            "Check TSGODOWN_RUST_ENGINE_BIN points to an executable binary.",
+        },
+      });
+    });
+
+    child.on("close", (code) => {
+      const out = stdout.trim();
+      if (code !== 0) {
+        resolve({
+          ok: false,
+          error: {
+            source: "rust-engine-binary",
+            cause: `exit=${code ?? "null"} stderr=${stderr.trim() || "n/a"}`,
+            guidance: "Inspect rust engine logs and JSON response contract.",
+          },
+        });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(out) as RustEngineResponse;
+        resolve(parsed);
+      } catch (error) {
+        resolve({
+          ok: false,
+          error: {
+            source: "rust-engine-binary-json",
+            cause: `${formatErrorWithCause(error)} stdout=${out || "<empty>"}`,
+            guidance:
+              "Ensure rust engine prints a valid JSON object to stdout.",
+          },
+        });
+      }
+    });
+
+    child.stdin.write(`${JSON.stringify(request)}\n`);
+    child.stdin.end();
+  });
 }
 
 export function buildManifestFromBundles(
