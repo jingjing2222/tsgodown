@@ -16,7 +16,8 @@ fn main() {
             let request: AnalyzeRequest =
                 serde_json::from_str(&input).expect("failed to parse AnalyzeRequest JSON");
             let response = analyze(request);
-            let output = serde_json::to_string_pretty(&response).expect("failed to encode response");
+            let output =
+                serde_json::to_string_pretty(&response).expect("failed to encode response");
             println!("{output}");
         }
         _ => {
