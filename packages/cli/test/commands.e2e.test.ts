@@ -63,6 +63,10 @@ test("build/check/report/stages produce stable command payloads and deterministi
   assert.ok(go.includes('mux.HandleFunc("/users", route0)'));
   assert.ok(go.includes('mux.HandleFunc("/users/:id", route1)'));
   assert.ok(go.includes("if req.Method != http.MethodGet {"));
+  assert.ok(go.includes("// Route metadata:"));
+  assert.ok(go.includes("//   Method: GET"));
+  assert.ok(go.includes('//   Path: "/users"'));
+  assert.ok(go.includes('//   Handler: "listUsers"'));
   assert.ok(
     go.includes(
       'fmt.Fprintln(w, "TODO implement handler listUsers for GET /users")',

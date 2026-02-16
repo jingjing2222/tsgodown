@@ -45,6 +45,13 @@ test("emitGoProject emits deterministic main.go scaffold with route registration
   assert.match(emitted, /mux\.HandleFunc\("\/users", route1\)/);
   assert.match(emitted, /if req\.Method != http\.MethodGet \{/);
   assert.match(emitted, /if req\.Method != http\.MethodPost \{/);
+  assert.match(emitted, /\/\/ Route metadata:/);
+  assert.match(emitted, /\/\/\s+Method:\s+GET/);
+  assert.match(emitted, /\/\/\s+Path:\s+"\/health"/);
+  assert.match(emitted, /\/\/\s+Handler:\s+"health"/);
+  assert.match(emitted, /\/\/\s+Method:\s+POST/);
+  assert.match(emitted, /\/\/\s+Path:\s+"\/users"/);
+  assert.match(emitted, /\/\/\s+Handler:\s+"createUser"/);
   assert.match(
     emitted,
     /TODO\(tsgodown\): Implement handler "health" for GET \/health\./,
