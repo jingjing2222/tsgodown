@@ -119,6 +119,25 @@ test("runPipeline delegates build/analysis/capability/emission to rust engine ad
     assert.match(manifest.buildId, /^[a-f0-9]{16}$/);
     assert.deepEqual(manifest.entries, ["src/index.ts"]);
 
+    const manifestIndexPath = path.join(
+      cwd,
+      "artifacts",
+      "manifests",
+      "index.json",
+    );
+    assert.equal(fs.existsSync(manifestIndexPath), true);
+
+    const manifestIndex = JSON.parse(
+      fs.readFileSync(manifestIndexPath, "utf8"),
+    ) as {
+      buildId: string;
+      manifest: string;
+      generatedAt: string;
+    };
+    assert.equal(manifestIndex.buildId, manifest.buildId);
+    assert.equal(manifestIndex.manifest, "manifest.json");
+    assert.equal(typeof manifestIndex.generatedAt, "string");
+
     const goPath = path.join(cwd, "dist-go", "main.go");
     assert.equal(
       fs.existsSync(goPath),

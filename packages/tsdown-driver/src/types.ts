@@ -64,9 +64,16 @@ export type RustEngineResponse =
       guidance?: unknown;
     };
 
+export interface ArtifactManifestIndex {
+  buildId: string;
+  manifest: string;
+  generatedAt: string;
+}
+
 export interface RunBuildResult {
   mode: "rust-engine-adapter";
   manifestPath: string;
+  manifestIndexPath: string;
   manifest: ArtifactManifest;
   diagnostics: string[];
 }

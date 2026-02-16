@@ -1,5 +1,5 @@
 import { normalizeRustEngineResponse } from "./contract.js";
-import { writeManifest } from "./manifest.js";
+import { writeManifestArtifacts } from "./manifest.js";
 import { invokeRustEngine } from "./process-adapter.js";
 import type {
   RunBuildOptions,
@@ -31,10 +31,15 @@ export async function runBuild(
     );
   }
 
-  const manifestPath = await writeManifest(cwd, response.manifest);
+  const { manifestPath, manifestIndexPath } = await writeManifestArtifacts(
+    cwd,
+    response.manifest,
+  );
+
   return {
     mode: "rust-engine-adapter",
     manifestPath,
+    manifestIndexPath,
     manifest: response.manifest,
     diagnostics: response.diagnostics ?? [],
   };
