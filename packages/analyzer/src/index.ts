@@ -1,26 +1,35 @@
 import fs from "node:fs";
 import type { DiagnosticIR, ProgramIR, RouteIR } from "@tsgodown/ir-core";
+import ts from "typescript";
 
 type PluginDef = {
   paramName: string;
-  body: string;
+  statements: readonly ts.Statement[];
 };
 
-const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
+const HTTP_METHODS = new Set(["GET", "POST", "PUT", "DELETE", "PATCH"]);
 
 export function analyzeFastifyEntry(entryFile: string): ProgramIR {
   const src = fs.readFileSync(entryFile, "utf-8");
+  const sourceFile = ts.createSourceFile(
+    entryFile,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
   const diagnostics: DiagnosticIR[] = [];
   const routes: RouteIR[] = [];
+  const pluginDefs = collectPluginDefinitions(sourceFile);
 
-  const pluginDefs = collectPluginDefinitions(src);
   analyzeScope({
-    src,
+    statements: sourceFile.statements,
     file: entryFile,
     diagnostics,
     routes,
     pluginDefs,
-    instanceName: "fastify",
+    instanceName: detectRootInstanceName(sourceFile) ?? "fastify",
     prefix: "",
   });
 
@@ -42,7 +51,7 @@ export function analyzeFastifyEntry(entryFile: string): ProgramIR {
 }
 
 function analyzeScope(params: {
-  src: string;
+  statements: readonly ts.Statement[];
   file: string;
   diagnostics: DiagnosticIR[];
   routes: RouteIR[];
@@ -50,350 +59,376 @@ function analyzeScope(params: {
   instanceName: string;
   prefix: string;
 }) {
-  const { src, file, diagnostics, routes, pluginDefs, instanceName, prefix } =
-    params;
+  const {
+    statements,
+    file,
+    diagnostics,
+    routes,
+    pluginDefs,
+    instanceName,
+    prefix,
+  } = params;
 
-  const callRe = new RegExp(
-    String.raw`${escapeRe(instanceName)}\.(get|post|put|delete|patch)\s*\(\s*([^,\n]+?)\s*,\s*([^,\n\)]+)`,
-    "g",
-  );
+  for (const statement of statements) {
+    walkNode(statement, (node) => {
+      if (!ts.isCallExpression(node)) return;
+      if (!ts.isPropertyAccessExpression(node.expression)) return;
+      if (!ts.isIdentifier(node.expression.expression)) return;
+      if (node.expression.expression.text !== instanceName) return;
 
-  for (const m of src.matchAll(callRe)) {
-    const method = m[1].toUpperCase() as RouteIR["method"];
-    const pathExpr = m[2].trim();
-    const handlerExpr = m[3].trim();
+      const member = node.expression.name.text;
+      if (isHttpMethod(member)) {
+        extractShorthandRoute({
+          call: node,
+          file,
+          diagnostics,
+          routes,
+          method: member.toUpperCase() as RouteIR["method"],
+          prefix,
+          instanceName,
+        });
+        return;
+      }
 
-    const path = extractQuoted(pathExpr);
-    if (!path) {
-      diagnostics.push({
-        level: "warn",
-        code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-        message: `unsupported dynamic path in ${instanceName}.${m[1]}(...)`,
-        source: { file },
-      });
-      continue;
-    }
+      if (member === "route") {
+        extractRouteObject({
+          call: node,
+          file,
+          diagnostics,
+          routes,
+          prefix,
+          instanceName,
+        });
+        return;
+      }
 
-    const handlerRef = extractHandlerRef(handlerExpr);
-    if (!handlerRef) {
-      diagnostics.push({
-        level: "warn",
-        code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
-        message: `unsupported non-reference handler in ${instanceName}.${m[1]}('${path}', handler)`,
-        source: { file },
-      });
-      continue;
-    }
-
-    routes.push({ method, path: joinPath(prefix, path), handlerRef });
-  }
-
-  const routeObjRe = new RegExp(
-    String.raw`${escapeRe(instanceName)}\.route\s*\(\s*\{([\s\S]*?)\}\s*\)`,
-    "g",
-  );
-  for (const m of src.matchAll(routeObjRe)) {
-    const body = m[1];
-    const methodRaw = extractObjectStringProp(body, "method");
-    const method = methodRaw ? methodRaw.toUpperCase() : undefined;
-    const path =
-      extractObjectStringProp(body, "url") ??
-      extractObjectStringProp(body, "path");
-    const handlerRef = extractHandlerRef(
-      extractObjectValue(body, "handler") ?? "",
-    );
-
-    if (
-      !method ||
-      !HTTP_METHODS.includes(method as (typeof HTTP_METHODS)[number])
-    ) {
-      diagnostics.push({
-        level: "warn",
-        code: "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
-        message: `unsupported route object method in ${instanceName}.route({...})`,
-        source: { file },
-      });
-      continue;
-    }
-    if (!path) {
-      diagnostics.push({
-        level: "warn",
-        code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-        message: `unsupported route object path in ${instanceName}.route({...})`,
-        source: { file },
-      });
-      continue;
-    }
-    if (!handlerRef) {
-      diagnostics.push({
-        level: "warn",
-        code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
-        message: `unsupported route object handler in ${instanceName}.route({...})`,
-        source: { file },
-      });
-      continue;
-    }
-
-    routes.push({
-      method: method as RouteIR["method"],
-      path: joinPath(prefix, path),
-      handlerRef,
-    });
-  }
-
-  const registerNeedle = `${instanceName}.register`;
-  let searchIndex = 0;
-  while (true) {
-    const at = src.indexOf(registerNeedle, searchIndex);
-    if (at < 0) break;
-    const openParen = src.indexOf("(", at + registerNeedle.length);
-    if (openParen < 0) break;
-
-    const closeParen = findMatching(src, openParen, "(", ")");
-    if (closeParen < 0) break;
-
-    const args = splitTopLevel(src.slice(openParen + 1, closeParen));
-    const pluginExpr = (args[0] ?? "").trim();
-    const optionsExpr = (args[1] ?? "").trim();
-    const prefixFromRegister =
-      extractObjectStringProp(optionsExpr, "prefix") ?? "";
-    const nextPrefix = joinPath(prefix, prefixFromRegister);
-
-    const inlinePlugin = parsePluginExpression(pluginExpr);
-    if (inlinePlugin) {
-      analyzeScope({
-        src: inlinePlugin.body,
-        file,
-        diagnostics,
-        routes,
-        pluginDefs,
-        instanceName: inlinePlugin.paramName,
-        prefix: nextPrefix,
-      });
-      searchIndex = closeParen + 1;
-      continue;
-    }
-
-    const pluginRef = extractHandlerRef(pluginExpr);
-    if (pluginRef) {
-      const def = pluginDefs.get(pluginRef);
-      if (def) {
-        analyzeScope({
-          src: def.body,
+      if (member === "register") {
+        analyzeRegisterCall({
+          call: node,
           file,
           diagnostics,
           routes,
           pluginDefs,
-          instanceName: def.paramName,
-          prefix: nextPrefix,
-        });
-      } else {
-        diagnostics.push({
-          level: "warn",
-          code: "ANALYZER_UNRESOLVED_PLUGIN",
-          message: `register plugin '${pluginRef}' could not be resolved in current file`,
-          source: { file },
+          prefix,
+          instanceName,
         });
       }
-      searchIndex = closeParen + 1;
-      continue;
+    });
+  }
+}
+
+function extractShorthandRoute(params: {
+  call: ts.CallExpression;
+  file: string;
+  diagnostics: DiagnosticIR[];
+  routes: RouteIR[];
+  method: RouteIR["method"];
+  prefix: string;
+  instanceName: string;
+}) {
+  const { call, file, diagnostics, routes, method, prefix, instanceName } =
+    params;
+  const pathExpr = call.arguments[0];
+  const handlerExpr = call.arguments[1];
+
+  const path = pathExpr ? extractStringLiteral(pathExpr) : null;
+  if (!path) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+      message: `unsupported dynamic path in ${instanceName}.${method.toLowerCase()}(...)`,
+      source: { file },
+    });
+    return;
+  }
+
+  const handlerRef = handlerExpr ? extractHandlerRef(handlerExpr) : null;
+  if (!handlerRef) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+      message: `unsupported non-reference handler in ${instanceName}.${method.toLowerCase()}('${path}', handler)`,
+      source: { file },
+    });
+    return;
+  }
+
+  routes.push({ method, path: joinPath(prefix, path), handlerRef });
+}
+
+function extractRouteObject(params: {
+  call: ts.CallExpression;
+  file: string;
+  diagnostics: DiagnosticIR[];
+  routes: RouteIR[];
+  prefix: string;
+  instanceName: string;
+}) {
+  const { call, file, diagnostics, routes, prefix, instanceName } = params;
+  const firstArg = call.arguments[0];
+  if (!firstArg || !ts.isObjectLiteralExpression(firstArg)) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+      message: `unsupported route object method in ${instanceName}.route({...})`,
+      source: { file },
+    });
+    return;
+  }
+
+  const methodRaw = extractObjectStringProp(firstArg, "method");
+  const method = methodRaw?.toUpperCase();
+  const path =
+    extractObjectStringProp(firstArg, "url") ??
+    extractObjectStringProp(firstArg, "path");
+  const handlerRef = extractObjectHandlerRef(firstArg, "handler");
+
+  if (!method || !HTTP_METHODS.has(method)) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_ROUTE_OBJECT",
+      message: `unsupported route object method in ${instanceName}.route({...})`,
+      source: { file },
+    });
+    return;
+  }
+
+  if (!path) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+      message: `unsupported route object path in ${instanceName}.route({...})`,
+      source: { file },
+    });
+    return;
+  }
+
+  if (!handlerRef) {
+    diagnostics.push({
+      level: "warn",
+      code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+      message: `unsupported route object handler in ${instanceName}.route({...})`,
+      source: { file },
+    });
+    return;
+  }
+
+  routes.push({
+    method: method as RouteIR["method"],
+    path: joinPath(prefix, path),
+    handlerRef,
+  });
+}
+
+function analyzeRegisterCall(params: {
+  call: ts.CallExpression;
+  file: string;
+  diagnostics: DiagnosticIR[];
+  routes: RouteIR[];
+  pluginDefs: Map<string, PluginDef>;
+  prefix: string;
+  instanceName: string;
+}) {
+  const { call, file, diagnostics, routes, pluginDefs, prefix, instanceName } =
+    params;
+
+  const pluginExpr = call.arguments[0];
+  const optionsExpr = call.arguments[1];
+  const prefixFromRegister =
+    optionsExpr && ts.isObjectLiteralExpression(optionsExpr)
+      ? (extractObjectStringProp(optionsExpr, "prefix") ?? "")
+      : "";
+  const nextPrefix = joinPath(prefix, prefixFromRegister);
+
+  const inlinePlugin = pluginExpr ? parsePluginExpression(pluginExpr) : null;
+  if (inlinePlugin) {
+    analyzeScope({
+      statements: inlinePlugin.statements,
+      file,
+      diagnostics,
+      routes,
+      pluginDefs,
+      instanceName: inlinePlugin.paramName,
+      prefix: nextPrefix,
+    });
+    return;
+  }
+
+  const pluginRef = pluginExpr ? extractHandlerRef(pluginExpr) : null;
+  if (pluginRef) {
+    const def = pluginDefs.get(pluginRef);
+    if (def) {
+      analyzeScope({
+        statements: def.statements,
+        file,
+        diagnostics,
+        routes,
+        pluginDefs,
+        instanceName: def.paramName,
+        prefix: nextPrefix,
+      });
+      return;
     }
 
     diagnostics.push({
       level: "warn",
-      code: "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
-      message: `unsupported register callback pattern on ${instanceName}.register(...)`,
+      code: "ANALYZER_UNRESOLVED_PLUGIN",
+      message: `register plugin '${pluginRef}' could not be resolved in current file`,
       source: { file },
     });
-
-    searchIndex = closeParen + 1;
+    return;
   }
+
+  diagnostics.push({
+    level: "warn",
+    code: "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
+    message: `unsupported register callback pattern on ${instanceName}.register(...)`,
+    source: { file },
+  });
 }
 
-function collectPluginDefinitions(src: string): Map<string, PluginDef> {
+function collectPluginDefinitions(
+  sourceFile: ts.SourceFile,
+): Map<string, PluginDef> {
   const map = new Map<string, PluginDef>();
 
-  const fnRe = /function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/g;
-  for (const m of src.matchAll(fnRe)) {
-    const name = m[1];
-    const params = m[2];
-    const openBrace = (m.index ?? 0) + m[0].length - 1;
-    const closeBrace = findMatching(src, openBrace, "{", "}");
-    if (closeBrace < 0) continue;
-    const body = src.slice(openBrace + 1, closeBrace);
-    const paramName = firstParam(params);
-    if (!paramName) continue;
-    map.set(name, { paramName, body });
-  }
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name &&
+      statement.body
+    ) {
+      const paramName = firstParam(statement.parameters);
+      if (!paramName) continue;
+      map.set(statement.name.text, {
+        paramName,
+        statements: statement.body.statements,
+      });
+      continue;
+    }
 
-  const fnExprRe =
-    /(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)\s*\{/g;
-  for (const m of src.matchAll(fnExprRe)) {
-    const name = m[2];
-    const paramName = firstParam(m[3]);
-    if (!paramName) continue;
-
-    const openBrace = (m.index ?? 0) + m[0].length - 1;
-    const closeBrace = findMatching(src, openBrace, "{", "}");
-    if (closeBrace < 0) continue;
-    const body = src.slice(openBrace + 1, closeBrace);
-    map.set(name, { paramName, body });
-  }
-
-  const arrowExprRe =
-    /(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*\{/g;
-  for (const m of src.matchAll(arrowExprRe)) {
-    const name = m[2];
-    const rawParams = m[3] ?? m[4] ?? "";
-    const paramName = firstParam(rawParams);
-    if (!paramName) continue;
-
-    const openBrace = (m.index ?? 0) + m[0].length - 1;
-    const closeBrace = findMatching(src, openBrace, "{", "}");
-    if (closeBrace < 0) continue;
-    const body = src.slice(openBrace + 1, closeBrace);
-    map.set(name, { paramName, body });
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer)
+        continue;
+      const plugin = parsePluginExpression(declaration.initializer);
+      if (!plugin) continue;
+      map.set(declaration.name.text, plugin);
+    }
   }
 
   return map;
 }
 
-function parsePluginExpression(expr: string): PluginDef | null {
-  const fnRe =
-    /^(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)\s*\{([\s\S]*)\}$/;
-  const fn = expr.match(fnRe);
-  if (fn) {
-    const paramName = firstParam(fn[1]);
+function parsePluginExpression(expr: ts.Expression): PluginDef | null {
+  if (
+    (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) &&
+    ts.isBlock(expr.body)
+  ) {
+    const paramName = firstParam(expr.parameters);
     if (!paramName) return null;
-    return { paramName, body: fn[2] };
-  }
-
-  const arrowBlockRe =
-    /^(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*\{([\s\S]*)\}$/;
-  const arrow = expr.match(arrowBlockRe);
-  if (arrow) {
-    const rawParams = arrow[1] ?? arrow[2] ?? "";
-    const paramName = firstParam(rawParams);
-    if (!paramName) return null;
-    return { paramName, body: arrow[3] };
+    return { paramName, statements: expr.body.statements };
   }
 
   return null;
 }
 
-function firstParam(params: string): string | null {
-  const first = params
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean)[0];
+function firstParam(params: readonly ts.ParameterDeclaration[]): string | null {
+  const first = params[0];
   if (!first) return null;
-  const cleaned = first
-    .replace(/^\.\.\./, "")
-    .split(/[=:]/)[0]
-    .trim();
-  return /^[A-Za-z_$][\w$]*$/.test(cleaned) ? cleaned : null;
+  return ts.isIdentifier(first.name) ? first.name.text : null;
 }
 
-function findMatching(
-  src: string,
-  openIndex: number,
-  open: string,
-  close: string,
-): number {
-  let depth = 0;
-  let quote: string | null = null;
-  let escaped = false;
-
-  for (let i = openIndex; i < src.length; i++) {
-    const ch = src[i];
-    if (quote) {
-      if (!escaped && ch === quote) quote = null;
-      escaped = !escaped && ch === "\\";
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-      escaped = false;
-      continue;
-    }
-
-    if (ch === open) depth++;
-    if (ch === close) {
-      depth--;
-      if (depth === 0) return i;
-    }
+function extractStringLiteral(node: ts.Expression): string | null {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
   }
 
-  return -1;
-}
-
-function splitTopLevel(src: string): string[] {
-  const out: string[] = [];
-  let start = 0;
-  let depthParen = 0;
-  let depthBrace = 0;
-  let depthBracket = 0;
-  let quote: string | null = null;
-  let escaped = false;
-
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
-    if (quote) {
-      if (!escaped && ch === quote) quote = null;
-      escaped = !escaped && ch === "\\";
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-      escaped = false;
-      continue;
-    }
-
-    if (ch === "(") depthParen++;
-    else if (ch === ")") depthParen--;
-    else if (ch === "{") depthBrace++;
-    else if (ch === "}") depthBrace--;
-    else if (ch === "[") depthBracket++;
-    else if (ch === "]") depthBracket--;
-
-    if (
-      ch === "," &&
-      depthParen === 0 &&
-      depthBrace === 0 &&
-      depthBracket === 0
-    ) {
-      out.push(src.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-
-  out.push(src.slice(start).trim());
-  return out;
-}
-
-function extractQuoted(value: string): string | null {
-  const m = value.trim().match(/^['"]([^'"]+)['"]$/);
-  return m ? m[1] : null;
-}
-
-function extractHandlerRef(value: string): string | null {
-  const v = value.trim();
-  if (/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(v)) return v;
   return null;
 }
 
-function extractObjectStringProp(src: string, key: string): string | null {
-  const re = new RegExp(`${escapeRe(key)}\\s*:\\s*['\"]([^'\"]+)['\"]`);
-  const m = src.match(re);
-  return m ? m[1] : null;
+function extractHandlerRef(node: ts.Expression): string | null {
+  if (ts.isIdentifier(node)) return node.text;
+
+  if (ts.isPropertyAccessExpression(node)) {
+    const left = extractHandlerRef(node.expression);
+    if (!left) return null;
+    return `${left}.${node.name.text}`;
+  }
+
+  return null;
 }
 
-function extractObjectValue(src: string, key: string): string | null {
-  const re = new RegExp(`${escapeRe(key)}\\s*:\\s*([^,\\n}]+)`);
-  const m = src.match(re);
-  return m ? m[1].trim() : null;
+function extractObjectStringProp(
+  objectLiteral: ts.ObjectLiteralExpression,
+  key: string,
+): string | null {
+  for (const prop of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(prop) || !isNamedProperty(prop.name, key)) {
+      continue;
+    }
+
+    return extractStringLiteral(prop.initializer);
+  }
+
+  return null;
+}
+
+function extractObjectHandlerRef(
+  objectLiteral: ts.ObjectLiteralExpression,
+  key: string,
+): string | null {
+  for (const prop of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(prop) || !isNamedProperty(prop.name, key)) {
+      continue;
+    }
+
+    return extractHandlerRef(prop.initializer);
+  }
+
+  return null;
+}
+
+function isNamedProperty(name: ts.PropertyName, key: string): boolean {
+  return (
+    (ts.isIdentifier(name) && name.text === key) ||
+    (ts.isStringLiteral(name) && name.text === key)
+  );
+}
+
+function isHttpMethod(member: string): boolean {
+  return HTTP_METHODS.has(member.toUpperCase());
+}
+
+function detectRootInstanceName(sourceFile: ts.SourceFile): string | null {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer)
+        continue;
+      if (!ts.isCallExpression(declaration.initializer)) continue;
+
+      const callee = declaration.initializer.expression;
+      if (ts.isIdentifier(callee) && callee.text === "Fastify") {
+        return declaration.name.text;
+      }
+    }
+  }
+
+  return null;
+}
+
+function walkNode(node: ts.Node, visit: (node: ts.Node) => void): void {
+  visit(node);
+
+  if (ts.isFunctionLike(node) && !ts.isSourceFile(node)) {
+    return;
+  }
+
+  node.forEachChild((child) => {
+    walkNode(child, visit);
+  });
 }
 
 function joinPath(prefix: string, path: string): string {
@@ -408,8 +443,4 @@ function joinPath(prefix: string, path: string): string {
 
 function ensureSlash(v: string): string {
   return v.startsWith("/") ? v : `/${v}`;
-}
-
-function escapeRe(v: string): string {
-  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

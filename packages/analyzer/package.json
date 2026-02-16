@@ -9,7 +9,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@tsgodown/ir-core": "workspace:*"
+    "@tsgodown/ir-core": "workspace:*",
+    "typescript": "^5.9.2"
   },
   "exports": {
     ".": {
