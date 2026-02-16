@@ -1,27 +1,83 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProgramIR } from "@tsgodown/ir-core";
+import type { ProgramIR, RouteIR } from "@tsgodown/ir-core";
+
+function routeHandlerName(index: number): string {
+  return `route${index}`;
+}
+
+function toGoHttpMethod(method: RouteIR["method"]): string {
+  switch (method) {
+    case "GET":
+      return "http.MethodGet";
+    case "POST":
+      return "http.MethodPost";
+    case "PUT":
+      return "http.MethodPut";
+    case "DELETE":
+      return "http.MethodDelete";
+    case "PATCH":
+      return "http.MethodPatch";
+    default:
+      return JSON.stringify(method);
+  }
+}
+
+function quoteGo(value: string): string {
+  return JSON.stringify(value);
+}
+
+function emitRoute(route: RouteIR, index: number): string[] {
+  const methodRef = toGoHttpMethod(route.method);
+  const todoMessage = `TODO implement handler ${route.handlerRef} for ${route.method} ${route.path}`;
+
+  return [
+    `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,
+    `\tif req.Method != ${methodRef} {`,
+    `\t\tw.Header().Set("Allow", ${methodRef})`,
+    '\t\thttp.Error(w, "method not allowed", http.StatusMethodNotAllowed)',
+    "\t\treturn",
+    "\t}",
+    "",
+    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${route.method} ${route.path}.`,
+    "\t//   1) Replace this scaffold with application logic.",
+    "\t//   2) Validate request input and map to domain arguments.",
+    "\t//   3) Write response status, headers, and body.",
+    '\tw.Header().Set("Content-Type", "text/plain; charset=utf-8")',
+    "\tw.WriteHeader(http.StatusNotImplemented)",
+    `\tfmt.Fprintln(w, ${quoteGo(todoMessage)})`,
+    "}",
+    "",
+  ];
+}
 
 export function emitGoProject(ir: ProgramIR, outDir: string) {
   fs.mkdirSync(outDir, { recursive: true });
   const lines: string[] = [];
-  lines.push("package main\n");
-  lines.push('import (\n\t"fmt"\n\t"net/http"\n)\n');
-  lines.push("func main() {");
-  for (const [idx, r] of ir.routes.entries()) {
-    lines.push(`\thttp.HandleFunc("${r.path}", route${idx})`);
-  }
-  lines.push('\tfmt.Println("tsgodown scaffold :18081")');
-  lines.push('\t_ = http.ListenAndServe(":18081", nil)');
-  lines.push("}\n");
 
-  for (const [idx, r] of ir.routes.entries()) {
-    lines.push(`func route${idx}(w http.ResponseWriter, req *http.Request) {`);
+  lines.push("package main", "");
+  lines.push("import (", '\t"fmt"', '\t"net/http"', ")", "");
+
+  lines.push("func registerRoutes(mux *http.ServeMux) {");
+  for (const [index, route] of ir.routes.entries()) {
     lines.push(
-      `\tfmt.Fprintln(w, "TODO ${r.method} ${r.path} -> ${r.handlerRef}")`,
+      `\tmux.HandleFunc(${quoteGo(route.path)}, ${routeHandlerName(index)})`,
     );
-    lines.push("}\n");
+  }
+  lines.push("}", "");
+
+  lines.push("func main() {");
+  lines.push("\tmux := http.NewServeMux()");
+  lines.push("\tregisterRoutes(mux)");
+  lines.push('\tfmt.Println("tsgodown scaffold listening on :18081")');
+  lines.push('\tif err := http.ListenAndServe(":18081", mux); err != nil {');
+  lines.push('\t\tfmt.Println("server exited:", err)');
+  lines.push("\t}");
+  lines.push("}", "");
+
+  for (const [index, route] of ir.routes.entries()) {
+    lines.push(...emitRoute(route, index));
   }
 
-  fs.writeFileSync(path.join(outDir, "main.go"), lines.join("\n"));
+  fs.writeFileSync(path.join(outDir, "main.go"), `${lines.join("\n")}`);
 }
