@@ -14,7 +14,6 @@ const packageExpectations = [
   ["config", ["main", "types", "exports"]],
   ["core", ["main", "types", "exports"]],
   ["emitter-go", ["main", "types", "exports"]],
-  ["ir", ["main", "types", "exports"]],
   ["ir-core", ["main", "types", "exports"]],
   ["node-compat", ["main", "types", "exports"]],
   ["pipeline", ["main", "types", "exports"]],
@@ -85,6 +84,22 @@ test("workspace package runtime entries point to emitted dist files", () => {
       );
     }
   }
+});
+
+test("legacy @tsgodown/ir package is marked inactive", () => {
+  const packageRoot = path.join(packagesDir, "ir");
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+  );
+
+  assert.equal(packageJson.private, true);
+  assert.equal(packageJson.main, undefined);
+  assert.equal(packageJson.types, undefined);
+  assert.equal(packageJson.exports, undefined);
+  assert.ok(
+    typeof packageJson.description === "string" &&
+      packageJson.description.includes("DEPRECATED"),
+  );
 });
 
 test("cli dist entry runs build/check/report/stages commands", () => {

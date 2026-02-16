@@ -1,18 +1,8 @@
 {
   "name": "@tsgodown/ir",
   "version": "0.0.1",
+  "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "node --test"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    }
-  }
+  "description": "DEPRECATED legacy IR package. Inactive in workspace builds; use @tsgodown/ir-core.",
+  "scripts": {}
 }
