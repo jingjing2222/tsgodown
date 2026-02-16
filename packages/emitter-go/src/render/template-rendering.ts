@@ -15,16 +15,77 @@ function quoteGo(value: string): string {
   return JSON.stringify(value);
 }
 
+const GO_KEYWORDS = new Set([
+  "break",
+  "default",
+  "func",
+  "interface",
+  "select",
+  "case",
+  "defer",
+  "go",
+  "map",
+  "struct",
+  "chan",
+  "else",
+  "goto",
+  "package",
+  "switch",
+  "const",
+  "fallthrough",
+  "if",
+  "range",
+  "type",
+  "continue",
+  "for",
+  "import",
+  "return",
+  "var",
+]);
+
+const RESERVED_BINDING_NAMES = new Set(["w", "req", "_"]);
+
+function capitalize(value: string): string {
+  if (value.length === 0) return value;
+  return `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+function resolvePathParamBindingName(
+  name: string,
+  usedNames: Set<string>,
+): string {
+  let base = name;
+  if (GO_KEYWORDS.has(base) || RESERVED_BINDING_NAMES.has(base)) {
+    base = `pathParam${capitalize(name)}`;
+  }
+
+  let candidate = base;
+  let suffix = 2;
+  while (
+    usedNames.has(candidate) ||
+    GO_KEYWORDS.has(candidate) ||
+    RESERVED_BINDING_NAMES.has(candidate)
+  ) {
+    candidate = `${base}${suffix}`;
+    suffix += 1;
+  }
+
+  usedNames.add(candidate);
+  return candidate;
+}
+
 function emitPathParams(route: RouteIR): string[] {
   const names = extractPathParamNames(route.path);
   if (names.length === 0) {
     return [];
   }
 
+  const usedNames = new Set<string>([...RESERVED_BINDING_NAMES]);
   const lines = ["\t// Extracted path params:"];
   for (const name of names) {
-    lines.push(`\t${name} := req.PathValue(${quoteGo(name)})`);
-    lines.push(`\t_ = ${name}`);
+    const bindingName = resolvePathParamBindingName(name, usedNames);
+    lines.push(`\t${bindingName} := req.PathValue(${quoteGo(name)})`);
+    lines.push(`\t_ = ${bindingName}`);
   }
   lines.push("");
 
