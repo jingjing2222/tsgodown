@@ -7,17 +7,20 @@ export enum CapabilityStatus {
   BLOCKED = "BLOCKED",
 }
 
-export type CapabilityKey =
-  | "route.basic"
-  | "handler.async"
-  | "module.esm"
-  | "module.cjs"
-  | "runtime.event_loop"
-  | "node.fs.basic"
-  | "node.path.basic"
-  | "node.url.basic"
-  | "node.process.env"
-  | "node.buffer.basic";
+export const CAPABILITY_KEYS = [
+  "route.basic",
+  "handler.async",
+  "module.esm",
+  "module.cjs",
+  "runtime.event_loop",
+  "node.fs.basic",
+  "node.path.basic",
+  "node.url.basic",
+  "node.process.env",
+  "node.buffer.basic",
+] as const;
+
+export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
 export interface CapabilityRule {
   key: CapabilityKey;
