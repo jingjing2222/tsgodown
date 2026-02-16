@@ -24,36 +24,26 @@ function createOutDir() {
   return dir;
 }
 
-const sampleIr: ProgramIR = {
-  modules: [],
-  handlers: [
-    {
-      id: "health",
-      params: [
-        { name: "req", role: "request" },
-        { name: "reply", role: "response" },
-      ],
-      async: false,
-      semantics: { responseMode: "response-object" },
-    },
-    {
-      id: "createUser",
-      params: [{ name: "req", role: "request" }],
-      async: true,
-      semantics: { responseMode: "return" },
-    },
-  ],
-  diagnostics: [],
-  routes: [
-    {
-      method: "GET",
-      path: "/health",
-      handlerRef: "health",
-      middlewareRefs: ["auth"],
-    },
-    { method: "POST", path: "/users/:id", handlerRef: "createUser" },
-  ],
-};
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+
+function readFixture(name: string): ProgramIR {
+  return JSON.parse(
+    fs.readFileSync(path.join(fixturesDir, `${name}.fixture.json`), "utf8"),
+  ) as ProgramIR;
+}
+
+function readGolden(name: string): string {
+  return fs.readFileSync(path.join(fixturesDir, `${name}.golden.go`), "utf8");
+}
+
+const representativeFixtureNames = [
+  "sample-ir",
+  "nested-restish-route",
+  "empty-method-fallback-and-diagnostics",
+  "go-unsafe-path-params",
+] as const;
+
+const sampleIr = readFixture("sample-ir");
 
 test("emitGoProject emits deterministic main.go scaffold with method-aware route registration and actionable TODO stubs", () => {
   const outDir = createOutDir();
@@ -112,6 +102,22 @@ test("emitGoProject output is byte-for-byte stable across repeated runs", () => 
   const second = fs.readFileSync(path.join(secondOutDir, "main.go"), "utf8");
 
   assert.equal(first, second);
+});
+
+test("emitGoProject representative fixtures stay locked to checked-in golden outputs", () => {
+  for (const fixtureName of representativeFixtureNames) {
+    const outDir = createOutDir();
+    emitGoProject(readFixture(fixtureName), outDir);
+
+    const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+    const golden = readGolden(fixtureName);
+
+    assert.equal(
+      emitted,
+      golden,
+      `fixture ${fixtureName} drifted from golden output; if intentional, refresh ${fixtureName}.golden.go`,
+    );
+  }
 });
 
 test("emitGoProject normalizes route methods and extracts both colon and braces path params", () => {
@@ -273,68 +279,8 @@ test(
   "emitGoProject smoke: generated representative fixtures can go build",
   { skip: !runGoSmoke },
   () => {
-    const fixtures: Array<{ name: string; ir: ProgramIR }> = [
-      {
-        name: "sample-ir",
-        ir: sampleIr,
-      },
-      {
-        name: "nested-restish-route",
-        ir: {
-          modules: [],
-          handlers: [{ id: "nested", params: [], async: false }],
-          diagnostics: [],
-          routes: [
-            {
-              method: "PATCH",
-              path: "/api/v2/users/:id/devices/{deviceId}",
-              handlerRef: "nested",
-            },
-          ],
-        },
-      },
-      {
-        name: "empty-method-fallback-and-diagnostics",
-        ir: {
-          modules: [],
-          handlers: [{ id: "fallback", params: [], async: false }],
-          diagnostics: [
-            {
-              level: "warn",
-              code: "UNSUPPORTED_DYNAMIC_PATH",
-              message:
-                "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
-              source: { file: "src/server.ts", line: 9, column: 2 },
-            },
-          ],
-          routes: [
-            {
-              method: "   " as ProgramIR["routes"][number]["method"],
-              path: "/health",
-              handlerRef: "fallback",
-            },
-          ],
-        },
-      },
-      {
-        name: "go-unsafe-path-params",
-        ir: {
-          modules: [],
-          handlers: [{ id: "keywordParams", params: [], async: false }],
-          diagnostics: [],
-          routes: [
-            {
-              method: "GET",
-              path: "/things/:type/:req/:w/:pathParamType",
-              handlerRef: "keywordParams",
-            },
-          ],
-        },
-      },
-    ];
-
-    for (const fixture of fixtures) {
-      assertBuildsWithGoToolchain(fixture.ir, fixture.name);
+    for (const fixtureName of representativeFixtureNames) {
+      assertBuildsWithGoToolchain(readFixture(fixtureName), fixtureName);
     }
   },
 );

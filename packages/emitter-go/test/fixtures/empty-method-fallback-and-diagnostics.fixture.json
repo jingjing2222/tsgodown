@@ -1,0 +1,19 @@
+{
+  "modules": [],
+  "handlers": [{ "id": "fallback", "params": [], "async": false }],
+  "diagnostics": [
+    {
+      "level": "warn",
+      "code": "UNSUPPORTED_DYNAMIC_PATH",
+      "message": "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
+      "source": { "file": "src/server.ts", "line": 9, "column": 2 }
+    }
+  ],
+  "routes": [
+    {
+      "method": "   ",
+      "path": "/health",
+      "handlerRef": "fallback"
+    }
+  ]
+}
