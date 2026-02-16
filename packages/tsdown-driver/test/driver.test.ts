@@ -87,8 +87,19 @@ test("runBuild invokes rust adapter with JSON request contract", async () => {
       result.manifestPath,
       path.join(cwd, "artifacts", "manifests", "manifest.json"),
     );
+    assert.equal(
+      result.manifestIndexPath,
+      path.join(cwd, "artifacts", "manifests", "index.json"),
+    );
     assert.equal(result.manifest.buildId, "aabbccddeeff0011");
     assert.deepEqual(result.diagnostics, ["adapter=stub"]);
+
+    const indexPayload = JSON.parse(
+      fs.readFileSync(result.manifestIndexPath, "utf8"),
+    ) as { buildId: string; manifest: string; generatedAt: string };
+    assert.equal(indexPayload.buildId, "aabbccddeeff0011");
+    assert.equal(indexPayload.manifest, "manifest.json");
+    assert.equal(typeof indexPayload.generatedAt, "string");
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }

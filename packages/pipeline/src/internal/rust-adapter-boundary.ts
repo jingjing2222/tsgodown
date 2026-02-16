@@ -1,7 +1,7 @@
-import { runBuild } from "@tsgodown/tsdown-driver";
+import { type RunBuildResult, runBuild } from "@tsgodown/tsdown-driver";
 
 export async function runBuildArtifactsViaRustAdapter(
   cwd: string,
-): Promise<void> {
-  await runBuild(cwd);
+): Promise<RunBuildResult> {
+  return runBuild(cwd);
 }

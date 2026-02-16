@@ -19,9 +19,16 @@ export async function orchestratePipelineStages({
 
     try {
       log("[BUILD_ARTIFACTS] collecting build outputs");
-      await runBuildArtifactsViaRustAdapter(cwd);
+      const buildResult = await runBuildArtifactsViaRustAdapter(cwd);
+      if (!buildResult.manifestPath || !buildResult.manifestIndexPath) {
+        throw new Error(
+          "rust adapter contract violation: missing manifest or manifest index path",
+        );
+      }
 
-      log(`[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine)`);
+      log(
+        `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
+      );
       log(
         "[CAPABILITY_GATE] validating required capabilities (delegated to rust engine)",
       );
