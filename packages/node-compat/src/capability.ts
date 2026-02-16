@@ -46,6 +46,8 @@ export interface CapabilityDiagnostic {
   capability: CapabilityKey;
   status: CapabilityStatus;
   source?: CapabilitySource;
+  cause?: string;
+  guidance?: string;
 }
 
 export interface CapabilityCheckOptions {
@@ -127,6 +129,15 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
 
 type ProgramIRLike = CoreProgramIR | Record<string, unknown>;
 
+const DIAGNOSTIC_CAPABILITY_MAP: Record<string, CapabilityKey> = {
+  NODE_FS_BASIC_REQUIRED: "node.fs.basic",
+  NODE_PATH_BASIC_REQUIRED: "node.path.basic",
+  NODE_URL_BASIC_REQUIRED: "node.url.basic",
+  NODE_PROCESS_ENV_REQUIRED: "node.process.env",
+  NODE_BUFFER_BASIC_REQUIRED: "node.buffer.basic",
+  RUNTIME_EVENT_LOOP_REQUIRED: "runtime.event_loop",
+};
+
 function sourceFromUnknown(value: unknown): CapabilitySource | undefined {
   if (!value || typeof value !== "object") return undefined;
   const v = value as Record<string, unknown>;
@@ -157,6 +168,7 @@ function pushUnique(
  * - routes -> route.basic
  * - modules.imports.kind(esm/cjs) -> module.esm/module.cjs
  * - handlers.async -> handler.async
+ * - diagnostics.code -> node/runtime feature requirements
  */
 export function collectRequiredCapabilities(
   ir: ProgramIRLike,
@@ -210,6 +222,23 @@ export function collectRequiredCapabilities(
     }
   }
 
+  const diagnostics = Array.isArray(rec.diagnostics) ? rec.diagnostics : [];
+  for (const d of diagnostics) {
+    const dr = d as Record<string, unknown>;
+    const code = typeof dr.code === "string" ? dr.code : "";
+    const mapped = DIAGNOSTIC_CAPABILITY_MAP[code];
+    if (!mapped) continue;
+    const detail =
+      typeof dr.message === "string" && dr.message.length > 0
+        ? ` (${dr.message})`
+        : "";
+    pushUnique(required, seen, {
+      capability: mapped,
+      reason: `Analyzer diagnostic ${code}${detail}`,
+      source: sourceFromUnknown(dr.source),
+    });
+  }
+
   return required;
 }
 
@@ -220,6 +249,18 @@ function isSupportedStatus(
   if (status === CapabilityStatus.DONE) return true;
   if (status === CapabilityStatus.WIP && allowWip) return true;
   return false;
+}
+
+function formatSource(source?: CapabilitySource): string {
+  if (!source) return "unknown";
+  const line = source.line ?? "?";
+  const column = source.column ?? "?";
+  const suffix = source.viaSourceMap ? " (via source map)" : "";
+  return `${source.file}:${line}:${column}${suffix}`;
+}
+
+function buildGuidance(rule: CapabilityRule): string {
+  return `Update source to avoid '${rule.key}' usage, or implement ${rule.scope} strategy '${rule.strategy}'. See docs/specs/CAPABILITY_MATRIX.md.`;
 }
 
 export function checkCapabilities(
@@ -236,13 +277,21 @@ export function checkCapabilities(
     const rule = CAPABILITY_MATRIX[req.capability];
     if (isSupportedStatus(rule.status, allowWip)) continue;
 
+    const cause = `Capability status is ${rule.status} for required '${req.capability}' (${req.reason}).`;
+    const guidance = buildGuidance(rule);
+    const sourceLocation = formatSource(req.source);
+
     diagnostics.push({
       level: "error",
       code: "CAPABILITY_UNMET",
-      message: `Capability '${req.capability}' is required (${req.reason}) but current status is ${rule.status}.`,
+      message:
+        `Capability '${req.capability}' is not supported (status=${rule.status}) at ${sourceLocation}. ` +
+        `Cause: ${cause} Guidance: ${guidance}`,
       capability: req.capability,
       status: rule.status,
       source: req.source,
+      cause,
+      guidance,
     });
 
     if (failFast) break;
