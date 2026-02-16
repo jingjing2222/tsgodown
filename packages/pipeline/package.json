@@ -14,5 +14,12 @@
     "@tsgodown/node-compat": "workspace:*",
     "@tsgodown/emitter-go": "workspace:*",
     "@tsgodown/tsdown-driver": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   }
 }

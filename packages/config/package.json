@@ -7,5 +7,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   }
 }

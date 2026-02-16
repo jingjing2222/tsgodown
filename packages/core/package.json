@@ -9,6 +9,15 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@tsgodown/analyzer": "workspace:*",
+    "@tsgodown/config": "workspace:*",
     "@tsgodown/pipeline": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   }
 }
