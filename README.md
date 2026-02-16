@@ -38,5 +38,11 @@ Generated output:
 - Legacy TypeScript core analyze/capability/emit paths are deprecated and disabled in `@tsgodown/core`/`@tsgodown/pipeline` (orchestration/UI only).
 - Active IR model/package is `@tsgodown/ir-core` and policy SSoT remains `IR_SPEC.md` + `CAPABILITY_MATRIX.md`.
 
+## Workspace Package Policy
+- Placeholder packages are not kept as empty directories.
+- If a package is not implemented yet, track it in docs/backlog only (do not create `packages/<name>` until there is executable scaffold/code).
+- `packages/artifact-indexer`, `packages/go-emitter`, `packages/runtime-go`, and `packages/test-harness` are intentionally absent under this policy.
+- Current Go emitter package path is `packages/emitter-go`.
+
 ## License
 MIT
