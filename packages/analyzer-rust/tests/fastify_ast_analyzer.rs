@@ -244,6 +244,13 @@ fn handles_chained_routes_nested_plugins_and_single_param_function_plugins() {
                 ("POST", "/admin/audit/logs", "createAuditLog"),
             ],
         ),
+        (
+            "put-delete-chaining-fastify.fixture.txt",
+            vec![
+                ("PUT", "/users/:id", "replaceUser"),
+                ("DELETE", "/users/:id", "removeUser"),
+            ],
+        ),
     ];
 
     for (name, expected_routes) in cases {
