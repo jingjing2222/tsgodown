@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProgramIR, RouteIR } from "@tsgodown/ir-core";
+import type { HandlerIR, ProgramIR, RouteIR } from "@tsgodown/ir-core";
 
 function routeHandlerName(index: number): string {
   return `route${index}`;
@@ -49,7 +49,16 @@ function emitPathParams(route: RouteIR): string[] {
   return lines;
 }
 
-function emitRoute(route: RouteIR, index: number): string[] {
+function formatHandlerParams(handler: HandlerIR | undefined): string {
+  if (!handler || handler.params.length === 0) return "none";
+  return handler.params.map((p) => `${p.role}:${p.name}`).join(", ");
+}
+
+function emitRoute(
+  route: RouteIR,
+  index: number,
+  handler: HandlerIR | undefined,
+): string[] {
   const todoMessage = `TODO implement handler ${route.handlerRef} for ${route.method} ${route.path}`;
 
   const lines: string[] = [
@@ -60,6 +69,9 @@ function emitRoute(route: RouteIR, index: number): string[] {
     `\t//   Path: ${quoteGo(route.path)}`,
     `\t//   Pattern: ${quoteGo(toServeMuxPattern(route))}`,
     `\t//   Handler: ${quoteGo(route.handlerRef)}`,
+    `\t//   Handler params: ${formatHandlerParams(handler)}`,
+    `\t//   Handler async: ${handler?.async ?? "unknown"}`,
+    `\t//   Handler response mode: ${handler?.semantics?.responseMode ?? "unknown"}`,
   ];
 
   if ((route.middlewareRefs?.length ?? 0) > 0) {
@@ -107,8 +119,12 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   lines.push("\t}");
   lines.push("}", "");
 
+  const handlerById = new Map(
+    ir.handlers.map((handler) => [handler.id, handler]),
+  );
+
   for (const [index, route] of ir.routes.entries()) {
-    lines.push(...emitRoute(route, index));
+    lines.push(...emitRoute(route, index, handlerById.get(route.handlerRef)));
   }
 
   fs.writeFileSync(path.join(outDir, "main.go"), `${lines.join("\n")}`);

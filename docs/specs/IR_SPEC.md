@@ -41,11 +41,17 @@ interface RouteIR {
 
 ### HandlerIR
 ```ts
+type HandlerResponseMode = 'return' | 'response-object' | 'next-callback' | 'unknown'
+
 interface HandlerIR {
   id: string
   params: Array<{ name: string; role: 'request' | 'response' | 'next' | 'custom' }>
   bodyRef?: string
   async: boolean
+  semantics?: {
+    // pragmatic v1: response handling strategy hint for emitters
+    responseMode: HandlerResponseMode
+  }
 }
 ```
 

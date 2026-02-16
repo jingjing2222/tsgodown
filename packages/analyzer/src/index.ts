@@ -1,10 +1,22 @@
 import fs from "node:fs";
-import type { DiagnosticIR, ProgramIR, RouteIR } from "@tsgodown/ir-core";
+import type {
+  DiagnosticIR,
+  HandlerIR,
+  HandlerResponseMode,
+  ProgramIR,
+  RouteIR,
+} from "@tsgodown/ir-core";
 import ts from "typescript";
 
 type PluginDef = {
   paramName: string;
   statements: readonly ts.Statement[];
+};
+
+type HandlerDef = {
+  params: string[];
+  async: boolean;
+  body: string;
 };
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "DELETE", "PATCH"]);
@@ -21,14 +33,18 @@ export function analyzeFastifyEntry(entryFile: string): ProgramIR {
 
   const diagnostics: DiagnosticIR[] = [];
   const routes: RouteIR[] = [];
+  const handlers: HandlerIR[] = [];
   const pluginDefs = collectPluginDefinitions(sourceFile);
+  const handlerDefs = collectHandlerDefinitions(sourceFile);
 
   analyzeScope({
     statements: sourceFile.statements,
     file: entryFile,
     diagnostics,
     routes,
+    handlers,
     pluginDefs,
+    handlerDefs,
     instanceName: detectRootInstanceName(sourceFile) ?? "fastify",
     prefix: "",
   });
@@ -45,7 +61,7 @@ export function analyzeFastifyEntry(entryFile: string): ProgramIR {
   return {
     modules: [],
     routes,
-    handlers: [],
+    handlers,
     diagnostics,
   };
 }
@@ -55,7 +71,9 @@ function analyzeScope(params: {
   file: string;
   diagnostics: DiagnosticIR[];
   routes: RouteIR[];
+  handlers: HandlerIR[];
   pluginDefs: Map<string, PluginDef>;
+  handlerDefs: Map<string, HandlerDef>;
   instanceName: string;
   prefix: string;
 }) {
@@ -64,7 +82,9 @@ function analyzeScope(params: {
     file,
     diagnostics,
     routes,
+    handlers,
     pluginDefs,
+    handlerDefs,
     instanceName,
     prefix,
   } = params;
@@ -83,6 +103,8 @@ function analyzeScope(params: {
           file,
           diagnostics,
           routes,
+          handlers,
+          handlerDefs,
           method: member.toUpperCase() as RouteIR["method"],
           prefix,
           instanceName,
@@ -96,6 +118,8 @@ function analyzeScope(params: {
           file,
           diagnostics,
           routes,
+          handlers,
+          handlerDefs,
           prefix,
           instanceName,
         });
@@ -108,7 +132,9 @@ function analyzeScope(params: {
           file,
           diagnostics,
           routes,
+          handlers,
           pluginDefs,
+          handlerDefs,
           prefix,
           instanceName,
         });
@@ -122,12 +148,23 @@ function extractShorthandRoute(params: {
   file: string;
   diagnostics: DiagnosticIR[];
   routes: RouteIR[];
+  handlers: HandlerIR[];
+  handlerDefs: Map<string, HandlerDef>;
   method: RouteIR["method"];
   prefix: string;
   instanceName: string;
 }) {
-  const { call, file, diagnostics, routes, method, prefix, instanceName } =
-    params;
+  const {
+    call,
+    file,
+    diagnostics,
+    routes,
+    handlers,
+    handlerDefs,
+    method,
+    prefix,
+    instanceName,
+  } = params;
   const pathExpr = call.arguments[0];
   const handlerExpr = call.arguments[1];
 
@@ -154,6 +191,7 @@ function extractShorthandRoute(params: {
   }
 
   routes.push({ method, path: joinPath(prefix, path), handlerRef });
+  upsertHandler(handlers, handlerDefs, handlerRef);
 }
 
 function extractRouteObject(params: {
@@ -161,10 +199,21 @@ function extractRouteObject(params: {
   file: string;
   diagnostics: DiagnosticIR[];
   routes: RouteIR[];
+  handlers: HandlerIR[];
+  handlerDefs: Map<string, HandlerDef>;
   prefix: string;
   instanceName: string;
 }) {
-  const { call, file, diagnostics, routes, prefix, instanceName } = params;
+  const {
+    call,
+    file,
+    diagnostics,
+    routes,
+    handlers,
+    handlerDefs,
+    prefix,
+    instanceName,
+  } = params;
   const firstArg = call.arguments[0];
   if (!firstArg || !ts.isObjectLiteralExpression(firstArg)) {
     diagnostics.push({
@@ -218,6 +267,7 @@ function extractRouteObject(params: {
     path: joinPath(prefix, path),
     handlerRef,
   });
+  upsertHandler(handlers, handlerDefs, handlerRef);
 }
 
 function analyzeRegisterCall(params: {
@@ -225,12 +275,23 @@ function analyzeRegisterCall(params: {
   file: string;
   diagnostics: DiagnosticIR[];
   routes: RouteIR[];
+  handlers: HandlerIR[];
   pluginDefs: Map<string, PluginDef>;
+  handlerDefs: Map<string, HandlerDef>;
   prefix: string;
   instanceName: string;
 }) {
-  const { call, file, diagnostics, routes, pluginDefs, prefix, instanceName } =
-    params;
+  const {
+    call,
+    file,
+    diagnostics,
+    routes,
+    handlers,
+    pluginDefs,
+    handlerDefs,
+    prefix,
+    instanceName,
+  } = params;
 
   const pluginExpr = call.arguments[0];
   const optionsExpr = call.arguments[1];
@@ -247,7 +308,9 @@ function analyzeRegisterCall(params: {
       file,
       diagnostics,
       routes,
+      handlers,
       pluginDefs,
+      handlerDefs,
       instanceName: inlinePlugin.paramName,
       prefix: nextPrefix,
     });
@@ -263,7 +326,9 @@ function analyzeRegisterCall(params: {
         file,
         diagnostics,
         routes,
+        handlers,
         pluginDefs,
+        handlerDefs,
         instanceName: def.paramName,
         prefix: nextPrefix,
       });
@@ -285,6 +350,59 @@ function analyzeRegisterCall(params: {
     message: `unsupported register callback pattern on ${instanceName}.register(...)`,
     source: { file },
   });
+}
+
+function upsertHandler(
+  handlers: HandlerIR[],
+  handlerDefs: Map<string, HandlerDef>,
+  handlerRef: string,
+) {
+  if (!/^[A-Za-z_$][\w$]*$/.test(handlerRef)) return;
+  if (handlers.some((h) => h.id === handlerRef)) return;
+
+  const def = handlerDefs.get(handlerRef);
+  if (!def) return;
+
+  handlers.push({
+    id: handlerRef,
+    params: def.params.map((name) => ({ name, role: inferParamRole(name) })),
+    async: def.async,
+    semantics: {
+      responseMode: inferResponseMode(def.body, def.params),
+    },
+  });
+}
+
+function inferParamRole(name: string): HandlerIR["params"][number]["role"] {
+  const n = name.toLowerCase();
+  if (n === "req" || n === "request") return "request";
+  if (n === "res" || n === "reply" || n === "response") return "response";
+  if (n === "next") return "next";
+  return "custom";
+}
+
+function inferResponseMode(
+  body: string,
+  params: string[],
+): HandlerResponseMode {
+  const responseParam = params.find((p) => {
+    const n = p.toLowerCase();
+    return n === "res" || n === "reply" || n === "response";
+  });
+  if (
+    responseParam &&
+    new RegExp(`\\b${escapeRe(responseParam)}\\s*\\.`).test(body)
+  ) {
+    return "response-object";
+  }
+
+  const nextParam = params.find((p) => p.toLowerCase() === "next");
+  if (nextParam && new RegExp(`\\b${escapeRe(nextParam)}\\s*\\(`).test(body)) {
+    return "next-callback";
+  }
+
+  if (/\breturn\b/i.test(body)) return "return";
+  return "unknown";
 }
 
 function collectPluginDefinitions(
@@ -320,6 +438,47 @@ function collectPluginDefinitions(
   return map;
 }
 
+function collectHandlerDefinitions(
+  sourceFile: ts.SourceFile,
+): Map<string, HandlerDef> {
+  const map = new Map<string, HandlerDef>();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name &&
+      statement.body
+    ) {
+      map.set(statement.name.text, {
+        params: parseParamNames(statement.parameters),
+        async: hasAsyncModifier(statement),
+        body: statement.body.getText(sourceFile),
+      });
+      continue;
+    }
+
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer)
+        continue;
+
+      const init = declaration.initializer;
+      if (
+        (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) &&
+        ts.isBlock(init.body)
+      ) {
+        map.set(declaration.name.text, {
+          params: parseParamNames(init.parameters),
+          async: hasAsyncModifier(init),
+          body: init.body.getText(sourceFile),
+        });
+      }
+    }
+  }
+
+  return map;
+}
+
 function parsePluginExpression(expr: ts.Expression): PluginDef | null {
   if (
     (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) &&
@@ -331,6 +490,23 @@ function parsePluginExpression(expr: ts.Expression): PluginDef | null {
   }
 
   return null;
+}
+
+function parseParamNames(params: readonly ts.ParameterDeclaration[]): string[] {
+  return params
+    .map((p) => {
+      if (!ts.isIdentifier(p.name)) return null;
+      return p.name.text;
+    })
+    .filter((v): v is string => typeof v === "string");
+}
+
+function hasAsyncModifier(node: ts.Node): boolean {
+  return Boolean(
+    (node as { modifiers?: ts.NodeArray<ts.ModifierLike> }).modifiers?.some(
+      (m) => m.kind === ts.SyntaxKind.AsyncKeyword,
+    ),
+  );
 }
 
 function firstParam(params: readonly ts.ParameterDeclaration[]): string | null {
@@ -443,4 +619,8 @@ function joinPath(prefix: string, path: string): string {
 
 function ensureSlash(v: string): string {
   return v.startsWith("/") ? v : `/${v}`;
+}
+
+function escapeRe(v: string): string {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
