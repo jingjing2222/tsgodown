@@ -128,6 +128,49 @@ function createRustEngineLauncher(
   return launcherPath;
 }
 
+function createRustEngineLauncherWithGoMain(cwd: string): string {
+  const goMain = [
+    "package main",
+    "",
+    "import (",
+    '\t"fmt"',
+    '\t"net/http"',
+    ")",
+    "",
+    "func main() {",
+    '\tfmt.Println("tsgodown-fastify-min-ready")',
+    '\thttp.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {',
+    "\t\tw.WriteHeader(http.StatusNotImplemented)",
+    '\t\tfmt.Fprintln(w, "TODO implement handler health for GET /health")',
+    "\t})",
+    '\t_ = http.ListenAndServe(":8080", nil)',
+    "}",
+    "",
+  ].join("\\n");
+
+  return createRustEngineLauncher(cwd, [
+    "import fs from 'node:fs';",
+    "import path from 'node:path';",
+    "const chunks = [];",
+    "for await (const chunk of process.stdin) chunks.push(chunk);",
+    "const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));",
+    "const outDir = path.join(request.cwd, 'dist-go');",
+    "fs.mkdirSync(outDir, { recursive: true });",
+    `fs.writeFileSync(path.join(outDir, 'main.go'), ${JSON.stringify(goMain)}, 'utf8');`,
+    "process.stdout.write(JSON.stringify({",
+    "  ok: true,",
+    "  diagnostics: ['engine=rust-binary-stub'],",
+    "  manifest: {",
+    "    buildId: '1122334455667788',",
+    "    entries: ['src/index.ts'],",
+    "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+    "    types: ['dist/index.d.ts'],",
+    "    tsconfigPath: 'tsconfig.json'",
+    "  }",
+    "}));",
+  ]);
+}
+
 function parseJsonStdout(stdout: string) {
   const jsonStart = stdout.indexOf("{");
   assert.ok(jsonStart >= 0, "expected JSON output");
@@ -606,6 +649,54 @@ test("rust-only fixture matrix keeps build/check/report/stages deterministic", (
     for (const req of requests) {
       assert.equal(req.action, "build");
     }
+  }
+});
+
+test("CLI build fastify-min fixture emits deterministic compile-valid Go scaffold", () => {
+  const cwd = setupProjectFromFixture("fastify-min");
+  const rustLauncher = createRustEngineLauncherWithGoMain(cwd);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const parsed = parseJsonStdout(result.stdout);
+  assert.equal(parsed.command, "build");
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goMain = fs.readFileSync(goPath, "utf8");
+  assert.equal(
+    crypto.createHash("sha256").update(goMain).digest("hex"),
+    "d0f3c26c71a24e6fd949bb91daa5d8e2cad1f6148719c44dd602676e4f159413",
+  );
+  assert.match(goMain, /^package main/m);
+  assert.match(goMain, /func main\(\)/);
+  assert.match(goMain, /http\.HandleFunc\("GET \/health"/);
+
+  const hasGoToolchain =
+    spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+
+  if (hasGoToolchain) {
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-cli-fastify-min"],
+      {
+        cwd: path.dirname(goPath),
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const goBuild = spawnSync("go", ["build", "./..."], {
+      cwd: path.dirname(goPath),
+      encoding: "utf8",
+    });
+    assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
   }
 });
 
