@@ -11,5 +11,12 @@
   },
   "dependencies": {
     "tsdown": "^0.20.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   }
 }

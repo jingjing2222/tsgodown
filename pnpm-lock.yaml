@@ -37,6 +37,12 @@ importers:
 
   packages/core:
     dependencies:
+      '@tsgodown/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
+      '@tsgodown/config':
+        specifier: workspace:*
+        version: link:../config
       '@tsgodown/pipeline':
         specifier: workspace:*
         version: link:../pipeline
