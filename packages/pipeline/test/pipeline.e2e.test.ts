@@ -62,10 +62,10 @@ test("runPipeline executes all stages and emits deterministic Go scaffold", asyn
   assert.equal(fs.existsSync(goPath), true);
 
   const emitted = fs.readFileSync(goPath, "utf8");
-  assert.ok(emitted.includes('mux.HandleFunc("/health", route0)'));
-  assert.ok(emitted.includes('mux.HandleFunc("/users", route1)'));
-  assert.ok(emitted.includes("if req.Method != http.MethodGet {"));
-  assert.ok(emitted.includes("if req.Method != http.MethodPost {"));
+  assert.ok(emitted.includes('mux.HandleFunc("GET /health", route0)'));
+  assert.ok(emitted.includes('mux.HandleFunc("POST /users", route1)'));
+  assert.ok(!emitted.includes("if req.Method != http.MethodGet {"));
+  assert.ok(!emitted.includes("if req.Method != http.MethodPost {"));
   assert.ok(emitted.includes("// Route metadata:"));
   assert.ok(emitted.includes("//   Method: GET"));
   assert.ok(emitted.includes('//   Path: "/health"'));

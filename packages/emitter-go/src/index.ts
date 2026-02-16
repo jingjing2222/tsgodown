@@ -6,53 +6,81 @@ function routeHandlerName(index: number): string {
   return `route${index}`;
 }
 
-function toGoHttpMethod(method: RouteIR["method"]): string {
-  switch (method) {
-    case "GET":
-      return "http.MethodGet";
-    case "POST":
-      return "http.MethodPost";
-    case "PUT":
-      return "http.MethodPut";
-    case "DELETE":
-      return "http.MethodDelete";
-    case "PATCH":
-      return "http.MethodPatch";
-    default:
-      return JSON.stringify(method);
-  }
-}
-
 function quoteGo(value: string): string {
   return JSON.stringify(value);
 }
 
+function toServeMuxPath(pathname: string): string {
+  return pathname.replaceAll(/:([A-Za-z_][A-Za-z0-9_]*)/g, "{$1}");
+}
+
+function toServeMuxPattern(route: RouteIR): string {
+  return `${route.method} ${toServeMuxPath(route.path)}`;
+}
+
+function extractPathParamNames(pathname: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  for (const match of pathname.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const name = match[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+function emitPathParams(route: RouteIR): string[] {
+  const names = extractPathParamNames(route.path);
+  if (names.length === 0) {
+    return [];
+  }
+
+  const lines = ["\t// Extracted path params:"];
+  for (const name of names) {
+    lines.push(`\t${name} := req.PathValue(${quoteGo(name)})`);
+    lines.push(`\t_ = ${name}`);
+  }
+  lines.push("");
+
+  return lines;
+}
+
 function emitRoute(route: RouteIR, index: number): string[] {
-  const methodRef = toGoHttpMethod(route.method);
   const todoMessage = `TODO implement handler ${route.handlerRef} for ${route.method} ${route.path}`;
 
-  return [
+  const lines: string[] = [
     `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,
-    `\tif req.Method != ${methodRef} {`,
-    `\t\tw.Header().Set("Allow", ${methodRef})`,
-    '\t\thttp.Error(w, "method not allowed", http.StatusMethodNotAllowed)',
-    "\t\treturn",
-    "\t}",
     "",
     "\t// Route metadata:",
     `\t//   Method: ${route.method}`,
     `\t//   Path: ${quoteGo(route.path)}`,
+    `\t//   Pattern: ${quoteGo(toServeMuxPattern(route))}`,
     `\t//   Handler: ${quoteGo(route.handlerRef)}`,
+  ];
+
+  if ((route.middlewareRefs?.length ?? 0) > 0) {
+    lines.push(`\t//   Middleware: ${JSON.stringify(route.middlewareRefs)}`);
+  }
+
+  lines.push(
     `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${route.method} ${route.path}.`,
     "\t//   - Replace this scaffold with application logic.",
     "\t//   - Validate request input and map to domain arguments.",
     "\t//   - Write response status, headers, and body.",
+    "",
+    ...emitPathParams(route),
     '\tw.Header().Set("Content-Type", "text/plain; charset=utf-8")',
     "\tw.WriteHeader(http.StatusNotImplemented)",
     `\tfmt.Fprintln(w, ${quoteGo(todoMessage)})`,
     "}",
     "",
-  ];
+  );
+
+  return lines;
 }
 
 export function emitGoProject(ir: ProgramIR, outDir: string) {
@@ -65,7 +93,7 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   lines.push("func registerRoutes(mux *http.ServeMux) {");
   for (const [index, route] of ir.routes.entries()) {
     lines.push(
-      `\tmux.HandleFunc(${quoteGo(route.path)}, ${routeHandlerName(index)})`,
+      `\tmux.HandleFunc(${quoteGo(toServeMuxPattern(route))}, ${routeHandlerName(index)})`,
     );
   }
   lines.push("}", "");

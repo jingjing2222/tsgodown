@@ -28,12 +28,17 @@ const sampleIr: ProgramIR = {
   handlers: [],
   diagnostics: [],
   routes: [
-    { method: "GET", path: "/health", handlerRef: "health" },
-    { method: "POST", path: "/users", handlerRef: "createUser" },
+    {
+      method: "GET",
+      path: "/health",
+      handlerRef: "health",
+      middlewareRefs: ["auth"],
+    },
+    { method: "POST", path: "/users/:id", handlerRef: "createUser" },
   ],
 };
 
-test("emitGoProject emits deterministic main.go scaffold with route registration and actionable TODO stubs", () => {
+test("emitGoProject emits deterministic main.go scaffold with method-aware route registration and actionable TODO stubs", () => {
   const outDir = createOutDir();
 
   emitGoProject(sampleIr, outDir);
@@ -41,24 +46,26 @@ test("emitGoProject emits deterministic main.go scaffold with route registration
   const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
 
   assert.match(emitted, /func registerRoutes\(mux \*http\.ServeMux\) \{/);
-  assert.match(emitted, /mux\.HandleFunc\("\/health", route0\)/);
-  assert.match(emitted, /mux\.HandleFunc\("\/users", route1\)/);
-  assert.match(emitted, /if req\.Method != http\.MethodGet \{/);
-  assert.match(emitted, /if req\.Method != http\.MethodPost \{/);
+  assert.match(emitted, /mux\.HandleFunc\("GET \/health", route0\)/);
+  assert.match(emitted, /mux\.HandleFunc\("POST \/users\/\{id\}", route1\)/);
+  assert.doesNotMatch(emitted, /if req\.Method != http\.MethodGet \{/);
+  assert.doesNotMatch(emitted, /if req\.Method != http\.MethodPost \{/);
   assert.match(emitted, /\/\/ Route metadata:/);
   assert.match(emitted, /\/\/\s+Method:\s+GET/);
   assert.match(emitted, /\/\/\s+Path:\s+"\/health"/);
   assert.match(emitted, /\/\/\s+Handler:\s+"health"/);
+  assert.match(emitted, /\/\/\s+Middleware:\s+\["auth"\]/);
   assert.match(emitted, /\/\/\s+Method:\s+POST/);
-  assert.match(emitted, /\/\/\s+Path:\s+"\/users"/);
+  assert.match(emitted, /\/\/\s+Path:\s+"\/users\/:id"/);
   assert.match(emitted, /\/\/\s+Handler:\s+"createUser"/);
+  assert.match(emitted, /id := req\.PathValue\("id"\)/);
   assert.match(
     emitted,
     /TODO\(tsgodown\): Implement handler "health" for GET \/health\./,
   );
   assert.match(
     emitted,
-    /TODO\(tsgodown\): Implement handler "createUser" for POST \/users\./,
+    /TODO\(tsgodown\): Implement handler "createUser" for POST \/users\/:id\./,
   );
   assert.match(emitted, /w\.WriteHeader\(http\.StatusNotImplemented\)/);
   assert.match(
@@ -67,7 +74,7 @@ test("emitGoProject emits deterministic main.go scaffold with route registration
   );
   assert.match(
     emitted,
-    /fmt\.Fprintln\(w, "TODO implement handler createUser for POST \/users"\)/,
+    /fmt\.Fprintln\(w, "TODO implement handler createUser for POST \/users\/:id"\)/,
   );
 });
 
