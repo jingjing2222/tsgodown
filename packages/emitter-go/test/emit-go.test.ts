@@ -296,9 +296,16 @@ test(
         /TODO implement handler health for GET \/health/,
       );
     } finally {
-      server.kill();
+      server.kill("SIGTERM");
       await new Promise<void>((resolve) => {
-        server.once("close", () => resolve());
+        const forceKillTimer = setTimeout(() => {
+          server.kill("SIGKILL");
+        }, 1500);
+
+        server.once("close", () => {
+          clearTimeout(forceKillTimer);
+          resolve();
+        });
       });
     }
   },
