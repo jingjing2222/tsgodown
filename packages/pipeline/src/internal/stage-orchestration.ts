@@ -58,7 +58,7 @@ export function assertBuildArtifactContract(buildResult: RunBuildResult): void {
 
   if (violations.length > 0) {
     throw new Error(
-      `rust adapter artifact contract violation: ${violations.join("; ")}`,
+      `[pipeline] artifact contract violation: ${violations.join("; ")}`,
     );
   }
 }

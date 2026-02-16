@@ -28,7 +28,12 @@ export async function runBuild(
 
   if (!response.ok) {
     throw new Error(
-      `[tsdown-driver] rust engine failed source=${response.error.source} cause=${response.error.cause} guidance=${response.error.guidance}`,
+      [
+        "[tsdown-driver] rust engine failed",
+        `source=${response.error.source}`,
+        `cause=${response.error.cause}`,
+        `guidance=${response.error.guidance}`,
+      ].join("; "),
     );
   }
 
