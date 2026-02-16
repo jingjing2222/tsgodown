@@ -10,8 +10,8 @@ IR 의미를 Go로 내릴 수 있는지 판정하는 단일 테이블.
 | module.cjs | module | TODO | cjs bridge |
 | runtime.event_loop | runtime | TODO | scheduler shim |
 | node.fs.basic | node api | TODO | os/io adapter |
-| node.path.basic | node api | TODO | filepath adapter |
-| node.url.basic | node api | TODO | net/url adapter |
+| node.path.basic | node api | WIP | filepath adapter (join/resolve/dirname/basename) |
+| node.url.basic | node api | WIP | net/url adapter (URL + URLSearchParams) |
 | node.process.env | node api | TODO | runtime env map |
 | node.buffer.basic | node api | TODO | []byte wrapper |
 

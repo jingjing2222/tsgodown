@@ -107,14 +107,14 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
   "node.path.basic": {
     key: "node.path.basic",
     scope: "node api",
-    status: CapabilityStatus.TODO,
-    strategy: "filepath adapter",
+    status: CapabilityStatus.WIP,
+    strategy: "filepath adapter (join/resolve/dirname/basename)",
   },
   "node.url.basic": {
     key: "node.url.basic",
     scope: "node api",
-    status: CapabilityStatus.TODO,
-    strategy: "net/url adapter",
+    status: CapabilityStatus.WIP,
+    strategy: "net/url adapter (URL + URLSearchParams)",
   },
   "node.process.env": {
     key: "node.process.env",

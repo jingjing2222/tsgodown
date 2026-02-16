@@ -132,6 +132,36 @@ test("fails fast with source-aware diagnostic including cause and guidance", () 
   assert.equal(typeof diag.guidance, "string");
 });
 
+test("treats path/url diagnostics as supported in node-compat v1", () => {
+  const ir = {
+    routes: [],
+    modules: [],
+    handlers: [],
+    diagnostics: [
+      {
+        level: "warn",
+        code: "NODE_PATH_BASIC_REQUIRED",
+        message: "uses path.join",
+        source: { file: "src/path.ts", line: 3, column: 2 },
+      },
+      {
+        level: "warn",
+        code: "NODE_URL_BASIC_REQUIRED",
+        message: "uses new URL",
+        source: { file: "src/url.ts", line: 5, column: 1 },
+      },
+    ],
+  };
+
+  const result = checkCapabilities(ir, { failFast: false });
+  assert.equal(result.ok, true);
+  assert.equal(result.diagnostics.length, 0);
+  assert.deepEqual(
+    result.required.map((req) => req.capability),
+    ["node.path.basic", "node.url.basic"],
+  );
+});
+
 test("reports all unmet capabilities when failFast is disabled", () => {
   const ir = {
     routes: [],
@@ -150,6 +180,18 @@ test("reports all unmet capabilities when failFast is disabled", () => {
         code: "NODE_FS_BASIC_REQUIRED",
         message: "uses fs.readFileSync",
         source: { file: "src/fs.ts", line: 2, column: 4 },
+      },
+      {
+        level: "warn",
+        code: "NODE_PATH_BASIC_REQUIRED",
+        message: "uses path.join",
+        source: { file: "src/path.ts", line: 3, column: 2 },
+      },
+      {
+        level: "warn",
+        code: "NODE_URL_BASIC_REQUIRED",
+        message: "uses new URL",
+        source: { file: "src/url.ts", line: 5, column: 1 },
       },
     ],
   };
