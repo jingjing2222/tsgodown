@@ -30,6 +30,9 @@ jobs:
       - name: Biome format check
         run: pnpm run format:check
 
+      - name: Runtime guard (no legacy TS analyzer)
+        run: pnpm run guard:runtime
+
       - name: Build
         run: pnpm run build
 

@@ -8,11 +8,13 @@
         "configIndex": 0,
         "entry": "src/index.ts",
         "outDir": "dist-go",
-        "artifact": "dist-go/main.go",
+        "artifact": "artifacts/manifests/manifest.json",
         "emitted": true,
         "diagnostics": {
-          "routes": 2,
-          "warnings": []
+          "routes": 0,
+          "warnings": [
+            "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine."
+          ]
         }
       }
     ]
@@ -26,11 +28,13 @@
         "configIndex": 0,
         "entry": "src/index.ts",
         "outDir": "dist-go",
-        "artifact": "dist-go/main.go",
+        "artifact": "artifacts/manifests/manifest.json",
         "emitted": true,
         "diagnostics": {
-          "routes": 2,
-          "warnings": []
+          "routes": 0,
+          "warnings": [
+            "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine."
+          ]
         }
       }
     ]
@@ -44,10 +48,12 @@
         "configIndex": 0,
         "entry": "src/index.ts",
         "outDir": "dist-go",
-        "artifact": "dist-go/main.go",
+        "artifact": "artifacts/manifests/manifest.json",
         "diagnostics": {
-          "routes": 2,
-          "warnings": []
+          "routes": 0,
+          "warnings": [
+            "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine."
+          ]
         }
       }
     ]
@@ -59,7 +65,7 @@
         "configIndex": 0,
         "entry": "src/index.ts",
         "outDir": "dist-go",
-        "artifact": "dist-go/main.go",
+        "artifact": "artifacts/manifests/manifest.json",
         "emitted": true
       }
     ]

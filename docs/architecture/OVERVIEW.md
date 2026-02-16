@@ -1,27 +1,50 @@
 # tsgodown Architecture Overview
 
 ## Goal
-Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts.
+Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts, with **Rust as the only analysis/build core**.
+
+## Ownership Boundaries (non-negotiable)
+- **Rust core owns:**
+  - build orchestration contract execution
+  - source analysis / IR extraction
+  - capability validation inputs
+  - compile-time diagnostics contract
+- **TypeScript owns only:**
+  - CLI orchestration
+  - UX/reporting surface
+  - config loading / command routing
+- **No fallback policy:**
+  - Runtime path must not import or depend on legacy `@tsgodown/analyzer`.
+  - If Rust engine is unavailable, pipeline fails with explicit source/cause/guidance errors.
 
 ## Primary Pipeline
-1. `tsdown-driver`: build project and emit artifacts (bundle, sourcemap, d.ts, manifest)
-2. `artifact-indexer`: link symbols across bundle <-> sourcemap <-> d.ts
-3. `ir-core`: build semantic IR + run normalization/lowering passes
-4. `node-compat`: resolve Node runtime/API semantics (native map/adapter/shim)
-5. `go-emitter`: emit compilable Go project
-6. `test-harness`: JS-vs-Go contract tests, e2e checks, regression snapshots
+1. `tsdown-driver`: invoke Rust engine build contract and persist artifact manifest
+2. `rust core`: analysis + capability gate + build-time diagnostics
+3. `ts orchestration`: command flow, summary formatting, user-facing output
 
 ## Packages
-- `packages/tsdown-driver`: tsdown orchestration and artifact capture
-- `packages/artifact-indexer`: source map graph + symbol index
-- `packages/ir-core`: compiler IR model + passes
-- `packages/node-compat`: Node API support matrix + adapters
-- `packages/go-emitter`: IR to Go codegen
-- `packages/runtime-go`: shared Go runtime helpers
-- `packages/pipeline`: end-to-end orchestration
-- `packages/cli`: `tsgodown build/check/report`
-- `packages/test-harness`: fixtures/golden/e2e runners
+- `packages/tsdown-driver`: tsdown + rust engine adapter boundary
+- `packages/pipeline`: orchestration-only runtime pipeline
+- `packages/cli`: `tsgodown build/check/report/stages` user entry
+- `packages/core`: command-level aggregation (runtime orchestration only)
+- `packages/analyzer`: **legacy TS analyzer (inactive runtime path)**
+- `packages/analyzer-rust` and `crates/*`: Rust analysis/build core
 
-## Profiles
-- `profiles/fastify`: first-class profile for long-term support
-- `profiles/express`, `profiles/nest`: future profiles
+## CI/Guardrails
+- `scripts/guard-no-legacy-ts-analyzer.mjs` enforces:
+  - no `@tsgodown/analyzer` dependency in runtime packages (`cli`, `core`, `pipeline`)
+  - no runtime source imports of `@tsgodown/analyzer`
+- CI must run this guard before build/test.
+
+## Migration Checklist (TS core -> Rust core)
+### Removed from runtime path
+- [x] direct runtime dependency from `core` to `@tsgodown/analyzer`
+- [x] direct runtime dependency from `pipeline` to `@tsgodown/analyzer`
+- [x] TS analyzer import usage in runtime source (`core`/`pipeline`)
+- [x] implicit fallback expectation that TS analyzer can rescue Rust failures
+
+### Remains (by design)
+- [x] `@tsgodown/analyzer` package for legacy reference/testing only
+- [x] TypeScript CLI/config/orchestration layers
+- [x] Rust engine adapter contract in `tsdown-driver`
+- [x] CI guard to prevent runtime regression

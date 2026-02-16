@@ -6,6 +6,9 @@
 - `types/**/*.d.ts`
 - `manifest.json`
 
+> `manifest.json`은 Rust build core 계약의 결과물로 취급한다.
+> TS 계층은 오케스트레이션/표시만 수행하며, 분석 fallback 입력으로 TS analyzer를 사용하지 않는다.
+
 ## manifest.json (draft)
 ```json
 {

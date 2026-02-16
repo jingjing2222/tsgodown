@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { type InlineConfig, type TsdownBundle, build } from "tsdown";
 
 export type BundleFormat = "esm" | "cjs";
 
@@ -62,7 +61,6 @@ export type RustEngineResponse =
     };
 
 interface RunBuildOptions {
-  executeBuild?: (inlineConfig: InlineConfig) => Promise<TsdownBundleLike[]>;
   executeRustEngine?: (
     request: RustEngineRequest,
   ) => Promise<RustEngineResponse>;
@@ -80,7 +78,7 @@ export async function runBuild(
   };
 
   const executeRustEngine =
-    options.executeRustEngine ?? ((req) => invokeRustEngine(req, options));
+    options.executeRustEngine ?? ((req) => invokeRustEngine(req));
   const response = await executeRustEngine(request);
 
   if (!response.ok) {
@@ -100,63 +98,21 @@ export async function runBuild(
 
 async function invokeRustEngine(
   request: RustEngineRequest,
-  options: Pick<RunBuildOptions, "executeBuild">,
 ): Promise<RustEngineResponse> {
   const rustBin = process.env.TSGODOWN_RUST_ENGINE_BIN;
-  if (rustBin) {
-    return invokeRustBinary(rustBin, request);
-  }
-
-  return runRustEngineStub(request, options);
-}
-
-async function runRustEngineStub(
-  request: RustEngineRequest,
-  options: Pick<RunBuildOptions, "executeBuild">,
-): Promise<RustEngineResponse> {
-  if (request.action !== "build") {
+  if (!rustBin) {
     return {
       ok: false,
       error: {
-        source: "rust-engine-stub",
-        cause: `unsupported action: ${request.action}`,
-        guidance: "Use action=build.",
-      },
-    };
-  }
-
-  const inlineConfig: InlineConfig = {
-    cwd: request.cwd,
-    ...(request.configPath ? { config: request.configPath } : {}),
-  };
-
-  let bundles: TsdownBundleLike[];
-  try {
-    const executeBuild =
-      options.executeBuild ??
-      ((config) => build(config) as Promise<TsdownBundle[]>);
-    bundles = await executeBuild(inlineConfig);
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        source: "rust-engine-stub(tsdown.build)",
-        cause: formatErrorWithCause(error),
+        source: "rust-engine-bin-env",
+        cause: "TSGODOWN_RUST_ENGINE_BIN is not set",
         guidance:
-          "Verify tsgodown.config.ts and entry paths, then retry build.",
+          "Set TSGODOWN_RUST_ENGINE_BIN to the Rust engine executable path.",
       },
     };
   }
 
-  return {
-    ok: true,
-    manifest: buildManifestFromBundles(
-      request.cwd,
-      bundles,
-      request.configPath,
-    ),
-    diagnostics: ["engine=rust-stub", "transport=json-io"],
-  };
+  return invokeRustBinary(rustBin, request);
 }
 
 async function invokeRustBinary(

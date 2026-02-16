@@ -6,6 +6,8 @@
 - 프레임워크 이름(Fastify/Nest/Express)은 IR에 직접 저장하지 않는다.
 - IR은 **의미(semantics)** 만 표현한다.
 - Go 변환 가능/불가능 판정은 `Capability Matrix`에서만 수행한다.
+- 런타임 분석/IR 추출의 단일 실행 주체는 Rust core다.
+- TS 런타임 경로는 IR 생성을 직접 수행하지 않으며, Rust 실패 시 TS 분석기로 fallback 하지 않는다.
 
 ## Core IR Nodes
 

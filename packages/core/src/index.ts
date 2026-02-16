@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { analyzeFastifyEntry } from "@tsgodown/analyzer";
 import type { UserConfig } from "@tsgodown/config";
 import { loadUserConfig } from "@tsgodown/config";
 import { runPipeline } from "@tsgodown/pipeline";
@@ -11,6 +10,9 @@ export const ACTIVE_STAGES = [
   "emit",
   "onSuccess",
 ] as const;
+
+const TS_CORE_DEPRECATION_WARNING =
+  "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.";
 
 export type BuildStage = (typeof ACTIVE_STAGES)[number];
 
@@ -46,12 +48,11 @@ function resolvePlan(
 ): BuildTargetPlan {
   const entry = typeof conf.entry === "string" ? conf.entry : "src/index.ts";
   const outDir = conf.outDir ?? "dist-go";
-  const resolvedOut = path.resolve(cwd, outDir);
   return {
     configIndex,
     entry: path.resolve(cwd, entry),
-    outDir: resolvedOut,
-    artifact: path.join(resolvedOut, "main.go"),
+    outDir: path.resolve(cwd, outDir),
+    artifact: path.join(cwd, "artifacts", "manifests", "manifest.json"),
   };
 }
 
@@ -62,27 +63,25 @@ async function run(
   const configs = await loadUserConfig(cwd);
   const targets: BuildTargetResult[] = [];
 
-  if (command === "build") {
+  const artifactPath = path.join(
+    cwd,
+    "artifacts",
+    "manifests",
+    "manifest.json",
+  );
+  if (command === "build" || !fs.existsSync(artifactPath)) {
     await runPipeline(cwd);
   }
 
   for (const [idx, conf] of configs.entries()) {
     const plan = resolvePlan(cwd, conf, idx);
-    const ir = analyzeFastifyEntry(plan.entry);
-
-    if (command === "build") {
-      // Emission already handled by pipeline orchestration.
-    }
-
     const artifactExists = fs.existsSync(plan.artifact);
     targets.push({
       ...plan,
-      emitted: command === "build" ? true : artifactExists,
+      emitted: artifactExists,
       diagnostics: {
-        routes: ir.routes.length,
-        warnings: ir.diagnostics
-          .filter((d) => d.level === "warn")
-          .map((d) => d.message),
+        routes: 0,
+        warnings: [TS_CORE_DEPRECATION_WARNING],
       },
     });
   }
@@ -119,7 +118,7 @@ export async function stages(
       const plan = resolvePlan(cwd, conf, idx);
       return {
         ...plan,
-        diagnostics: { routes: 0, warnings: [] },
+        diagnostics: { routes: 0, warnings: [TS_CORE_DEPRECATION_WARNING] },
         emitted: fs.existsSync(plan.artifact),
       };
     }),
