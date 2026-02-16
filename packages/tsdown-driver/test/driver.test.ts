@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   type RustEngineRequest,
   type RustEngineResponse,
+  assertManifestIndexContract,
   buildManifestFromBundles,
   runBuild,
 } from "../src/index.ts";
@@ -46,6 +47,33 @@ test("buildManifestFromBundles maps real bundle, sourcemap and d.ts outputs", ()
   assert.deepEqual(manifest.types, ["dist/index.d.ts"]);
   assert.equal(manifest.tsconfigPath, "tsconfig.build.json");
   assert.match(manifest.buildId, /^[a-f0-9]{16}$/);
+});
+
+test("assertManifestIndexContract rejects malformed artifact index payloads with actionable details", () => {
+  const manifest = {
+    buildId: "aabbccddeeff0011",
+    entries: ["src/index.ts"],
+    bundles: [
+      {
+        file: "dist/index.mjs",
+        map: "dist/index.mjs.map",
+        format: "esm" as const,
+        exports: [],
+      },
+    ],
+    types: ["dist/index.d.ts"],
+    tsconfigPath: "tsconfig.json",
+  };
+
+  assert.throws(
+    () =>
+      assertManifestIndexContract(manifest, {
+        buildId: "ffeeddccbbaa9988",
+        manifest: "manifest-v2.json",
+        generatedAt: "not-a-date",
+      }),
+    /artifact contract violation: manifest index buildId mismatch .*manifest index manifest must equal "manifest\.json" .*generatedAt must be ISO-8601 parseable/s,
+  );
 });
 
 test("runBuild invokes rust adapter with JSON request contract", async () => {
