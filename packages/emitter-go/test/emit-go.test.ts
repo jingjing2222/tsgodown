@@ -276,7 +276,9 @@ test(
     try {
       while (Date.now() < deadline) {
         try {
-          const response = await fetch(url);
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(1000),
+          });
           responseStatus = response.status;
           responseText = await response.text();
           break;
