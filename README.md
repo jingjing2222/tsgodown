@@ -33,5 +33,9 @@ Generated output:
 - `pnpm run format:check`
 - `pnpm run test:tdd`
 
+## Migration Note
+- Legacy package `@tsgodown/ir` is deprecated and intentionally inactive.
+- Active IR model/package is `@tsgodown/ir-core`.
+
 ## License
 MIT
