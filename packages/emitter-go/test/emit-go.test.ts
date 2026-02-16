@@ -169,6 +169,21 @@ test(
     for (const fixture of fixtures) {
       const outDir = createOutDir();
       emitGoProject(fixture, outDir);
+
+      const modInit = spawnSync(
+        "go",
+        ["mod", "init", "example.com/tsgodown-smoke"],
+        {
+          cwd: outDir,
+          encoding: "utf8",
+        },
+      );
+      assert.equal(
+        modInit.status,
+        0,
+        `go mod init failed for fixture in ${outDir}\nstdout:\n${modInit.stdout}\nstderr:\n${modInit.stderr}`,
+      );
+
       const result = spawnSync("go", ["build", "./..."], {
         cwd: outDir,
         encoding: "utf8",
