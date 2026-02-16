@@ -21,15 +21,6 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
-  packages/analyzer:
-    dependencies:
-      '@tsgodown/ir-core':
-        specifier: workspace:*
-        version: link:../ir-core
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
   packages/cli:
     dependencies:
       '@tsgodown/core':

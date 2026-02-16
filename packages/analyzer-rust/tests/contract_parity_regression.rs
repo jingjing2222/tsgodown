@@ -13,7 +13,7 @@ struct ContractFixture {
 
 fn fixture(name: &str) -> (String, String) {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("../analyzer/test/fixtures");
+    path.push("tests/fixtures");
     path.push(name);
     let src = fs::read_to_string(&path).expect("fixture must exist");
     (path.to_string_lossy().to_string(), src)

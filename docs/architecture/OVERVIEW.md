@@ -27,14 +27,7 @@ Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts, with *
 - `packages/pipeline`: orchestration-only runtime pipeline
 - `packages/cli`: `tsgodown build/check/report/stages` user entry
 - `packages/core`: command-level aggregation (runtime orchestration only)
-- `packages/analyzer`: **legacy TS analyzer (inactive runtime path)**
 - `packages/analyzer-rust` and `crates/*`: Rust analysis/build core
-
-## CI/Guardrails
-- `scripts/guard-no-legacy-ts-analyzer.mjs` enforces:
-  - no `@tsgodown/analyzer` dependency in runtime packages (`cli`, `core`, `pipeline`)
-  - no runtime source imports of `@tsgodown/analyzer`
-- CI must run this guard before build/test.
 
 ## Migration Checklist (TS core -> Rust core)
 ### Removed from runtime path
@@ -44,7 +37,5 @@ Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts, with *
 - [x] implicit fallback expectation that TS analyzer can rescue Rust failures
 
 ### Remains (by design)
-- [x] `@tsgodown/analyzer` package for legacy reference/testing only
 - [x] TypeScript CLI/config/orchestration layers
 - [x] Rust engine adapter contract in `tsdown-driver`
-- [x] CI guard to prevent runtime regression
