@@ -36,6 +36,30 @@ function setupProject(
   return dir;
 }
 
+function setupProjectFromFixture(name: string) {
+  const sourceRoot = path.join(fixturesDir, "projects", name);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-cli-e2e-"));
+  tempDirs.push(dir);
+
+  const copyRecursive = (from: string, to: string) => {
+    const stat = fs.statSync(from);
+    if (stat.isDirectory()) {
+      fs.mkdirSync(to, { recursive: true });
+      for (const entry of fs.readdirSync(from)) {
+        copyRecursive(path.join(from, entry), path.join(to, entry));
+      }
+      return;
+    }
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+  };
+
+  copyRecursive(sourceRoot, dir);
+  fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "dist", "index.js"), "export {};\n");
+  return dir;
+}
+
 function createRustLauncher(cwd: string) {
   const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
   fs.writeFileSync(
@@ -487,4 +511,129 @@ test("CLI surfaces rust adapter error propagation format", () => {
     result.stderr,
     /guidance=Check Rust engine JSON contract and retry\./,
   );
+});
+
+test("rust-only fixture matrix keeps build/check/report/stages deterministic", () => {
+  const fixtures = [
+    "multi-file",
+    "nested-register-prefix",
+    "route-object-variants",
+  ] as const;
+
+  for (const fixture of fixtures) {
+    const cwd = setupProjectFromFixture(fixture);
+    const capturePath = path.join(cwd, `request-${crypto.randomUUID()}.json`);
+    const rustLauncher = createRustEngineLauncher(cwd, [
+      "import fs from 'node:fs';",
+      "const chunks = [];",
+      "for await (const chunk of process.stdin) chunks.push(chunk);",
+      "const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));",
+      `fs.appendFileSync(${JSON.stringify(capturePath)}, JSON.stringify(request) + '\\n');`,
+      "process.stdout.write(JSON.stringify({",
+      "  ok: true,",
+      "  diagnostics: ['engine=rust-binary-stub'],",
+      "  manifest: {",
+      "    buildId: '1122334455667788',",
+      "    entries: ['src/index.ts'],",
+      "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+      "    types: ['dist/index.d.ts'],",
+      "    tsconfigPath: 'tsconfig.json'",
+      "  }",
+      "}));",
+    ]);
+
+    const buildResult = runCli(cwd, "build", {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
+    assert.equal(buildResult.status, 0, `build failed (${fixture})`);
+    const buildJson = parseJsonStdout(buildResult.stdout);
+    assert.equal(buildJson.command, "build");
+    assert.equal(
+      (buildJson.targets as Array<Record<string, unknown>>)[0]?.emitted,
+      true,
+      `build should emit manifest (${fixture})`,
+    );
+
+    fs.rmSync(path.join(cwd, "artifacts"), { recursive: true, force: true });
+    const checkResult = runCli(cwd, "check", {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
+    assert.equal(checkResult.status, 0, `check failed (${fixture})`);
+    const checkJson = parseJsonStdout(checkResult.stdout);
+    assert.equal(checkJson.command, "check");
+
+    fs.rmSync(path.join(cwd, "artifacts"), { recursive: true, force: true });
+    const reportResult = runCli(cwd, "report", {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
+    assert.equal(reportResult.status, 0, `report failed (${fixture})`);
+    const reportJson = parseJsonStdout(reportResult.stdout);
+    assert.equal(reportJson.command, "report");
+
+    fs.rmSync(path.join(cwd, "artifacts"), { recursive: true, force: true });
+    const stagesResult = runCli(cwd, "stages", {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
+    assert.equal(stagesResult.status, 0, `stages failed (${fixture})`);
+    const stagesJson = parseJsonStdout(stagesResult.stdout);
+    assert.deepEqual(stagesJson.stages, [
+      "load-config",
+      "analyze",
+      "emit",
+      "onSuccess",
+    ]);
+    assert.equal(
+      (stagesJson.targets as Array<Record<string, unknown>>)[0]?.emitted,
+      false,
+      `stages should not emit manifest (${fixture})`,
+    );
+
+    const requests = fs
+      .readFileSync(capturePath, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { action: string });
+    assert.equal(
+      requests.length,
+      3,
+      `expected build/check/report invokes (${fixture})`,
+    );
+    for (const req of requests) {
+      assert.equal(req.action, "build");
+    }
+  }
+});
+
+test("rust-only fixture matrix surfaces deterministic contract error path", () => {
+  const cwd = setupProjectFromFixture("error-missing-entry");
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "process.stdout.write(JSON.stringify({",
+    "  ok: false,",
+    "  error: {",
+    "    source: 'rust-engine-adapter',",
+    "    cause: 'ENOENT: missing entry src/missing.ts',",
+    "    guidance: 'Verify tsgodown.config.ts entry path and file existence.'",
+    "  }",
+    "}));",
+  ]);
+
+  for (const command of ["build", "check", "report"] as const) {
+    const result = runCli(cwd, command, {
+      ...process.env,
+      TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    });
+    assert.notEqual(result.status, 0, `${command} should fail`);
+    assert.match(result.stderr, /source=rust-engine-adapter/);
+    assert.match(result.stderr, /cause=ENOENT: missing entry src\/missing\.ts/);
+    assert.match(
+      result.stderr,
+      /guidance=Verify tsgodown\.config\.ts entry path and file existence\./,
+    );
+  }
 });
