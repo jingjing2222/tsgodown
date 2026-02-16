@@ -243,53 +243,98 @@ const hasGoToolchain =
   spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
 const runGoSmoke = hasGoToolchain && process.env.CI !== "true";
 
+function assertBuildsWithGoToolchain(fixture: ProgramIR, fixtureName: string) {
+  const outDir = createOutDir();
+  emitGoProject(fixture, outDir);
+
+  const modulePath = `example.com/tsgodown-smoke/${fixtureName}`;
+  const modInit = spawnSync("go", ["mod", "init", modulePath], {
+    cwd: outDir,
+    encoding: "utf8",
+  });
+  assert.equal(
+    modInit.status,
+    0,
+    `go mod init failed for fixture ${fixtureName} in ${outDir}\nstdout:\n${modInit.stdout}\nstderr:\n${modInit.stderr}`,
+  );
+
+  const result = spawnSync("go", ["build", "./..."], {
+    cwd: outDir,
+    encoding: "utf8",
+  });
+  assert.equal(
+    result.status,
+    0,
+    `go build failed for fixture ${fixtureName} in ${outDir}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+}
+
 test(
   "emitGoProject smoke: generated representative fixtures can go build",
   { skip: !runGoSmoke },
   () => {
-    const fixtures: ProgramIR[] = [
-      sampleIr,
+    const fixtures: Array<{ name: string; ir: ProgramIR }> = [
       {
-        modules: [],
-        handlers: [{ id: "nested", params: [], async: false }],
-        diagnostics: [],
-        routes: [
-          {
-            method: "PATCH",
-            path: "/api/v2/users/:id/devices/{deviceId}",
-            handlerRef: "nested",
-          },
-        ],
+        name: "sample-ir",
+        ir: sampleIr,
+      },
+      {
+        name: "nested-restish-route",
+        ir: {
+          modules: [],
+          handlers: [{ id: "nested", params: [], async: false }],
+          diagnostics: [],
+          routes: [
+            {
+              method: "PATCH",
+              path: "/api/v2/users/:id/devices/{deviceId}",
+              handlerRef: "nested",
+            },
+          ],
+        },
+      },
+      {
+        name: "empty-method-fallback-and-diagnostics",
+        ir: {
+          modules: [],
+          handlers: [{ id: "fallback", params: [], async: false }],
+          diagnostics: [
+            {
+              level: "warn",
+              code: "UNSUPPORTED_DYNAMIC_PATH",
+              message:
+                "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
+              source: { file: "src/server.ts", line: 9, column: 2 },
+            },
+          ],
+          routes: [
+            {
+              method: "   " as ProgramIR["routes"][number]["method"],
+              path: "/health",
+              handlerRef: "fallback",
+            },
+          ],
+        },
+      },
+      {
+        name: "go-unsafe-path-params",
+        ir: {
+          modules: [],
+          handlers: [{ id: "keywordParams", params: [], async: false }],
+          diagnostics: [],
+          routes: [
+            {
+              method: "GET",
+              path: "/things/:type/:req/:w/:pathParamType",
+              handlerRef: "keywordParams",
+            },
+          ],
+        },
       },
     ];
 
     for (const fixture of fixtures) {
-      const outDir = createOutDir();
-      emitGoProject(fixture, outDir);
-
-      const modInit = spawnSync(
-        "go",
-        ["mod", "init", "example.com/tsgodown-smoke"],
-        {
-          cwd: outDir,
-          encoding: "utf8",
-        },
-      );
-      assert.equal(
-        modInit.status,
-        0,
-        `go mod init failed for fixture in ${outDir}\nstdout:\n${modInit.stdout}\nstderr:\n${modInit.stderr}`,
-      );
-
-      const result = spawnSync("go", ["build", "./..."], {
-        cwd: outDir,
-        encoding: "utf8",
-      });
-      assert.equal(
-        result.status,
-        0,
-        `go build failed for fixture in ${outDir}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-      );
+      assertBuildsWithGoToolchain(fixture.ir, fixture.name);
     }
   },
 );
