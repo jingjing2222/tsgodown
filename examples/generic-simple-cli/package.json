@@ -1,0 +1,13 @@
+{
+  "name": "generic-simple-cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:go": "tsgodown build --json"
+  },
+  "devDependencies": {
+    "tsgodown": "workspace:*",
+    "typescript": "~5.9.2"
+  }
+}

@@ -61,6 +61,15 @@ importers:
         specifier: ~5.9.2
         version: 5.9.3
 
+  examples/generic-simple-cli:
+    devDependencies:
+      tsgodown:
+        specifier: workspace:*
+        version: link:../../packages/cli
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
+
   examples/hono-scaffold-real:
     dependencies:
       hono:
