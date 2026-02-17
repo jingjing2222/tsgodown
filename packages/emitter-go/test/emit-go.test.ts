@@ -304,6 +304,44 @@ test("emitGoProject avoids Go-unsafe path param bindings while preserving PathVa
   assert.doesNotMatch(emitted, /\sw := req\.PathValue\("w"\)/);
 });
 
+test("emitGoProject keeps middleware metadata comments deterministic for equivalent reordered middleware refs", () => {
+  const firstOutDir = createOutDir();
+  const secondOutDir = createOutDir();
+
+  const firstIr: ProgramIR = {
+    modules: [],
+    handlers: [{ id: "h", params: [], async: false }],
+    diagnostics: [],
+    routes: [
+      {
+        method: "GET",
+        path: "/users/:id",
+        handlerRef: "h",
+        middlewareRefs: ["z-auth", "a-trace", "m-cache"],
+      },
+    ],
+  };
+
+  const secondIr: ProgramIR = {
+    ...firstIr,
+    routes: [
+      {
+        ...firstIr.routes[0],
+        middlewareRefs: ["m-cache", "z-auth", "a-trace"],
+      },
+    ],
+  };
+
+  emitGoProject(firstIr, firstOutDir);
+  emitGoProject(secondIr, secondOutDir);
+
+  const first = fs.readFileSync(path.join(firstOutDir, "main.go"), "utf8");
+  const second = fs.readFileSync(path.join(secondOutDir, "main.go"), "utf8");
+
+  assert.equal(first, second);
+  assert.match(second, /\/\/\s+Middleware:\s+\["a-trace","m-cache","z-auth"\]/);
+});
+
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
   const outDir = createOutDir();
 
