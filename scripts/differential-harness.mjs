@@ -46,7 +46,8 @@ const SCENARIOS = {
     ],
   },
   "generic-simple-cli-get-health": {
-    semanticsSurface: "generic simple CLI scaffold parity via generated health route",
+    semanticsSurface:
+      "generic simple CLI scaffold parity via generated health route",
     description:
       "generic-simple-cli deterministic runtime parity scenario for generated GET /health scaffold behavior.",
     cases: [
