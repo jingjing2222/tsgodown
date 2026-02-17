@@ -5,8 +5,10 @@ const root = process.cwd();
 
 const required = [
   "examples/fastify-scaffold-real/src/app.ts",
-  "examples/fastify-scaffold-real/src/routes/health.ts",
-  "examples/fastify-scaffold-real/src/routes/users.ts",
+  "examples/fastify-scaffold-real/src/plugins/sensible.ts",
+  "examples/fastify-scaffold-real/src/plugins/support.ts",
+  "examples/fastify-scaffold-real/src/routes/root.ts",
+  "examples/fastify-scaffold-real/src/routes/example/index.ts",
   "examples/fastify-scaffold-real/tsgodown.config.ts",
   "packages/cli/test/fixtures/projects/fastify-scaffold-real/src/app.ts",
   "packages/cli/test/fixtures/projects/fastify-scaffold-real/src/routes/health.ts",

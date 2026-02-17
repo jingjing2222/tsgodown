@@ -1,7 +1,5 @@
-import { defineConfig } from "@tsgodown/config";
-
-export default defineConfig({
-  entry: "src/index.ts",
+export default {
+  entry: "src/app.ts",
   outDir: "dist-go",
   treeshake: true,
   fastify: {
@@ -12,7 +10,4 @@ export default defineConfig({
     package: "main",
     port: 18081,
   },
-  onSuccess() {
-    console.log("[example] tsgodown done");
-  },
-});
+};
