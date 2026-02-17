@@ -148,9 +148,6 @@ pub(crate) fn upsert_handler(
     defs: &HashMap<String, HandlerDef>,
     handler_ref: &str,
 ) {
-    if handler_ref.contains('.') {
-        return;
-    }
     if handlers.iter().any(|h| h.id == handler_ref) {
         return;
     }

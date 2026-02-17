@@ -322,6 +322,57 @@ fn handles_chained_routes_nested_plugins_and_single_param_function_plugins() {
 }
 
 #[test]
+fn extracts_handlers_from_object_literals_and_class_instances() {
+    let (file, src) = fixture("class-object-literal-handlers-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/users", "userHandlers.list"),
+            ("POST", "/users", "userHandlers.create"),
+            ("GET", "/users/:id", "controller.detail"),
+            ("DELETE", "/users/:id", "controller.remove"),
+        ]
+    );
+
+    assert_eq!(
+        ir.handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "userHandlers.list",
+                vec![("req", "request"), ("reply", "response")],
+                false,
+            ),
+            ("userHandlers.create", vec![("request", "request")], true),
+            ("controller.detail", vec![("request", "request")], true),
+            (
+                "controller.remove",
+                vec![("req", "request"), ("reply", "response")],
+                false,
+            ),
+        ]
+    );
+
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
 fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_patterns() {
     let (file, src) = fixture("unsupported-route-object-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);
