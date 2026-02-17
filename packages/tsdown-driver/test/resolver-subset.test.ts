@@ -103,8 +103,16 @@ test("resolver subset stays fail-closed for unsupported import clauses", () => {
 
   try {
     fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
-    fs.writeFileSync(path.join(cwd, "src", "entry.ts"), "import {\n  bad as ok\n} from './ok';\n", "utf8");
-    fs.writeFileSync(path.join(cwd, "src", "ok.ts"), "export const bad = 1;\n", "utf8");
+    fs.writeFileSync(
+      path.join(cwd, "src", "entry.ts"),
+      "import {\n  bad as ok\n} from './ok';\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(cwd, "src", "ok.ts"),
+      "export const bad = 1;\n",
+      "utf8",
+    );
 
     const result = resolveSubsetFromEntries(cwd, ["src/entry.ts"]);
 

@@ -114,7 +114,10 @@ export function resolveSubsetFromEntries(
         }
 
         if (clause.startsWith("{")) {
-          const named = parseNamedBindings(clause, isTypeOnlyImport ? "type" : "value");
+          const named = parseNamedBindings(
+            clause,
+            isTypeOnlyImport ? "type" : "value",
+          );
           if (!named) {
             unresolved.push({
               code: "UNSUPPORTED_IMPORT_CLAUSE",
@@ -124,7 +127,9 @@ export function resolveSubsetFromEntries(
             });
             continue;
           }
-          symbols.push(...named.map((record) => ({ ...record, from: rel, spec })));
+          symbols.push(
+            ...named.map((record) => ({ ...record, from: rel, spec })),
+          );
           continue;
         }
 
@@ -141,8 +146,10 @@ export function resolveSubsetFromEntries(
 
         if (/^[A-Za-z_$][\w$]*\s*,\s*\{/.test(clause)) {
           const firstComma = clause.indexOf(",");
-          const defaultPart = firstComma >= 0 ? clause.slice(0, firstComma).trim() : undefined;
-          const namedPart = firstComma >= 0 ? clause.slice(firstComma + 1).trim() : undefined;
+          const defaultPart =
+            firstComma >= 0 ? clause.slice(0, firstComma).trim() : undefined;
+          const namedPart =
+            firstComma >= 0 ? clause.slice(firstComma + 1).trim() : undefined;
           if (!defaultPart || !namedPart) {
             unresolved.push({
               code: "UNSUPPORTED_IMPORT_CLAUSE",
@@ -161,7 +168,10 @@ export function resolveSubsetFromEntries(
             kind: isTypeOnlyImport ? "type" : "value",
           });
 
-          const named = parseNamedBindings(namedPart, isTypeOnlyImport ? "type" : "value");
+          const named = parseNamedBindings(
+            namedPart,
+            isTypeOnlyImport ? "type" : "value",
+          );
           if (!named) {
             unresolved.push({
               code: "UNSUPPORTED_IMPORT_CLAUSE",
@@ -172,7 +182,9 @@ export function resolveSubsetFromEntries(
             continue;
           }
 
-          symbols.push(...named.map((record) => ({ ...record, from: rel, spec })));
+          symbols.push(
+            ...named.map((record) => ({ ...record, from: rel, spec })),
+          );
           continue;
         }
 
@@ -215,10 +227,14 @@ export function resolveSubsetFromEntries(
   }
 
   return {
-    modules: uniqueByKey(modules, (item) => `${item.from}\u0000${item.spec}\u0000${item.resolved}`),
+    modules: uniqueByKey(
+      modules,
+      (item) => `${item.from}\u0000${item.spec}\u0000${item.resolved}`,
+    ),
     symbols: uniqueByKey(
       symbols,
-      (item) => `${item.from}\u0000${item.spec}\u0000${item.imported}\u0000${item.local}\u0000${item.kind}`,
+      (item) =>
+        `${item.from}\u0000${item.spec}\u0000${item.imported}\u0000${item.local}\u0000${item.kind}`,
     ),
     unresolved: unresolved
       .slice()
@@ -235,14 +251,17 @@ export function resolveSubsetFromEntries(
 function parseNamedBindings(
   clause: string,
   kind: "value" | "type",
-): Array<Pick<ResolverSymbolRecord, "imported" | "local" | "kind">> | undefined {
+):
+  | Array<Pick<ResolverSymbolRecord, "imported" | "local" | "kind">>
+  | undefined {
   const trimmed = clause.trim();
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
 
   const body = trimmed.slice(1, -1).trim();
   if (!body) return [];
 
-  const out: Array<Pick<ResolverSymbolRecord, "imported" | "local" | "kind">> = [];
+  const out: Array<Pick<ResolverSymbolRecord, "imported" | "local" | "kind">> =
+    [];
   for (const raw of body.split(",")) {
     const part = raw.trim();
     if (!part) continue;
@@ -253,7 +272,10 @@ function parseNamedBindings(
     const imported = (left ?? "").trim();
     const local = (right ?? left ?? "").trim();
 
-    if (!/^[A-Za-z_$][\w$]*$/.test(imported) || !/^[A-Za-z_$][\w$]*$/.test(local)) {
+    if (
+      !/^[A-Za-z_$][\w$]*$/.test(imported) ||
+      !/^[A-Za-z_$][\w$]*$/.test(local)
+    ) {
       return undefined;
     }
 
