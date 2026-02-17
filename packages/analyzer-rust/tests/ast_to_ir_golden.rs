@@ -1,0 +1,97 @@
+use std::{fs, path::PathBuf};
+
+use analyzer_rust::{analyze_compiler_entry, ProgramIR};
+
+fn fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
+}
+
+fn render_ir(ir: &ProgramIR) -> String {
+    let mut out = String::new();
+
+    out.push_str("modules:\n");
+    for module in &ir.modules {
+        out.push_str(&format!(
+            "  - id={} source_path={}\n",
+            module.id, module.source_path
+        ));
+        out.push_str("    exports:\n");
+        for export in &module.exports {
+            out.push_str(&format!("      - {}\n", export));
+        }
+        out.push_str("    imports:\n");
+        for import in &module.imports {
+            out.push_str(&format!(
+                "      - spec={} kind={} resolved={}\n",
+                import.spec,
+                import.kind,
+                import.resolved.as_deref().unwrap_or("<none>"),
+            ));
+        }
+    }
+
+    out.push_str("routes:\n");
+    for route in &ir.routes {
+        out.push_str(&format!(
+            "  - method={} path={} handler_ref={}\n",
+            route.method, route.path, route.handler_ref
+        ));
+    }
+
+    out.push_str("handlers:\n");
+    for handler in &ir.handlers {
+        out.push_str(&format!(
+            "  - id={} async={} params={} semantics={}\n",
+            handler.id,
+            handler.r#async,
+            handler.params.len(),
+            if handler.semantics.is_some() {
+                "some"
+            } else {
+                "none"
+            }
+        ));
+    }
+
+    out.push_str("diagnostics:\n");
+    for diag in &ir.diagnostics {
+        out.push_str(&format!(
+            "  - level={} code={} message={} source={}\n",
+            diag.level,
+            diag.code,
+            diag.message,
+            diag.source
+                .as_ref()
+                .map(|s| s.file.as_str())
+                .unwrap_or("<none>"),
+        ));
+    }
+
+    out
+}
+
+fn assert_fixture(fixture_name: &str, golden_name: &str) {
+    let source = fs::read_to_string(fixture_path(fixture_name)).unwrap();
+    let ir = analyze_compiler_entry(fixture_name, &source);
+    let actual = render_ir(&ir);
+    let expected = fs::read_to_string(fixture_path(golden_name)).unwrap();
+    assert_eq!(actual, expected, "golden drift for fixture={fixture_name}");
+}
+
+#[test]
+fn supported_shorthand_routes_are_lowered_deterministically() {
+    assert_fixture("supported-shorthand.ts", "supported-shorthand.golden.txt");
+}
+
+#[test]
+fn route_object_literal_is_lowered_deterministically() {
+    assert_fixture("route-object-literal.ts", "route-object-literal.golden.txt");
+}
+
+#[test]
+fn unsupported_patterns_emit_deterministic_diagnostics() {
+    assert_fixture("unsupported-dynamic.ts", "unsupported-dynamic.golden.txt");
+}

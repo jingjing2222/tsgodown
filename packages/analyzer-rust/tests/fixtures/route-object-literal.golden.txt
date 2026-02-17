@@ -1,0 +1,9 @@
+modules:
+  - id=route-object-literal.ts source_path=route-object-literal.ts
+    exports:
+    imports:
+routes:
+  - method=GET path=/health handler_ref=health
+handlers:
+  - id=health async=false params=0 semantics=none
+diagnostics:

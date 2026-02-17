@@ -1,3 +1,4 @@
+mod builder;
 mod ir;
 
 pub use ir::{
@@ -5,12 +6,6 @@ pub use ir::{
     ModuleIR, ProgramIR, RouteIR,
 };
 
-pub fn analyze_compiler_entry(_file: &str, _src: &str) -> ProgramIR {
-    ProgramIR {
-        modules: vec![],
-        routes: vec![],
-        handlers: vec![],
-        diagnostics: vec![],
-    }
-    .normalize()
+pub fn analyze_compiler_entry(file: &str, src: &str) -> ProgramIR {
+    builder::build_program_ir(file, src)
 }
