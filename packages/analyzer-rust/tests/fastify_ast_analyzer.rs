@@ -512,6 +512,36 @@ fn supports_register_plugin_local_alias_resolution() {
 }
 
 #[test]
+fn resolves_scaffold_fastify_plugin_wrappers_for_register_targets() {
+    let (file_wrapper, src_wrapper) = fixture("scaffold-plugin-wrapper-fastify.fixture.txt");
+    let wrapper_ir = analyze_fastify_entry(&file_wrapper, &src_wrapper);
+
+    assert_eq!(
+        wrapper_ir
+            .routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("GET", "/users", "listUsers")]
+    );
+    assert!(wrapper_ir.diagnostics.is_empty());
+
+    let (file_indirection, src_indirection) =
+        fixture("scaffold-register-indirection-fastify.fixture.txt");
+    let indirection_ir = analyze_fastify_entry(&file_indirection, &src_indirection);
+
+    assert_eq!(
+        indirection_ir
+            .routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("GET", "/v1/items", "listItems")]
+    );
+    assert!(indirection_ir.diagnostics.is_empty());
+}
+
+#[test]
 fn supports_route_object_method_array_extraction() {
     let (file, src) = fixture("route-object-method-array-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);

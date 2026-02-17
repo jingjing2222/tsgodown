@@ -70,6 +70,7 @@ fastify.register(fp(apiPlugin), { prefix: '/api' })
 
 Nested `register(..., { prefix })` composition is supported when plugin callback/definition is statically analyzable in-file.
 Single-argument wrapper calls are unwrapped deterministically (e.g. `fp(pluginRef)`).
+Scaffold-style wrapper indirection is also supported when the register target is a local const bound to a single-call wrapper (e.g. `const wrapped = fp(pluginRef); fastify.register(wrapped)`).
 
 ### 1.6 Handler reference forms
 
