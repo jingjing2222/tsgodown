@@ -15,24 +15,57 @@ const defaultEngineCoreBin = path.join(
   "engine-core",
 );
 
-const GO_MAIN_SCAFFOLD = [
-  "package main",
-  "",
-  "import (",
-  '\t"fmt"',
-  '\t"net/http"',
-  ")",
-  "",
-  "func main() {",
-  '\tfmt.Println("tsgodown-fastify-min-ready")',
-  '\thttp.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {',
-  "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  '\t\tfmt.Fprintln(w, "TODO implement handler health for GET /health")',
-  "\t})",
-  '\t_ = http.ListenAndServe(":8080", nil)',
-  "}",
-  "",
-].join("\n");
+function renderGoMainScaffold(routes) {
+  return [
+    "package main",
+    "",
+    "import (",
+    '\t"fmt"',
+    '\t"net/http"',
+    '\t"os"',
+    ")",
+    "",
+    "func resolveListenAddr() string {",
+    '\tport := os.Getenv("PORT")',
+    '\tif port == "" {',
+    '\t\tport = "8080"',
+    "\t}",
+    '\treturn ":" + port',
+    "}",
+    "",
+    "func main() {",
+    '\tfmt.Println("tsgodown-fastify-min-ready")',
+    "\tmux := http.NewServeMux()",
+    ...routes.flatMap((route) => [
+      `\tmux.HandleFunc("GET ${route.path}", func(w http.ResponseWriter, _ *http.Request) {`,
+      "\t\tw.WriteHeader(http.StatusNotImplemented)",
+      `\t\tfmt.Fprintln(w, "TODO implement handler ${route.handler} for GET ${route.path}")`,
+      "\t})",
+    ]),
+    "\t_ = http.ListenAndServe(resolveListenAddr(), mux)",
+    "}",
+    "",
+  ].join("\n");
+}
+
+function parseRoutesFromSource(source) {
+  const routeMatches = [
+    ...source.matchAll(
+      /\b(?:fastify|app)\.get\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/g,
+    ),
+  ];
+
+  const routes = routeMatches.map((match) => ({
+    path: match[1],
+    handler: match[2],
+  }));
+
+  if (routes.length > 0) {
+    return routes;
+  }
+
+  return [{ path: "/health", handler: "health" }];
+}
 
 function fail(message, details) {
   process.stderr.write(`[rust-engine-launcher] ${message}\n`);
@@ -130,7 +163,16 @@ try {
 
 const outDir = path.join(request.cwd, "dist-go");
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, "main.go"), GO_MAIN_SCAFFOLD, "utf8");
+const entryPath = path.resolve(request.cwd, request.entry ?? "src/index.ts");
+const source = fs.existsSync(entryPath)
+  ? fs.readFileSync(entryPath, "utf8")
+  : "";
+const routes = parseRoutesFromSource(source);
+fs.writeFileSync(
+  path.join(outDir, "main.go"),
+  `${renderGoMainScaffold(routes)}\n`,
+  "utf8",
+);
 
 const diagnostics = [
   "engine=rust-engine-core",
