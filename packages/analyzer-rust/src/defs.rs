@@ -18,7 +18,10 @@ pub(crate) struct HandlerDef {
 pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef> {
     let mut map = HashMap::new();
 
-    let fn_re = Regex::new(r"function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{").unwrap();
+    let fn_re = Regex::new(
+        r"(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?::\s*[^\{=;]+)?\s*\{",
+    )
+    .unwrap();
     for cap in fn_re.captures_iter(src) {
         let Some(m0) = cap.get(0) else { continue };
         let open_idx = m0.end() - 1;
@@ -42,7 +45,7 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
     }
 
     let arrow_re = Regex::new(
-        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*\{",
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+?)?\s*=\s*(?:async\s+)?(?:\(([^)]*)\)\s*(?::\s*[^\{=;]+)?|([A-Za-z_$][\w$]*)\s*(?::\s*[^\{=;]+)?)\s*=>\s*\{",
     )
     .unwrap();
     for cap in arrow_re.captures_iter(src) {
@@ -72,7 +75,7 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
     }
 
     let var_fn_re = Regex::new(
-        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)\s*\{",
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+?)?\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)\s*(?::\s*[^\{=;]+)?\s*\{",
     )
     .unwrap();
     for cap in var_fn_re.captures_iter(src) {
@@ -103,8 +106,10 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
 pub(crate) fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerDef> {
     let mut map = HashMap::new();
 
-    let fn_re =
-        Regex::new(r"(?s)(async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{").unwrap();
+    let fn_re = Regex::new(
+        r"(?s)(async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?::\s*[^\{=;]+)?\s*\{",
+    )
+    .unwrap();
     for cap in fn_re.captures_iter(src) {
         map.insert(
             cap[2].to_string(),
@@ -115,7 +120,10 @@ pub(crate) fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerD
         );
     }
 
-    let var_fn_re = Regex::new(r"(?s)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(async\s+)?(?:function\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*=>)\s*\{").unwrap();
+    let var_fn_re = Regex::new(
+        r"(?s)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+?)?\s*=\s*(async\s+)?(?:function\s*\(([^)]*)\)\s*(?::\s*[^\{=;]+)?|\(([^)]*)\)\s*(?::\s*[^\{=;]+)?=>|([A-Za-z_$][\w$]*)\s*(?::\s*[^\{=;]+)?=>)\s*\{",
+    )
+    .unwrap();
     for cap in var_fn_re.captures_iter(src) {
         let params_src = cap
             .get(3)
@@ -144,6 +152,17 @@ fn split_params(src: &str) -> Vec<String> {
     src.split(',')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(ToString::to_string)
+        .map(normalize_param_name)
+        .filter(|s| !s.is_empty())
         .collect()
+}
+
+fn normalize_param_name(param: &str) -> String {
+    let without_default = param.split('=').next().unwrap_or(param).trim();
+    let without_type = without_default
+        .split(':')
+        .next()
+        .unwrap_or(without_default)
+        .trim();
+    without_type.trim_start_matches("...").trim().to_string()
 }
