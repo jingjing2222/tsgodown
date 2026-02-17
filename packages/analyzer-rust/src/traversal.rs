@@ -19,9 +19,8 @@ pub(crate) fn analyze_scope(
     diagnostics: &mut Vec<DiagnosticIR>,
 ) {
     let mut idx = 0usize;
-    while let Some(pos) = body[idx..].find(&format!("{}.", instance_name)) {
-        let start = idx + pos;
-        let tail = &body[start + instance_name.len() + 1..];
+    while let Some((start, dot_idx)) = find_instance_dot(body, idx, instance_name) {
+        let tail = &body[dot_idx + 1..];
 
         if let Some(consumed) = analyze_call_chain(
             tail,
@@ -34,12 +33,45 @@ pub(crate) fn analyze_scope(
             handlers,
             diagnostics,
         ) {
-            idx = start + instance_name.len() + 1 + consumed;
+            idx = dot_idx + 1 + consumed;
             continue;
         }
 
         idx = start + 1;
     }
+}
+
+fn find_instance_dot(body: &str, from: usize, instance_name: &str) -> Option<(usize, usize)> {
+    let mut search_from = from;
+    while let Some(rel) = body[search_from..].find(instance_name) {
+        let start = search_from + rel;
+        let end = start + instance_name.len();
+
+        let prev_ok = if start == 0 {
+            true
+        } else {
+            !is_ident_char(body.as_bytes()[start - 1])
+        };
+        if !prev_ok {
+            search_from = start + 1;
+            continue;
+        }
+
+        let mut i = end;
+        while i < body.len() && body.as_bytes()[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < body.len() && body.as_bytes()[i] == b'.' {
+            return Some((start, i));
+        }
+
+        search_from = start + 1;
+    }
+    None
+}
+
+fn is_ident_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
 
 #[allow(clippy::too_many_arguments)]
