@@ -81,6 +81,18 @@ function parseRoutesFromSource(source) {
     ),
   ];
 
+  const unsupportedDynamicPathMatches = [
+    ...source.matchAll(
+      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)/g,
+    ),
+  ];
+
+  const unsupportedInlineHandlerMatches = [
+    ...source.matchAll(
+      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*['"`][^'"`]+['"`]\s*,\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g,
+    ),
+  ];
+
   const routes = routeMatches.map((match) => ({
     method: match[1].toUpperCase(),
     path: match[2],
@@ -88,18 +100,43 @@ function parseRoutesFromSource(source) {
     handler: match[3],
   }));
 
-  if (routes.length > 0) {
-    return routes;
+  const unsupportedDiagnostics = [];
+  if (unsupportedDynamicPathMatches.length > 0) {
+    unsupportedDiagnostics.push(
+      "ANALYZER_UNSUPPORTED_DYNAMIC_PATH: unsupported dynamic path in fastify/app route shorthand; use string literal path (e.g. '/users/:id').",
+    );
+  }
+  if (unsupportedInlineHandlerMatches.length > 0) {
+    unsupportedDiagnostics.push(
+      "ANALYZER_UNSUPPORTED_INLINE_HANDLER: unsupported inline handler in fastify/app route shorthand; extract handler to a named function and pass its identifier.",
+    );
   }
 
-  return [
-    {
-      method: "GET",
-      path: "/health",
-      goPattern: "/health",
-      handler: "health",
-    },
-  ];
+  if (unsupportedDiagnostics.length > 0) {
+    return {
+      routes: [],
+      unsupportedDiagnostics,
+    };
+  }
+
+  if (routes.length > 0) {
+    return {
+      routes,
+      unsupportedDiagnostics: [],
+    };
+  }
+
+  return {
+    routes: [
+      {
+        method: "GET",
+        path: "/health",
+        goPattern: "/health",
+        handler: "health",
+      },
+    ],
+    unsupportedDiagnostics: [],
+  };
 }
 
 function fail(message, details, fixHint) {
@@ -212,7 +249,22 @@ const entryPath = path.resolve(request.cwd, request.entry ?? "src/index.ts");
 const source = fs.existsSync(entryPath)
   ? fs.readFileSync(entryPath, "utf8")
   : "";
-const routes = parseRoutesFromSource(source);
+const { routes, unsupportedDiagnostics } = parseRoutesFromSource(source);
+
+if (unsupportedDiagnostics.length > 0) {
+  process.stdout.write(
+    JSON.stringify({
+      ok: false,
+      error: {
+        source: "rust-engine-adapter",
+        cause: unsupportedDiagnostics.join(" | "),
+        guidance: "Fix unsupported Fastify patterns before build.",
+      },
+    }),
+  );
+  process.exit(0);
+}
+
 fs.writeFileSync(
   path.join(outDir, "main.go"),
   `${renderGoMainScaffold(routes)}\n`,

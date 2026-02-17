@@ -977,8 +977,8 @@ test("M2 acceptance: TS fixture routes are reachable in generated Go runtime", a
   );
 });
 
-test("M2 acceptance: fastify-complex fixture preserves method contracts and path params", async () => {
-  const cwd = setupProjectFromExample("fastify-complex");
+test("M2 acceptance: fastify-supported-complex fixture preserves method contracts and path params", async () => {
+  const cwd = setupProjectFromFixture("fastify-supported-complex");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -1063,6 +1063,39 @@ test("M4 devx acceptance: fastify-complex fixture emits deterministic method/pat
     /TODO implement handler removeUser for DELETE \/users\/:id/,
   );
   assertGoMainScaffold(goMain);
+});
+
+test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministic diagnostics", () => {
+  const cwd = setupProjectFromFixture("fastify-unsupported-dynamic");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.notEqual(result.status, 0, "build should fail for unsupported patterns");
+  const parsed = parseJsonStdout(result.stdout) as {
+    ok: boolean;
+    error: {
+      source?: string;
+      cause?: string;
+      guidance?: string;
+      message?: string;
+    };
+  };
+
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.error.source, "pipeline-entry(src/index.ts)");
+  assert.equal(
+    parsed.error.guidance,
+    "Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
+  );
+  assert.match(parsed.error.message ?? "", /source=rust-engine-adapter/);
+  assert.match(parsed.error.message ?? "", /ANALYZER_UNSUPPORTED_DYNAMIC_PATH/);
+  assert.match(parsed.error.message ?? "", /ANALYZER_UNSUPPORTED_INLINE_HANDLER/);
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
