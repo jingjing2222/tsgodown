@@ -22,6 +22,7 @@ A long-term TypeScript/JavaScript → Go compiler project built around tsdown ar
 - Testing strategy: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
 - M1 release gate (canonical): [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Release workflow/versioning policy: [`docs/specs/RELEASE_WORKFLOW.md`](docs/specs/RELEASE_WORKFLOW.md)
+- Observability / failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
 
 ## Quick Start
 ```bash
