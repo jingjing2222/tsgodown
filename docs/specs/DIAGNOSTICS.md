@@ -1,17 +1,13 @@
 # DIAGNOSTICS
 
-This document explains diagnostics emitted by the current analyzer pipeline.
+This document defines diagnostics emitted by the compiler-mode Rust analysis path.
 
 ## Fastify diagnostics status
 
-Legacy Fastify-specific unsupported-pattern diagnostics were removed with the legacy analyzer path.
-`packages/analyzer-rust` no longer emits the previous `ANALYZER_*` Fastify unsupported codes.
+Fastify unsupported-pattern diagnostics are currently not emitted.
+The canonical diagnostic block below is intentionally empty until new Rust diagnostics are introduced.
 
-If/when new Fastify diagnostics are introduced again, this file must be updated in the same PR,
-along with:
-
-- `docs/specs/FASTIFY_SUPPORT_MATRIX.md`
-- `docs/specs/FASTIFY_UNSUPPORTED_INVENTORY.md`
+If diagnostics are added again, update this file in the same PR.
 
 ---
 
@@ -28,4 +24,3 @@ These canonical lines must stay aligned with `packages/analyzer-rust`.
 ## Notes
 
 - The empty generated block above is intentional while no Fastify diagnostics are emitted.
-- Run `pnpm run docs:diagnostics:sync` after analyzer diagnostic changes.

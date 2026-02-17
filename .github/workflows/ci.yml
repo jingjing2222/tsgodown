@@ -59,20 +59,8 @@ jobs:
         if: ${{ hashFiles('Cargo.toml') != '' }}
         run: cargo test --workspace --all-targets
 
-      - name: Guard legacy deletion stays intact
-        shell: bash
-        run: |
-          set -euo pipefail
-          LEGACY_PATHS=(
-            "scripts/guard-no-legacy-ts-analyzer.mjs"
-          )
-          for path in "${LEGACY_PATHS[@]}"; do
-            if [ -e "$path" ]; then
-              echo "[legacy-guard] blocked: deleted legacy path reappeared -> $path"
-              exit 1
-            fi
-          done
-          echo "[legacy-guard] ok: deleted legacy paths did not reappear"
+      - name: Guard compiler-mode-only paths/docs
+        run: node scripts/guard-compiler-mode-only.mjs
 
   smoke-executable:
     name: Smoke executable path (TS -> Go -> run -> health)
