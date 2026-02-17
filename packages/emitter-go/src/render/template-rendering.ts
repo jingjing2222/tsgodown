@@ -119,8 +119,12 @@ export function renderRoute(
     `\t//   Handler response mode: ${handler?.semantics?.responseMode ?? "unknown"}`,
   ];
 
-  if ((route.middlewareRefs?.length ?? 0) > 0) {
-    lines.push(`\t//   Middleware: ${JSON.stringify(route.middlewareRefs)}`);
+  const middlewareRefs = route.middlewareRefs ?? [];
+  if (middlewareRefs.length > 0) {
+    const sortedMiddlewareRefs = [...middlewareRefs].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    lines.push(`\t//   Middleware: ${JSON.stringify(sortedMiddlewareRefs)}`);
   }
 
   lines.push(
