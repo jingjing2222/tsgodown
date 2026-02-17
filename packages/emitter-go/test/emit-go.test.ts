@@ -69,7 +69,7 @@ const representativeFixtureNames = [
 
 const sampleIr = readFixture("sample-ir");
 
-test("emitGoProject emits deterministic main.go scaffold with method-aware route registration and actionable TODO stubs", () => {
+test("emitGoProject emits deterministic main.go scaffold with IR-aware semantic handler behavior", () => {
   const outDir = createOutDir();
 
   emitGoProject(sampleIr, outDir);
@@ -107,20 +107,22 @@ test("emitGoProject emits deterministic main.go scaffold with method-aware route
   assert.match(emitted, /id := req\.PathValue\("id"\)/);
   assert.match(
     emitted,
+    /w\.Header\(\)\.Set\("Content-Type", "application\/json; charset=utf-8"\)/,
+  );
+  assert.match(
+    emitted,
+    /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "response-object"\)/,
+  );
+  assert.match(emitted, /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "return"\)/);
+  assert.match(emitted, /w\.WriteHeader\(http\.StatusOK\)/);
+  assert.match(emitted, /json\.NewEncoder\(w\)\.Encode\(map\[string\]any\{/);
+  assert.doesNotMatch(
+    emitted,
     /TODO\(tsgodown\): Implement handler "health" for GET \/health\./,
   );
-  assert.match(
+  assert.doesNotMatch(
     emitted,
     /TODO\(tsgodown\): Implement handler "createUser" for POST \/users\/:id\./,
-  );
-  assert.match(emitted, /w\.WriteHeader\(http\.StatusNotImplemented\)/);
-  assert.match(
-    emitted,
-    /fmt\.Fprintln\(w, "TODO implement handler health for GET \/health"\)/,
-  );
-  assert.match(
-    emitted,
-    /fmt\.Fprintln\(w, "TODO implement handler createUser for POST \/users\/:id"\)/,
   );
 });
 
@@ -148,7 +150,13 @@ test("emitGoProject keeps deterministic output for equivalent IR with reordered 
         id: "createUser",
         params: [{ role: "request", name: "req" }],
         async: true,
-        semantics: { responseMode: "return" },
+        semantics: {
+          responseMode: "return",
+          usesStatus: false,
+          usesBody: false,
+          usesHeaders: false,
+          usesJson: false,
+        },
       },
       {
         id: "health",
@@ -157,7 +165,13 @@ test("emitGoProject keeps deterministic output for equivalent IR with reordered 
           { role: "response", name: "reply" },
         ],
         async: false,
-        semantics: { responseMode: "response-object" },
+        semantics: {
+          responseMode: "response-object",
+          usesStatus: false,
+          usesBody: false,
+          usesHeaders: false,
+          usesJson: false,
+        },
       },
     ],
     diagnostics: [
@@ -361,7 +375,13 @@ test("emitGoProject TODO message uses stable handler display name for handler_* 
           id: "handler_health",
           params: [],
           async: false,
-          semantics: { responseMode: "unknown" },
+          semantics: {
+            responseMode: "unknown",
+            usesStatus: false,
+            usesBody: false,
+            usesHeaders: false,
+            usesJson: false,
+          },
         },
       ],
     },
@@ -509,7 +529,7 @@ function shutdownServer(server: ReturnType<typeof spawn>) {
 }
 
 test(
-  "emitGoProject smoke: generated server can boot and serve not-implemented route",
+  "emitGoProject smoke: generated server can boot and serve semantic JSON route",
   { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
@@ -563,13 +583,11 @@ test(
 
       assert.equal(
         responseStatus,
-        501,
+        200,
         `server did not become ready at ${url}; lastError=${String(lastError)}`,
       );
-      assert.match(
-        responseText,
-        /TODO implement handler health for GET \/health/,
-      );
+      assert.match(responseText, /"handler":"health"/);
+      assert.match(responseText, /"mode":"response-object"/);
     } finally {
       await shutdownServer(server);
     }

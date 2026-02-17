@@ -102,6 +102,67 @@ function toTodoHandlerDisplayName(handlerRef: string): string {
   return handlerRef.replace(/^handler[_-]+/, "");
 }
 
+function renderSemanticHandlerBehavior(
+  route: RouteIR,
+  handler: HandlerIR | undefined,
+): string[] {
+  const mode = handler?.semantics?.responseMode ?? "unknown";
+  const normalizedMethod = normalizeHttpMethod(route.method);
+  const normalizedPath = normalizeRoutePath(route.path);
+
+  if (mode === "response-object") {
+    return [
+      '\tw.Header().Set("Content-Type", "application/json; charset=utf-8")',
+      '\tw.Header().Set("X-TSGoDown-Handler", "response-object")',
+      "\tw.WriteHeader(http.StatusOK)",
+      "\tif err := json.NewEncoder(w).Encode(map[string]any{",
+      `\t\t"handler": ${quoteGo(route.handlerRef)},`,
+      `\t\t"method": ${quoteGo(normalizedMethod)},`,
+      `\t\t"path": ${quoteGo(normalizedPath)},`,
+      '\t\t"mode": "response-object",',
+      "\t}); err != nil {",
+      '\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
+      "\t}",
+    ];
+  }
+
+  if (mode === "return") {
+    return [
+      '\tw.Header().Set("Content-Type", "application/json; charset=utf-8")',
+      '\tw.Header().Set("X-TSGoDown-Handler", "return")',
+      "\tw.WriteHeader(http.StatusOK)",
+      "\tif err := json.NewEncoder(w).Encode(map[string]any{",
+      `\t\t"handler": ${quoteGo(route.handlerRef)},`,
+      `\t\t"method": ${quoteGo(normalizedMethod)},`,
+      `\t\t"path": ${quoteGo(normalizedPath)},`,
+      '\t\t"mode": "return",',
+      "\t}); err != nil {",
+      '\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
+      "\t}",
+    ];
+  }
+
+  if (mode === "next-callback") {
+    return [
+      '\tw.Header().Set("X-TSGoDown-Handler", "next-callback")',
+      "\tw.WriteHeader(http.StatusNoContent)",
+    ];
+  }
+
+  const todoHandlerName = toTodoHandlerDisplayName(route.handlerRef);
+  const todoMessage = `TODO implement handler ${todoHandlerName} for ${normalizedMethod} ${normalizedPath}`;
+  return [
+    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${normalizedMethod} ${normalizedPath}.`,
+    "\t//   - Replace this scaffold with application logic.",
+    "\t//   - Validate request input and map to domain arguments.",
+    "\t//   - Write response status, headers, and body.",
+    "",
+    '\tw.Header().Set("Content-Type", "text/plain; charset=utf-8")',
+    "\tw.WriteHeader(http.StatusNotImplemented)",
+    `\tfmt.Fprintln(w, ${quoteGo(todoMessage)})`,
+  ];
+}
+
 export function renderRoute(
   route: RouteIR,
   index: number,
@@ -109,8 +170,6 @@ export function renderRoute(
 ): string[] {
   const normalizedMethod = normalizeHttpMethod(route.method);
   const normalizedPath = normalizeRoutePath(route.path);
-  const todoHandlerName = toTodoHandlerDisplayName(route.handlerRef);
-  const todoMessage = `TODO implement handler ${todoHandlerName} for ${normalizedMethod} ${normalizedPath}`;
 
   const lines: string[] = [
     `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,
@@ -133,15 +192,8 @@ export function renderRoute(
   }
 
   lines.push(
-    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${normalizedMethod} ${normalizedPath}.`,
-    "\t//   - Replace this scaffold with application logic.",
-    "\t//   - Validate request input and map to domain arguments.",
-    "\t//   - Write response status, headers, and body.",
-    "",
     ...emitPathParams(route),
-    '\tw.Header().Set("Content-Type", "text/plain; charset=utf-8")',
-    "\tw.WriteHeader(http.StatusNotImplemented)",
-    `\tfmt.Fprintln(w, ${quoteGo(todoMessage)})`,
+    ...renderSemanticHandlerBehavior(route, handler),
     "}",
     "",
   );
