@@ -17,7 +17,7 @@ mod tests {
         let request = AnalyzeRequest {
             manifest: InputManifest {
                 entry: "src/server.ts".to_string(),
-                framework: Some("fastify".to_string()),
+                framework: Some("compiler".to_string()),
             },
             config: AnalyzeConfig {
                 profile: Some("default".to_string()),
@@ -59,7 +59,7 @@ mod tests {
         let request = AnalyzeRequest {
             manifest: InputManifest {
                 entry: "src/server.ts".to_string(),
-                framework: Some("fastify".to_string()),
+                framework: Some("compiler".to_string()),
             },
             config: AnalyzeConfig::default(),
         };

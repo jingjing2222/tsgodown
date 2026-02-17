@@ -5,9 +5,7 @@ pub use ir::{
     ModuleIR, ProgramIR, RouteIR,
 };
 
-pub fn analyze_fastify_entry(_file: &str, _src: &str) -> ProgramIR {
-    // TODO(compiler-mode): replace this legacy Fastify pattern-matching analyzer entrypoint
-    // with compiler-mode IR builder flow.
+pub fn analyze_compiler_entry(_file: &str, _src: &str) -> ProgramIR {
     ProgramIR {
         modules: vec![],
         routes: vec![],
