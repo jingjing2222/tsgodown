@@ -59,6 +59,8 @@ pnpm run lint
 pnpm run format:check
 pnpm run build
 pnpm run test
+pnpm run gate:differential
+pnpm run gate:compliance
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets

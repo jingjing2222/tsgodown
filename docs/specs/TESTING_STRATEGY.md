@@ -67,6 +67,8 @@ Note: the gate is limited to execution-path verification and does not cover inte
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace --all-targets`
+- `pnpm run gate:differential`
+- `pnpm run gate:compliance`
 - `./scripts/smoke-m1.sh`
 
 ## Failure handling
