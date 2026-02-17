@@ -1031,7 +1031,7 @@ test("M2 acceptance: fastify-complex fixture preserves method contracts and path
     method: "GET",
     routePath: "/users/abc-123",
     expectedStatus: 405,
-    expectedAllowHeader: "POST",
+    expectedAllowHeader: "DELETE, PATCH",
     expectedBodyFragment: "Method Not Allowed",
   });
 });
