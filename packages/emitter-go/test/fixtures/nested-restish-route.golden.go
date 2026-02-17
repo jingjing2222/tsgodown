@@ -102,16 +102,16 @@ func route0(w http.ResponseWriter, req *http.Request) {
 	//   Handler params: none
 	//   Handler async: false
 	//   Handler response mode: unknown
-	// TODO(tsgodown): Implement handler "nested" for PATCH /api/v2/users/:id/devices/{deviceId}.
-	//   - Replace this scaffold with application logic.
-	//   - Validate request input and map to domain arguments.
-	//   - Write response status, headers, and body.
-
 	// Extracted path params:
 	id := req.PathValue("id")
 	_ = id
 	deviceId := req.PathValue("deviceId")
 	_ = deviceId
+
+	// TODO(tsgodown): Implement handler "nested" for PATCH /api/v2/users/:id/devices/{deviceId}.
+	//   - Replace this scaffold with application logic.
+	//   - Validate request input and map to domain arguments.
+	//   - Write response status, headers, and body.
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotImplemented)

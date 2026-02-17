@@ -31,6 +31,10 @@ export function buildProgramIrFromArtifacts(
         bodyRef: entry,
         semantics: {
           responseMode: "unknown",
+          usesStatus: false,
+          usesBody: false,
+          usesHeaders: false,
+          usesJson: false,
         },
       },
     ],

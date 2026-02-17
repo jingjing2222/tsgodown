@@ -1,19 +1,27 @@
-import type { RouteIR } from "@tsgodown/ir-core";
+import type { HandlerIR, RouteIR } from "@tsgodown/ir-core";
 
 import { renderRouteRegistration } from "./template-rendering.js";
 
-export function renderGoImports(): string[] {
-  return [
-    "import (",
+export function renderGoImports(handlers: HandlerIR[]): string[] {
+  const requiresJson = handlers.some((handler) => {
+    const mode = handler.semantics?.responseMode;
+    return mode === "response-object" || mode === "return";
+  });
+
+  const imports = [
     '\t"fmt"',
     '\t"net/http"',
     '\t"os"',
     '\t"sort"',
     '\t"strings"',
     '\t"time"',
-    ")",
-    "",
   ];
+
+  if (requiresJson) {
+    imports.unshift('\t"encoding/json"');
+  }
+
+  return ["import (", ...imports, ")", ""];
 }
 
 export function renderRuntimeRouter(): string[] {

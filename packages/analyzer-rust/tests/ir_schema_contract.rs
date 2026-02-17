@@ -53,6 +53,12 @@ fn program_ir_normalize_applies_v1_deterministic_ordering_contract() {
                 r#async: true,
                 semantics: Some(HandlerSemanticsIR {
                     response_mode: "return".to_string(),
+                    request_param: Some("req".to_string()),
+                    response_param: None,
+                    uses_status: false,
+                    uses_body: false,
+                    uses_headers: false,
+                    uses_json: false,
                 }),
             },
             HandlerIR {

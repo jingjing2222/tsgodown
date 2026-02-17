@@ -99,6 +99,12 @@ pub struct HandlerParamIR {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandlerSemanticsIR {
     pub response_mode: String,
+    pub request_param: Option<String>,
+    pub response_param: Option<String>,
+    pub uses_status: bool,
+    pub uses_body: bool,
+    pub uses_headers: bool,
+    pub uses_json: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
