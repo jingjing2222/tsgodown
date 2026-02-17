@@ -17,6 +17,20 @@ The primary goal is fixed as:
 
 This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
 
+## Fastify v2 support status (real-user view)
+
+`tsgodown` currently supports a **compiler-mode subset** of Fastify v2 patterns. Use this matrix for production decisions.
+
+| Area | Usable now | Not yet / fail-closed |
+|---|---|---|
+| Route declaration | `fastify.<method>("/literal", handlerRef)` for `get/post/put/delete/patch`; `fastify.route({ method, url\|path, handler })` with analyzable literals | Dynamic/non-literal paths, unsupported `route({...})` object shapes/method encodings |
+| Handler extraction | Named/local handler references that resolve deterministically | Inline/anonymous handlers where named references are required; unresolved handler/plugin references |
+| Plugin composition | `fastify.register(...)` inline callback or named local plugin reference; deterministic `prefix` composition | Unsupported register callback patterns; conditional or non-deterministic route registration |
+| Runtime behavior in generated Go | Deterministic 404/405/`Allow` scaffold behavior covered by emitter/CLI/smoke checks | Full Fastify runtime parity outside the declared subset |
+| Compiler behavior on out-of-subset input | Deterministic diagnostics + fail-closed stop | Silent fallback/heuristic translation (explicitly forbidden) |
+
+**Rollout note (v2):** treat support as **phased subset rollout**, not full Fastify v2 compatibility. Claims expand only when contracts/specs and required gates are updated together.
+
 ## Supported Fastify patterns
 
 The current extractor supports patterns that are stable for backend builds:
