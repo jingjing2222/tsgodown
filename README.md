@@ -100,7 +100,8 @@ export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
 cd examples/fastify-min
-node --import tsx ../../packages/cli/src/index.ts build
+pnpm install
+pnpm run build:go
 ```
 
 Output:

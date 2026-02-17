@@ -1,6 +1,13 @@
 # Getting Started with [Fastify-CLI](https://www.npmjs.com/package/fastify-cli)
 This project was bootstrapped with Fastify-CLI.
 
+## Build Go output with tsgodown
+
+```bash
+pnpm install
+pnpm run build:go
+```
+
 ## Available Scripts
 
 In the project directory, you can run:
