@@ -43,16 +43,26 @@ fn render_ir(ir: &ProgramIR) -> String {
 
     out.push_str("handlers:\n");
     for handler in &ir.handlers {
+        let semantics = if let Some(semantics) = &handler.semantics {
+            format!(
+                "mode={} req={} res={} status={} headers={} json={}",
+                semantics.response_mode,
+                semantics.request_param.as_deref().unwrap_or("<none>"),
+                semantics.response_param.as_deref().unwrap_or("<none>"),
+                semantics.uses_status,
+                semantics.uses_headers,
+                semantics.uses_json,
+            )
+        } else {
+            "none".to_string()
+        };
+
         out.push_str(&format!(
             "  - id={} async={} params={} semantics={}\n",
             handler.id,
             handler.r#async,
             handler.params.len(),
-            if handler.semantics.is_some() {
-                "some"
-            } else {
-                "none"
-            }
+            semantics
         ));
     }
 
@@ -94,4 +104,9 @@ fn route_object_literal_is_lowered_deterministically() {
 #[test]
 fn unsupported_patterns_emit_deterministic_diagnostics() {
     assert_fixture("unsupported-dynamic.ts", "unsupported-dynamic.golden.txt");
+}
+
+#[test]
+fn semantic_patterns_are_lowered_deterministically() {
+    assert_fixture("semantic-patterns.ts", "semantic-patterns.golden.txt");
 }

@@ -5,5 +5,5 @@ modules:
 routes:
   - method=GET path=/health handler_ref=health
 handlers:
-  - id=health async=false params=0 semantics=none
+  - id=health async=false params=[] semantics=return
 diagnostics:
