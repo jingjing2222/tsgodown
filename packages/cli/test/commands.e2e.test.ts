@@ -1252,9 +1252,7 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture stays compiler-subset d
   assert.equal(parsed.ok, true);
   assert.equal(parsed.command, "build");
   assert.equal(parsed.targets[0]?.diagnostics?.routes, 0);
-  assert.deepEqual(parsed.targets[0]?.diagnostics?.warnings, [
-    "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.",
-  ]);
+  assert.deepEqual(parsed.targets[0]?.diagnostics?.warnings, []);
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
