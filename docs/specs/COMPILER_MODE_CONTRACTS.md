@@ -1,30 +1,49 @@
-# Compiler Mode Contracts
+# Compiler Mode Contracts (Canonical)
 
-## Supported Subset Contract
+This document is the canonical policy source for compiler-mode support claims.
 
-`tsgodown` only claims correctness for a declared, versioned supported subset.
+## 1) Supported Subset (Spec Lock)
 
-- The subset is the union of patterns explicitly documented in capability/spec docs.
-- Any source shape outside this subset is **out of contract**.
-- Out-of-contract cases must produce deterministic diagnostics and fail closed.
-- Shipping milestones must not silently expand claims beyond the documented subset.
+`tsgodown` is a compiler. It only guarantees correctness for a declared, versioned subset of input programs.
 
-In short: coverage claims are scoped to what we explicitly support, not the full TypeScript/Fastify ecosystem.
+- The supported subset is the union of compiler-recognized source patterns explicitly listed in spec/capability documents.
+- Any input program outside that subset is **out of scope** for correctness claims.
+- The compiler must not infer support from best-effort behavior or incidental pass cases.
+- Milestone/release messaging must not expand claims beyond this locked subset.
 
-## Proof Contract
+In short: correctness claims are locked to explicit compiler contracts, not to the general TypeScript/Fastify ecosystem.
+
+## 2) Out-of-Scope Handling (Fail Closed)
+
+For out-of-scope input programs, compiler behavior is fixed:
+
+1. Emit deterministic diagnostics (stable code + reproducible location).
+2. Stop compilation for that input (no silent partial success).
+3. Never fall back to permissive/heuristic translation that could mask semantic mismatch.
+
+This is a fail-closed compiler policy: no silent miscompile, no silent acceptance.
+
+## 3) Proof Obligations for In-Scope Features
 
 For each supported-subset feature, correctness is established by differential proof obligations.
 
-Minimum proof obligations:
+Minimum obligations:
 
 1. **Semantic differential tests**
-   - compare TS runtime behavior and generated Go runtime behavior for equivalent inputs.
-   - parity is measured by the normative dimensions in [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md) (status/body/headers/method behavior).
-2. **Runtime compatibility layer verification**
-   - document and test any semantic shims required to match TS/Fastify behavior.
-3. **Fail-closed policy verification**
-   - verify out-of-contract inputs fail with deterministic diagnostics as specified (never silently miscompile).
+   - Compare TypeScript runtime behavior vs generated Go runtime behavior for equivalent inputs.
+   - Parity is measured by the normative dimensions in [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md) (status/body/headers/method behavior).
+2. **Runtime-compatibility verification**
+   - Specify and test semantic shims required to preserve source-program behavior.
+3. **Fail-closed verification**
+   - Verify out-of-scope inputs fail with deterministic diagnostics as specified (never silently miscompile).
 4. **Performance SLO gates**
-   - enforce agreed build/runtime budgets so correctness is delivered at acceptable cost.
+   - Enforce agreed compile/runtime budgets so correctness is delivered within accepted cost.
 
-`100% behavioral coverage` means every behavior inside the supported subset is covered by these proof obligations and passes the differential gate.
+`100% behavioral coverage` means every behavior inside the supported subset is covered by these obligations and passes the differential gate.
+
+## 4) Canonical References
+
+- Capability boundary table: [`CAPABILITY_MATRIX.md`](./CAPABILITY_MATRIX.md)
+- Diagnostic contract: [`DIAGNOSTICS.md`](./DIAGNOSTICS.md)
+- M1 executable release gate: [`M1_RELEASE_GATE.md`](./M1_RELEASE_GATE.md)
+- Test policy and required gate commands: [`TESTING_STRATEGY.md`](./TESTING_STRATEGY.md)
