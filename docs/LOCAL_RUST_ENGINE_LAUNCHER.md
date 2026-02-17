@@ -20,5 +20,6 @@ export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 Then run any CLI command that invokes the Rust adapter (for example from `examples/fastify-min`):
 
 ```bash
-node --import tsx ../../packages/cli/src/index.ts build
+pnpm install
+pnpm run build:go
 ```
