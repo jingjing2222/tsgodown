@@ -1,8 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{DiagnosticIR, DiagnosticSourceIR, HandlerIR, ImportIR, ModuleIR, ProgramIR, RouteIR};
+use crate::{
+    DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR, HandlerSemanticsIR, ImportIR,
+    ModuleIR, ProgramIR, RouteIR,
+};
 
 const ALLOWED_METHODS: [&str; 5] = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+
+#[derive(Debug, Clone)]
+struct HandlerDef {
+    is_async: bool,
+    params: Vec<HandlerParamIR>,
+    semantics: HandlerSemanticsIR,
+}
 
 pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let mut diagnostics = Vec::new();
@@ -34,11 +44,22 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
 
     let mut handlers = referenced_handlers
         .into_iter()
-        .map(|id| HandlerIR {
-            r#async: handler_defs.get(&id).copied().unwrap_or(false),
-            id,
-            params: vec![],
-            semantics: None,
+        .map(|id| {
+            if let Some(def) = handler_defs.get(&id) {
+                HandlerIR {
+                    r#async: def.is_async,
+                    id,
+                    params: def.params.clone(),
+                    semantics: Some(def.semantics.clone()),
+                }
+            } else {
+                HandlerIR {
+                    r#async: false,
+                    id,
+                    params: vec![],
+                    semantics: None,
+                }
+            }
         })
         .collect::<Vec<_>>();
 
@@ -62,12 +83,31 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
 fn collect_statements(src: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = 0usize;
+    let mut depth_paren = 0i32;
+    let mut depth_brace = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut in_single = false;
+    let mut in_double = false;
+
     for (idx, ch) in src.char_indices() {
-        if ch == ';' {
-            out.push(src[start..=idx].trim());
-            start = idx + 1;
+        match ch {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            _ if in_single || in_double => {}
+            '(' => depth_paren += 1,
+            ')' => depth_paren -= 1,
+            '{' => depth_brace += 1,
+            '}' => depth_brace -= 1,
+            '[' => depth_bracket += 1,
+            ']' => depth_bracket -= 1,
+            ';' if depth_paren == 0 && depth_brace == 0 && depth_bracket == 0 => {
+                out.push(src[start..=idx].trim());
+                start = idx + 1;
+            }
+            _ => {}
         }
     }
+
     if start < src.len() {
         let tail = src[start..].trim();
         if !tail.is_empty() {
@@ -127,38 +167,199 @@ fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -
     imports
 }
 
-fn collect_handler_defs(src: &str) -> BTreeMap<String, bool> {
+fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
     let mut handlers = BTreeMap::new();
 
-    for line in src.lines() {
-        let trimmed = line.trim();
+    for stmt in collect_statements(src) {
+        let trimmed = stmt.trim();
 
         for prefix in ["const ", "let ", "var "] {
             if let Some(rest) = trimmed.strip_prefix(prefix) {
                 if let Some((name, after_name)) = split_identifier_and_rest(rest) {
-                    if after_name.trim_start().starts_with('=') {
-                        let is_async =
-                            after_name.contains("= async") || after_name.contains("=async");
-                        handlers.insert(name.to_string(), is_async);
+                    let after_name = after_name.trim_start();
+                    if !after_name.starts_with('=') {
+                        continue;
+                    }
+                    let after_eq = after_name.trim_start_matches('=').trim_start();
+                    if let Some((is_async, params, _body)) = parse_arrow_fn(after_eq) {
+                        let lowered_params = lower_params(&params);
+                        handlers.insert(
+                            name.to_string(),
+                            HandlerDef {
+                                is_async,
+                                params: lowered_params.clone(),
+                                semantics: lower_semantics(&lowered_params, src),
+                            },
+                        );
                     }
                 }
             }
         }
 
-        if let Some(rest) = trimmed.strip_prefix("function ") {
-            if let Some(name) = take_identifier(rest) {
-                handlers.insert(name.to_string(), false);
+        if let Some(rest) = trimmed.strip_prefix("async function ") {
+            if let Some((name, params, _body)) = parse_function_decl(rest) {
+                let lowered_params = lower_params(&params);
+                handlers.insert(
+                    name.to_string(),
+                    HandlerDef {
+                        is_async: true,
+                        params: lowered_params.clone(),
+                        semantics: lower_semantics(&lowered_params, src),
+                    },
+                );
             }
         }
 
-        if let Some(rest) = trimmed.strip_prefix("async function ") {
-            if let Some(name) = take_identifier(rest) {
-                handlers.insert(name.to_string(), true);
+        if let Some(rest) = trimmed.strip_prefix("function ") {
+            if let Some((name, params, _body)) = parse_function_decl(rest) {
+                let lowered_params = lower_params(&params);
+                handlers.insert(
+                    name.to_string(),
+                    HandlerDef {
+                        is_async: false,
+                        params: lowered_params.clone(),
+                        semantics: lower_semantics(&lowered_params, src),
+                    },
+                );
             }
         }
     }
 
     handlers
+}
+
+fn parse_arrow_fn(raw: &str) -> Option<(bool, Vec<String>, String)> {
+    let mut trimmed = raw.trim();
+    let is_async = if let Some(rest) = trimmed.strip_prefix("async") {
+        trimmed = rest.trim_start();
+        true
+    } else {
+        false
+    };
+
+    let arrow = trimmed.find("=>")?;
+    let params_raw = trimmed[..arrow].trim();
+    let body = trimmed[arrow + 2..]
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .to_string();
+
+    let params = parse_params(params_raw)?;
+    Some((is_async, params, body))
+}
+
+fn parse_function_decl(raw: &str) -> Option<(&str, Vec<String>, String)> {
+    let name = take_identifier(raw)?;
+    let rest = raw[name.len()..].trim_start();
+    if !rest.starts_with('(') {
+        return None;
+    }
+    let close = rest.find(')')?;
+    let params_raw = &rest[..=close];
+    let body = rest[close + 1..]
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .to_string();
+    let params = parse_params(params_raw)?;
+    Some((name, params, body))
+}
+
+fn parse_params(raw: &str) -> Option<Vec<String>> {
+    let trimmed = raw.trim();
+    let inner = if trimmed.starts_with('(') {
+        let close = trimmed.find(')')?;
+        &trimmed[1..close]
+    } else {
+        trimmed
+    };
+
+    if inner.trim().is_empty() {
+        return Some(vec![]);
+    }
+
+    let mut params = Vec::new();
+    for token in split_top_level_commas(inner) {
+        let param = take_identifier(token.trim())?;
+        params.push(param.to_string());
+    }
+    Some(params)
+}
+
+fn lower_params(params: &[String]) -> Vec<HandlerParamIR> {
+    params
+        .iter()
+        .enumerate()
+        .map(|(index, name)| HandlerParamIR {
+            name: name.clone(),
+            role: infer_param_role(name, index),
+        })
+        .collect()
+}
+
+fn infer_param_role(name: &str, index: usize) -> String {
+    let lower = name.to_ascii_lowercase();
+    if lower == "request" || lower == "req" {
+        return "request".to_string();
+    }
+    if lower == "reply" || lower == "response" || lower == "res" {
+        return "response".to_string();
+    }
+    if lower == "next" {
+        return "next".to_string();
+    }
+    match index {
+        0 => "request".to_string(),
+        1 => "response".to_string(),
+        2 => "next".to_string(),
+        _ => "custom".to_string(),
+    }
+}
+
+fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR {
+    let request_param = params
+        .iter()
+        .find(|param| param.role == "request")
+        .map(|param| param.name.clone());
+    let response_param = params
+        .iter()
+        .find(|param| param.role == "response")
+        .map(|param| param.name.clone());
+
+    let body_lower = body.to_ascii_lowercase();
+    let response_param_lower = response_param
+        .as_ref()
+        .map(|name| name.to_ascii_lowercase());
+
+    let has_call = |fn_name: &str| {
+        response_param_lower
+            .as_ref()
+            .map(|response_name| body_lower.contains(&format!("{response_name}.{fn_name}(")))
+            .unwrap_or(false)
+    };
+
+    let uses_status = has_call("status");
+    let uses_headers = has_call("header") || has_call("headers");
+    let uses_json = has_call("json");
+    let uses_body = has_call("send") || has_call("body");
+
+    let response_mode = if response_param.is_some() {
+        "response-object"
+    } else {
+        "return"
+    }
+    .to_string();
+
+    HandlerSemanticsIR {
+        response_mode,
+        request_param,
+        response_param,
+        uses_status,
+        uses_body,
+        uses_headers,
+        uses_json,
+    }
 }
 
 fn parse_shorthand_route(

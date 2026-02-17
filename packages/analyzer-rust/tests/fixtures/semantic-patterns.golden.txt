@@ -1,0 +1,9 @@
+modules:
+  - id=semantic-patterns.ts source_path=semantic-patterns.ts
+    exports:
+    imports:
+routes:
+  - method=POST path=/users handler_ref=createUser
+handlers:
+  - id=createUser async=false params=[request:request,reply:response] semantics=mode=response-object req=request res=reply status=true body=true headers=true json=false
+diagnostics:
