@@ -1,0 +1,7 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+async function createUser() {}
+
+fastify.post("/users", createUser);

@@ -12,6 +12,14 @@ fn fixture(name: &str) -> (String, String) {
     (path.to_string_lossy().to_string(), src)
 }
 
+#[derive(Clone, Debug)]
+struct UnsupportedFixtureCase {
+    code: &'static str,
+    bad_fixture: &'static str,
+    fixed_fixture: &'static str,
+    expected_fixed_routes: Vec<(&'static str, &'static str, &'static str)>,
+}
+
 #[test]
 fn extracts_method_path_handler_from_shorthand_and_route_object() {
     let (file, src) = fixture("basic-fastify.fixture.txt");
@@ -544,4 +552,97 @@ fn emits_deterministic_diagnostics_and_skips_routes_in_if_blocks() {
         .diagnostics
         .iter()
         .all(|d| d.source.as_ref().map(|s| s.file.as_str()) == Some(file.as_str())));
+}
+
+#[test]
+fn fixture_matrix_for_fastify_unsupported_diagnostics_bad_and_fixed_pairs() {
+    let cases = vec![
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+            bad_fixture: "fastify-unsupported-conditional-route.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-conditional-route.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/health", "health")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
+            bad_fixture: "fastify-unsupported-register-callback.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-register-callback.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/users", "listUsers")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+            bad_fixture: "fastify-unsupported-dynamic-path.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-dynamic-path.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/users/:id", "getUser")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+            bad_fixture: "fastify-unsupported-inline-handler.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-inline-handler.fixed.fixture.txt",
+            expected_fixed_routes: vec![("POST", "/users", "createUser")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
+            bad_fixture: "fastify-unsupported-route-object-shape.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-route-object-shape.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/users", "listUsers")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+            bad_fixture: "fastify-unsupported-route-object-method.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-route-object-method.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/users", "listUsers")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+            bad_fixture: "fastify-unsupported-route-object-path.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-route-object-path.fixed.fixture.txt",
+            expected_fixed_routes: vec![("GET", "/users/:id", "getUser")],
+        },
+        UnsupportedFixtureCase {
+            code: "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
+            bad_fixture: "fastify-unsupported-route-object-handler.bad.fixture.txt",
+            fixed_fixture: "fastify-unsupported-route-object-handler.fixed.fixture.txt",
+            expected_fixed_routes: vec![("POST", "/users", "createUser")],
+        },
+    ];
+
+    for case in cases {
+        let (bad_file, bad_src) = fixture(case.bad_fixture);
+        let bad_ir = analyze_fastify_entry(&bad_file, &bad_src);
+
+        let mut bad_codes = bad_ir
+            .diagnostics
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect::<Vec<_>>();
+        bad_codes.sort();
+
+        assert_eq!(
+            bad_codes,
+            vec![case.code],
+            "unexpected diagnostics for bad fixture: {}",
+            case.bad_fixture,
+        );
+
+        let (fixed_file, fixed_src) = fixture(case.fixed_fixture);
+        let fixed_ir = analyze_fastify_entry(&fixed_file, &fixed_src);
+
+        assert_eq!(
+            fixed_ir
+                .routes
+                .iter()
+                .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+                .collect::<Vec<_>>(),
+            case.expected_fixed_routes,
+            "route extraction drifted for fixed fixture: {}",
+            case.fixed_fixture,
+        );
+
+        assert!(
+            fixed_ir.diagnostics.is_empty(),
+            "fixed fixture should not emit diagnostics: {}",
+            case.fixed_fixture,
+        );
+    }
 }
