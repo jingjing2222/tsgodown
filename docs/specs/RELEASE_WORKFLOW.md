@@ -52,9 +52,12 @@ git status --short
 pnpm install --frozen-lockfile
 ```
 
-### B. Quality gates (required)
+### B. Quality gates (required: same 9-command local gate)
+
+Use the canonical gate order from `docs/specs/TESTING_STRATEGY.md`.
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm run lint
 pnpm run format:check
 pnpm run build
@@ -65,7 +68,41 @@ cargo test --workspace --all-targets
 ./scripts/smoke-m1.sh
 ```
 
-### C. Bump versions
+### C. Smoke acceptance criteria (must be true)
+
+`./scripts/smoke-m1.sh` is a deterministic runtime-path gate, not a liveness-only ping.
+Release/hotfix sign-off requires all of the following:
+
+1. Build path succeeds (`tsgodown build` emits `dist-go/main.go`).
+2. Generated Go app compiles (`go build`).
+3. Runtime route checks pass:
+   - `GET /health` returns `501` with deterministic TODO body (`TODO implement handler health for GET /health`).
+   - `GET /missing` returns `404` with `404 page not found`.
+4. Script exits with `[smoke-m1] PASS`.
+
+If any criterion fails, treat release readiness as **blocked**.
+
+### D. Rollback readiness check (before tagging)
+
+Before `git tag`, confirm rollback inputs are prepared:
+
+1. Identify prior stable tag for fallback:
+
+```bash
+git tag --sort=-v:refname | head
+```
+
+2. Record the exact commit to revert if this release must be rolled back:
+
+```bash
+git rev-parse --short HEAD
+```
+
+3. Add rollback note to PR body/release notes:
+   - "If regression is found, revert `<release_commit_sha>` on `main` and cut patch fix-forward."
+   - "If immediate consumer fallback is required, pin to `<previous_stable_tag>`."
+
+### E. Bump versions
 
 Example: patch release (`0.0.1` -> `0.0.2`) for all active packages.
 
@@ -88,7 +125,7 @@ pnpm run build
 pnpm run test
 ```
 
-### D. Changelog + tag + release commit
+### F. Changelog + tag + release commit
 
 ```bash
 git add -A

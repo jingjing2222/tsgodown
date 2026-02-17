@@ -76,6 +76,9 @@ cargo test --workspace --all-targets
 
 ### B. `smoke-executable` job
 - Re-run `./scripts/smoke-m1.sh` locally.
+- Treat smoke as a compiler-mode deterministic route gate (not process-liveness only):
+  - `GET /health` => `501` + `TODO implement handler health for GET /health`
+  - `GET /missing` => `404` + `404 page not found`
 - Use built-in diagnostics:
   - `.tmp-smoke-m1-server.log` tail (runtime failures)
   - `examples/fastify-min/dist-go/main.go` head (emission sanity)
@@ -106,7 +109,9 @@ Checklist:
    - `cd examples/fastify-min/dist-go`
    - `go build -o tsgodown-local .`
    - `PORT=18080 ./tsgodown-local`
-4. Validate endpoint: `curl -i http://127.0.0.1:18080/health`
+4. Validate smoke route checks manually:
+   - `curl -i http://127.0.0.1:18080/health`
+   - `curl -i http://127.0.0.1:18080/missing`
 
 ## 6) Escalation Rules
 - If classified as `CI-INFRA` and reproducibility is absent locally, retry once.
