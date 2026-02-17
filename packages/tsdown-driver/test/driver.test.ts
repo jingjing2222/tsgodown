@@ -133,13 +133,44 @@ test("runBuild invokes rust adapter with JSON request contract", async () => {
   }
 });
 
+test("runBuild rejects path-escaping manifest values from rust engine", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
+
+  try {
+    await assert.rejects(
+      runBuild(cwd, "tsdown.config.ts", {
+        executeRustEngine: async () => ({
+          ok: true,
+          manifest: {
+            buildId: "aabbccddeeff0011",
+            entries: ["../src/index.ts"],
+            bundles: [
+              {
+                file: "dist/index.mjs",
+                map: "../dist/index.mjs.map",
+                format: "esm",
+                exports: [],
+              },
+            ],
+            types: ["dist/index.d.ts"],
+            tsconfigPath: "../tsconfig.json",
+          },
+        }),
+      }),
+      /artifact contract violation: manifest.entries contains invalid path .*manifest.bundles.map contains invalid path .*manifest.tsconfigPath must be a safe relative path/s,
+    );
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runBuild fails with explicit diagnostic when rust engine bin is missing", async () => {
   const prev = process.env.TSGODOWN_RUST_ENGINE_BIN;
   Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
 
   try {
     await assert.rejects(
-      runBuild("/repo", "tsdown.config.ts"),
+      runBuild(process.cwd(), "tsdown.config.ts"),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /source=rust-engine-bin-env/);
@@ -165,7 +196,7 @@ test("runBuild fails with explicit diagnostic when rust engine bin is missing", 
 
 test("runBuild reports rust engine error in source/cause/guidance format", async () => {
   await assert.rejects(
-    runBuild("/repo", "tsdown.config.ts", {
+    runBuild(process.cwd(), "tsdown.config.ts", {
       executeRustEngine: async () => ({
         ok: false,
         error: {
@@ -268,7 +299,7 @@ test("runBuild maps malformed responses to deterministic contract errors", async
 
   for (const fixture of fixtures) {
     await assert.rejects(
-      runBuild("/repo", "tsdown.config.ts", {
+      runBuild(process.cwd(), "tsdown.config.ts", {
         executeRustEngine: async () => fixture.response as RustEngineResponse,
       }),
       (error: unknown) => {
@@ -333,7 +364,7 @@ test("runBuild maps failed status-envelope variants to deterministic source/caus
 
   for (const fixture of fixtures) {
     await assert.rejects(
-      runBuild("/repo", "tsdown.config.ts", {
+      runBuild(process.cwd(), "tsdown.config.ts", {
         executeRustEngine: async () => fixture.response,
       }),
       (error: unknown) => {

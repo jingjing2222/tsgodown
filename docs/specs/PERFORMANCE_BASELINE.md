@@ -5,7 +5,7 @@ Provide a repeatable baseline/perf-regression scaffold for CLI orchestration lat
 
 ## Scenarios
 Current baseline scenarios (defined in `packages/cli/src/perf-baseline.ts`):
-- `cli-build-fastify-min`
+- `cli-build-fastify-scaffold-real`
 - `cli-check-multi-file`
 - `cli-report-route-object-variants`
 - `cli-stages-nested-register-prefix`

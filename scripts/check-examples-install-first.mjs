@@ -4,12 +4,6 @@ import path from "node:path";
 const root = process.cwd();
 const examplesRoot = path.join(root, "examples");
 
-const requiredExamples = [
-  "fastify-min",
-  "fastify-complex",
-  "fastify-scaffold-real",
-];
-
 let hasError = false;
 
 function fail(msg) {
@@ -21,10 +15,27 @@ function ok(msg) {
   console.log(`✔ ${msg}`);
 }
 
-for (const name of requiredExamples) {
+function listTrackedExamples() {
+  const entries = fs.readdirSync(examplesRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) =>
+      fs.existsSync(path.join(examplesRoot, name, "tsgodown.config.ts")),
+    )
+    .sort();
+}
+
+function readEntryPathFromConfig(configText) {
+  const match = configText.match(/\bentry\s*:\s*["']([^"']+)["']/);
+  return match?.[1];
+}
+
+for (const name of listTrackedExamples()) {
   const exampleDir = path.join(examplesRoot, name);
   const pkgPath = path.join(exampleDir, "package.json");
   const readmePath = path.join(exampleDir, "README.md");
+  const configPath = path.join(exampleDir, "tsgodown.config.ts");
 
   if (!fs.existsSync(pkgPath)) {
     fail(`${name}: missing package.json`);
@@ -47,6 +58,16 @@ for (const name of requiredExamples) {
     );
   }
 
+  const configText = fs.readFileSync(configPath, "utf8");
+  const entryPath = readEntryPathFromConfig(configText);
+  if (!entryPath) {
+    fail(`${name}: tsgodown.config.ts must declare string entry path`);
+  } else if (!fs.existsSync(path.join(exampleDir, entryPath))) {
+    fail(
+      `${name}: tsgodown.config.ts entry path does not exist (${entryPath})`,
+    );
+  }
+
   if (!fs.existsSync(readmePath)) {
     fail(`${name}: missing README.md`);
     continue;
@@ -60,7 +81,7 @@ for (const name of requiredExamples) {
     fail(`${name}: README must include 'pnpm run build:go'`);
   }
 
-  ok(`${name}: install-first build flow contract is valid`);
+  ok(`${name}: install-first + compile-path contract is valid`);
 }
 
 if (hasError) {

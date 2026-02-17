@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { normalizeRustEngineResponse } from "./contract.js";
 import { writeManifestArtifacts } from "./manifest.js";
 import { invokeRustEngine } from "./process-adapter.js";
@@ -80,9 +82,63 @@ function assertRunBuildArtifactContract(input: {
     violations.push("manifest.entries must be an array");
   }
 
+  if (Array.isArray(input.manifest?.entries)) {
+    for (const entry of input.manifest.entries) {
+      if (!isSafeRelativePath(entry)) {
+        violations.push(`manifest.entries contains invalid path (${entry})`);
+      }
+    }
+  }
+
+  for (const bundle of input.manifest?.bundles ?? []) {
+    if (!isSafeRelativePath(bundle.file)) {
+      violations.push(
+        `manifest.bundles.file contains invalid path (${bundle.file})`,
+      );
+    }
+
+    if (bundle.map !== undefined && !isSafeRelativePath(bundle.map)) {
+      violations.push(
+        `manifest.bundles.map contains invalid path (${bundle.map})`,
+      );
+    }
+  }
+
+  for (const typePath of input.manifest?.types ?? []) {
+    if (!isSafeRelativePath(typePath)) {
+      violations.push(`manifest.types contains invalid path (${typePath})`);
+    }
+  }
+
+  if (!isSafeRelativePath(input.manifest?.tsconfigPath ?? "")) {
+    violations.push("manifest.tsconfigPath must be a safe relative path");
+  }
+
   if (violations.length > 0) {
     throw new Error(
       `[tsdown-driver] artifact contract violation: ${violations.join("; ")}`,
     );
   }
+}
+
+function isSafeRelativePath(value: string): boolean {
+  if (!value?.trim()) {
+    return false;
+  }
+
+  if (path.isAbsolute(value)) {
+    return false;
+  }
+
+  const normalized = path.posix.normalize(value);
+  if (
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    normalized.includes("/../") ||
+    normalized === "."
+  ) {
+    return false;
+  }
+
+  return true;
 }

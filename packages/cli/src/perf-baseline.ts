@@ -24,8 +24,8 @@ export interface RegressionCheck {
 
 export const PERF_SCENARIOS: PerfScenario[] = [
   {
-    id: "cli-build-fastify-min",
-    fixture: "fastify-min",
+    id: "cli-build-fastify-scaffold-real",
+    fixture: "fastify-scaffold-real",
     command: "build",
     warmupRuns: 1,
     sampleRuns: 5,
