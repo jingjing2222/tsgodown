@@ -2,12 +2,15 @@
 
 This project tracks Fastify status through compiler-mode contracts and executable proof gates.
 
-For current source-of-truth contracts and delivery direction, see:
+Canonical compiler contract source:
 
-- Contracts: `docs/specs/COMPILER_MODE_CONTRACTS.md`
-- Diagnostics behavior: `docs/specs/DIAGNOSTICS.md`
-- Capability gate (compile viability): `docs/specs/CAPABILITY_MATRIX.md`
-- Near-term execution gate: `docs/specs/M1_RELEASE_GATE.md`
+- Compiler-mode spec lock + fail-closed policy: `docs/specs/COMPILER_MODE_CONTRACTS.md`
+
+Related compiler references:
+
+- Diagnostics contract: `docs/specs/DIAGNOSTICS.md`
+- Capability boundary gate (compile viability): `docs/specs/CAPABILITY_MATRIX.md`
+- Executable M1 release gate: `docs/specs/M1_RELEASE_GATE.md`
 - Backlog/roadmap queue: `docs/backlog/NODE_COMPAT_MATRIX.md`
 
-Policy: support claims are made through compiler-mode contracts + differential proof obligations.
+Policy: compiler support claims are made only through documented compiler contracts plus differential proof obligations.
