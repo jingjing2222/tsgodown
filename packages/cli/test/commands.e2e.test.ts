@@ -224,7 +224,14 @@ function ensureGoRuntimeModule(goDir: string) {
       encoding: "utf8",
     },
   );
-  assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+  const alreadyExists =
+    modInit.status !== 0 &&
+    /go\.mod already exists/.test(`${modInit.stderr}\n${modInit.stdout}`);
+  assert.equal(
+    modInit.status === 0 || alreadyExists,
+    true,
+    modInit.stderr || modInit.stdout,
+  );
   initializedGoRuntimeDirs.add(goDir);
 }
 
