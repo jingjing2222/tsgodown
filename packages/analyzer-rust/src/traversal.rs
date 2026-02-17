@@ -65,6 +65,7 @@ pub(crate) fn analyze_scope(
 
         if let Some(consumed) = analyze_call_chain(
             tail,
+            body,
             file,
             instance_name,
             prefix,
@@ -124,6 +125,7 @@ fn first_supported_method(chain: &str) -> Option<&'static str> {
 #[allow(clippy::too_many_arguments)]
 fn analyze_call_chain(
     mut chain: &str,
+    scope_src: &str,
     file: &str,
     instance_name: &str,
     prefix: &str,
@@ -164,6 +166,7 @@ fn analyze_call_chain(
             if let Some(args) = capture_call_args(chain, "route") {
                 extract_route_object(
                     &args,
+                    scope_src,
                     file,
                     instance_name,
                     prefix,

@@ -211,13 +211,20 @@ fn contract_fixtures() -> Vec<ContractFixture> {
         },
         ContractFixture {
             name: "unsupported-route-object-fastify.fixture.txt",
-            expected_routes: vec![("POST", "/inline", "__inline__route__b86c00febff9d0f3")],
-            expected_handlers: vec![("__inline__route__b86c00febff9d0f3", vec![], true, "unknown")],
+            expected_routes: vec![
+                ("GET", "/from-config", "listFromConfig"),
+                ("GET", "/from-variable-method", "listUsers"),
+                ("GET", "/dynamic", "listAudits"),
+                ("POST", "/inline", "__inline__route__b86c00febff9d0f3"),
+            ],
+            expected_handlers: vec![
+                ("listUsers", vec![], false, "unknown"),
+                ("listAudits", vec![], false, "unknown"),
+                ("__inline__route__b86c00febff9d0f3", vec![], true, "unknown"),
+            ],
             expected_diag_codes: vec![
-                "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
-                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
             ],
         },
     ]

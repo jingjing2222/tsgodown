@@ -15,7 +15,7 @@ This file is auto-managed by `scripts/check-fastify-diagnostics-sync.mjs`.
 | `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK` | `unsupported register callback pattern on {}.register(...). Use inline function(plugin) {{ ... }} or named local plugin reference.` | `packages/analyzer-rust/src/register.rs` |
 | `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD` | `unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET\|POST\|PUT\|DELETE\|PATCH.` | `packages/analyzer-rust/src/routes.rs` |
 | `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD` | `unsupported route object method in {}.route({{...}}): missing string 'method' or non-empty string array. Supported methods: GET\|POST\|PUT\|DELETE\|PATCH.` | `packages/analyzer-rust/src/routes.rs` |
-| `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE` | `unsupported route object pattern in {}.route(...). Provide an inline object literal (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).` | `packages/analyzer-rust/src/routes.rs` |
+| `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE` | `unsupported route object pattern in {}.route(...). Provide an inline object literal or local const object reference (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).` | `packages/analyzer-rust/src/routes.rs` |
 | `DYNAMIC_IMPORT_DETECTED` | `dynamic import detected; use static import declarations for deterministic IR extraction.` | `packages/analyzer-rust/src/lib.rs` |
 
 ## Regeneration

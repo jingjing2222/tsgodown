@@ -27,7 +27,7 @@ These lines are managed by `scripts/check-fastify-diagnostics-sync.mjs` and must
 - `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`: `unsupported register callback pattern on {}.register(...). Use inline function(plugin) {{ ... }} or named local plugin reference.`
 - `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`: `unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.`
 - `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`: `unsupported route object method in {}.route({{...}}): missing string 'method' or non-empty string array. Supported methods: GET|POST|PUT|DELETE|PATCH.`
-- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`: `unsupported route object pattern in {}.route(...). Provide an inline object literal (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`: `unsupported route object pattern in {}.route(...). Provide an inline object literal or local const object reference (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).`
 - `DYNAMIC_IMPORT_DETECTED`: `dynamic import detected; use static import declarations for deterministic IR extraction.`
 <!-- AUTO-GENERATED:DIAGNOSTIC_MESSAGES:END -->
 

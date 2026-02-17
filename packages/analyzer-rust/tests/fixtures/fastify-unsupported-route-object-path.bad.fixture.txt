@@ -1,7 +1,8 @@
 import Fastify from "fastify";
 
 const fastify = Fastify();
-const dynamicPath = "/users/:id";
+const id = "id";
+const dynamicPath = `/users/${id}`;
 
 function getUser() {}
 

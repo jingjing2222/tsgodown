@@ -4,5 +4,8 @@ const fastify = Fastify();
 
 function listUsers() {}
 
-const routeDef = { method: "GET", url: "/users", handler: listUsers };
-fastify.route(routeDef);
+function buildRoute() {
+  return { method: "GET", url: "/users", handler: listUsers };
+}
+
+fastify.route(buildRoute());

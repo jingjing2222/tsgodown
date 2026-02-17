@@ -451,9 +451,14 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
     assert_eq!(
         ir.routes
             .iter()
-            .map(|r| (r.method.as_str(), r.path.as_str()))
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
             .collect::<Vec<_>>(),
-        vec![("POST", "/inline")]
+        vec![
+            ("GET", "/from-config", "listFromConfig"),
+            ("GET", "/from-variable-method", "listUsers"),
+            ("GET", "/dynamic", "listAudits"),
+            ("POST", "/inline", "__inline__route__b86c00febff9d0f3"),
+        ]
     );
 
     let actual = ir
@@ -476,12 +481,6 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
         actual,
         vec![
             (
-                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
-                "unsupported route object pattern in fastify.route(...). Provide an inline object literal (e.g. { method: 'GET', url: '/users', handler: listUsers }).",
-                "warn",
-                file.as_str(),
-            ),
-            (
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
                 "unsupported route object method in fastify.route({...}): missing string 'method' or non-empty string array. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 "warn",
@@ -490,12 +489,6 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
             (
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
                 "unsupported route object method in fastify.route({...}): 'OPTIONS'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
-                "warn",
-                file.as_str(),
-            ),
-            (
-                "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-                "unsupported route object path in fastify.route({...}). Provide string literal 'url' or 'path' (e.g. '/users/:id').",
                 "warn",
                 file.as_str(),
             ),
