@@ -150,6 +150,42 @@ fn contract_fixtures() -> Vec<ContractFixture> {
             expected_diag_codes: vec![],
         },
         ContractFixture {
+            name: "class-object-literal-handlers-fastify.fixture.txt",
+            expected_routes: vec![
+                ("GET", "/users", "userHandlers.list"),
+                ("POST", "/users", "userHandlers.create"),
+                ("GET", "/users/:id", "controller.detail"),
+                ("DELETE", "/users/:id", "controller.remove"),
+            ],
+            expected_handlers: vec![
+                (
+                    "userHandlers.list",
+                    vec![("req", "request"), ("reply", "response")],
+                    false,
+                    "unknown",
+                ),
+                (
+                    "userHandlers.create",
+                    vec![("request", "request")],
+                    true,
+                    "unknown",
+                ),
+                (
+                    "controller.detail",
+                    vec![("request", "request")],
+                    true,
+                    "unknown",
+                ),
+                (
+                    "controller.remove",
+                    vec![("req", "request"), ("reply", "response")],
+                    false,
+                    "unknown",
+                ),
+            ],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
             name: "unsupported-fastify.fixture.txt",
             expected_routes: vec![],
             expected_handlers: vec![],

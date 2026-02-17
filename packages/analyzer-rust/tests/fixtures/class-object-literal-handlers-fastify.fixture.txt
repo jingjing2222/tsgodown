@@ -1,0 +1,20 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+const userHandlers = {
+  list(req, reply) {},
+  create: async (request) => {},
+};
+
+class UserController {
+  async detail(request) {}
+  remove(req, reply) {}
+}
+
+const controller = new UserController();
+
+fastify.get('/users', userHandlers.list);
+fastify.post('/users', userHandlers.create);
+fastify.route({ method: 'GET', url: '/users/:id', handler: controller.detail });
+fastify.delete('/users/:id', controller.remove);
