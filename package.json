@@ -22,7 +22,8 @@
     "docs:scaffold:sync": "node scripts/check-fastify-scaffold-sync.mjs",
     "scaffold:sync:check": "node scripts/check-scaffold-sync.mjs",
     "scaffold:sync:write": "node scripts/check-scaffold-sync.mjs --write",
-    "examples:install-first:check": "node scripts/check-example-install-first.mjs"
+    "examples:install-first:check": "node scripts/check-example-install-first.mjs",
+    "guard:compiler-mode-only": "node scripts/guard-compiler-mode-only.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
