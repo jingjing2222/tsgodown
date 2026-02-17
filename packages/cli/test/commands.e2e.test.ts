@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -235,22 +236,54 @@ function ensureGoRuntimeModule(goDir: string) {
   initializedGoRuntimeDirs.add(goDir);
 }
 
+type GoRouteExpectation = {
+  routePath: string;
+  method?: string;
+  expectedStatus?: number;
+  expectedBodyFragment?: string;
+  expectedAllowHeader?: string;
+};
+
+async function allocatePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("failed to allocate test port")));
+        return;
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+    server.once("error", reject);
+  });
+}
+
 async function assertGoRunRequest(
   goDir: string,
-  request: {
-    method?: string;
-    routePath: string;
-    expectedStatus: number;
-    expectedBodyFragment?: string;
-  },
+  expectation: GoRouteExpectation,
 ) {
   if (!hasGoToolchain) {
     return;
   }
 
+  const {
+    routePath,
+    method = "GET",
+    expectedStatus = 501,
+    expectedBodyFragment,
+    expectedAllowHeader,
+  } = expectation;
+
   ensureGoRuntimeModule(goDir);
 
-  const port = String(20000 + Math.floor(Math.random() * 30000));
+  const port = String(await allocatePort());
   const child = spawn("go", ["run", "."], {
     cwd: goDir,
     env: {
@@ -263,19 +296,18 @@ async function assertGoRunRequest(
   const deadline = Date.now() + 10_000;
   let status = 0;
   let body = "";
+  let allowHeader: string | null = null;
   let lastError: unknown;
 
   try {
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(
-          `http://127.0.0.1:${port}${request.routePath}`,
-          {
-            method: request.method ?? "GET",
-            signal: AbortSignal.timeout(1000),
-          },
-        );
+        const response = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+          method,
+          signal: AbortSignal.timeout(1000),
+        });
         status = response.status;
+        allowHeader = response.headers.get("allow");
         body = await response.text();
         break;
       } catch (error) {
@@ -286,11 +318,15 @@ async function assertGoRunRequest(
 
     assert.equal(
       status,
-      request.expectedStatus,
-      `server did not become ready for ${request.method ?? "GET"} ${request.routePath}; lastError=${String(lastError)}`,
+      expectedStatus,
+      `server did not become ready for ${method} ${routePath}; lastError=${String(lastError)}`,
     );
-    if (request.expectedBodyFragment) {
-      assert.match(body, new RegExp(request.expectedBodyFragment));
+    if (expectedBodyFragment) {
+      assert.match(body, new RegExp(expectedBodyFragment));
+    }
+
+    if (expectedAllowHeader !== undefined) {
+      assert.equal(allowHeader, expectedAllowHeader);
     }
   } finally {
     if (child.exitCode === null && !child.killed) {
@@ -995,6 +1031,7 @@ test("M2 acceptance: fastify-complex fixture preserves method contracts and path
     method: "GET",
     routePath: "/users/abc-123",
     expectedStatus: 405,
+    expectedAllowHeader: "POST",
     expectedBodyFragment: "Method Not Allowed",
   });
 });
