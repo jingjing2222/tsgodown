@@ -1,0 +1,32 @@
+import Fastify from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
+
+const fastify = Fastify();
+
+type AppRequest = FastifyRequest<{ Params: { id: string } }>;
+type AppReply = FastifyReply;
+
+const getUser = async (
+  req: AppRequest,
+  reply: AppReply,
+): Promise<void> => {
+  try {
+    await reply.send({ id: req.params.id });
+  } catch (error) {
+    reply.code(500).send({ error: "internal" });
+  }
+};
+
+async function createUser(
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  try {
+    await reply.code(201).send({ ok: true });
+  } catch (_error) {
+    reply.code(500).send({ error: "internal" });
+  }
+}
+
+fastify.get("/users/:id", getUser);
+fastify.post("/users", createUser);

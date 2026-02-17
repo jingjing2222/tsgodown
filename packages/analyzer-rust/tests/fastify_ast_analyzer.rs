@@ -219,6 +219,53 @@ fn handles_single_param_arrow_plugins_and_handlers() {
 }
 
 #[test]
+fn extracts_typed_async_handlers_with_try_catch_error_flow() {
+    let (file, src) = fixture("typed-async-error-handling-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/users/:id", "getUser"),
+            ("POST", "/users", "createUser"),
+        ]
+    );
+
+    assert_eq!(
+        ir.handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "getUser",
+                vec![("req", "request"), ("reply", "response")],
+                true,
+            ),
+            (
+                "createUser",
+                vec![("req", "request"), ("reply", "response")],
+                true,
+            ),
+        ]
+    );
+
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
 fn handles_chained_routes_nested_plugins_and_single_param_function_plugins() {
     let cases = vec![
         (
