@@ -19,6 +19,7 @@ Minimum proof obligations:
 
 1. **Semantic differential tests**
    - compare TS runtime behavior and generated Go runtime behavior for equivalent inputs.
+   - parity is measured by the normative dimensions in [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md) (status/body/headers/method behavior).
 2. **Runtime compatibility layer verification**
    - document and test any semantic shims required to match TS/Fastify behavior.
 3. **Fail-closed policy verification**
