@@ -19,8 +19,6 @@
     "gate:m1": "./scripts/m1-release-gate.sh",
     "perf:baseline": "tsx scripts/perf-baseline.ts",
     "devx:fastify-complex": "./scripts/devx-fastify-complex.sh",
-    "docs:diagnostics:sync": "node scripts/check-fastify-diagnostics-sync.mjs",
-    "docs:diagnostics:sync:write": "node scripts/check-fastify-diagnostics-sync.mjs --write",
     "docs:scaffold:sync": "node scripts/check-fastify-scaffold-sync.mjs",
     "scaffold:sync:check": "node scripts/check-scaffold-sync.mjs",
     "scaffold:sync:write": "node scripts/check-scaffold-sync.mjs --write",
