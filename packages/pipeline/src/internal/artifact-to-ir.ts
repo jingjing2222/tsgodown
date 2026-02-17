@@ -12,7 +12,7 @@ export function buildProgramIrFromArtifacts(
     imports: [],
   }));
 
-  const primaryHandlerId = "handler_health";
+  const primaryHandlerId = "health";
 
   return {
     modules,

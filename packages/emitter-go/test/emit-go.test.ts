@@ -342,6 +342,43 @@ test("emitGoProject keeps middleware metadata comments deterministic for equival
   assert.match(second, /\/\/\s+Middleware:\s+\["a-trace","m-cache","z-auth"\]/);
 });
 
+test("emitGoProject TODO message uses stable handler display name for handler_* refs", () => {
+  const sampleIr = readFixture("sample-ir");
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      ...sampleIr,
+      routes: [
+        {
+          method: "GET",
+          path: "/health",
+          handlerRef: "handler_health",
+        },
+      ],
+      handlers: [
+        {
+          id: "handler_health",
+          params: [],
+          async: false,
+          semantics: { responseMode: "unknown" },
+        },
+      ],
+    },
+    outDir,
+  );
+
+  const goSource = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+  assert.match(
+    goSource,
+    /fmt\.Fprintln\(w, "TODO implement handler health for GET \/health"\)/,
+  );
+  assert.doesNotMatch(
+    goSource,
+    /TODO implement handler handler_health for GET \/health/,
+  );
+});
+
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
   const outDir = createOutDir();
 

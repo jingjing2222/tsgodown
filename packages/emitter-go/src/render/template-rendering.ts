@@ -98,6 +98,10 @@ function formatHandlerParams(handler: HandlerIR | undefined): string {
   return handler.params.map((p) => `${p.role}:${p.name}`).join(", ");
 }
 
+function toTodoHandlerDisplayName(handlerRef: string): string {
+  return handlerRef.replace(/^handler[_-]+/, "");
+}
+
 export function renderRoute(
   route: RouteIR,
   index: number,
@@ -105,7 +109,8 @@ export function renderRoute(
 ): string[] {
   const normalizedMethod = normalizeHttpMethod(route.method);
   const normalizedPath = normalizeRoutePath(route.path);
-  const todoMessage = `TODO implement handler ${route.handlerRef} for ${normalizedMethod} ${normalizedPath}`;
+  const todoHandlerName = toTodoHandlerDisplayName(route.handlerRef);
+  const todoMessage = `TODO implement handler ${todoHandlerName} for ${normalizedMethod} ${normalizedPath}`;
 
   const lines: string[] = [
     `func ${routeHandlerName(index)}(w http.ResponseWriter, req *http.Request) {`,

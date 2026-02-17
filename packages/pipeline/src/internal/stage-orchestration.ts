@@ -42,11 +42,15 @@ export async function orchestratePipelineStages({
         failFast: true,
       });
       if (!capabilityCheck.ok) {
-        throw new Error(capabilityCheck.diagnostics[0]?.message ?? "capability gate failed");
+        throw new Error(
+          capabilityCheck.diagnostics[0]?.message ?? "capability gate failed",
+        );
       }
 
       stage = "EMIT_GO";
-      log(`[EMIT_GO] emitting Go project to ${path.relative(cwd, outDir) || "."}`);
+      log(
+        `[EMIT_GO] emitting Go project to ${path.relative(cwd, outDir) || "."}`,
+      );
       emitGoProject(ir, outDir);
 
       stage = "ON_SUCCESS";
