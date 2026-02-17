@@ -17,6 +17,8 @@ The primary goal is fixed as:
 
 This repository remains intentionally strict: when code is outside the declared semantic envelope or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
 
+Core execution path guardrail: framework-name branching/adapters are disallowed in `packages/core/src`, `packages/pipeline/src`, and `packages/cli/src/commands` (check with `pnpm run guard:core-path`).
+
 ## Milestone lock (execution sequence)
 
 Documentation and gate execution follow this fixed sequence:

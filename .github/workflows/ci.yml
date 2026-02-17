@@ -62,8 +62,14 @@ jobs:
       - name: Guard compiler-mode-only paths/docs
         run: node scripts/guard-compiler-mode-only.mjs
 
+      - name: Guard core path against framework branching/adapters
+        run: node scripts/guard-core-path-no-framework-branching.mjs
+
+      - name: Test core path guardrail matcher
+        run: node --test scripts/guard-core-path-no-framework-branching.test.mjs
+
   differential-compliance:
-    name: Differential + compliance gates
+    name: Semantics parity + compliance gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -91,8 +97,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Differential proof gate
-        run: pnpm run gate:differential
+      - name: Semantics parity proof gate (global safety net)
+        run: pnpm run gate:semantics-parity
 
       - name: Compliance/guardrail gate
         run: pnpm run gate:compliance
