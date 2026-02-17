@@ -471,7 +471,7 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
             ),
             (
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
-                "unsupported route object method in fastify.route({...}): missing string 'method'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                "unsupported route object method in fastify.route({...}): missing string 'method' or non-empty string array. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 "warn",
                 file.as_str(),
             ),
@@ -495,4 +495,53 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
             ),
         ]
     );
+}
+
+#[test]
+fn supports_route_object_method_array_extraction() {
+    let (file, src) = fixture("route-object-method-array-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("PUT", "/things/:id", "replaceThing"),
+            ("PATCH", "/things/:id", "replaceThing"),
+        ]
+    );
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn emits_deterministic_diagnostics_and_skips_routes_in_if_blocks() {
+    let (file, src) = fixture("conditional-routes-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("GET", "/always", "alwaysOn")]
+    );
+
+    assert_eq!(
+        ir.diagnostics
+            .iter()
+            .map(|d| (d.code.as_str(), d.level.as_str(), d.message.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(
+            "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+            "warn",
+            "conditional route registration in if-block is unsupported for deterministic extraction (fastify.get(...)). Move route declaration to top-level plugin scope.",
+        )]
+    );
+
+    assert!(ir
+        .diagnostics
+        .iter()
+        .all(|d| d.source.as_ref().map(|s| s.file.as_str()) == Some(file.as_str())));
 }

@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
-    extract_handler_ref, extract_object_handler_ref, extract_object_string_prop,
-    extract_quoted_string, first_object_literal, split_top_level,
+    extract_handler_ref, extract_object_handler_ref, extract_object_string_array_prop,
+    extract_object_string_prop, extract_quoted_string, first_object_literal, split_top_level,
 };
 use crate::defs::HandlerDef;
 use crate::diagnostics::diag;
@@ -81,34 +81,46 @@ pub(crate) fn extract_route_object(
     };
 
     let raw_method = extract_object_string_prop(&obj, "method");
-    let method = raw_method.as_deref().map(|m| m.to_ascii_uppercase());
+    let raw_method_array = extract_object_string_array_prop(&obj, "method");
     let path = extract_object_string_prop(&obj, "url")
         .or_else(|| extract_object_string_prop(&obj, "path"));
     let handler_ref = extract_object_handler_ref(&obj, "handler");
 
     let supported = HashSet::from(["GET", "POST", "PUT", "DELETE", "PATCH"]);
-    let Some(method) = method else {
+
+    let methods = if let Some(method) = raw_method {
+        vec![method]
+    } else if !raw_method_array.is_empty() {
+        raw_method_array
+    } else {
         diagnostics.push(diag(
             file,
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
             &format!(
-                "unsupported route object method in {}.route({{...}}): missing string 'method'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                "unsupported route object method in {}.route({{...}}): missing string 'method' or non-empty string array. Supported methods: GET|POST|PUT|DELETE|PATCH.",
                 instance_name
             ),
         ));
         return;
     };
-    if !supported.contains(method.as_str()) {
-        diagnostics.push(diag(
-            file,
-            "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
-            &format!(
-                "unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
-                instance_name,
-                raw_method.unwrap_or_else(|| "<unknown>".to_string())
-            ),
-        ));
-        return;
+
+    let methods = methods
+        .iter()
+        .map(|m| (m.clone(), m.to_ascii_uppercase()))
+        .collect::<Vec<_>>();
+
+    for (raw, upper) in &methods {
+        if !supported.contains(upper.as_str()) {
+            diagnostics.push(diag(
+                file,
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
+                &format!(
+                    "unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.",
+                    instance_name, raw
+                ),
+            ));
+            return;
+        }
     }
 
     let Some(path) = path else {
@@ -135,11 +147,13 @@ pub(crate) fn extract_route_object(
         return;
     };
 
-    routes.push(RouteIR {
-        method,
-        path: join_path(prefix, &path),
-        handler_ref: handler_ref.clone(),
-    });
+    for (_, method) in methods {
+        routes.push(RouteIR {
+            method,
+            path: join_path(prefix, &path),
+            handler_ref: handler_ref.clone(),
+        });
+    }
     upsert_handler(handlers, handler_defs, &handler_ref);
 }
 

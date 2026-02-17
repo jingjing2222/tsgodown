@@ -157,6 +157,22 @@ pub(crate) fn extract_object_string_prop(obj: &str, key: &str) -> Option<String>
     re.captures(obj).and_then(|c| extract_quoted_string(&c[1]))
 }
 
+pub(crate) fn extract_object_string_array_prop(obj: &str, key: &str) -> Vec<String> {
+    let pattern = format!(
+        r#"(?s)(?:\b{}\b|"{}")\s*:\s*\[(.*?)\]"#,
+        regex::escape(key),
+        regex::escape(key)
+    );
+    let re = Regex::new(&pattern).unwrap();
+    let Some(captures) = re.captures(obj) else {
+        return vec![];
+    };
+    split_top_level(&captures[1], ',')
+        .into_iter()
+        .filter_map(|part| extract_quoted_string(&part))
+        .collect()
+}
+
 pub(crate) fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String> {
     let pattern = format!(
         r#"(?s)(?:\b{}\b|"{}")\s*:\s*([^,}}]+)"#,
@@ -166,4 +182,69 @@ pub(crate) fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String>
     let re = Regex::new(&pattern).unwrap();
     let expr = re.captures(obj).map(|c| c[1].trim().to_string())?;
     extract_handler_ref(&expr)
+}
+
+pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
+    let bytes = src.as_bytes();
+    let mut out = vec![];
+    let mut i = 0usize;
+
+    while i + 2 <= bytes.len() {
+        if i + 1 < bytes.len()
+            && bytes[i] == b'i'
+            && bytes[i + 1] == b'f'
+            && (i == 0 || !is_ident_char(bytes[i - 1]))
+            && (i + 2 == bytes.len() || !is_ident_char(bytes[i + 2]))
+        {
+            let mut j = i + 2;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j >= bytes.len() || bytes[j] != b'(' {
+                i += 2;
+                continue;
+            }
+            let Some((_, cond_consumed)) = capture_balanced(&src[j + 1..], '(', ')') else {
+                i += 2;
+                continue;
+            };
+            j = j + 1 + cond_consumed;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'{' {
+                if let Some((_, body_consumed)) = capture_balanced(&src[j + 1..], '{', '}') {
+                    out.push((j + 1, j + body_consumed));
+                    j = j + 1 + body_consumed;
+                }
+            }
+
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j + 4 <= bytes.len() && &src[j..j + 4] == "else" {
+                let mut k = j + 4;
+                while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+                if k < bytes.len() && bytes[k] == b'{' {
+                    if let Some((_, else_consumed)) = capture_balanced(&src[k + 1..], '{', '}') {
+                        out.push((k + 1, k + else_consumed));
+                        j = k + 1 + else_consumed;
+                    }
+                }
+            }
+
+            i = j;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    out
+}
+
+fn is_ident_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
