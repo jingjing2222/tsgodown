@@ -24,7 +24,7 @@
     "scaffold:sync:write": "node scripts/check-scaffold-sync.mjs --write",
     "examples:install-first:check": "node scripts/check-example-install-first.mjs",
     "guard:compiler-mode-only": "node scripts/guard-compiler-mode-only.mjs",
-    "harness:differential": "node scripts/differential-harness.mjs --scenario fastify-min-get-health"
+    "harness:differential": "node scripts/differential-harness.mjs --scenario fastify-scaffold-real-routes"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

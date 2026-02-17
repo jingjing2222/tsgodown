@@ -39,6 +39,9 @@ jobs:
       - name: Test
         run: pnpm run test
 
+      - name: Differential harness (deterministic parity gate)
+        run: pnpm run harness:differential
+
       - name: Setup Rust
         if: ${{ hashFiles('Cargo.toml') != '' }}
         uses: dtolnay/rust-toolchain@stable
