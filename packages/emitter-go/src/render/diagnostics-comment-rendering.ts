@@ -9,6 +9,18 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
   return `${source.file}:${line}:${column}`;
 }
 
+function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
+  const sourceA = formatDiagnosticSource(a) ?? "";
+  const sourceB = formatDiagnosticSource(b) ?? "";
+
+  return (
+    sourceA.localeCompare(sourceB) ||
+    a.level.localeCompare(b.level) ||
+    a.code.localeCompare(b.code) ||
+    a.message.localeCompare(b.message)
+  );
+}
+
 export function renderDiagnosticsComments(
   diagnostics: DiagnosticIR[],
 ): string[] {
@@ -21,7 +33,9 @@ export function renderDiagnosticsComments(
     "// Generated Go may be scaffold-only until these diagnostics are resolved.",
   ];
 
-  for (const diagnostic of diagnostics) {
+  const sortedDiagnostics = [...diagnostics].sort(compareDiagnostics);
+
+  for (const diagnostic of sortedDiagnostics) {
     lines.push(
       `// [${diagnostic.level}] ${diagnostic.code}: ${diagnostic.message}`,
     );
