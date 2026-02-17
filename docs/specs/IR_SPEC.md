@@ -1,13 +1,13 @@
 # IR_SPEC (SSoT)
 
-`tsgodown`의 단일 진실원천(SSoT)은 이 IR 스펙입니다.
+This IR spec is the single source of truth (SSoT) for `tsgodown`.
 
-## 원칙
-- 프레임워크 이름(Fastify/Nest/Express)은 IR에 직접 저장하지 않는다.
-- IR은 **의미(semantics)** 만 표현한다.
-- Go 변환 가능/불가능 판정은 `Capability Matrix`에서만 수행한다.
-- 런타임 분석/IR 추출의 단일 실행 주체는 Rust core다.
-- TS 런타임 경로는 IR 생성을 직접 수행하지 않으며, Rust 실패 시 TS 분석기로 fallback 하지 않는다.
+## Principles
+- Do not store framework names (Fastify/Nest/Express) directly in IR.
+- IR expresses **semantics** only.
+- Go convertibility decisions must be performed only in the `Capability Matrix`.
+- Rust core is the single runtime executor for analysis/IR extraction.
+- The TS runtime path does not generate IR directly and does not fall back to the TS analyzer when Rust fails.
 
 ## Core IR Nodes
 
@@ -73,51 +73,51 @@ interface DiagnosticIR {
 ```
 
 ## analyzer-rust Fastify boundary (M1)
-`packages/analyzer-rust`는 M1에서 **extract/diagnose only** 범위를 유지한다.
+`packages/analyzer-rust` keeps an **extract/diagnose only** scope in M1.
 
-### Supported boundary (현재 추출 보장 범위)
+### Supported boundary (currently guaranteed extraction range)
 - Shorthand route: `fastify.<method>('literal-path', namedHandler)`
   - method: `GET|POST|PUT|DELETE|PATCH`
-  - path: 문자열 리터럴
-  - handler: 식별자 기반 named reference
+  - path: string literal
+  - handler: identifier-based named reference
 - Route object: `fastify.route({ method, url|path, handler })`
   - object: inline object literal
-  - method: 문자열 + `GET|POST|PUT|DELETE|PATCH`
-  - `url` 또는 `path`: 문자열 리터럴
+  - method: string + `GET|POST|PUT|DELETE|PATCH`
+  - `url` or `path`: string literal
   - `handler`: named reference
 - Register/plugin:
-  - inline plugin callback 또는 same-file named plugin reference
-  - `register(..., { prefix: '/v1' })` prefix 누적 반영
+  - inline plugin callback or same-file named plugin reference
+  - apply prefix accumulation for `register(..., { prefix: '/v1' })`
 
 ### Unsupported boundary → DiagnosticIR.code mapping
 - `DYNAMIC_IMPORT_DETECTED`
-  - trigger: `import(...)` 동적 import 사용
+  - trigger: use of dynamic `import(...)`
 - `ANALYZER_UNRESOLVED_PLUGIN`
-  - trigger: `register(pluginRef, ...)`에서 same-file plugin 정의를 해석하지 못함
+  - trigger: failed to resolve same-file plugin definition in `register(pluginRef, ...)`
 - `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
-  - trigger: inline callback/same-file named reference가 아닌 register callback 패턴
+  - trigger: register callback pattern that is neither inline callback nor same-file named reference
 - `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`
-  - trigger: route path(`url`/`path` 포함)가 문자열 리터럴이 아님
+  - trigger: route path (including `url`/`path`) is not a string literal
 - `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
-  - trigger: handler가 named reference가 아님(예: inline function)
+  - trigger: handler is not a named reference (e.g. inline function)
 - `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
-  - trigger: `fastify.route(...)`가 inline object literal 형태가 아님
+  - trigger: `fastify.route(...)` is not an inline object literal
 - `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
-  - trigger: route object의 `method` 누락/비문자열/allowlist 외 값
+  - trigger: route object `method` is missing / non-string / outside allowlist
 
 ### SSoT boundary
-- analyzer-rust는 capability/policy 판정을 수행하지 않는다.
-- `CAPABILITY_*` 계열 코드는 analyzer-rust에서 emit하지 않는다.
-- 관련 계약은 `packages/analyzer-rust/tests/contract_parity_regression.rs`에서 고정한다.
+- analyzer-rust does not perform capability/policy decisions.
+- analyzer-rust does not emit `CAPABILITY_*` family codes.
+- The related contract is fixed in `packages/analyzer-rust/tests/contract_parity_regression.rs`.
 
 ## Data sources
-- tsdown 산출물(JS bundle)
+- tsdown artifacts (JS bundle)
 - source map
 - d.ts
 - manifest.json
 
 ## Rule
-새 기능은 반드시
-1) IR 노드 변경/확장
-2) Capability Matrix 항목 추가
-를 먼저 수행한 뒤 어댑터/에미터 구현을 진행한다.
+For every new feature, do this first:
+1) change/extend IR nodes
+2) add a Capability Matrix entry
+and only then implement adapter/emitter changes.

@@ -1,7 +1,7 @@
 # Orchestration Reporting Standard
 
-## 목적
-'돌아가는지'가 아니라 '어디서 왜 막혔는지'를 정확히 보고한다.
+## Goal
+Report not just "whether it runs," but exactly "where and why it is blocked."
 
 ## Agent report template
 1. Assigned task
@@ -16,9 +16,9 @@
 
 ## Blocker classification
 - ENV: tool/bin missing, path, permission
-- CONTRACT: 인터페이스/타입 불일치
-- LOGIC: 테스트 실패/동작 불일치
-- SCOPE: 요구사항 불명확
+- CONTRACT: interface/type mismatch
+- LOGIC: test failure/behavior mismatch
+- SCOPE: requirement ambiguity
 
 ## Escalation rule
-동일 blocker 2회 반복 시 즉시 오케스트레이터에게 구조 변경 제안 포함 보고.
+If the same blocker repeats twice, immediately report to the orchestrator with a structural change proposal.

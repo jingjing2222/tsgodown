@@ -1,7 +1,7 @@
 # Testing Strategy (TDD First)
 
 ## Non-negotiable rule
-모든 기능 구현은 **테스트 먼저(Test First)** 원칙을 따른다.
+All feature implementation must follow the **Test First** principle.
 
 ## Architecture guardrails (M4)
 - Rust core is the **only** runtime analysis/build engine.
@@ -9,48 +9,50 @@
 - **No fallback policy:** runtime path must not fall back to legacy TS analyzer on Rust failures.
 
 ## Workflow
-1. 실패 테스트 작성
-2. 최소 구현으로 테스트 통과
-3. 리팩터링
-4. 회귀 테스트 추가
+1. Write a failing test
+2. Make the minimal implementation to pass the test
+3. Refactor
+4. Add regression tests
 
 ## Test layers
-- Unit: 패키지 단위 순수 로직 (`packages/*/test`)
+- Unit: pure logic at package scope (`packages/*/test`)
 - Integration: rust adapter contract + pipeline orchestration
-- E2E: 실제 예제 프로젝트 변환 후 CLI/build contract 검증
+- E2E: convert real example projects and verify the CLI/build contract
 
 ## M1 release gate (Fastify -> Go compile success path)
-M1 릴리스 게이트는 아래 **단일 canonical 경로**로 고정한다.
+M1 release gate is fixed to the **single canonical path** below.
 
-- 테스트 위치: `packages/cli/test/commands.e2e.test.ts`
-- 테스트 이름: `M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)`
-- 실행 커맨드: `pnpm run gate:m1`
+- Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
+- Script entrypoint: [`scripts/m1-release-gate.sh`](../../scripts/m1-release-gate.sh)
+- Test location: `packages/cli/test/commands.e2e.test.ts`
+- Test name: `M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)`
+- Command: `pnpm run gate:m1`
 
-검증 항목:
-1. 입력: Fastify-min fixture TypeScript 엔트리(`src/index.ts`)
-2. 실행: CLI `build`를 Rust adapter 경유로 실행
-3. 산출: `dist-go/main.go` 생성 확인
-4. assertion:
+Verification items:
+1. Input: Fastify-min fixture TypeScript entry (`src/index.ts`)
+2. Execution: run CLI `build` through the Rust adapter path
+3. Output: confirm `dist-go/main.go` generation
+4. Assertions:
    - Go scaffold shape (`package main`, `func main()`, `GET /health` route binding)
-   - Go toolchain 존재 시 `go build ./...` 성공
+   - if the Go toolchain exists, `go build ./...` succeeds
 
-주의: 게이트는 실행 경로 검증에 한정하며, `analyzer-rust`/`emitter-go` 내부 구현 세부사항은 대상에서 제외한다.
+Note: the gate is limited to execution-path verification and does not cover internal implementation details of `analyzer-rust` / `emitter-go`.
 
 ## analyzer-rust boundary contract (M1)
-- `packages/analyzer-rust/tests/contract_parity_regression.rs`를 analyzer-rust SSoT 계약 고정 테스트로 유지한다.
-- 지원 경계(supported extraction shape)와 비지원 경계(unsupported shape)는 fixture 기반으로 고정한다.
-- 비지원 경계는 **DiagnosticIR.code 매핑까지 포함해** 회귀 방지한다.
-  - 예: `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`, `ANALYZER_UNSUPPORTED_INLINE_HANDLER`, `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD` 등
-- analyzer-rust는 capability policy 진단(`CAPABILITY_*`)을 emit하지 않는다.
+- Keep `packages/analyzer-rust/tests/contract_parity_regression.rs` as the fixed SSoT contract test for analyzer-rust.
+- Fix supported and unsupported boundaries using fixture-based tests.
+- Unsupported boundaries must include **DiagnosticIR.code mapping** to prevent regressions.
+  - e.g. `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`, `ANALYZER_UNSUPPORTED_INLINE_HANDLER`, `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
+- analyzer-rust does not emit capability policy diagnostics (`CAPABILITY_*`).
 
 ## Required checks per PR/turn
 - `npm run build` (or `pnpm run build`)
 - `npm run test` (or `pnpm run test`)
-- Rust enabled 변경 시:
+- For Rust-related changes:
   - `cargo fmt --all --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace --all-targets`
 
 ## Failure handling
-- 테스트 실패 시 기능 보고 금지
-- 실패 원인/재현 커맨드/해결 계획 3종 세트로 보고
+- Do not report features as complete when tests fail.
+- Report the 3-item set: failure cause / reproduction command / mitigation plan.
