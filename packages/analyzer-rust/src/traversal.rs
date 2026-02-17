@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{capture_call_args, find_if_block_ranges};
+use crate::ast::{capture_call_args, find_if_block_infos};
 use crate::defs::{HandlerDef, PluginDef};
 use crate::diagnostics::diag;
 use crate::ir::{DiagnosticIR, HandlerIR, RouteIR};
@@ -19,27 +19,48 @@ pub(crate) fn analyze_scope(
     handlers: &mut Vec<HandlerIR>,
     diagnostics: &mut Vec<DiagnosticIR>,
 ) {
-    let conditional_ranges = find_if_block_ranges(body);
+    let conditional_infos = find_if_block_infos(body);
     let mut idx = 0usize;
     while let Some((start, dot_idx)) = find_instance_dot(body, idx, instance_name) {
         let tail = &body[dot_idx + 1..];
 
-        if conditional_ranges
-            .iter()
-            .any(|(from, to)| dot_idx >= *from && dot_idx < *to)
-        {
-            if let Some(method) = first_supported_method(tail) {
-                diagnostics.push(diag(
-                    file,
-                    "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
-                    &format!(
-                        "conditional route registration in if-block is unsupported for deterministic extraction ({}.{}(...)). Move route declaration to top-level plugin scope.",
-                        instance_name, method
-                    ),
-                ));
+        let conditional_context = conditional_infos.iter().find_map(|info| {
+            let in_then = dot_idx >= info.then_range.0 && dot_idx < info.then_range.1;
+            let in_else = info
+                .else_range
+                .map(|(from, to)| dot_idx >= from && dot_idx < to)
+                .unwrap_or(false);
+            if in_then || in_else {
+                Some((info.condition_value, in_then))
+            } else {
+                None
             }
-            idx = start + 1;
-            continue;
+        });
+
+        if let Some((condition_value, in_then)) = conditional_context {
+            match condition_value {
+                Some(value) => {
+                    let branch_is_active = (value && in_then) || (!value && !in_then);
+                    if !branch_is_active {
+                        idx = start + 1;
+                        continue;
+                    }
+                }
+                None => {
+                    if let Some(method) = first_supported_method(tail) {
+                        diagnostics.push(diag(
+                            file,
+                            "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+                            &format!(
+                                "conditional route registration in if-block is unsupported for deterministic extraction ({}.{}(...)). Move route declaration to top-level plugin scope.",
+                                instance_name, method
+                            ),
+                        ));
+                    }
+                    idx = start + 1;
+                    continue;
+                }
+            }
         }
 
         if let Some(consumed) = analyze_call_chain(

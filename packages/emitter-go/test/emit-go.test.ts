@@ -25,6 +25,29 @@ function createOutDir() {
   return dir;
 }
 
+async function allocateEphemeralPort(): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("failed to allocate test port")));
+        return;
+      }
+      const port = String(address.port);
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
 const fixturesDir = path.join(import.meta.dirname, "fixtures");
 
 function readFixture(name: string): ProgramIR {
@@ -351,7 +374,7 @@ test(
   { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
-    const port = String(await allocatePort());
+    const port = await allocateEphemeralPort();
 
     emitGoProject(sampleIr, outDir);
 
@@ -419,7 +442,7 @@ test(
   { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
-    const port = String(await allocatePort());
+    const port = await allocateEphemeralPort();
 
     emitGoProject(
       {
