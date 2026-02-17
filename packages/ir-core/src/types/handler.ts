@@ -14,5 +14,11 @@ export interface HandlerIR {
   async: boolean;
   semantics?: {
     responseMode: HandlerResponseMode;
+    requestParam?: string;
+    responseParam?: string;
+    usesStatus: boolean;
+    usesBody: boolean;
+    usesHeaders: boolean;
+    usesJson: boolean;
   };
 }

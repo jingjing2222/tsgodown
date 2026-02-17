@@ -5,5 +5,5 @@ modules:
 routes:
   - method=POST path=/users handler_ref=createUser
 handlers:
-  - id=createUser async=false params=[request:request,reply:response] semantics=response-object
+  - id=createUser async=false params=[request:request,reply:response] semantics=mode=response-object req=request res=reply status=true body=true headers=true json=false
 diagnostics:

@@ -28,7 +28,15 @@ const PROGRAM_IR_V1_SAMPLE = {
         { name: "reply", role: "response" },
       ],
       async: true,
-      semantics: { responseMode: "response-object" },
+      semantics: {
+        responseMode: "response-object",
+        requestParam: "request",
+        responseParam: "reply",
+        usesStatus: true,
+        usesBody: true,
+        usesHeaders: true,
+        usesJson: false,
+      },
     },
   ],
   diagnostics: [
