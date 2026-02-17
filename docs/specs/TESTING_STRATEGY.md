@@ -38,6 +38,18 @@ Verification items:
 
 Note: the gate is limited to execution-path verification and does not cover internal implementation details of `analyzer-rust` / `emitter-go`.
 
+## M3 runtime correctness/stability extension
+- Runtime executable-fixture coverage is extended beyond the M1/M2 happy-path checks.
+- Primary test location: `packages/cli/test/commands.e2e.test.ts`
+- Key acceptance tests:
+  - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`
+  - `M3 acceptance: runtime method/path matrix fixture remains deterministic`
+- Deterministic assertions must include:
+  - method-aware route checks (`GET`, `POST`, `PUT`)
+  - scaffold TODO body checks for named handlers
+  - negative path behavior (`405 Method Not Allowed`, `404 page not found`)
+- `scripts/smoke-m1.sh` must validate deterministic route behavior (`/health`, `/users`, `/missing`) instead of single-endpoint liveness only.
+
 ## analyzer-rust boundary contract (M1)
 - Keep `packages/analyzer-rust/tests/contract_parity_regression.rs` as the fixed SSoT contract test for analyzer-rust.
 - Fix supported and unsupported boundaries using fixture-based tests.

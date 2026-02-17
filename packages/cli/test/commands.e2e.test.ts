@@ -217,14 +217,27 @@ function ensureGoRuntimeModule(goDir: string) {
   initializedGoRuntimeDirs.add(goDir);
 }
 
+type GoRouteExpectation = {
+  routePath: string;
+  method?: string;
+  expectedStatus?: number;
+  expectedBodyFragment?: string;
+};
+
 async function assertGoRunRoute(
   goDir: string,
-  routePath: string,
-  expectedBodyFragment: string,
+  expectation: GoRouteExpectation,
 ) {
   if (!hasGoToolchain) {
     return;
   }
+
+  const {
+    routePath,
+    method = "GET",
+    expectedStatus = 501,
+    expectedBodyFragment,
+  } = expectation;
 
   ensureGoRuntimeModule(goDir);
 
@@ -247,6 +260,7 @@ async function assertGoRunRoute(
     while (Date.now() < deadline) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+          method,
           signal: AbortSignal.timeout(1000),
         });
         status = response.status;
@@ -260,10 +274,13 @@ async function assertGoRunRoute(
 
     assert.equal(
       status,
-      501,
-      `server did not become ready for ${routePath}; lastError=${String(lastError)}`,
+      expectedStatus,
+      `server did not become ready for ${method} ${routePath}; lastError=${String(lastError)}`,
     );
-    assert.match(body, new RegExp(expectedBodyFragment));
+
+    if (expectedBodyFragment) {
+      assert.match(body, new RegExp(expectedBodyFragment));
+    }
   } finally {
     if (child.exitCode === null && !child.killed) {
       child.kill("SIGTERM");
@@ -889,16 +906,60 @@ test("M2 acceptance: TS fixture routes are reachable in generated Go runtime", a
   assert.equal(fs.existsSync(goPath), true);
 
   const goDir = path.dirname(goPath);
-  await assertGoRunRoute(
-    goDir,
-    "/health",
-    "TODO implement handler health for GET /health",
-  );
-  await assertGoRunRoute(
-    goDir,
-    "/users",
-    "TODO implement handler users for GET /users",
-  );
+  await assertGoRunRoute(goDir, {
+    routePath: "/health",
+    expectedBodyFragment: "TODO implement handler health for GET /health",
+  });
+  await assertGoRunRoute(goDir, {
+    routePath: "/users",
+    expectedBodyFragment: "TODO implement handler users for GET /users",
+  });
+});
+
+test("M3 acceptance: runtime method/path matrix fixture remains deterministic", async () => {
+  const cwd = setupProjectFromFixture("runtime-method-matrix");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goDir = path.dirname(goPath);
+  await assertGoRunRoute(goDir, {
+    routePath: "/health",
+    expectedBodyFragment: "TODO implement handler health for GET /health",
+  });
+  await assertGoRunRoute(goDir, {
+    routePath: "/users",
+    method: "POST",
+    expectedBodyFragment: "TODO implement handler createUser for POST /users",
+  });
+  await assertGoRunRoute(goDir, {
+    routePath: "/users/:id",
+    method: "PUT",
+    expectedBodyFragment:
+      "TODO implement handler updateUser for PUT /users/:id",
+  });
+
+  await assertGoRunRoute(goDir, {
+    routePath: "/users",
+    method: "GET",
+    expectedStatus: 405,
+    expectedBodyFragment: "Method Not Allowed",
+  });
+  await assertGoRunRoute(goDir, {
+    routePath: "/missing",
+    expectedStatus: 404,
+    expectedBodyFragment: "404 page not found",
+  });
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
