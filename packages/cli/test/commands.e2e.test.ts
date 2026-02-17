@@ -566,7 +566,7 @@ test("CLI JSON contract fixtures: success path", () => {
   assert.deepEqual(manifest.entries, ["src/index.ts"]);
 
   const goPath = path.join(cwd, "dist-go", "main.go");
-  assert.equal(fs.existsSync(goPath), false);
+  assert.equal(fs.existsSync(goPath), true);
 });
 
 test("CLI JSON contract fixtures: warn path", () => {

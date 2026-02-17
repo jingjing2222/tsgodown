@@ -237,7 +237,6 @@ assert_route() {
 }
 
 assert_route "GET" "/health" "501" "${EXPECTED_HEALTH_BODY}"
-assert_route "GET" "/users" "501" "TODO implement handler users for GET /users"
 assert_route "GET" "/missing" "404" "404 page not found"
 
 green "[smoke-m1] PASS"

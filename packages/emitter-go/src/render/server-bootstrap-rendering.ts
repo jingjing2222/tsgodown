@@ -1,6 +1,6 @@
 import type { RouteIR } from "@tsgodown/ir-core";
 
-import { renderRouteRegistration } from "./template-rendering";
+import { renderRouteRegistration } from "./template-rendering.js";
 
 export function renderGoImports(): string[] {
   return [

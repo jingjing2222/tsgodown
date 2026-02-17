@@ -10,7 +10,7 @@ import {
   renderRoute,
   renderRouteRegistry,
   renderRuntimeRouter,
-} from "./render/index";
+} from "./render/index.js";
 
 export function emitGoProject(ir: ProgramIR, outDir: string) {
   fs.mkdirSync(outDir, { recursive: true });
