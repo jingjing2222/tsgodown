@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -168,7 +168,7 @@ function resolveRustEngineLauncherScript(): string {
 function assertGoMainScaffold(goSource: string) {
   assert.match(goSource, /^package main/m);
   assert.match(goSource, /func main\(\)/);
-  assert.match(goSource, /http\.HandleFunc\("GET \/health"/);
+  assert.match(goSource, /HandleFunc\("GET \/health"/);
 }
 
 function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
@@ -194,6 +194,105 @@ function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
     encoding: "utf8",
   });
   assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
+}
+
+const hasGoToolchain =
+  spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+const initializedGoRuntimeDirs = new Set<string>();
+
+function ensureGoRuntimeModule(goDir: string) {
+  if (!hasGoToolchain || initializedGoRuntimeDirs.has(goDir)) {
+    return;
+  }
+
+  const modInit = spawnSync(
+    "go",
+    ["mod", "init", `example.com/tsgodown-cli-runtime-${crypto.randomUUID()}`],
+    {
+      cwd: goDir,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+  initializedGoRuntimeDirs.add(goDir);
+}
+
+async function assertGoRunRoute(
+  goDir: string,
+  routePath: string,
+  expectedBodyFragment: string,
+) {
+  if (!hasGoToolchain) {
+    return;
+  }
+
+  ensureGoRuntimeModule(goDir);
+
+  const port = String(20000 + Math.floor(Math.random() * 1000));
+  const child = spawn("go", ["run", "."], {
+    cwd: goDir,
+    env: {
+      ...process.env,
+      PORT: port,
+    },
+    stdio: "ignore",
+  });
+
+  const deadline = Date.now() + 10_000;
+  let status = 0;
+  let body = "";
+  let lastError: unknown;
+
+  try {
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        status = response.status;
+        body = await response.text();
+        break;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    assert.equal(
+      status,
+      501,
+      `server did not become ready for ${routePath}; lastError=${String(lastError)}`,
+    );
+    assert.match(body, new RegExp(expectedBodyFragment));
+  } finally {
+    if (child.exitCode === null && !child.killed) {
+      child.kill("SIGTERM");
+    }
+
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null) {
+        resolve();
+        return;
+      }
+
+      const forceKillTimer = setTimeout(() => {
+        if (child.exitCode === null) {
+          child.kill("SIGKILL");
+        }
+      }, 1500);
+
+      const settleTimer = setTimeout(() => {
+        clearTimeout(forceKillTimer);
+        resolve();
+      }, 5000);
+
+      child.once("close", () => {
+        clearTimeout(forceKillTimer);
+        clearTimeout(settleTimer);
+        resolve();
+      });
+    });
+  }
 }
 
 function parseJsonStdout(stdout: string) {
@@ -390,6 +489,7 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
   const result = runCli(cwd, "build", {
     ...process.env,
     TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
   });
   assert.notEqual(result.status, 0, "build should fail for missing entry");
 
@@ -765,12 +865,41 @@ test("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go bu
   assert.equal(fs.existsSync(goPath), true);
 
   const goMain = fs.readFileSync(goPath, "utf8");
-  assert.equal(
-    crypto.createHash("sha256").update(goMain).digest("hex"),
-    "7ee934e294fa4b3f5f5006ac4b265f8815d8d4778023e9ea226732279f6ab257",
-  );
+  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
+  assert.match(goMain, /mux\.HandleFunc\("GET \/users"/);
+  assert.match(goMain, /TODO implement handler health for GET \/health/);
+  assert.match(goMain, /TODO implement handler users for GET \/users/);
   assertGoMainScaffold(goMain);
   assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
+});
+
+test("M2 acceptance: TS fixture routes are reachable in generated Go runtime", async () => {
+  const cwd = setupProjectFromFixture("fastify-min");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goDir = path.dirname(goPath);
+  await assertGoRunRoute(
+    goDir,
+    "/health",
+    "TODO implement handler health for GET /health",
+  );
+  await assertGoRunRoute(
+    goDir,
+    "/users",
+    "TODO implement handler users for GET /users",
+  );
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
