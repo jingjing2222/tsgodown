@@ -1,9 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-
-function getUsers() {}
-function getAccounts() {}
-
-fastify.get(`/users/:id`, getUsers);
-fastify.route({ method: `GET`, url: `/accounts/:id`, handler: getAccounts });

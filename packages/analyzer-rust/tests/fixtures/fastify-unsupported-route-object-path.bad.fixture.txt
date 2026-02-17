@@ -1,9 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-const id = "id";
-const dynamicPath = `/users/${id}`;
-
-function getUser() {}
-
-fastify.route({ method: "GET", url: dynamicPath, handler: getUser });

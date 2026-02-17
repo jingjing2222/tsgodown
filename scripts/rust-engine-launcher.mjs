@@ -74,69 +74,45 @@ function renderGoMainScaffold(routes) {
   ].join("\n");
 }
 
-function parseRoutesFromSource(source) {
-  const routeMatches = [
-    ...source.matchAll(
-      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/g,
-    ),
-  ];
+function normalizeRoutesFromAnalyzeResponse(analyzeJson) {
+  const routes = Array.isArray(analyzeJson?.ir?.routes)
+    ? analyzeJson.ir.routes
+        .map((route) => {
+          const method =
+            route && typeof route.method === "string"
+              ? route.method.toUpperCase()
+              : undefined;
+          const path =
+            route && typeof route.path === "string" ? route.path : undefined;
 
-  const unsupportedDynamicPathMatches = [
-    ...source.matchAll(
-      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)/g,
-    ),
-  ];
+          if (!method || !path) {
+            return null;
+          }
 
-  const unsupportedInlineHandlerMatches = [
-    ...source.matchAll(
-      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*['"`][^'"`]+['"`]\s*,\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g,
-    ),
-  ];
-
-  const routes = routeMatches.map((match) => ({
-    method: match[1].toUpperCase(),
-    path: match[2],
-    goPattern: toGoPattern(match[2]),
-    handler: match[3],
-  }));
-
-  const unsupportedDiagnostics = [];
-  if (unsupportedDynamicPathMatches.length > 0) {
-    unsupportedDiagnostics.push(
-      "ANALYZER_UNSUPPORTED_DYNAMIC_PATH: unsupported dynamic path in fastify/app route shorthand; use string literal path (e.g. '/users/:id').",
-    );
-  }
-  if (unsupportedInlineHandlerMatches.length > 0) {
-    unsupportedDiagnostics.push(
-      "ANALYZER_UNSUPPORTED_INLINE_HANDLER: unsupported inline handler in fastify/app route shorthand; extract handler to a named function and pass its identifier.",
-    );
-  }
-
-  if (unsupportedDiagnostics.length > 0) {
-    return {
-      routes: [],
-      unsupportedDiagnostics,
-    };
-  }
+          return {
+            method,
+            path,
+            goPattern: toGoPattern(path),
+            handler: "TODO_COMPILER_MODE_HANDLER",
+          };
+        })
+        .filter(Boolean)
+    : [];
 
   if (routes.length > 0) {
-    return {
-      routes,
-      unsupportedDiagnostics: [],
-    };
+    return routes;
   }
 
-  return {
-    routes: [
-      {
-        method: "GET",
-        path: "/health",
-        goPattern: "/health",
-        handler: "health",
-      },
-    ],
-    unsupportedDiagnostics: [],
-  };
+  // TODO(compiler-mode): remove this scaffold fallback once engine-core emits
+  // concrete compiler-mode routes.
+  return [
+    {
+      method: "GET",
+      path: "/health",
+      goPattern: "/health",
+      handler: "TODO_COMPILER_MODE_HANDLER",
+    },
+  ];
 }
 
 function fail(message, details, fixHint) {
@@ -245,25 +221,7 @@ try {
 
 const outDir = path.join(request.cwd, "dist-go");
 fs.mkdirSync(outDir, { recursive: true });
-const entryPath = path.resolve(request.cwd, request.entry ?? "src/index.ts");
-const source = fs.existsSync(entryPath)
-  ? fs.readFileSync(entryPath, "utf8")
-  : "";
-const { routes, unsupportedDiagnostics } = parseRoutesFromSource(source);
-
-if (unsupportedDiagnostics.length > 0) {
-  process.stdout.write(
-    JSON.stringify({
-      ok: false,
-      error: {
-        source: "rust-engine-adapter",
-        cause: unsupportedDiagnostics.join(" | "),
-        guidance: "Fix unsupported Fastify patterns before build.",
-      },
-    }),
-  );
-  process.exit(0);
-}
+const routes = normalizeRoutesFromAnalyzeResponse(analyzeJson);
 
 fs.writeFileSync(
   path.join(outDir, "main.go"),

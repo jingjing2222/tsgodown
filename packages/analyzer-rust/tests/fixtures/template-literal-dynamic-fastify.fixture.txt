@@ -1,8 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-const version = "v1";
-
-function listUsers() {}
-
-fastify.get(`/api/${version}/users`, listUsers);

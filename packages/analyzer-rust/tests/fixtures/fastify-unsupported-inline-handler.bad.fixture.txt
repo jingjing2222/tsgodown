@@ -1,9 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-
-function makeHandler() {
-  return async () => {};
-}
-
-fastify.post("/users", makeHandler());
