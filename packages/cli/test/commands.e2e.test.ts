@@ -1141,6 +1141,37 @@ test("M4 devx acceptance: fastify-complex fixture emits deterministic method/pat
   assertGoMainScaffold(goMain);
 });
 
+test("M4 runtime contract: scaffold-style fixture keeps deterministic fallback behavior", async () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-contract");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+  const goMain = fs.readFileSync(path.join(cwd, "dist-go", "main.go"), "utf8");
+  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
+  assert.doesNotMatch(goMain, /POST \/users/);
+
+  const goDir = path.join(cwd, "dist-go");
+  await assertGoRunRequest(goDir, {
+    method: "GET",
+    routePath: "/health",
+    expectedStatus: 501,
+    expectedBodyFragment: "TODO implement handler",
+  });
+  await assertGoRunRequest(goDir, {
+    method: "POST",
+    routePath: "/users",
+    expectedStatus: 404,
+    expectedBodyFragment: "404 page not found",
+  });
+});
+
 test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministic diagnostics", () => {
   const cwd = setupProjectFromFixture("fastify-unsupported-dynamic");
   const rustLauncher = resolveRustEngineLauncherScript();
