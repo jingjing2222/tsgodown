@@ -1076,7 +1076,11 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministi
     TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
   });
 
-  assert.notEqual(result.status, 0, "build should fail for unsupported patterns");
+  assert.notEqual(
+    result.status,
+    0,
+    "build should fail for unsupported patterns",
+  );
   const parsed = parseJsonStdout(result.stdout) as {
     ok: boolean;
     error: {
@@ -1095,7 +1099,10 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministi
   );
   assert.match(parsed.error.message ?? "", /source=rust-engine-adapter/);
   assert.match(parsed.error.message ?? "", /ANALYZER_UNSUPPORTED_DYNAMIC_PATH/);
-  assert.match(parsed.error.message ?? "", /ANALYZER_UNSUPPORTED_INLINE_HANDLER/);
+  assert.match(
+    parsed.error.message ?? "",
+    /ANALYZER_UNSUPPORTED_INLINE_HANDLER/,
+  );
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
