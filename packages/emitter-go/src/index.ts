@@ -25,7 +25,9 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   lines.push(...renderMainFunction());
 
   const handlerById = new Map(
-    ir.handlers.map((handler) => [handler.id, handler]),
+    [...ir.handlers]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((handler) => [handler.id, handler]),
   );
 
   for (const [index, route] of ir.routes.entries()) {

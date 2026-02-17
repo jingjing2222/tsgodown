@@ -47,6 +47,16 @@ Note: the gate is limited to execution-path verification and does not cover inte
 ## M3 runtime correctness/stability extension
 - Runtime executable-fixture coverage is extended beyond the M1/M2 happy-path checks.
 - Normative parity definition: [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md)
+
+## M4 differential harness skeleton
+- Entrypoint: `scripts/differential-harness.mjs`
+- Representative scenario: `fastify-min-get-health` (supported subset: `fastify.get + json response`)
+- Deterministic report contract:
+  - `version: "m4-differential-harness.v1"`
+  - stable `summary` (`total`, `matched`, `mismatched`, `pass`)
+  - sorted `cases[]` with normalized headers and explicit `diffs[]`
+- Fail conditions (fail-closed): missing TS/Go case, status mismatch, headers mismatch, body mismatch.
+- Local run: `pnpm run harness:differential`
 - Primary test location: `packages/cli/test/commands.e2e.test.ts`
 - Key acceptance tests:
   - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`
