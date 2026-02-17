@@ -1,0 +1,16 @@
+{
+  "name": "hono-scaffold-real",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:go": "tsgodown build --json"
+  },
+  "dependencies": {
+    "hono": "^4.6.10"
+  },
+  "devDependencies": {
+    "tsgodown": "workspace:*",
+    "typescript": "~5.9.2"
+  }
+}
