@@ -11,7 +11,10 @@ pub use ir::{
     ModuleIR, ProgramIR, RouteIR,
 };
 
-use defs::{collect_handler_definitions, collect_plugin_definitions, detect_root_instance_name};
+use defs::{
+    collect_handler_definitions, collect_plugin_aliases, collect_plugin_definitions,
+    detect_root_instance_name,
+};
 use diagnostics::{dedupe_diagnostics, diag};
 use traversal::analyze_scope;
 
@@ -21,6 +24,7 @@ pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
     let mut handlers = vec![];
 
     let plugin_defs = collect_plugin_definitions(src);
+    let plugin_aliases = collect_plugin_aliases(src);
     let handler_defs = collect_handler_definitions(src);
 
     let instance_name = detect_root_instance_name(src).unwrap_or_else(|| "fastify".to_string());
@@ -30,6 +34,7 @@ pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
         &instance_name,
         "",
         &plugin_defs,
+        &plugin_aliases,
         &handler_defs,
         &mut routes,
         &mut handlers,
