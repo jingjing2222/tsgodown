@@ -1,0 +1,9 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function updateUser() {}
+function removeUser() {}
+
+fastify.route({ method: "patch", url: "/users/:id", handler: updateUser });
+fastify.route({ method: ["put", "del"], url: "/users/:id", handler: removeUser });

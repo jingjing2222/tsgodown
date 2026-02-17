@@ -202,21 +202,19 @@ fn contract_fixtures() -> Vec<ContractFixture> {
         },
         ContractFixture {
             name: "unsupported-fastify.fixture.txt",
-            expected_routes: vec![],
-            expected_handlers: vec![],
+            expected_routes: vec![("POST", "/inline", "__inline__post__6a62a08849cfd7d1")],
+            expected_handlers: vec![("__inline__post__6a62a08849cfd7d1", vec![], true, "unknown")],
             expected_diag_codes: vec![
                 "ANALYZER_UNRESOLVED_PLUGIN",
                 "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-                "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
             ],
         },
         ContractFixture {
             name: "unsupported-route-object-fastify.fixture.txt",
-            expected_routes: vec![],
-            expected_handlers: vec![],
+            expected_routes: vec![("POST", "/inline", "__inline__route__b86c00febff9d0f3")],
+            expected_handlers: vec![("__inline__route__b86c00febff9d0f3", vec![], true, "unknown")],
             expected_diag_codes: vec![
                 "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
-                "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
@@ -333,12 +331,7 @@ fn rust_contract_parity_routes_and_diagnostics_are_stable() {
                     "warn",
                     file.as_str(),
                 ),
-                (
-                    "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
-                    "unsupported non-reference handler in fastify.post('/inline', handler). Extract handler to a named function and pass its identifier.",
-                    "warn",
-                    file.as_str(),
-                ),
+                // inline handlers with parseable signatures are now synthesized deterministically.
             ];
             expected_diag_details.sort();
 

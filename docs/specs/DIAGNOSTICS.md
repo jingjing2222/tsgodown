@@ -180,7 +180,8 @@ fastify.route({ method: "POST", url: "/users", handler: createUser });
 
 **Rationale**
 
-Named handler references allow stable handler IDs and metadata extraction.
+Inline handlers with statically parseable signatures are now synthesized to deterministic handler refs.
+This diagnostic remains for non-parseable/non-deterministic handler expressions (e.g. factory call results).
 
 ---
 

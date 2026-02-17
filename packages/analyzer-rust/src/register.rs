@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::ast::{
     extract_handler_ref, extract_object_string_prop, parse_inline_plugin, split_top_level,
+    unwrap_single_call_arg,
 };
 use crate::defs::{HandlerDef, PluginDef};
 use crate::diagnostics::diag;
@@ -28,27 +29,19 @@ pub(crate) fn analyze_register_call(
         extract_object_string_prop(options_expr, "prefix").unwrap_or_default();
     let next_prefix = join_path(prefix, &prefix_from_register);
 
-    if let Some(inline) = parse_inline_plugin(plugin_expr) {
-        analyze_scope(
-            &inline.body,
-            file,
-            &inline.param_name,
-            &next_prefix,
-            plugin_defs,
-            handler_defs,
-            routes,
-            handlers,
-            diagnostics,
-        );
-        return;
+    let mut candidates = vec![plugin_expr.to_string()];
+    let mut cursor = plugin_expr.to_string();
+    while let Some(inner) = unwrap_single_call_arg(&cursor) {
+        candidates.push(inner.clone());
+        cursor = inner;
     }
 
-    if let Some(plugin_ref) = extract_handler_ref(plugin_expr) {
-        if let Some(plugin) = plugin_defs.get(&plugin_ref) {
+    for candidate in &candidates {
+        if let Some(inline) = parse_inline_plugin(candidate) {
             analyze_scope(
-                &plugin.body,
+                &inline.body,
                 file,
-                &plugin.param_name,
+                &inline.param_name,
                 &next_prefix,
                 plugin_defs,
                 handler_defs,
@@ -59,15 +52,32 @@ pub(crate) fn analyze_register_call(
             return;
         }
 
-        diagnostics.push(diag(
-            file,
-            "ANALYZER_UNRESOLVED_PLUGIN",
-            &format!(
-                "register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
-                plugin_ref
-            ),
-        ));
-        return;
+        if let Some(plugin_ref) = extract_handler_ref(candidate) {
+            if let Some(plugin) = plugin_defs.get(&plugin_ref) {
+                analyze_scope(
+                    &plugin.body,
+                    file,
+                    &plugin.param_name,
+                    &next_prefix,
+                    plugin_defs,
+                    handler_defs,
+                    routes,
+                    handlers,
+                    diagnostics,
+                );
+                return;
+            }
+
+            diagnostics.push(diag(
+                file,
+                "ANALYZER_UNRESOLVED_PLUGIN",
+                &format!(
+                    "register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
+                    plugin_ref
+                ),
+            ));
+            return;
+        }
     }
 
     diagnostics.push(diag(

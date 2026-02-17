@@ -42,13 +42,15 @@ fastify.route({ method: 'GET', url: '/users', handler: listUsers })
 fastify.route({ method: 'PATCH', path: '/users/:id', handler: updateUser })
 ```
 
-### 1.4 Route object method array
+### 1.4 Route object method array + normalized method variants
 
 ```ts
 fastify.route({ method: ['PUT', 'PATCH'], url: '/things/:id', handler: replaceThing })
+fastify.route({ method: 'patch', url: '/users/:id', handler: updateUser })
+fastify.route({ method: ['put', 'del'], url: '/users/:id', handler: replaceUser })
 ```
 
-Supported method set for route object extraction:
+Supported method set for route object extraction (case-insensitive, with `DEL` alias → `DELETE`):
 - `GET`
 - `POST`
 - `PUT`
@@ -59,10 +61,12 @@ Supported method set for route object extraction:
 
 ```ts
 fastify.register(apiPlugin, { prefix: '/api' })
+fastify.register(fp(apiPlugin), { prefix: '/api' })
 // plugin routes become /api/*
 ```
 
 Nested `register(..., { prefix })` composition is supported when plugin callback/definition is statically analyzable in-file.
+Single-argument wrapper calls are unwrapped deterministically (e.g. `fp(pluginRef)`).
 
 ### 1.6 Handler reference forms
 
@@ -71,6 +75,16 @@ Named/member references are supported, including object/class member references 
 ```ts
 fastify.get('/users', userHandlers.list)
 fastify.delete('/users/:id', controller.remove)
+```
+
+### 1.7 Deterministic inline handler synthesis
+
+Inline function/arrow handlers are supported when their signature is statically parseable.
+Analyzer synthesizes stable handler refs and emits `HandlerIR` with inferred params/async flag.
+
+```ts
+fastify.get('/health', async (req, reply) => reply.send({ ok: true }))
+fastify.route({ method: 'POST', url: '/users', handler: function (request) { return {} } })
 ```
 
 ---
@@ -128,11 +142,11 @@ fastify.route({ method: 'GET', url: '/users', handler: listUsers })
 ## 3.2 `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
 
 When it triggers:
-- Shorthand route handler is inline (arrow/function expression) instead of handler reference.
-- Route object `handler` is inline/non-reference.
+- Shorthand route handler expression is non-reference and signature cannot be deterministically parsed.
+- Route object `handler` expression is non-reference and signature cannot be deterministically parsed.
 
 Why unsupported:
-- IR contracts require stable handler identity (`handler_ref`) for downstream mapping.
+- IR contracts require stable handler identity (`handler_ref`) and statically parseable handler signature.
 
 Recommended rewrite:
 

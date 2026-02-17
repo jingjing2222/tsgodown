@@ -2,4 +2,8 @@ import Fastify from "fastify";
 
 const fastify = Fastify();
 
-fastify.post("/users", async () => {});
+function makeHandler() {
+  return async () => {};
+}
+
+fastify.post("/users", makeHandler());

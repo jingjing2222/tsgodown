@@ -173,15 +173,65 @@ pub(crate) fn extract_object_string_array_prop(obj: &str, key: &str) -> Vec<Stri
         .collect()
 }
 
-pub(crate) fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String> {
+pub(crate) fn extract_object_prop_expr(obj: &str, key: &str) -> Option<String> {
     let pattern = format!(
         r#"(?s)(?:\b{}\b|"{}")\s*:\s*([^,}}]+)"#,
         regex::escape(key),
         regex::escape(key)
     );
     let re = Regex::new(&pattern).unwrap();
-    let expr = re.captures(obj).map(|c| c[1].trim().to_string())?;
+    re.captures(obj).map(|c| c[1].trim().to_string())
+}
+
+pub(crate) fn extract_object_handler_ref(obj: &str, key: &str) -> Option<String> {
+    let expr = extract_object_prop_expr(obj, key)?;
     extract_handler_ref(&expr)
+}
+
+pub(crate) fn unwrap_single_call_arg(expr: &str) -> Option<String> {
+    let t = expr.trim();
+    let open = t.find('(')?;
+    if !t.ends_with(')') {
+        return None;
+    }
+    let args_src = &t[open + 1..t.len() - 1];
+    let args = split_top_level(args_src, ',');
+    if args.len() != 1 {
+        return None;
+    }
+    Some(args[0].trim().to_string())
+}
+
+pub(crate) fn parse_inline_handler_signature(expr: &str) -> Option<(Vec<String>, bool)> {
+    let t = expr.trim();
+
+    let re_arrow = Regex::new(r"(?s)^(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>").unwrap();
+    if let Some(cap) = re_arrow.captures(t) {
+        let params_src = cap
+            .get(2)
+            .or_else(|| cap.get(3))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        let params = split_top_level(params_src, ',')
+            .into_iter()
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect::<Vec<_>>();
+        return Some((params, cap.get(1).is_some()));
+    }
+
+    let re_fn =
+        Regex::new(r"(?s)^(async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)").unwrap();
+    re_fn.captures(t).map(|cap| {
+        (
+            split_top_level(&cap[2], ',')
+                .into_iter()
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>(),
+            cap.get(1).is_some(),
+        )
+    })
 }
 
 pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
