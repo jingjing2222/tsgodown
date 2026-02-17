@@ -65,30 +65,30 @@ for (const scenario of scenarios) {
       pass: true,
     });
 
-    assert.equal(report.cases[0]?.id, "health-get-501");
+    assert.equal(report.cases[0]?.id, "health-get-200");
     assert.deepEqual(report.cases[0]?.request, {
       method: "GET",
       path: "/health",
     });
     assert.equal(report.cases[0]?.match, true);
     assert.deepEqual(report.cases[0]?.diffs, []);
-    assert.equal(report.cases[0]?.ts.status, 501);
-    assert.equal(report.cases[0]?.go.status, 501);
+    assert.equal(report.cases[0]?.ts.status, 200);
+    assert.equal(report.cases[0]?.go.status, 200);
     assert.equal(
       report.cases[0]?.ts.headers["content-type"],
-      "text/plain; charset=utf-8",
+      "application/json; charset=utf-8",
     );
     assert.equal(
       report.cases[0]?.go.headers["content-type"],
-      "text/plain; charset=utf-8",
+      "application/json; charset=utf-8",
     );
     assert.equal(
       report.cases[0]?.ts.body,
-      "TODO implement handler health for GET /health\n",
+      '{"handler":"health","method":"GET","mode":"return","path":"/health"}\n',
     );
     assert.equal(
       report.cases[0]?.go.body,
-      "TODO implement handler health for GET /health\n",
+      '{"handler":"health","method":"GET","mode":"return","path":"/health"}\n',
     );
   });
 
@@ -111,6 +111,6 @@ for (const scenario of scenarios) {
     assert.equal(report.summary.mismatched, 1);
     assert.equal(report.summary.pass, false);
     assert.equal(report.cases[0]?.match, false);
-    assert.deepEqual(report.cases[0]?.diffs, ["status:501!=503"]);
+    assert.deepEqual(report.cases[0]?.diffs, ["status:200!=202"]);
   });
 }

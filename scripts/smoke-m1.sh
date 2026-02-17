@@ -6,7 +6,7 @@ EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-scaffold-real"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 PORT="${SMOKE_PORT:-18080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
-EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-TODO implement handler health for GET /health}"
+EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"return\",\"path\":\"/health\"}"
 SERVER_LOG="${ROOT_DIR}/.tmp-smoke-m1-server.log"
 ENGINE_LAUNCHER="${ROOT_DIR}/.tmp-smoke-m1-engine-launcher.sh"
 
@@ -110,9 +110,9 @@ const GO_MAIN = [
   "func main() {",
   "\tmux := http.NewServeMux()",
   "\tmux.HandleFunc(\"GET /health\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
-  "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  "\t\tfmt.Fprintln(w, \"TODO implement handler health for GET /health\")",
+  "\t\tw.Header().Set(\"Content-Type\", \"application/json; charset=utf-8\")",
+  "\t\tw.WriteHeader(http.StatusOK)",
+  "\t\tfmt.Fprintln(w, \"{\\\"handler\\\":\\\"health\\\",\\\"method\\\":\\\"GET\\\",\\\"mode\\\":\\\"return\\\",\\\"path\\\":\\\"/health\\\"}\")",
   "\t})",
   "\tmux.HandleFunc(\"GET /users\", func(w http.ResponseWriter, _ *http.Request) {",
   "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
@@ -236,7 +236,7 @@ assert_route() {
   log "asserted ${method} ${path} -> ${http_code} '${body_trimmed}'"
 }
 
-assert_route "GET" "/health" "501" "${EXPECTED_HEALTH_BODY}"
+assert_route "GET" "/health" "200" "${EXPECTED_HEALTH_BODY}"
 assert_route "GET" "/missing" "404" "404 page not found"
 
 green "[smoke-m1] PASS"

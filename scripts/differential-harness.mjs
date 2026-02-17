@@ -4,42 +4,42 @@ const REPORT_VERSION = "m4-differential-harness.v1";
 
 const SCENARIOS = {
   "fastify-scaffold-real-get-health": {
-    semanticsSurface: "fastify.get + text response",
+    semanticsSurface: "fastify.get + JSON return response",
     description:
       "fastify-scaffold-real deterministic runtime parity scenario for GET /health scaffold behavior.",
     cases: [
       {
-        id: "health-get-501",
+        id: "health-get-200",
         request: {
           method: "GET",
           path: "/health",
         },
         expected: {
-          status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          status: 200,
+          body: '{"handler":"health","method":"GET","mode":"return","path":"/health"}\n',
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },
     ],
   },
   "hono-scaffold-real-get-health": {
-    semanticsSurface: "hono.get + text response",
+    semanticsSurface: "hono.get + JSON return response",
     description:
       "hono-scaffold-real deterministic runtime parity scenario for GET /health scaffold behavior.",
     cases: [
       {
-        id: "health-get-501",
+        id: "health-get-200",
         request: {
           method: "GET",
           path: "/health",
         },
         expected: {
-          status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          status: 200,
+          body: '{"handler":"health","method":"GET","mode":"return","path":"/health"}\n',
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },
@@ -52,16 +52,16 @@ const SCENARIOS = {
       "generic-simple-cli deterministic runtime parity scenario for generated GET /health scaffold behavior.",
     cases: [
       {
-        id: "health-get-501",
+        id: "health-get-200",
         request: {
           method: "GET",
           path: "/health",
         },
         expected: {
-          status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          status: 200,
+          body: '{"handler":"health","method":"GET","mode":"return","path":"/health"}\n',
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },
