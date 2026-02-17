@@ -123,19 +123,23 @@ cargo build -p engine-core
 export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
-cd examples/fastify-min  # current reference fixture
+cd examples/fastify-scaffold-real  # current reference fixture
 pnpm install
 pnpm run build:go
 ```
 
 Output:
 
-- `examples/fastify-min/dist-go/main.go`
+- `examples/fastify-scaffold-real/dist-go/main.go`
 
 Scaffold-oriented sample (current Fastify reference app structure) is available at:
 
 - `examples/fastify-scaffold-real/src/app.ts`
 - `examples/fastify-scaffold-real/src/routes/*`
+
+Framework-agnostic simple CLI workspace sample is available at:
+
+- `examples/generic-simple-cli/src/index.ts`
 
 ## CLI behavior
 
@@ -157,7 +161,6 @@ This contract is verified in emitter/CLI tests and in smoke workflows.
 
 When build output is incomplete, start here:
 
-- Fastify complex runbook: [`docs/FASTIFY_COMPLEX_RUNBOOK.md`](docs/FASTIFY_COMPLEX_RUNBOOK.md)
 - Failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
 - M1 release gate and acceptance criteria: [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Testing strategy and boundaries: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
@@ -176,7 +179,6 @@ Additional project docs:
 - `pnpm run format:check`
 - `pnpm run test:tdd`
 - `pnpm run perf:baseline`
-- `pnpm run devx:fastify-complex`
 - `pnpm run docs:scaffold:sync`
 - `./scripts/smoke-m1.sh`
 

@@ -7,12 +7,6 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const engineCoreBin = path.join(repoRoot, "target", "debug", "engine-core");
 const rustLauncher = path.join(repoRoot, "scripts", "rust-engine-launcher.sh");
 
-const expectedFutureWorkspaces = [
-  // TODO(r2): enable as mandatory once corresponding PRs land.
-  // Expected path: examples/generic-simple-cli
-  // Expected path: examples/hono
-];
-
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, {
     cwd: repoRoot,
@@ -56,13 +50,6 @@ function readScripts(projectDirRel) {
 function main() {
   const examples = listTrackedExamples();
 
-  for (const expectedPath of expectedFutureWorkspaces) {
-    if (!fs.existsSync(path.join(repoRoot, expectedPath))) {
-      console.log(
-        `[install-first] TODO workspace hook: waiting for ${expectedPath}`,
-      );
-    }
-  }
   if (examples.length === 0) {
     console.log(
       "[install-first] SKIP (no tracked examples with tsgodown.config.ts)",

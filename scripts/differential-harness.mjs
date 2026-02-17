@@ -3,7 +3,7 @@
 const REPORT_VERSION = "m4-differential-harness.v1";
 
 const SCENARIOS = {
-  "fastify-min-get-health": {
+  "fastify-scaffold-real-get-health": {
     semanticsSurface: "fastify.get + json response",
     description:
       "Representative semantics-parity safety-net scenario for deterministic GET /health behavior parity.",
@@ -183,7 +183,8 @@ function getArg(flag) {
 }
 
 function main() {
-  const scenarioName = getArg("--scenario") ?? "fastify-min-get-health";
+  const scenarioName =
+    getArg("--scenario") ?? "fastify-scaffold-real-get-health";
   if (!SCENARIOS[scenarioName]) {
     console.error(`Unknown scenario: ${scenarioName}`);
     console.error(`Available scenarios: ${Object.keys(SCENARIOS).join(", ")}`);

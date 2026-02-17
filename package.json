@@ -21,7 +21,6 @@
     "gate:differential": "pnpm run gate:semantics-parity",
     "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path",
     "perf:baseline": "tsx scripts/perf-baseline.ts",
-    "devx:fastify-complex": "./scripts/devx-fastify-complex.sh",
     "docs:scaffold:sync": "node scripts/check-fastify-scaffold-sync.mjs",
     "scaffold:sync:check": "node scripts/check-scaffold-sync.mjs",
     "scaffold:sync:write": "node scripts/check-scaffold-sync.mjs --write",
@@ -29,7 +28,7 @@
     "guard:compiler-mode-only": "node scripts/guard-compiler-mode-only.mjs",
     "guard:core-path": "node scripts/guard-core-path-no-framework-branching.mjs",
     "test:guard:core-path": "node --test scripts/guard-core-path-no-framework-branching.test.mjs",
-    "harness:semantics-parity": "node scripts/differential-harness.mjs --scenario fastify-min-get-health",
+    "harness:semantics-parity": "node scripts/differential-harness.mjs --scenario fastify-scaffold-real-get-health",
     "harness:differential": "pnpm run harness:semantics-parity"
   },
   "devDependencies": {

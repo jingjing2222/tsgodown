@@ -107,6 +107,28 @@ function createRustLauncher(cwd: string) {
 
 const installedWorkspaceCliDirs = new Set<string>();
 
+function normalizeWorkspaceCliDependency(cwd: string) {
+  const packageJsonPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return;
+
+  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+
+  let changed = false;
+  for (const key of ["dependencies", "devDependencies"] as const) {
+    const deps = pkg[key];
+    if (!deps || deps.tsgodown !== "workspace:*") continue;
+    deps.tsgodown = `file:${path.join(repoRoot, "packages", "cli")}`;
+    changed = true;
+  }
+
+  if (changed) {
+    fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  }
+}
+
 function runCli(
   cwd: string,
   command: "build" | "check" | "report" | "stages",
@@ -119,6 +141,8 @@ function runCli(
       JSON.stringify({ name: "tsgodown-e2e-scaffold", private: true }, null, 2),
     );
   }
+
+  normalizeWorkspaceCliDependency(cwd);
 
   if (!installedWorkspaceCliDirs.has(cwd)) {
     const install = spawnSync(
@@ -160,6 +184,8 @@ function runCliDefault(cwd: string, env?: NodeJS.ProcessEnv) {
       JSON.stringify({ name: "tsgodown-e2e-scaffold", private: true }, null, 2),
     );
   }
+
+  normalizeWorkspaceCliDependency(cwd);
 
   if (!installedWorkspaceCliDirs.has(cwd)) {
     const install = spawnSync(
@@ -263,7 +289,7 @@ function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
 
   const modInit = spawnSync(
     "go",
-    ["mod", "init", "example.com/tsgodown-cli-fastify-min"],
+    ["mod", "init", "example.com/tsgodown-cli-fastify-scaffold-real"],
     {
       cwd: goDir,
       encoding: "utf8",
@@ -937,6 +963,46 @@ test("CLI surfaces rust adapter error propagation format", () => {
   );
 });
 
+test.skip("fastify-scaffold-real workspace build emits Go scaffold and keeps tsdown compile inputs", () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "process.stdout.write(JSON.stringify({",
+    "  ok: true,",
+    "  diagnostics: ['engine=rust-binary-stub'],",
+    "  manifest: {",
+    "    buildId: '1122334455667788',",
+    "    entries: ['src/index.ts'],",
+    "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+    "    types: ['dist/index.d.ts'],",
+    "    tsconfigPath: 'tsconfig.json'",
+    "  }",
+    "}));",
+  ]);
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const manifestPath = path.join(
+    cwd,
+    "artifacts",
+    "manifests",
+    "manifest.json",
+  );
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+    bundles: Array<{ file: string; map?: string }>;
+    types: string[];
+  };
+
+  assert.equal(manifest.bundles[0]?.file, "dist/index.mjs");
+  assert.equal(manifest.bundles[0]?.map, "dist/index.mjs.map");
+  assert.equal(manifest.types[0], "dist/index.d.ts");
+  assert.equal(fs.existsSync(path.join(cwd, "dist-go", "main.go")), true);
+});
+
 test("rust-only fixture matrix keeps build/check/report/stages deterministic", () => {
   const fixtures = [
     "multi-file",
@@ -1033,8 +1099,8 @@ test("rust-only fixture matrix keeps build/check/report/stages deterministic", (
   }
 });
 
-test.skip("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)", () => {
-  const cwd = setupProjectFromFixture("fastify-min");
+test.skip("M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)", () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -1062,7 +1128,7 @@ test.skip("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> 
 });
 
 test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtime", async () => {
-  const cwd = setupProjectFromFixture("fastify-min");
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -1090,8 +1156,8 @@ test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtim
   );
 });
 
-test.skip("M2 acceptance: fastify-supported-complex fixture preserves method contracts and path params", async () => {
-  const cwd = setupProjectFromFixture("fastify-supported-complex");
+test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contracts and path params", async () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -1149,8 +1215,8 @@ test.skip("M2 acceptance: fastify-supported-complex fixture preserves method con
   });
 });
 
-test.skip("M3 regression: fastify-supported-complex keeps method/path scaffold stable", async () => {
-  const cwd = setupProjectFromFixture("fastify-supported-complex");
+test.skip("M3 regression: fastify-scaffold-real keeps method/path scaffold stable", async () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
