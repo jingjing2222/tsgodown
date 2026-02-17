@@ -238,6 +238,58 @@ fastify.get('/beta', betaHandler)
 
 If feature gating is needed, keep route declaration deterministic and gate behavior inside handler/service logic.
 
+## 3.6 `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
+
+When it triggers:
+- `.register(...)` callback/plugin reference is not an inline function or same-file named plugin reference resolvable by analyzer.
+
+Why unsupported:
+- Current plugin resolution boundary is intentionally static and file-local.
+
+Recommended rewrite:
+
+```ts
+// ❌ unsupported
+const pluginFactory = makePlugin()
+fastify.register(pluginFactory)
+
+// ✅ supported
+function usersPlugin(plugin) {
+  plugin.get('/users', listUsers)
+}
+fastify.register(usersPlugin)
+```
+
+or
+
+```ts
+fastify.register(function (plugin) {
+  plugin.get('/users', listUsers)
+})
+```
+
+## 3.7 `ANALYZER_UNRESOLVED_PLUGIN`
+
+When it triggers:
+- `register(<pluginRef>)` references a plugin not declared/resolvable in the same file under current static analysis boundary.
+
+Why unsupported:
+- Cross-file/dynamic plugin resolution is currently outside deterministic extraction scope.
+
+Recommended rewrite:
+
+```ts
+// ❌ unsupported
+import usersPlugin from './users-plugin'
+fastify.register(usersPlugin)
+
+// ✅ supported (current boundary)
+function usersPlugin(plugin) {
+  plugin.get('/users', listUsers)
+}
+fastify.register(usersPlugin)
+```
+
 ---
 
 ## 4) Governance

@@ -182,6 +182,21 @@ function replaceManagedBlock(content, markers, replacementBody) {
   return `${before}\n${replacementBody.trimEnd()}\n${after}`;
 }
 
+function listBacktickedCodes(content, regex) {
+  const out = [];
+  for (const match of content.matchAll(regex)) {
+    const code = match[1];
+    if (code && /^[A-Z][A-Z0-9_]+$/.test(code)) {
+      out.push(code);
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
+function formatCodeList(codes) {
+  return codes.map((code) => `\`${code}\``).join(", ");
+}
+
 const rustFiles = globSync(rustGlob, { cwd: repoRoot });
 if (rustFiles.length === 0) {
   console.error(`No Rust files found for glob: ${rustGlob}`);
@@ -299,6 +314,70 @@ if (desiredInventory !== currentInventory) {
       "Hint: run `node scripts/check-fastify-diagnostics-sync.mjs --write`.",
     ]);
   }
+}
+
+const analyzerUnsupportedCodes = new Set(
+  uniqueCodes.filter((code) => code.startsWith("ANALYZER_")),
+);
+const matrixUnsupportedCodes = new Set(
+  listBacktickedCodes(
+    matrixDoc,
+    /^##\s+3\.\d+\s+`([A-Z][A-Z0-9_]+)`\s*$/gm,
+  ).filter((code) => code.startsWith("ANALYZER_")),
+);
+const diagnosticsUnsupportedCodes = new Set(
+  listBacktickedCodes(
+    diagnosticsDoc,
+    /^###\s+`([A-Z][A-Z0-9_]+)`\s*$/gm,
+  ).filter((code) => code.startsWith("ANALYZER_")),
+);
+
+const transitionedToSupported = [...matrixUnsupportedCodes]
+  .filter((code) => !analyzerUnsupportedCodes.has(code))
+  .sort();
+const transitionedToSupportedInDiagnostics = [...diagnosticsUnsupportedCodes]
+  .filter((code) => !analyzerUnsupportedCodes.has(code))
+  .sort();
+
+const transitionedToUnsupportedMissingInMatrix = [...analyzerUnsupportedCodes]
+  .filter((code) => !matrixUnsupportedCodes.has(code))
+  .sort();
+const transitionedToUnsupportedMissingInDiagnostics = [
+  ...analyzerUnsupportedCodes,
+]
+  .filter((code) => !diagnosticsUnsupportedCodes.has(code))
+  .sort();
+
+if (
+  transitionedToSupported.length > 0 ||
+  transitionedToSupportedInDiagnostics.length > 0 ||
+  transitionedToUnsupportedMissingInMatrix.length > 0 ||
+  transitionedToUnsupportedMissingInDiagnostics.length > 0
+) {
+  recordMismatch("support-status coherence (matrix/diagnostics/inventory)", [
+    "Detected unsupported↔supported state drift across docs/specs/FASTIFY_SUPPORT_MATRIX.md, docs/specs/DIAGNOSTICS.md, and docs/specs/FASTIFY_UNSUPPORTED_INVENTORY.md.",
+    ...(transitionedToSupported.length > 0
+      ? [
+          `FASTIFY_SUPPORT_MATRIX still marks these as unsupported, but analyzer no longer emits them (likely unsupported -> supported): ${formatCodeList(transitionedToSupported)}.`,
+        ]
+      : []),
+    ...(transitionedToSupportedInDiagnostics.length > 0
+      ? [
+          `DIAGNOSTICS still documents these unsupported sections, but analyzer no longer emits them (likely unsupported -> supported): ${formatCodeList(transitionedToSupportedInDiagnostics)}.`,
+        ]
+      : []),
+    ...(transitionedToUnsupportedMissingInMatrix.length > 0
+      ? [
+          `Analyzer emits these unsupported diagnostics, but FASTIFY_SUPPORT_MATRIX has no unsupported section for them (likely supported -> unsupported): ${formatCodeList(transitionedToUnsupportedMissingInMatrix)}.`,
+        ]
+      : []),
+    ...(transitionedToUnsupportedMissingInDiagnostics.length > 0
+      ? [
+          `Analyzer emits these unsupported diagnostics, but DIAGNOSTICS has no dedicated section for them (likely supported -> unsupported): ${formatCodeList(transitionedToUnsupportedMissingInDiagnostics)}.`,
+        ]
+      : []),
+    "Remediation: when support status changes, update section 3.x in FASTIFY_SUPPORT_MATRIX and add/remove matching `### ` code sections in DIAGNOSTICS in the same PR.",
+  ]);
 }
 
 if (problems.length > 0) {
