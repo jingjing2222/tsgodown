@@ -12,10 +12,10 @@ The primary goal is fixed as:
    - analysis and lowering are driven by syntax + symbol/type surface + source mapping provenance
 3. **`go build` output**
    - generated output must compile as a normal Go project/binary using the Go toolchain
-4. **100% behavioral coverage (scoped contract)**
-   - defined as: full behavioral match **within the declared supported subset**, proven by differential testing (TS runtime vs Go runtime), not by claiming universal JS/TS coverage
+4. **100% behavioral coverage (declared semantic envelope)**
+   - defined as: full behavioral match within the declared semantic envelope, proven by semantics-parity testing (TS runtime vs Go runtime), not by claiming universal JS/TS coverage
 
-This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
+This repository remains intentionally strict: when code is outside the declared semantic envelope or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
 
 ## Milestone lock (execution sequence)
 
@@ -31,9 +31,9 @@ Documentation and gate execution follow this fixed sequence:
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 
-## Supported Fastify patterns
+## Supported route-extraction patterns
 
-The current extractor supports patterns that are stable for backend builds:
+The current extractor supports deterministic route-extraction patterns that are stable for compiler-mode backend builds:
 
 - `fastify.<method>("/literal", handlerRef)` where method is `get|post|put|delete|patch`
 - `fastify.route({ ... })` with inline object literal:
@@ -69,7 +69,7 @@ app.route({
 });
 ```
 
-## Unsupported Fastify patterns + diagnostics codes
+## Unsupported route patterns + diagnostics codes
 
 When unsupported patterns are found, `tsgodown` emits warnings with deterministic codes.
 
