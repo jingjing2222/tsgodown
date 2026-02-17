@@ -408,6 +408,9 @@ fn diag(level: &str, code: &str, message: &str, file: &str) -> DiagnosticIR {
         message: message.to_string(),
         source: Some(DiagnosticSourceIR {
             file: file.to_string(),
+            line: None,
+            column: None,
+            via_source_map: None,
         }),
     }
 }
