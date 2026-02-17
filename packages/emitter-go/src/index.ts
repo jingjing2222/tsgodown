@@ -17,7 +17,7 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   const lines: string[] = [];
 
   lines.push("package main", "");
-  lines.push(...renderGoImports());
+  lines.push(...renderGoImports(ir.handlers));
   lines.push(...renderDiagnosticsComments(ir.diagnostics));
   lines.push(...renderRuntimeRouter());
   lines.push(...renderRouteRegistry(ir.routes));

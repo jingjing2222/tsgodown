@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -104,14 +105,17 @@ func route0(w http.ResponseWriter, req *http.Request) {
 	//   Handler async: false
 	//   Handler response mode: response-object
 	//   Middleware: ["auth"]
-	// TODO(tsgodown): Implement handler "health" for GET /health.
-	//   - Replace this scaffold with application logic.
-	//   - Validate request input and map to domain arguments.
-	//   - Write response status, headers, and body.
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotImplemented)
-	fmt.Fprintln(w, "TODO implement handler health for GET /health")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-TSGoDown-Handler", "response-object")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"handler": "health",
+		"method": "GET",
+		"path": "/health",
+		"mode": "response-object",
+	}); err != nil {
+		http.Error(w, "json encode failed", http.StatusInternalServerError)
+	}
 }
 
 func route1(w http.ResponseWriter, req *http.Request) {
@@ -123,16 +127,19 @@ func route1(w http.ResponseWriter, req *http.Request) {
 	//   Handler params: request:req
 	//   Handler async: true
 	//   Handler response mode: return
-	// TODO(tsgodown): Implement handler "createUser" for POST /users/:id.
-	//   - Replace this scaffold with application logic.
-	//   - Validate request input and map to domain arguments.
-	//   - Write response status, headers, and body.
-
 	// Extracted path params:
 	id := req.PathValue("id")
 	_ = id
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotImplemented)
-	fmt.Fprintln(w, "TODO implement handler createUser for POST /users/:id")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-TSGoDown-Handler", "return")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"handler": "createUser",
+		"method": "POST",
+		"path": "/users/:id",
+		"mode": "return",
+	}); err != nil {
+		http.Error(w, "json encode failed", http.StatusInternalServerError)
+	}
 }
