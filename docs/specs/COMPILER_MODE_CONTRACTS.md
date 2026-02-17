@@ -23,6 +23,15 @@ All milestone evidence, roadmap references, and issue/PR wording must preserve t
 
 In short: correctness claims are locked to explicit compiler contracts, not to the general TypeScript/Fastify ecosystem.
 
+### Support-claim wording rule
+
+User-facing docs must classify surfaces as either:
+
+- **Usable now**: in declared subset + covered by required proof obligations/gates.
+- **Not yet**: outside subset or missing proof obligations; must remain fail-closed.
+
+Avoid ambiguous wording such as broad "Fastify v2 supported" without subset boundaries.
+
 ## 2) Out-of-Scope Handling (Fail Closed)
 
 For out-of-scope input programs, compiler behavior is fixed:
