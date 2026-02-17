@@ -102,10 +102,13 @@ function parseRoutesFromSource(source) {
   ];
 }
 
-function fail(message, details) {
-  process.stderr.write(`[rust-engine-launcher] ${message}\n`);
+function fail(message, details, fixHint) {
+  process.stderr.write(`[rust-engine-launcher] cause: ${message}\n`);
   if (details) {
-    process.stderr.write(`${details}\n`);
+    process.stderr.write(`[rust-engine-launcher] details: ${details}\n`);
+  }
+  if (fixHint) {
+    process.stderr.write(`[rust-engine-launcher] fix: ${fixHint}\n`);
   }
   process.exit(1);
 }
@@ -122,7 +125,8 @@ function ensureExecutable(filePath, label) {
   if (!fs.existsSync(filePath)) {
     fail(
       `${label} not found at: ${filePath}`,
-      "Build it first: cargo build -p engine-core",
+      "required executable does not exist",
+      "Build it first: cargo build -p engine-core (or set TSGODOWN_ENGINE_CORE_BIN to a valid binary)",
     );
   }
   try {
@@ -130,6 +134,7 @@ function ensureExecutable(filePath, label) {
   } catch {
     fail(
       `${label} is not executable: ${filePath}`,
+      "found path but execute permission check failed",
       `Fix permissions: chmod +x ${JSON.stringify(filePath)}`,
     );
   }
@@ -139,7 +144,8 @@ const stdin = await readStdinText();
 if (!stdin) {
   fail(
     "expected JSON request on stdin",
-    "Launcher contract requires a build request JSON payload.",
+    "launcher stdin was empty",
+    "Ensure CLI invokes this script via TSGODOWN_RUST_ENGINE_BIN and does not swallow stdin",
   );
 }
 
@@ -150,6 +156,7 @@ try {
   fail(
     "invalid JSON on stdin",
     error instanceof Error ? error.message : String(error),
+    "Pass a valid JSON object. Expected shape: { action: 'build', cwd: '<project-root>' }",
   );
 }
 
@@ -157,6 +164,7 @@ if (!request || request.action !== "build" || typeof request.cwd !== "string") {
   fail(
     "invalid request envelope",
     "Expected: { action: 'build', cwd: '<project-root>', configPath?: string }",
+    "If you are calling the launcher manually, include action='build' and cwd=<absolute-or-relative-project-path>",
   );
 }
 
@@ -183,6 +191,7 @@ if (analyze.status !== 0) {
     analyze.stderr?.trim() ||
       analyze.stdout?.trim() ||
       "No error output from engine-core",
+    "Run cargo build -p engine-core, then retry. If it still fails, run the same command manually to inspect analyzer diagnostics",
   );
 }
 
@@ -193,6 +202,7 @@ try {
   fail(
     "engine-core analyze stdout is not valid JSON",
     error instanceof Error ? error.message : String(error),
+    "Verify engine-core analyze prints JSON to stdout and logs diagnostics to stderr",
   );
 }
 
