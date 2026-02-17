@@ -11,7 +11,7 @@ for in-contract routes and requests.
 This document is the normative definition used by M1+ differential parity tests.
 
 ## Observable equivalence (normative)
-For any request accepted by the declared semantic envelope contract, TS runtime and Go runtime are considered semantically equivalent when all parity dimensions below hold.
+For any request accepted by the contracted semantics surface, TS runtime and Go runtime are considered semantically equivalent when all parity dimensions below hold.
 
 ### Parity dimensions
 
@@ -34,7 +34,7 @@ For any request accepted by the declared semantic envelope contract, TS runtime 
 | Layer | Required acceptance criteria | Representative tests / artifacts |
 | --- | --- | --- |
 | Unit | Deterministic method matrix and header construction rules are stable (`Allow` generation, route method normalization). | `packages/emitter-go/test/emit-go.test.ts` |
-| Integration | Rust analyzer/emitter contract preserves route/method semantics and diagnostics boundaries for the declared semantic envelope. | `packages/analyzer-rust/tests/contract_parity_regression.rs` |
+| Integration | Rust analyzer/emitter contract preserves route/method semantics and diagnostics boundaries for the contracted semantics surface. | `packages/analyzer-rust/tests/contract_parity_regression.rs` |
 | E2E differential parity | Same fixture requests against TS runtime and generated Go runtime satisfy parity dimensions (status/body/headers/method behavior). | `packages/cli/test/commands.e2e.test.ts` (M2/M3 acceptance tests) |
 | Release gate | Canonical M1 gate proves build path and generated runtime scaffold viability (generation + compile path). | `scripts/m1-release-gate.sh`, `docs/specs/M1_RELEASE_GATE.md` |
 

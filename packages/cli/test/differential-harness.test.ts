@@ -21,14 +21,14 @@ function runHarness(env: NodeJS.ProcessEnv = {}) {
   );
 }
 
-test("differential harness emits deterministic report format for supported-subset scenario", () => {
+test("differential harness emits deterministic report format for semantics-parity safety-net scenario", () => {
   const result = runHarness();
   assert.equal(result.status, 0, result.stderr);
 
   const report = JSON.parse(result.stdout) as {
     version: string;
     scenario: string;
-    subset: string;
+    semanticsSurface: string;
     description: string;
     deterministic: boolean;
     summary: {
@@ -47,8 +47,11 @@ test("differential harness emits deterministic report format for supported-subse
 
   assert.equal(report.version, "m4-differential-harness.v1");
   assert.equal(report.scenario, "fastify-min-get-health");
-  assert.equal(report.subset, "fastify.get + json response");
-  assert.match(report.description, /Representative supported-subset scenario/);
+  assert.equal(report.semanticsSurface, "fastify.get + json response");
+  assert.match(
+    report.description,
+    /Representative semantics-parity safety-net scenario/,
+  );
   assert.equal(report.deterministic, true);
   assert.deepEqual(report.summary, {
     total: 1,

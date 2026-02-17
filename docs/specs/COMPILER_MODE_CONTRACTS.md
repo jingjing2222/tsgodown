@@ -10,16 +10,16 @@ This document is the contract anchor for `M5` in the locked sequence:
 
 All milestone evidence, roadmap references, and issue/PR wording must preserve this order.
 
-## Declared semantic envelope
+## Contracted Semantics Surface
 
-## 1) Declared semantic envelope (spec lock)
+## 1) Contracted Semantics Surface (Spec Lock)
 
-`tsgodown` is a compiler. It only guarantees correctness for a declared, versioned semantic envelope of input programs.
+`tsgodown` is a compiler. It guarantees correctness only for the declared, versioned semantics surface encoded by compiler contracts.
 
-- The declared semantic envelope is the union of compiler-recognized source patterns explicitly listed in spec/capability documents.
-- Any input program outside that envelope is **out of scope** for correctness claims.
+- The contracted semantics surface is the union of compiler-recognized source patterns explicitly listed in spec/capability documents.
+- Any input program outside that surface is **out of scope** for correctness claims.
 - The compiler must not infer support from best-effort behavior or incidental pass cases.
-- Milestone/release messaging must not expand claims beyond this locked semantic envelope.
+- Milestone/release messaging must not expand claims beyond this locked contract surface.
 
 In short: correctness claims are locked to explicit compiler contracts, not to any specific framework ecosystem.
 
@@ -35,7 +35,7 @@ This is a fail-closed compiler policy: no silent miscompile, no silent acceptanc
 
 ## 3) Proof Obligations for In-Scope Features
 
-For each declared-contract feature, correctness is established by semantics-parity proof obligations.
+For each in-scope feature in the contracted semantics surface, correctness is established by differential proof obligations.
 
 Minimum obligations:
 
@@ -49,7 +49,7 @@ Minimum obligations:
 4. **Performance SLO gates**
    - Enforce agreed compile/runtime budgets so correctness is delivered within accepted cost.
 
-`100% behavioral coverage` means every behavior inside the declared semantic envelope is covered by these obligations and passes the semantics-parity gate.
+`100% behavioral coverage` means every behavior inside the contracted semantics surface is covered by these obligations and passes the differential gate.
 
 ## 4) Canonical References
 
