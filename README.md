@@ -17,6 +17,20 @@ The primary goal is fixed as:
 
 This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
 
+## Milestone lock (execution sequence)
+
+Documentation and gate execution follow this fixed sequence:
+
+`M5 -> M1 -> M2 -> M3 -> M4`
+
+- `M5`: compiler-mode direction lock and contract freeze
+- `M1`: canonical compile-success gate (`pnpm run gate:m1`)
+- `M2`: generated runtime reachability acceptance
+- `M3`: deterministic runtime behavior/perf guard extensions
+- `M4`: architecture guardrails, triage/release discipline, and DoD closure policy
+
+The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
+
 ## Supported Fastify patterns
 
 The current extractor supports patterns that are stable for backend builds:

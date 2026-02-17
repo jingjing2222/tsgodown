@@ -2,6 +2,16 @@
 
 This document is the canonical policy source for compiler-mode support claims.
 
+## Milestone lock anchor (M5)
+
+This document is the contract anchor for `M5` in the locked sequence:
+
+`M5 -> M1 -> M2 -> M3 -> M4`
+
+All milestone evidence, roadmap references, and issue/PR wording must preserve this order.
+
+## Supported Subset Contract
+
 ## 1) Supported Subset (Spec Lock)
 
 `tsgodown` is a compiler. It only guarantees correctness for a declared, versioned subset of input programs.

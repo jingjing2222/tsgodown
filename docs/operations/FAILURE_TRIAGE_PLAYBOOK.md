@@ -113,9 +113,10 @@ Checklist:
 - If still failing, note as infra-suspect in PR and attach logs.
 - Do not merge with unresolved `SMOKE-*` or `RUST-*` failures.
 
-## 7) Definition of Done for Failure Closure
+## 7) Definition of Done for Failure Closure (compiler-mode)
 - Primary category assigned
 - Root cause identified
-- Fix merged with no fallback-policy regression
+- Fix merged with no compiler-mode contract regression (including no TS-analyzer fallback path)
 - Full command matrix passes locally
 - CI green on updated branch
+- Evidence comment/PR note includes milestone stage in locked sequence (`M5->M1->M2->M3->M4`) and verification commands

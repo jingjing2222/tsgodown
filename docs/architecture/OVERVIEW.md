@@ -14,7 +14,7 @@ Project-scale TS/JS -> Go compiler pipeline using tsdown build artifacts, with *
   - UX/reporting surface
   - config loading / command routing
 - **No fallback policy:**
-  - Runtime path must not import or depend on legacy `@tsgodown/analyzer`.
+  - Runtime path must not import or depend on deprecated `@tsgodown/analyzer` as an alternate analysis path.
   - If Rust engine is unavailable, pipeline fails with explicit source/cause/guidance errors.
 
 ## Primary Pipeline

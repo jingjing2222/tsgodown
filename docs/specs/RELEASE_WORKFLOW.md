@@ -1,6 +1,6 @@
 # Release Workflow & Versioning Policy
 
-Status: Canonical for M3 (#77)
+Status: Canonical for compiler-mode release operations (M4 in locked sequence M5 -> M1 -> M2 -> M3 -> M4)
 
 This document defines how `tsgodown` versions, cuts releases, and handles rollback/hotfix scenarios.
 
@@ -172,4 +172,4 @@ git push origin main
   - risk/impact
   - rollback plan
   - proof of full gate command results
-- Link issue(s), e.g. `Closes #77`.
+- Link issue(s) and milestone stage explicitly (example: `Closes #<id>`, `Milestone: M4 (sequence M5->M1->M2->M3->M4)`).

@@ -1,4 +1,4 @@
-# Performance Baseline & Regression Guard (M3 #75)
+# Performance Baseline & Regression Guard (M3 in locked sequence M5 -> M1 -> M2 -> M3 -> M4)
 
 ## Goal
 Provide a repeatable baseline/perf-regression scaffold for CLI orchestration latency.
