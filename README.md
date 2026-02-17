@@ -1,124 +1,147 @@
 # tsgodown
 
-A long-term TypeScript/JavaScript → Go compiler project built around tsdown artifacts (bundle + sourcemap + d.ts), with a Fastify-first profile and an SSoT-driven architecture.
+## What is tsgodown
 
-## Project Goals
-- Keep a tsdown-like DX: `defineConfig` + `tsgodown.config.ts`
-- Build a semantic compiler pipeline: artifacts → IR → capability gate → Go emitter
-- Keep profile adapters thin (framework parsing only; no policy/rule ownership)
-- Enforce TDD and CI as merge gates
+`tsgodown` compiles a constrained Fastify codebase into a Go HTTP server.
 
-## Current Status (early skeleton)
-- Config loading/normalization
-- Basic Fastify route detection
-- Go `main.go` scaffold emission
-- Initial SSoT docs:
-  - [`docs/specs/IR_SPEC.md`](docs/specs/IR_SPEC.md)
-  - [`docs/specs/CAPABILITY_MATRIX.md`](docs/specs/CAPABILITY_MATRIX.md)
-  - [`docs/specs/ARTIFACT_SCHEMA.md`](docs/specs/ARTIFACT_SCHEMA.md)
+- **Input**: TypeScript/JavaScript app code (Fastify-first profile)
+- **Compiler core**: Rust analyzer + IR pipeline
+- **Output**: Go project (`dist-go/main.go`) with deterministic routing behavior
+- **Goal**: keep a familiar `tsdown`-style build UX while producing production-oriented Go artifacts
 
-## Documentation Map
-- Architecture overview: [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md)
-- Testing strategy: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
-- M1 release gate (canonical): [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
-- Release workflow/versioning policy: [`docs/specs/RELEASE_WORKFLOW.md`](docs/specs/RELEASE_WORKFLOW.md)
-- Observability / failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
-- Performance baseline scaffold: [`docs/specs/PERFORMANCE_BASELINE.md`](docs/specs/PERFORMANCE_BASELINE.md)
-- Fastify complex operator runbook: [`docs/FASTIFY_COMPLEX_RUNBOOK.md`](docs/FASTIFY_COMPLEX_RUNBOOK.md)
+This repository is intentionally strict: when a Fastify pattern cannot be extracted deterministically, the compiler skips it and emits explicit diagnostics.
 
-## Quick Start
-```bash
-pnpm install
-pnpm run build
-cd examples/fastify-min
-node --import tsx ../../packages/cli/src/index.ts build
+## Supported Fastify patterns
+
+The current extractor supports patterns that are stable for backend builds:
+
+- `fastify.<method>("/literal", handlerRef)` where method is `get|post|put|delete|patch`
+- `fastify.route({ ... })` with inline object literal:
+  - `method`: string (`"GET"`) or non-empty array (`["PUT", "PATCH"]`)
+  - `url` or `path`: string literal
+  - `handler`: named handler reference
+- `fastify.register(...)` with:
+  - inline callback plugin, or
+  - named local plugin reference
+  - optional `prefix` composition across nested plugins
+- named handlers (including common member references) that the analyzer can resolve
+
+Supported example:
+
+```ts
+import Fastify from "fastify";
+
+const app = Fastify();
+
+async function listUsers(req, reply) {
+  return [{ id: "u1" }];
+}
+
+function replaceThing(req, reply) {
+  reply.send({ ok: true });
+}
+
+app.get("/users", listUsers);
+app.route({
+  method: ["PUT", "PATCH"],
+  url: "/things/:id",
+  handler: replaceThing,
+});
 ```
 
-Generated output:
-- `examples/fastify-min/dist-go/main.go`
+## Unsupported Fastify patterns + diagnostics codes
 
-## Local Rust Engine Launcher (no temp scripts)
-Use the reusable launcher when you want local CLI runs to go through `engine-core analyze` and still emit `dist-go/main.go`.
+When unsupported patterns are found, `tsgodown` emits warnings with deterministic codes.
+
+Common unsupported patterns:
+
+- dynamic/non-literal route paths
+- inline/anonymous route handlers where named references are required
+- `fastify.route(...)` object shapes that are not directly analyzable
+- unresolved plugin references
+- conditional route registration (`if (...) { fastify.get(...) }`)
+
+Example (unsupported):
+
+```ts
+import Fastify from "fastify";
+
+const app = Fastify();
+
+const dynamicPath = "/users/" + process.env.VERSION;
+app.get(dynamicPath, async (req, reply) => {
+  reply.send({ ok: true });
+});
+
+if (process.env.EXPERIMENTAL === "1") {
+  app.get("/exp", expHandler);
+}
+```
+
+Diagnostics you will see:
+
+- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`
+- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
+- `ANALYZER_UNRESOLVED_PLUGIN`
+- `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
+- `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`
+
+## Quickstart
 
 ```bash
+pnpm install --frozen-lockfile
+pnpm run build
+
+# Optional but recommended for local Rust-engine runs
 cargo build -p engine-core
 export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
-# Optional override (default is ./target/debug/engine-core)
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
 cd examples/fastify-min
 node --import tsx ../../packages/cli/src/index.ts build
 ```
 
-If setup is wrong, the launcher fails fast with actionable errors (missing executable, bad JSON request, or `engine-core analyze` failure).
+Output:
 
-## Development Commands
+- `examples/fastify-min/dist-go/main.go`
+
+## Runtime contracts (404/405/Allow)
+
+Generated Go runtime keeps HTTP mismatch behavior deterministic:
+
+- **404 Not Found**: no route matched by path
+- **405 Method Not Allowed**: path matched but HTTP method is unsupported
+- **Allow header on 405**: includes allowed methods for the matched path (comma-separated)
+
+This contract is verified in emitter/CLI tests and in smoke workflows.
+
+## Diagnostics/Fix guide pointers
+
+When build output is incomplete, start here:
+
+- Fastify complex runbook: [`docs/FASTIFY_COMPLEX_RUNBOOK.md`](docs/FASTIFY_COMPLEX_RUNBOOK.md)
+- Failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
+- M1 release gate and acceptance criteria: [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
+- Testing strategy and boundaries: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
+
+Additional project docs:
+
+- Architecture overview: [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md)
+- IR spec: [`docs/specs/IR_SPEC.md`](docs/specs/IR_SPEC.md)
+- Capability matrix: [`docs/specs/CAPABILITY_MATRIX.md`](docs/specs/CAPABILITY_MATRIX.md)
+- Artifact schema: [`docs/specs/ARTIFACT_SCHEMA.md`](docs/specs/ARTIFACT_SCHEMA.md)
+
+## Development commands
+
 - `pnpm run lint`
 - `pnpm run format:check`
 - `pnpm run test:tdd`
 - `pnpm run perf:baseline`
-- `pnpm run devx:fastify-complex` (one-command build + run + verify for `examples/fastify-complex`)
-
-## Fastify Complex DevX Quickstart (one command)
-From repo root:
-
-```bash
-pnpm run devx:fastify-complex
-```
-
-This command:
-- builds TS workspace + Rust `engine-core`
-- builds `examples/fastify-complex` to `dist-go/main.go`
-- compiles + runs the Go binary
-- verifies deterministic routes (`/health`, `/users`, `/users/:id`, method-mismatch 405, missing-route 404)
-- prints actionable errors in `cause + fix hint` format
-
-## M1 Local Smoke Verification (Apple Silicon / M1 path)
-Run the one-command local smoke script from repo root:
-
-```bash
-./scripts/smoke-m1.sh
-```
-
-What it does:
-- preflight checks (`node`, `pnpm`, `cargo`, `go`, `curl`) and Rust launcher env (`TSGODOWN_RUST_ENGINE_BIN`, auto-generated when unset)
-- builds TS packages + Rust `engine-core`
-- builds `examples/fastify-min` into `dist-go/main.go`
-- runs `go build` in `examples/fastify-min/dist-go`
-- starts the binary on configurable port (`SMOKE_PORT`, default `18080`)
-- calls `/health` and verifies `200` + body `ok`
-- performs graceful teardown and prints diagnostics on failure
-
-Optional env overrides:
-- `SMOKE_PORT` (default: `18080`)
-- `SMOKE_EXPECTED_BODY` (default: `ok`)
-
-## How to verify M1 locally
-Use the canonical gate command from repo root:
-
-```bash
-pnpm run gate:m1
-```
-
-This executes [`scripts/m1-release-gate.sh`](scripts/m1-release-gate.sh), which runs the fixed M1 acceptance test in `packages/cli/test/commands.e2e.test.ts` (name prefix: `M1 release gate:`).
-
-If you need the exact direct test invocation used by the script:
-
-```bash
-cd packages/cli
-node --import tsx --test-name-pattern "^M1 release gate:" --test test/commands.e2e.test.ts
-```
-
-## Migration Note
-- Legacy package `@tsgodown/ir` is deprecated and intentionally inactive.
-- Legacy TypeScript core analyze/capability/emit paths are deprecated and disabled in `@tsgodown/core`/`@tsgodown/pipeline` (orchestration/UI only).
-- Active IR model/package is `@tsgodown/ir-core` and policy SSoT remains [`IR_SPEC.md`](docs/specs/IR_SPEC.md) + [`CAPABILITY_MATRIX.md`](docs/specs/CAPABILITY_MATRIX.md).
-
-## Workspace Package Policy
-- Placeholder packages are not kept as empty directories.
-- If a package is not implemented yet, track it in docs/backlog only (do not create `packages/<name>` until there is executable scaffold/code).
-- `packages/artifact-indexer`, `packages/go-emitter`, `packages/runtime-go`, and `packages/test-harness` are intentionally absent under this policy.
-- Current Go emitter package path is `packages/emitter-go`.
+- `pnpm run devx:fastify-complex`
+- `./scripts/smoke-m1.sh`
 
 ## License
+
 MIT
