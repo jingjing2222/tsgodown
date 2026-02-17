@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@tsgodown/config": "workspace:*",
+    "@tsgodown/emitter-go": "workspace:*",
+    "@tsgodown/ir-core": "workspace:*",
+    "@tsgodown/node-compat": "workspace:*",
     "@tsgodown/tsdown-driver": "workspace:*"
   },
   "exports": {

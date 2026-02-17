@@ -18,36 +18,11 @@ after(() => {
 
 function createRustLauncher(cwd: string) {
   const stubPath = path.join(cwd, `rust-stub-${crypto.randomUUID()}.mjs`);
-  const goSource = [
-    "package main",
-    "",
-    "import (",
-    '\t"fmt"',
-    '\t"net/http"',
-    ")",
-    "",
-    "func main() {",
-    '\tfmt.Println("tsgodown-fastify-stub-ready")',
-    '\thttp.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {',
-    "\t\tw.WriteHeader(http.StatusNotImplemented)",
-    '\t\tfmt.Fprintln(w, "TODO implement handler health for GET /health")',
-    "\t})",
-    '\t_ = http.ListenAndServe(":8080", nil)',
-    "}",
-    "",
-  ].join("\n");
 
   fs.writeFileSync(
     stubPath,
     [
-      "import fs from 'node:fs';",
-      "import path from 'node:path';",
-      "const chunks = [];",
-      "for await (const chunk of process.stdin) chunks.push(chunk);",
-      "const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));",
-      "const outDir = path.join(request.cwd, 'dist-go');",
-      "fs.mkdirSync(outDir, { recursive: true });",
-      `fs.writeFileSync(path.join(outDir, 'main.go'), ${JSON.stringify(goSource)}, 'utf8');`,
+      "for await (const _ of process.stdin) { /* drain */ }",
       "const response = {",
       "  ok: true,",
       "  diagnostics: ['engine=rust-binary-stub'],",
@@ -114,7 +89,7 @@ function setupProject() {
 function assertGoMainScaffold(goSource: string) {
   assert.match(goSource, /^package main/m);
   assert.match(goSource, /func main\(\)/);
-  assert.match(goSource, /http\.HandleFunc\("GET \/health"/);
+  assert.match(goSource, /router\.handle\("GET", "\/health", route0\)/);
 }
 
 function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
@@ -158,9 +133,9 @@ test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go bu
 
     assert.equal(logs.length, 4);
     assert.match(logs[0], /\[BUILD_ARTIFACTS\]/);
-    assert.match(logs[1], /\[BUILD_IR\].*delegated to rust engine/i);
-    assert.match(logs[2], /\[CAPABILITY_GATE\].*delegated to rust engine/i);
-    assert.match(logs[3], /\[EMIT_GO\].*delegated to rust engine/i);
+    assert.match(logs[1], /\[BUILD_IR\].*ProgramIR from artifacts/i);
+    assert.match(logs[2], /\[CAPABILITY_GATE\].*ProgramIR/i);
+    assert.match(logs[3], /\[EMIT_GO\].*dist-go/i);
 
     const manifestPath = path.join(
       cwd,

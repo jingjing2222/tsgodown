@@ -6,7 +6,7 @@ import {
   normalizeRoutePath,
   toServeMuxPath,
   toServeMuxPattern,
-} from "./route-normalization";
+} from "./route-normalization.js";
 
 function routeHandlerName(index: number): string {
   return `route${index}`;

@@ -1,6 +1,10 @@
+import path from "node:path";
 import type { UserConfig } from "@tsgodown/config";
+import { emitGoProject } from "@tsgodown/emitter-go";
+import { checkCapabilities } from "@tsgodown/node-compat";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
 
+import { buildProgramIrFromArtifacts } from "./artifact-to-ir.js";
 import { formatPipelineFailure, resolveEntry } from "./result-normalization.js";
 import { runBuildArtifactsViaRustAdapter } from "./rust-adapter-boundary.js";
 
@@ -17,25 +21,33 @@ export async function orchestratePipelineStages({
 }: StageOrchestrationOptions): Promise<void> {
   for (const config of configs) {
     const entry = resolveEntry(config);
+    const outDir = path.resolve(cwd, config.outDir ?? "dist-go");
     let stage = "BUILD_ARTIFACTS";
 
     try {
-      log("[BUILD_ARTIFACTS] collecting build outputs");
+      log("[BUILD_ARTIFACTS] collecting tsdown build outputs");
       const buildResult = await runBuildArtifactsViaRustAdapter(cwd);
       assertBuildArtifactContract(buildResult);
 
       stage = "BUILD_IR";
       log(
-        `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
+        `[BUILD_IR] deriving ProgramIR from artifacts (buildId=${buildResult.manifest.buildId})`,
       );
+      const ir = buildProgramIrFromArtifacts(buildResult, entry);
 
       stage = "CAPABILITY_GATE";
-      log(
-        "[CAPABILITY_GATE] validating required capabilities (delegated to rust engine)",
-      );
+      log("[CAPABILITY_GATE] checking required capabilities for ProgramIR");
+      const capabilityCheck = checkCapabilities(ir, {
+        allowWip: true,
+        failFast: true,
+      });
+      if (!capabilityCheck.ok) {
+        throw new Error(capabilityCheck.diagnostics[0]?.message ?? "capability gate failed");
+      }
 
       stage = "EMIT_GO";
-      log("[EMIT_GO] writing Go scaffold (delegated to rust engine)");
+      log(`[EMIT_GO] emitting Go project to ${path.relative(cwd, outDir) || "."}`);
+      emitGoProject(ir, outDir);
 
       stage = "ON_SUCCESS";
       await config.onSuccess?.();

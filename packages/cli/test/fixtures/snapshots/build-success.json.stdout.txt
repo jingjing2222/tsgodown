@@ -1,7 +1,7 @@
-[BUILD_ARTIFACTS] collecting build outputs
-[BUILD_IR] analyzing entry: src/index.ts (delegated to rust engine, buildId=1122334455667788)
-[CAPABILITY_GATE] validating required capabilities (delegated to rust engine)
-[EMIT_GO] writing Go scaffold (delegated to rust engine)
+[BUILD_ARTIFACTS] collecting tsdown build outputs
+[BUILD_IR] deriving ProgramIR from artifacts (buildId=1122334455667788)
+[CAPABILITY_GATE] checking required capabilities for ProgramIR
+[EMIT_GO] emitting Go project to dist-go
 {
   "ok": true,
   "cwd": "<CWD>",

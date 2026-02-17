@@ -179,6 +179,15 @@ importers:
       '@tsgodown/config':
         specifier: workspace:*
         version: link:../config
+      '@tsgodown/emitter-go':
+        specifier: workspace:*
+        version: link:../emitter-go
+      '@tsgodown/ir-core':
+        specifier: workspace:*
+        version: link:../ir-core
+      '@tsgodown/node-compat':
+        specifier: workspace:*
+        version: link:../node-compat
       '@tsgodown/tsdown-driver':
         specifier: workspace:*
         version: link:../tsdown-driver
