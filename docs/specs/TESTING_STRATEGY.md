@@ -13,6 +13,7 @@ All feature implementation must follow the **Test First** principle.
 - Rust core is the **only** runtime analysis/build engine.
 - TypeScript runtime code is orchestration/UI only.
 - **Fail-closed policy:** runtime path must not use any TypeScript analyzer fallback path on Rust failures.
+- **Framework-agnostic core path:** `packages/core/src`, `packages/pipeline/src`, and `packages/cli/src/commands` must not introduce framework-name branching/adapters; enforced by `scripts/guard-core-path-no-framework-branching.mjs`.
 
 ## Workflow
 1. Write a failing test
