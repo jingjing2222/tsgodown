@@ -122,6 +122,53 @@ function runCli(
   return result;
 }
 
+const installedWorkspaceCliDirs = new Set<string>();
+
+function runInstalledWorkspaceCli(
+  cwd: string,
+  command: "build" | "check" | "report" | "stages",
+  env?: NodeJS.ProcessEnv,
+) {
+  const packageJsonPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    fs.writeFileSync(
+      packageJsonPath,
+      JSON.stringify({ name: "tsgodown-e2e-scaffold", private: true }, null, 2),
+    );
+  }
+
+  if (!installedWorkspaceCliDirs.has(cwd)) {
+    const install = spawnSync(
+      "pnpm",
+      ["add", "-D", path.join(repoRoot, "packages", "cli")],
+      {
+        cwd,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...env,
+        },
+      },
+    );
+    assert.equal(
+      install.status,
+      0,
+      `pnpm add workspace cli failed: ${install.stderr || install.stdout}`,
+    );
+    installedWorkspaceCliDirs.add(cwd);
+  }
+
+  const result = spawnSync("pnpm", ["exec", "tsgodown", command, "--json"], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...env,
+    },
+  });
+  return result;
+}
+
 function createRustEngineLauncher(
   cwd: string,
   responseScript: string[],
@@ -1212,12 +1259,12 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministi
   );
 });
 
-test("M4 acceptance: real fastify scaffold fixture builds but currently drops plugin-registered routes", () => {
+test("M4 acceptance: real fastify scaffold fixture builds via installed workspace CLI and currently drops plugin-registered routes", () => {
   const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
-  const result = runCli(cwd, "build", {
+  const result = runInstalledWorkspaceCli(cwd, "build", {
     ...process.env,
     TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
     TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
