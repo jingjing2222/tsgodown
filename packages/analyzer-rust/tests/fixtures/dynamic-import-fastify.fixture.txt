@@ -1,0 +1,11 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+fastify.get("/users", listUsers);
+
+async function loadModule() {
+  return import("./lazy.js");
+}
+
+function listUsers() {}
