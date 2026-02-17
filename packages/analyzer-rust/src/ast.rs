@@ -219,8 +219,7 @@ pub(crate) fn unwrap_single_call_arg(expr: &str) -> Option<String> {
 pub(crate) fn parse_inline_handler_signature(expr: &str) -> Option<(Vec<String>, bool)> {
     let t = expr.trim();
 
-    let re_arrow = Regex::new(r"(?s)^(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>")
-        .unwrap();
+    let re_arrow = Regex::new(r"(?s)^(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>").unwrap();
     if let Some(cap) = re_arrow.captures(t) {
         let params_src = cap
             .get(2)
