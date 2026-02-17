@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-complex"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 BINARY_NAME="tsgodown-fastify-complex"
-PORT="${FASTIFY_COMPLEX_PORT:-18081}"
+DEFAULT_PORT="18081"
+PORT="${FASTIFY_COMPLEX_PORT:-${DEFAULT_PORT}}"
 BASE_URL="http://127.0.0.1:${PORT}"
 SERVER_LOG="${ROOT_DIR}/.tmp-fastify-complex-server.log"
 
@@ -54,6 +55,57 @@ trap on_exit EXIT
 require_cmd() {
   local name="$1"
   command -v "${name}" >/dev/null 2>&1 || fail_with_hint "missing required command '${name}'" "Install '${name}' and re-run ./scripts/devx-fastify-complex.sh"
+}
+
+is_port_in_use() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+
+  if command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "${port}" >/dev/null 2>&1
+    return $?
+  fi
+
+  return 1
+}
+
+list_port_owners() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true
+  else
+    echo "lsof not available; cannot list owner process"
+  fi
+}
+
+select_random_free_port() {
+  node -e 'const net = require("net"); const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const a = s.address(); console.log(a && a.port ? a.port : ""); s.close(); }); s.on("error", () => process.exit(1));'
+}
+
+resolve_runtime_port() {
+  if is_port_in_use "${PORT}"; then
+    local owners
+    owners="$(list_port_owners "${PORT}")"
+
+    if [[ -n "${FASTIFY_COMPLEX_PORT:-}" ]]; then
+      yellow "[fastify-complex] warning: requested FASTIFY_COMPLEX_PORT=${PORT} is in use"
+      [[ -n "${owners}" ]] && printf "%s\n" "${owners}" >&2
+      fail_with_hint "configured port ${PORT} is already in use" "Pick a free port, e.g. FASTIFY_COMPLEX_PORT=19081 pnpm run devx:fastify-complex"
+    fi
+
+    local auto_port
+    auto_port="$(select_random_free_port || true)"
+    [[ -n "${auto_port}" ]] || fail_with_hint "default port ${PORT} is in use and auto-selection failed" "Set FASTIFY_COMPLEX_PORT to a known free port and rerun"
+
+    yellow "[fastify-complex] warning: default port ${PORT} is in use; auto-selecting port ${auto_port}"
+    [[ -n "${owners}" ]] && printf "%s\n" "${owners}" >&2
+
+    PORT="${auto_port}"
+    BASE_URL="http://127.0.0.1:${PORT}"
+  fi
 }
 
 assert_route() {
@@ -129,11 +181,9 @@ log "compile go runtime"
   go build -o "${BINARY_NAME}" .
 )
 
-if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-  fail_with_hint "port ${PORT} is already in use" "Set FASTIFY_COMPLEX_PORT to a free port, e.g. FASTIFY_COMPLEX_PORT=19081 pnpm run devx:fastify-complex"
-fi
+resolve_runtime_port
 
-log "run go runtime"
+log "run go runtime (port=${PORT})"
 : >"${SERVER_LOG}"
 (
   cd "${DIST_GO_DIR}"
@@ -153,10 +203,10 @@ done
 
 [[ "${ready}" == "1" ]] || fail_with_hint "go runtime did not become ready on ${BASE_URL}/health with expected status 501" "Check ${SERVER_LOG} for bind/runtime errors, or retry on a different FASTIFY_COMPLEX_PORT"
 
-assert_route "GET" "/health" "501" "TODO implement handler healthHandler for GET /health"
-assert_route "POST" "/users" "501" "TODO implement handler createUserHandler for POST /users"
-assert_route "PUT" "/users/:id" "501" "TODO implement handler updateUserHandler for PUT /users/:id"
-assert_route "DELETE" "/users/:id" "501" "TODO implement handler deleteUserHandler for DELETE /users/:id"
+assert_route "GET" "/health" "501" "TODO implement handler health for GET /health"
+assert_route "POST" "/users" "501" "TODO implement handler createUser for POST /users"
+assert_route "PATCH" "/users/123" "501" "TODO implement handler updateUser for PATCH /users/:id"
+assert_route "DELETE" "/users/123" "501" "TODO implement handler removeUser for DELETE /users/:id"
 assert_route "GET" "/users" "405" "Method Not Allowed"
 assert_route "GET" "/missing" "404" "404 page not found"
 
