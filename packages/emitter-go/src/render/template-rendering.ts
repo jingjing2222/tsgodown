@@ -4,6 +4,7 @@ import {
   extractPathParamNames,
   normalizeHttpMethod,
   normalizeRoutePath,
+  toServeMuxPath,
   toServeMuxPattern,
 } from "./route-normalization";
 
@@ -140,5 +141,5 @@ export function renderRoute(
 }
 
 export function renderRouteRegistration(route: RouteIR, index: number): string {
-  return `\tmux.HandleFunc(${quoteGo(toServeMuxPattern(route))}, ${routeHandlerName(index)})`;
+  return `\trouter.handle(${quoteGo(normalizeHttpMethod(route.method))}, ${quoteGo(toServeMuxPath(route.path))}, ${routeHandlerName(index)})`;
 }

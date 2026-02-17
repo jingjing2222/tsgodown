@@ -4,5 +4,6 @@ export {
   renderMainFunction,
   renderResolveListenAddr,
   renderRouteRegistry,
+  renderRuntimeRouter,
 } from "./server-bootstrap-rendering";
 export { renderRoute } from "./template-rendering";
