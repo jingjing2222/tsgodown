@@ -6,7 +6,7 @@ EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-min"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 PORT="${SMOKE_PORT:-18080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
-EXPECTED_BODY="${SMOKE_EXPECTED_BODY:-ok}"
+EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-TODO implement handler health for GET /health}"
 SERVER_LOG="${ROOT_DIR}/.tmp-smoke-m1-server.log"
 ENGINE_LAUNCHER="${ROOT_DIR}/.tmp-smoke-m1-engine-launcher.sh"
 
@@ -104,15 +104,27 @@ const GO_MAIN = [
   "import (",
   "\t\"fmt\"",
   "\t\"net/http\"",
+  "\t\"os\"",
   ")",
   "",
   "func main() {",
-  "\tfmt.Println(\"tsgodown-fastify-min-ready\")",
-  "\thttp.HandleFunc(\"GET /health\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.WriteHeader(http.StatusOK)",
-  "\t\tfmt.Fprintln(w, \"ok\")",
+  "\tmux := http.NewServeMux()",
+  "\tmux.HandleFunc(\"GET /health\", func(w http.ResponseWriter, _ *http.Request) {",
+  "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
+  "\t\tw.WriteHeader(http.StatusNotImplemented)",
+  "\t\tfmt.Fprintln(w, \"TODO implement handler health for GET /health\")",
   "\t})",
-  "\t_ = http.ListenAndServe(\":18080\", nil)",
+  "\tmux.HandleFunc(\"GET /users\", func(w http.ResponseWriter, _ *http.Request) {",
+  "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
+  "\t\tw.WriteHeader(http.StatusNotImplemented)",
+  "\t\tfmt.Fprintln(w, \"TODO implement handler users for GET /users\")",
+  "\t})",
+  "\taddr := \":18080\"",
+  "\tif port := os.Getenv(\"PORT\"); port != \"\" {",
+  "\t\taddr = \":\" + port",
+  "\t}",
+  "\tfmt.Println(\"tsgodown-fastify-min-ready\")",
+  "\t_ = http.ListenAndServe(addr, mux)",
   "}",
   "",
 ].join("\n");
@@ -195,19 +207,37 @@ for _ in {1..50}; do
   sleep 0.2
 done
 
-HTTP_CODE="$(curl -sS -o /tmp/smoke-m1-health.body -w "%{http_code}" "${HEALTH_URL}")"
-BODY="$(cat /tmp/smoke-m1-health.body)"
-BODY_TRIMMED="$(printf "%s" "${BODY}" | tr -d '\r\n')"
+assert_route() {
+  local method="$1"
+  local path="$2"
+  local expected_status="$3"
+  local expected_body_fragment="$4"
+  local tmp_body
+  tmp_body="$(mktemp /tmp/smoke-m1-route.XXXXXX)"
 
-if [[ "${HTTP_CODE}" != "200" ]]; then
-  red "[smoke-m1] health check failed: expected status=200 got status=${HTTP_CODE}"
-  exit 1
-fi
+  local http_code
+  http_code="$(curl -sS -X "${method}" -o "${tmp_body}" -w "%{http_code}" "http://127.0.0.1:${PORT}${path}")"
+  local body
+  body="$(cat "${tmp_body}")"
+  local body_trimmed
+  body_trimmed="$(printf "%s" "${body}" | tr -d '\r\n')"
+  rm -f "${tmp_body}"
 
-if [[ "${BODY_TRIMMED}" != "${EXPECTED_BODY}" ]]; then
-  red "[smoke-m1] health check body mismatch: expected='${EXPECTED_BODY}' got='${BODY_TRIMMED}'"
-  exit 1
-fi
+  if [[ "${http_code}" != "${expected_status}" ]]; then
+    red "[smoke-m1] ${method} ${path} status mismatch: expected=${expected_status} got=${http_code}"
+    exit 1
+  fi
+
+  if [[ -n "${expected_body_fragment}" ]] && [[ "${body_trimmed}" != *"${expected_body_fragment}"* ]]; then
+    red "[smoke-m1] ${method} ${path} body mismatch: expected fragment='${expected_body_fragment}' got='${body_trimmed}'"
+    exit 1
+  fi
+
+  log "asserted ${method} ${path} -> ${http_code} '${body_trimmed}'"
+}
+
+assert_route "GET" "/health" "501" "${EXPECTED_HEALTH_BODY}"
+assert_route "GET" "/users" "501" "TODO implement handler users for GET /users"
+assert_route "GET" "/missing" "404" "404 page not found"
 
 green "[smoke-m1] PASS"
-log "health status=${HTTP_CODE} body='${BODY_TRIMMED}'"

@@ -37,9 +37,9 @@ function renderGoMainScaffold(routes) {
     '\tfmt.Println("tsgodown-fastify-min-ready")',
     "\tmux := http.NewServeMux()",
     ...routes.flatMap((route) => [
-      `\tmux.HandleFunc("GET ${route.path}", func(w http.ResponseWriter, _ *http.Request) {`,
+      `\tmux.HandleFunc("${route.method} ${route.path}", func(w http.ResponseWriter, _ *http.Request) {`,
       "\t\tw.WriteHeader(http.StatusNotImplemented)",
-      `\t\tfmt.Fprintln(w, "TODO implement handler ${route.handler} for GET ${route.path}")`,
+      `\t\tfmt.Fprintln(w, "TODO implement handler ${route.handler} for ${route.method} ${route.path}")`,
       "\t})",
     ]),
     "\t_ = http.ListenAndServe(resolveListenAddr(), mux)",
@@ -49,22 +49,32 @@ function renderGoMainScaffold(routes) {
 }
 
 function parseRoutesFromSource(source) {
+  const supportedMethods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
   const routeMatches = [
     ...source.matchAll(
-      /\b(?:fastify|app)\.get\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/g,
+      /\b(?:fastify|app)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/gi,
     ),
   ];
 
-  const routes = routeMatches.map((match) => ({
-    path: match[1],
-    handler: match[2],
-  }));
+  const routes = routeMatches
+    .map((match) => {
+      const method = (match[1] || "GET").toUpperCase();
+      if (!supportedMethods.includes(method)) {
+        return null;
+      }
+      return {
+        method,
+        path: match[2],
+        handler: match[3],
+      };
+    })
+    .filter(Boolean);
 
   if (routes.length > 0) {
     return routes;
   }
 
-  return [{ path: "/health", handler: "health" }];
+  return [{ method: "GET", path: "/health", handler: "health" }];
 }
 
 function fail(message, details) {
