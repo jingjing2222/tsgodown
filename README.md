@@ -15,7 +15,7 @@ The primary goal is fixed as:
 4. **100% behavioral coverage (scoped contract)**
    - defined as: full behavioral match **within the declared supported subset**, proven by differential testing (TS runtime vs Go runtime), not by claiming universal JS/TS coverage
 
-This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics/fallback behavior instead of silently guessing.
+This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
 
 ## Supported Fastify patterns
 

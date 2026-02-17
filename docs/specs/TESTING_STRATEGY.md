@@ -6,7 +6,7 @@ All feature implementation must follow the **Test First** principle.
 ## Architecture guardrails (M4)
 - Rust core is the **only** runtime analysis/build engine.
 - TypeScript runtime code is orchestration/UI only.
-- **No fallback policy:** runtime path must not fall back to legacy TS analyzer on Rust failures.
+- **Fail-closed policy:** runtime path must not fall back to any TypeScript analyzer path on Rust failures.
 
 ## Workflow
 1. Write a failing test
