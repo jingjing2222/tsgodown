@@ -103,6 +103,18 @@ pub(crate) fn collect_plugin_definitions(src: &str) -> HashMap<String, PluginDef
     map
 }
 
+pub(crate) fn collect_plugin_aliases(src: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let alias_re = Regex::new(
+        r"(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+?)?\s*=\s*([A-Za-z_$][\w$]*)\s*;",
+    )
+    .unwrap();
+    for cap in alias_re.captures_iter(src) {
+        map.insert(cap[1].to_string(), cap[2].to_string());
+    }
+    map
+}
+
 pub(crate) fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerDef> {
     let mut map = HashMap::new();
 

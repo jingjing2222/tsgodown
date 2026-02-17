@@ -17,6 +17,7 @@ pub(crate) fn analyze_register_call(
     instance_name: &str,
     prefix: &str,
     plugin_defs: &HashMap<String, PluginDef>,
+    plugin_aliases: &HashMap<String, String>,
     handler_defs: &HashMap<String, HandlerDef>,
     routes: &mut Vec<RouteIR>,
     handlers: &mut Vec<HandlerIR>,
@@ -44,6 +45,7 @@ pub(crate) fn analyze_register_call(
                 &inline.param_name,
                 &next_prefix,
                 plugin_defs,
+                plugin_aliases,
                 handler_defs,
                 routes,
                 handlers,
@@ -60,12 +62,38 @@ pub(crate) fn analyze_register_call(
                     &plugin.param_name,
                     &next_prefix,
                     plugin_defs,
+                    plugin_aliases,
                     handler_defs,
                     routes,
                     handlers,
                     diagnostics,
                 );
                 return;
+            }
+
+            let mut resolved = plugin_ref.clone();
+            let mut depth = 0usize;
+            while let Some(next) = plugin_aliases.get(&resolved) {
+                if next == &resolved || depth > 8 {
+                    break;
+                }
+                resolved = next.clone();
+                depth += 1;
+                if let Some(plugin) = plugin_defs.get(&resolved) {
+                    analyze_scope(
+                        &plugin.body,
+                        file,
+                        &plugin.param_name,
+                        &next_prefix,
+                        plugin_defs,
+                        plugin_aliases,
+                        handler_defs,
+                        routes,
+                        handlers,
+                        diagnostics,
+                    );
+                    return;
+                }
             }
 
             diagnostics.push(diag(

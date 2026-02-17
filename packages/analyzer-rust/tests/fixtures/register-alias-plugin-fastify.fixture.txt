@@ -1,0 +1,15 @@
+import Fastify from "fastify";
+
+const app = Fastify();
+
+const usersPlugin = async (fastify) => {
+  fastify.get("/users", listUsers);
+};
+
+const pluginAlias = usersPlugin;
+
+function listUsers(_req, reply) {
+  reply.send({ ok: true });
+}
+
+app.register(pluginAlias);

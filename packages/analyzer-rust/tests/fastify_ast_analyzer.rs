@@ -497,6 +497,21 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
 }
 
 #[test]
+fn supports_register_plugin_local_alias_resolution() {
+    let (file, src) = fixture("register-alias-plugin-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("GET", "/users", "listUsers")]
+    );
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
 fn supports_route_object_method_array_extraction() {
     let (file, src) = fixture("route-object-method-array-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);
