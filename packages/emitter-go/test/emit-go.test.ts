@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -294,6 +295,27 @@ test(
   },
 );
 
+async function allocatePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("failed to allocate test port")));
+        return;
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+    server.once("error", reject);
+  });
+}
+
 function shutdownServer(server: ReturnType<typeof spawn>) {
   if (server.exitCode === null && !server.killed) {
     server.kill("SIGTERM");
@@ -329,7 +351,7 @@ test(
   { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
-    const port = String(19000 + Math.floor(Math.random() * 1000));
+    const port = String(await allocatePort());
 
     emitGoProject(sampleIr, outDir);
 
@@ -397,7 +419,7 @@ test(
   { skip: !runGoSmoke },
   async () => {
     const outDir = createOutDir();
-    const port = String(20000 + Math.floor(Math.random() * 1000));
+    const port = String(await allocatePort());
 
     emitGoProject(
       {
@@ -458,6 +480,90 @@ test(
       assert.equal(methodNotAllowed.headers.get("allow"), "DELETE, GET");
 
       const notFound = await fetch(`${base}/unknown/123`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(notFound.status, 404);
+    } finally {
+      await shutdownServer(server);
+    }
+  },
+);
+
+test(
+  "emitGoProject smoke: nested prefixes keep method/path + allow semantics stable",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = String(await allocatePort());
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [
+          { id: "listPosts", params: [], async: false },
+          { id: "updatePost", params: [], async: false },
+        ],
+        diagnostics: [],
+        routes: [
+          {
+            method: "GET",
+            path: "/api/v1/posts/:postId",
+            handlerRef: "listPosts",
+          },
+          {
+            method: "PATCH",
+            path: "/api/v1/posts/:postId",
+            handlerRef: "updatePost",
+          },
+        ],
+      },
+      outDir,
+    );
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-nested-prefix"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const base = `http://127.0.0.1:${port}`;
+    const deadline = Date.now() + 10_000;
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const warm = await fetch(`${base}/api/v1/posts/42`, {
+            signal: AbortSignal.timeout(1000),
+          });
+          if (warm.status > 0) break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      const getRes = await fetch(`${base}/api/v1/posts/42`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(getRes.status, 501);
+
+      const methodNotAllowed = await fetch(`${base}/api/v1/posts/42`, {
+        method: "POST",
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(methodNotAllowed.status, 405);
+      assert.equal(methodNotAllowed.headers.get("allow"), "GET, PATCH");
+
+      const notFound = await fetch(`${base}/api/v2/posts/42`, {
         signal: AbortSignal.timeout(1000),
       });
       assert.equal(notFound.status, 404);

@@ -1036,6 +1036,82 @@ test("M2 acceptance: fastify-supported-complex fixture preserves method contract
   });
 });
 
+test("M3 regression: fastify-supported-complex keeps method/path scaffold stable", async () => {
+  const cwd = setupProjectFromFixture("fastify-supported-complex");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goMain = fs.readFileSync(goPath, "utf8");
+  assert.match(goMain, /HandleFunc\("GET \/health"/);
+  assert.match(goMain, /HandleFunc\("POST \/users"/);
+  assert.match(goMain, /HandleFunc\("PATCH \/users\/\{id\}"/);
+  assert.match(goMain, /HandleFunc\("DELETE \/users\/\{id\}"/);
+
+  const goDir = path.dirname(goPath);
+  await assertGoRunRequest(goDir, {
+    method: "HEAD",
+    routePath: "/users/abc-123",
+    expectedStatus: 405,
+    expectedAllowHeader: "DELETE, PATCH",
+  });
+  await assertGoRunRequest(goDir, {
+    method: "GET",
+    routePath: "/missing",
+    expectedStatus: 404,
+    expectedBodyFragment: "404 page not found",
+  });
+});
+
+test("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stable", async () => {
+  const cwd = setupProjectFromFixture("runtime-method-matrix");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goDir = path.dirname(goPath);
+  await assertGoRunRequest(goDir, {
+    method: "PUT",
+    routePath: "/users/alpha",
+    expectedStatus: 501,
+    expectedBodyFragment:
+      "TODO implement handler updateUser for PUT /users/:id",
+  });
+  await assertGoRunRequest(goDir, {
+    method: "GET",
+    routePath: "/users/alpha",
+    expectedStatus: 405,
+    expectedAllowHeader: "PUT",
+    expectedBodyFragment: "Method Not Allowed",
+  });
+  await assertGoRunRequest(goDir, {
+    method: "GET",
+    routePath: "/missing",
+    expectedStatus: 404,
+    expectedBodyFragment: "404 page not found",
+  });
+});
+
 test("M4 devx acceptance: fastify-complex fixture emits deterministic method/path scaffold", () => {
   const cwd = setupProjectFromFixture("fastify-complex");
   const rustLauncher = resolveRustEngineLauncherScript();
