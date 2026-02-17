@@ -276,7 +276,8 @@ pub(crate) fn find_if_block_infos(src: &str) -> Vec<IfBlockInfo> {
                 i += 2;
                 continue;
             }
-            let Some((condition_raw, cond_consumed)) = capture_balanced(&src[j + 1..], '(', ')') else {
+            let Some((condition_raw, cond_consumed)) = capture_balanced(&src[j + 1..], '(', ')')
+            else {
                 i += 2;
                 continue;
             };
