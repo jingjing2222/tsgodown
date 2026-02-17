@@ -1,7 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-
-function getUser() {}
-
-fastify.get("/users/:id", getUser);

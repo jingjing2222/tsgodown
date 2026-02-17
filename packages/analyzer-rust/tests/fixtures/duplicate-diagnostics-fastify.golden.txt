@@ -1,6 +1,0 @@
-routes=[POST /inline -> __inline__post__6a62a08849cfd7d1, POST /inline -> __inline__post__6a62a08849cfd7d1]
-handlers=[__inline__post__6a62a08849cfd7d1(req=[];async=true;mode=unknown)]
-diagnostics=[
-  {level=warn,code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH,message=unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.,source.file=duplicate-diagnostics-fastify.fixture.txt},
-  {level=warn,code=ANALYZER_UNRESOLVED_PLUGIN,message=register plugin 'externalPlugin' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.,source.file=duplicate-diagnostics-fastify.fixture.txt},
-]

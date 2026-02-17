@@ -1,9 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-
-function allowAdminOnly() {}
-function denyGuest() {}
-
-fastify.get("/policy/allow", allowAdminOnly);
-fastify.route({ method: "POST", path: "/policy/deny", handler: denyGuest });

@@ -1,5 +1,0 @@
-routes=[GET /users -> listUsers]
-handlers=[listUsers(req=[];async=false;mode=unknown)]
-diagnostics=[
-  {level=warn,code=DYNAMIC_IMPORT_DETECTED,message=dynamic import detected; use static import declarations for deterministic IR extraction.,source.file=dynamic-import-fastify.fixture.txt},
-]

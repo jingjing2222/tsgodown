@@ -1,9 +1,0 @@
-import Fastify from "fastify";
-
-const app = Fastify();
-
-function replaceUser() {}
-const removeUser = async () => {};
-
-app.put("/users/:id", replaceUser)
-  .delete("/users/:id", removeUser);

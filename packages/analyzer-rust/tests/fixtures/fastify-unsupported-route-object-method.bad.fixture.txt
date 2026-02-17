@@ -1,7 +1,0 @@
-import Fastify from "fastify";
-
-const fastify = Fastify();
-
-function listUsers() {}
-
-fastify.route({ url: "/users", handler: listUsers });
