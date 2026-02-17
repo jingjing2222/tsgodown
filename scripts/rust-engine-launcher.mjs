@@ -15,6 +15,20 @@ const defaultEngineCoreBin = path.join(
   "engine-core",
 );
 
+function toGoPattern(routePath) {
+  return routePath.replace(/:([A-Za-z_][\w]*)/g, "{$1}");
+}
+
+function extractPathParamNames(routePath) {
+  return [...routePath.matchAll(/:([A-Za-z_][\w]*)/g)].map((m) => m[1]);
+}
+
+function toGoBindingName(name, index) {
+  const base = name.replace(/[^A-Za-z0-9_]/g, "_");
+  const normalized = /^[A-Za-z_]/.test(base) ? base : `param_${base}`;
+  return index === 0 ? normalized : `${normalized}${index + 1}`;
+}
+
 function renderGoMainScaffold(routes) {
   return [
     "package main",
@@ -34,14 +48,26 @@ function renderGoMainScaffold(routes) {
     "}",
     "",
     "func main() {",
-    '\tfmt.Println("tsgodown-fastify-min-ready")',
+    '\tfmt.Println("tsgodown-fastify-runtime-ready")',
     "\tmux := http.NewServeMux()",
-    ...routes.flatMap((route) => [
-      `\tmux.HandleFunc("${route.method} ${route.path}", func(w http.ResponseWriter, _ *http.Request) {`,
-      "\t\tw.WriteHeader(http.StatusNotImplemented)",
-      `\t\tfmt.Fprintln(w, "TODO implement handler ${route.handler} for ${route.method} ${route.path}")`,
-      "\t})",
-    ]),
+    ...routes.flatMap((route) => {
+      const pathParams = extractPathParamNames(route.path);
+      const pathParamBindings = pathParams.flatMap((name, index) => {
+        const bindingName = toGoBindingName(name, index);
+        return [
+          `\t\t${bindingName} := req.PathValue(${JSON.stringify(name)})`,
+          `\t\t_ = ${bindingName}`,
+        ];
+      });
+
+      return [
+        `\tmux.HandleFunc("${route.method} ${route.goPattern}", func(w http.ResponseWriter, req *http.Request) {`,
+        ...pathParamBindings,
+        "\t\tw.WriteHeader(http.StatusNotImplemented)",
+        `\t\tfmt.Fprintln(w, "TODO implement handler ${route.handler} for ${route.method} ${route.path}")`,
+        "\t})",
+      ];
+    }),
     "\t_ = http.ListenAndServe(resolveListenAddr(), mux)",
     "}",
     "",
@@ -49,32 +75,31 @@ function renderGoMainScaffold(routes) {
 }
 
 function parseRoutesFromSource(source) {
-  const supportedMethods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
   const routeMatches = [
     ...source.matchAll(
-      /\b(?:fastify|app)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/gi,
+      /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\(\s*['"`]([^'"`]+)['"`]\s*,\s*([A-Za-z_$][\w$]*)/g,
     ),
   ];
 
-  const routes = routeMatches
-    .map((match) => {
-      const method = (match[1] || "GET").toUpperCase();
-      if (!supportedMethods.includes(method)) {
-        return null;
-      }
-      return {
-        method,
-        path: match[2],
-        handler: match[3],
-      };
-    })
-    .filter(Boolean);
+  const routes = routeMatches.map((match) => ({
+    method: match[1].toUpperCase(),
+    path: match[2],
+    goPattern: toGoPattern(match[2]),
+    handler: match[3],
+  }));
 
   if (routes.length > 0) {
     return routes;
   }
 
-  return [{ method: "GET", path: "/health", handler: "health" }];
+  return [
+    {
+      method: "GET",
+      path: "/health",
+      goPattern: "/health",
+      handler: "health",
+    },
+  ];
 }
 
 function fail(message, details) {
