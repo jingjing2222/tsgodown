@@ -13,11 +13,7 @@
     "build:go": "tsgodown build --json",
     "watch:ts": "tsc -w",
     "dev": "npm run build:ts && concurrently -k -p \"[{name}]\" -n \"TypeScript,App\" -c \"yellow.bold,cyan.bold\" \"npm:watch:ts\" \"npm:dev:start\"",
-<<<<<<< HEAD
     "dev:start": "fastify start --ignore-watch=.ts$ -w -l info -P dist/app.js"
-=======
-    "dev:start": "fastify start --ignore-watch=.ts$ -w -l info -P dist/app.js
->>>>>>> 32a43f1 (feat(examples): add local tsgodown build script flow)
   },
   "keywords": [],
   "author": "",
