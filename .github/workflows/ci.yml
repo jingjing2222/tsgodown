@@ -121,8 +121,6 @@ jobs:
 
       - name: Run M1 smoke script (build -> go build -> run -> health)
         shell: bash
-        env:
-          TSGODOWN_RUST_ENGINE_BIN: ${{ github.workspace }}/scripts/rust-engine-launcher.sh
         run: |
           set -euo pipefail
           chmod +x ./scripts/smoke-m1.sh ./scripts/rust-engine-launcher.sh
