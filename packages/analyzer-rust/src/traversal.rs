@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::capture_call_args;
+use crate::ast::{capture_call_args, find_if_block_ranges};
 use crate::defs::{HandlerDef, PluginDef};
+use crate::diagnostics::diag;
 use crate::ir::{DiagnosticIR, HandlerIR, RouteIR};
 use crate::register::analyze_register_call;
 use crate::routes::{extract_route_object, extract_shorthand_route};
@@ -18,9 +19,28 @@ pub(crate) fn analyze_scope(
     handlers: &mut Vec<HandlerIR>,
     diagnostics: &mut Vec<DiagnosticIR>,
 ) {
+    let conditional_ranges = find_if_block_ranges(body);
     let mut idx = 0usize;
     while let Some((start, dot_idx)) = find_instance_dot(body, idx, instance_name) {
         let tail = &body[dot_idx + 1..];
+
+        if conditional_ranges
+            .iter()
+            .any(|(from, to)| dot_idx >= *from && dot_idx < *to)
+        {
+            if let Some(method) = first_supported_method(tail) {
+                diagnostics.push(diag(
+                    file,
+                    "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+                    &format!(
+                        "conditional route registration in if-block is unsupported for deterministic extraction ({}.{}(...)). Move route declaration to top-level plugin scope.",
+                        instance_name, method
+                    ),
+                ));
+            }
+            idx = start + 1;
+            continue;
+        }
 
         if let Some(consumed) = analyze_call_chain(
             tail,
@@ -72,6 +92,12 @@ fn find_instance_dot(body: &str, from: usize, instance_name: &str) -> Option<(us
 
 fn is_ident_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+}
+
+fn first_supported_method(chain: &str) -> Option<&'static str> {
+    ["get", "post", "put", "delete", "patch", "route", "register"]
+        .iter()
+        .find_map(|method| capture_call_args(chain, method).map(|_| *method))
 }
 
 #[allow(clippy::too_many_arguments)]

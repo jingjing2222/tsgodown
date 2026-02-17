@@ -1,0 +1,7 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function replaceThing() {}
+
+fastify.route({ method: ["PUT", "PATCH"], url: "/things/:id", handler: replaceThing });

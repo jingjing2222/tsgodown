@@ -186,6 +186,21 @@ fn contract_fixtures() -> Vec<ContractFixture> {
             expected_diag_codes: vec![],
         },
         ContractFixture {
+            name: "route-object-method-array-fastify.fixture.txt",
+            expected_routes: vec![
+                ("PUT", "/things/:id", "replaceThing"),
+                ("PATCH", "/things/:id", "replaceThing"),
+            ],
+            expected_handlers: vec![("replaceThing", vec![], false, "unknown")],
+            expected_diag_codes: vec![],
+        },
+        ContractFixture {
+            name: "conditional-routes-fastify.fixture.txt",
+            expected_routes: vec![("GET", "/always", "alwaysOn")],
+            expected_handlers: vec![("alwaysOn", vec![], false, "unknown")],
+            expected_diag_codes: vec!["ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE"],
+        },
+        ContractFixture {
             name: "unsupported-fastify.fixture.txt",
             expected_routes: vec![],
             expected_handlers: vec![],
