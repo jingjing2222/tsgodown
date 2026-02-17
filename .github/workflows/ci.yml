@@ -32,6 +32,8 @@ jobs:
 
       - name: Check diagnostics/docs sync + support-state coherence
         run: pnpm run docs:diagnostics:sync
+      - name: Check fastify scaffold example/fixture sync
+        run: pnpm run docs:scaffold:sync
 
       - name: Build
         run: pnpm run build

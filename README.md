@@ -145,6 +145,7 @@ Additional project docs:
 - `pnpm run test:tdd`
 - `pnpm run perf:baseline`
 - `pnpm run devx:fastify-complex`
+- `pnpm run docs:scaffold:sync`
 - `./scripts/smoke-m1.sh`
 
 ## License
