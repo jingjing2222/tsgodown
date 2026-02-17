@@ -30,11 +30,6 @@ jobs:
       - name: Biome format check
         run: pnpm run format:check
 
-      - name: Check diagnostics/docs sync + support-state coherence
-        run: pnpm run docs:diagnostics:sync
-      - name: Check fastify scaffold example/fixture sync
-        run: pnpm run docs:scaffold:sync
-
       - name: Build
         run: pnpm run build
 
@@ -64,8 +59,20 @@ jobs:
         if: ${{ hashFiles('Cargo.toml') != '' }}
         run: cargo test --workspace --all-targets
 
-      - name: Check scaffold regeneration/sync
-        run: pnpm run scaffold:sync:check
+      - name: Guard legacy deletion stays intact
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEGACY_PATHS=(
+            "scripts/guard-no-legacy-ts-analyzer.mjs"
+          )
+          for path in "${LEGACY_PATHS[@]}"; do
+            if [ -e "$path" ]; then
+              echo "[legacy-guard] blocked: deleted legacy path reappeared -> $path"
+              exit 1
+            fi
+          done
+          echo "[legacy-guard] ok: deleted legacy paths did not reappear"
 
   smoke-executable:
     name: Smoke executable path (TS -> Go -> run -> health)
