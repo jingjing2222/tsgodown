@@ -489,7 +489,6 @@ test("CLI fail diagnostics include source/cause/guidance contract", () => {
   const result = runCli(cwd, "build", {
     ...process.env,
     TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
-    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
   });
   assert.notEqual(result.status, 0, "build should fail for missing entry");
 
