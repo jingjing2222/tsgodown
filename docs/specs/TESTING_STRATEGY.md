@@ -3,10 +3,16 @@
 ## Non-negotiable rule
 All feature implementation must follow the **Test First** principle.
 
+## Milestone lock (M5 -> M1 -> M2 -> M3 -> M4)
+- This strategy follows the locked execution/reporting sequence: `M5 -> M1 -> M2 -> M3 -> M4`.
+- M5 defines compiler-mode contracts and fail-closed policy.
+- M1/M2/M3 define executable proof expansion.
+- M4 enforces architecture guardrails + release/triage DoD discipline.
+
 ## Architecture guardrails (M4)
 - Rust core is the **only** runtime analysis/build engine.
 - TypeScript runtime code is orchestration/UI only.
-- **Fail-closed policy:** runtime path must not fall back to any TypeScript analyzer path on Rust failures.
+- **Fail-closed policy:** runtime path must not use any TypeScript analyzer fallback path on Rust failures.
 
 ## Workflow
 1. Write a failing test
