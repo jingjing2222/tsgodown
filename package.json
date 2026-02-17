@@ -16,7 +16,8 @@
     "lint": "biome lint .",
     "format:check": "biome check . --linter-enabled=false",
     "format": "biome format --write .",
-    "gate:m1": "./scripts/m1-release-gate.sh"
+    "gate:m1": "./scripts/m1-release-gate.sh",
+    "perf:baseline": "tsx scripts/perf-baseline.ts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

@@ -22,7 +22,11 @@ A long-term TypeScript/JavaScript → Go compiler project built around tsdown ar
 - Testing strategy: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
 - M1 release gate (canonical): [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Release workflow/versioning policy: [`docs/specs/RELEASE_WORKFLOW.md`](docs/specs/RELEASE_WORKFLOW.md)
+<<<<<<< HEAD
 - Observability / failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
+=======
+- Performance baseline scaffold: [`docs/specs/PERFORMANCE_BASELINE.md`](docs/specs/PERFORMANCE_BASELINE.md)
+>>>>>>> 2acab0c (feat(m3-75): add perf baseline scenarios and regression guard scaffold)
 
 ## Quick Start
 ```bash
@@ -54,6 +58,7 @@ If setup is wrong, the launcher fails fast with actionable errors (missing execu
 - `pnpm run lint`
 - `pnpm run format:check`
 - `pnpm run test:tdd`
+- `pnpm run perf:baseline`
 
 ## M1 Local Smoke Verification (Apple Silicon / M1 path)
 Run the one-command local smoke script from repo root:
