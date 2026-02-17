@@ -373,6 +373,71 @@ fn extracts_handlers_from_object_literals_and_class_instances() {
 }
 
 #[test]
+fn extracts_complex_realworld_routes_with_stable_handler_refs() {
+    let (file, src) = fixture("complex-fastify-realworld.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/tenants/:tenantId/users", "userHandlers.listUsers"),
+            ("POST", "/tenants/:tenantId/users", "userHandlers.create"),
+            (
+                "PUT",
+                "/tenants/:tenantId/users/:userId",
+                "userHandlers.update",
+            ),
+            ("DELETE", "/tenants/:tenantId/users/:userId", "removeUser"),
+            (
+                "PATCH",
+                "/tenants/:tenantId/users/:userId/profile/:profileId",
+                "controller.detail",
+            ),
+        ]
+    );
+
+    assert_eq!(
+        ir.handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "userHandlers.listUsers",
+                vec![("req", "request"), ("reply", "response")],
+                true,
+            ),
+            (
+                "userHandlers.create",
+                vec![("request", "request"), ("response", "response")],
+                false,
+            ),
+            ("userHandlers.update", vec![("req", "request")], true),
+            (
+                "removeUser",
+                vec![("req", "request"), ("reply", "response")],
+                false,
+            ),
+            ("controller.detail", vec![("request", "request")], true),
+        ]
+    );
+
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
 fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_patterns() {
     let (file, src) = fixture("unsupported-route-object-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);

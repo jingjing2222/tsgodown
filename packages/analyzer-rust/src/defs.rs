@@ -140,6 +140,22 @@ pub(crate) fn collect_handler_definitions(src: &str) -> HashMap<String, HandlerD
         );
     }
 
+    let var_expr_arrow_re = Regex::new(
+        r"(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+?)?\s*=\s*(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*(?::\s*[^=;]+)?=>\s*[^\s\{]",
+    )
+    .unwrap();
+    for cap in var_expr_arrow_re.captures_iter(src) {
+        let params_src = cap
+            .get(3)
+            .or_else(|| cap.get(4))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        map.entry(cap[1].to_string()).or_insert_with(|| HandlerDef {
+            params: split_params(params_src),
+            is_async: cap.get(2).is_some(),
+        });
+    }
+
     collect_object_literal_handlers(src, &mut map);
     collect_class_instance_handlers(src, &mut map);
 
@@ -157,10 +173,16 @@ fn collect_object_literal_handlers(src: &str, map: &mut HashMap<String, HandlerD
         };
 
         for member in split_top_level(&body, ',') {
-            let Some((key, def)) = parse_object_member_handler(&member) else {
+            if let Some((key, def)) = parse_object_member_handler(&member) {
+                map.insert(format!("{}.{}", obj_name, key), def);
                 continue;
-            };
-            map.insert(format!("{}.{}", obj_name, key), def);
+            }
+
+            if let Some((key, target_ref)) = parse_object_member_reference(&member) {
+                if let Some(def) = map.get(&target_ref).cloned() {
+                    map.insert(format!("{}.{}", obj_name, key), def);
+                }
+            }
         }
     }
 }
@@ -216,6 +238,28 @@ fn parse_object_member_handler(member: &str) -> Option<(String, HandlerDef)> {
             },
         )
     })
+}
+
+fn parse_object_member_reference(member: &str) -> Option<(String, String)> {
+    let t = member.trim();
+    if t.is_empty() {
+        return None;
+    }
+
+    let re_shorthand =
+        Regex::new(r#"^([A-Za-z_$][\w$]*|"[A-Za-z_$][\w$]*"|'[A-Za-z_$][\w$]*')$"#).unwrap();
+    if let Some(cap) = re_shorthand.captures(t) {
+        let key = normalize_prop_key(&cap[1]);
+        return Some((key.clone(), key));
+    }
+
+    let re_ref = Regex::new(
+        r#"^([A-Za-z_$][\w$]*|"[A-Za-z_$][\w$]*"|'[A-Za-z_$][\w$]*')\s*:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$"#,
+    )
+    .unwrap();
+    re_ref
+        .captures(t)
+        .map(|cap| (normalize_prop_key(&cap[1]), cap[2].trim().to_string()))
 }
 
 fn collect_class_instance_handlers(src: &str, map: &mut HashMap<String, HandlerDef>) {
