@@ -26,17 +26,17 @@ All feature implementation must follow the **Test First** principle.
 - Integration: rust adapter contract + pipeline orchestration
 - E2E: convert real example projects and verify the CLI/build contract
 
-## M1 release gate (TS service fixture -> Go compile success path)
+## M1 release gate (TS service artifact fixture -> Go compile success path)
 M1 release gate is fixed to the **single canonical path** below.
 
 - Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
 - Script entrypoint: [`scripts/m1-release-gate.sh`](../../scripts/m1-release-gate.sh)
 - Test location: `packages/cli/test/commands.e2e.test.ts`
-- Test name: `M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)`
+- Test name: `M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)` (current reference fixture name)
 - Command: `pnpm run gate:m1`
 
 Verification items:
-1. Input: Fastify-min fixture TypeScript entry (`src/index.ts`)
+1. Input: reference fixture TypeScript entry (`src/index.ts`) from tracked examples (currently `examples/fastify-min`)
 2. Execution: run CLI `build` through the Rust adapter path
 3. Output: confirm `dist-go/main.go` generation
 4. Assertions:
@@ -52,7 +52,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
 
 ## M4 semantics parity harness skeleton (global safety net)
 - Entrypoint: `scripts/differential-harness.mjs`
-- Representative scenario: `fastify-min-get-health` (semantics parity ratchet scope: `fastify.get + json response`)
+- Representative scenario: `fastify-min-get-health` (current baseline scenario; parity harness design remains framework-agnostic)
 - Deterministic report contract:
   - `version: "m4-differential-harness.v1"`
   - stable `summary` (`total`, `matched`, `mismatched`, `pass`)
@@ -93,3 +93,9 @@ Note: the gate is limited to execution-path verification and does not cover inte
 - Do not report features as complete when tests fail.
 - Report the 3-item set: failure cause / reproduction command / mitigation plan.
 - Classify and triage using [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](../operations/FAILURE_TRIAGE_PLAYBOOK.md).
+
+
+## Install-first workspace coverage
+- CI install-first checks must run against **tracked example workspaces** discovered from `examples/*/tsgodown.config.ts` (not a framework-specific allowlist).
+- This guarantees newly added workspaces (for example `examples/generic-simple-cli`, `examples/hono`) are included automatically once added to git.
+- If a planned workspace is not yet present, keep TODO hooks in check scripts/docs instead of baking framework-specific assumptions into the gate language.

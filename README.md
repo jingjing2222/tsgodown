@@ -19,6 +19,8 @@ This repository remains intentionally strict: when code is outside the declared 
 
 Core execution path guardrail: framework-name branching/adapters are disallowed in `packages/core/src`, `packages/pipeline/src`, and `packages/cli/src/commands` (check with `pnpm run guard:core-path`).
 
+Canonical compiler input contract (framework-agnostic): `tsdown` bundled JS + sourcemap + `d.ts` are the source of truth for analysis and Go emission. Framework fixtures are validation samples, not compiler-mode scope boundaries.
+
 ## Milestone lock (execution sequence)
 
 Documentation and gate execution follow this fixed sequence:
@@ -121,7 +123,7 @@ cargo build -p engine-core
 export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
-cd examples/fastify-min
+cd examples/fastify-min  # current reference fixture
 pnpm install
 pnpm run build:go
 ```
@@ -130,7 +132,7 @@ Output:
 
 - `examples/fastify-min/dist-go/main.go`
 
-Scaffold-oriented sample (real Fastify app structure) is available at:
+Scaffold-oriented sample (current Fastify reference app structure) is available at:
 
 - `examples/fastify-scaffold-real/src/app.ts`
 - `examples/fastify-scaffold-real/src/routes/*`

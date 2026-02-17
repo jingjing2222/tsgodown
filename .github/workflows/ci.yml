@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Check install-first example builds (pnpm install + build:go)
+      - name: Check install-first builds for tracked example workspaces (pnpm install + build:go)
         run: pnpm run examples:install-first:check
 
       - name: Test
@@ -62,7 +62,7 @@ jobs:
       - name: Guard compiler-mode-only paths/docs
         run: node scripts/guard-compiler-mode-only.mjs
 
-      - name: Guard core path against framework branching/adapters
+      - name: Guard core path against framework-specific branching/adapters
         run: node scripts/guard-core-path-no-framework-branching.mjs
 
       - name: Test core path guardrail matcher
