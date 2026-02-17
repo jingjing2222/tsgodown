@@ -30,6 +30,9 @@ jobs:
       - name: Biome format check
         run: pnpm run format:check
 
+      - name: Check diagnostics/docs sync
+        run: pnpm run docs:diagnostics:sync
+
       - name: Build
         run: pnpm run build
 
