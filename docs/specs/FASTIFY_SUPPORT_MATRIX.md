@@ -35,11 +35,14 @@ fastify
 
 Also supported inside nested plugins when analyzable.
 
-### 1.3 `fastify.route({...})` object literal
+### 1.3 `fastify.route({...})` object literal (inline or local const ref)
 
 ```ts
 fastify.route({ method: 'GET', url: '/users', handler: listUsers })
 fastify.route({ method: 'PATCH', path: '/users/:id', handler: updateUser })
+
+const routeDef = { method: 'GET', url: '/health', handler: health }
+fastify.route(routeDef)
 ```
 
 ### 1.4 Route object method array + normalized method variants
@@ -190,7 +193,7 @@ fastify.route({ method: 'POST', url: '/users', handler: createUser })
 ## 3.3 `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
 
 When it triggers:
-- `fastify.route(...)` is not passed an inline object literal shape analyzable by current extractor.
+- `fastify.route(...)` is not passed an analyzable route-object source (inline literal or local const object reference).
 
 Why unsupported:
 - Analyzer relies on direct object-literal inspection for deterministic extraction.

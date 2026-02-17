@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
-    extract_handler_ref, extract_object_handler_ref, extract_object_prop_expr,
+    extract_handler_ref, extract_identifier, extract_object_handler_ref, extract_object_prop_expr,
     extract_object_string_array_prop, extract_object_string_prop, extract_quoted_string,
-    first_object_literal, parse_inline_handler_signature, split_top_level,
+    first_object_literal, parse_inline_handler_signature, resolve_bound_object_literal,
+    resolve_bound_static_string, split_top_level,
 };
 use crate::defs::HandlerDef;
 use crate::diagnostics::diag;
@@ -74,6 +75,7 @@ pub(crate) fn extract_shorthand_route(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn extract_route_object(
     args: &str,
+    scope_src: &str,
     file: &str,
     instance_name: &str,
     prefix: &str,
@@ -82,22 +84,40 @@ pub(crate) fn extract_route_object(
     handler_defs: &HashMap<String, HandlerDef>,
     diagnostics: &mut Vec<DiagnosticIR>,
 ) {
-    let Some(obj) = first_object_literal(args) else {
+    let obj = first_object_literal(args).or_else(|| {
+        extract_identifier(args).and_then(|name| resolve_bound_object_literal(scope_src, &name))
+    });
+
+    let Some(obj) = obj else {
         diagnostics.push(diag(
             file,
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
             &format!(
-                "unsupported route object pattern in {}.route(...). Provide an inline object literal (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).",
+                "unsupported route object pattern in {}.route(...). Provide an inline object literal or local const object reference (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).",
                 instance_name
             ),
         ));
         return;
     };
 
-    let raw_method = extract_object_string_prop(&obj, "method");
+    let raw_method = extract_object_string_prop(&obj, "method").or_else(|| {
+        extract_object_prop_expr(&obj, "method")
+            .and_then(|expr| extract_identifier(&expr))
+            .and_then(|name| resolve_bound_static_string(scope_src, &name))
+    });
     let raw_method_array = extract_object_string_array_prop(&obj, "method");
     let path = extract_object_string_prop(&obj, "url")
-        .or_else(|| extract_object_string_prop(&obj, "path"));
+        .or_else(|| {
+            extract_object_prop_expr(&obj, "url")
+                .and_then(|expr| extract_identifier(&expr))
+                .and_then(|name| resolve_bound_static_string(scope_src, &name))
+        })
+        .or_else(|| extract_object_string_prop(&obj, "path"))
+        .or_else(|| {
+            extract_object_prop_expr(&obj, "path")
+                .and_then(|expr| extract_identifier(&expr))
+                .and_then(|name| resolve_bound_static_string(scope_src, &name))
+        });
     let handler_ref = extract_object_handler_ref(&obj, "handler");
     let handler_expr = extract_object_prop_expr(&obj, "handler");
 

@@ -161,6 +161,39 @@ pub(crate) fn extract_handler_ref(v: &str) -> Option<String> {
     }
 }
 
+pub(crate) fn extract_identifier(v: &str) -> Option<String> {
+    let t = v.trim();
+    let re = Regex::new(r"^[A-Za-z_$][\w$]*$").unwrap();
+    if re.is_match(t) {
+        Some(t.to_string())
+    } else {
+        None
+    }
+}
+
+pub(crate) fn resolve_bound_object_literal(src: &str, name: &str) -> Option<String> {
+    let pattern = format!(
+        r"(?s)(?:const|let|var)\s+{}\s*(?::\s*[^=;]+)?\s*=\s*\{{",
+        regex::escape(name)
+    );
+    let re = Regex::new(&pattern).unwrap();
+    let cap = re.captures(src)?;
+    let m0 = cap.get(0)?;
+    let open_idx = m0.end() - 1;
+    let (body, _) = capture_balanced(&src[open_idx + 1..], '{', '}')?;
+    Some(body)
+}
+
+pub(crate) fn resolve_bound_static_string(src: &str, name: &str) -> Option<String> {
+    let pattern = format!(
+        r"(?m)(?:const|let|var)\s+{}\s*(?::\s*[^=;]+)?\s*=\s*([^;]+);",
+        regex::escape(name)
+    );
+    let re = Regex::new(&pattern).unwrap();
+    let cap = re.captures(src)?;
+    extract_static_string_literal(cap.get(1)?.as_str())
+}
+
 pub(crate) fn extract_object_string_prop(obj: &str, key: &str) -> Option<String> {
     let pattern = format!(
         r#"(?s)(?:\b{}\b|"{}")\s*:\s*("[^"]*"|'[^']*'|`[^`]*`)"#,
