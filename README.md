@@ -141,6 +141,10 @@ Framework-agnostic simple CLI workspace sample is available at:
 
 - `examples/generic-simple-cli/src/index.ts`
 
+Official-style Hono workspace sample is available at:
+
+- `examples/hono-scaffold-real/src/index.ts`
+
 ## CLI behavior
 
 - `tsgodown` (no subcommand) runs the compiler build flow (`build`).

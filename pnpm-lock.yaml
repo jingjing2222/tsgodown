@@ -70,6 +70,19 @@ importers:
         specifier: ~5.9.2
         version: 5.9.3
 
+  examples/hono-scaffold-real:
+    dependencies:
+      hono:
+        specifier: ^4.6.10
+        version: 4.11.9
+    devDependencies:
+      tsgodown:
+        specifier: workspace:*
+        version: link:../../packages/cli
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
+
   packages/cli:
     dependencies:
       '@tsgodown/config':
@@ -841,6 +854,10 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  hono@4.11.9:
+    resolution: {integrity: sha512-Eaw2YTGM6WOxA6CXbckaEvslr2Ne4NFsKrvc0v97JD5awbmeBLO5w9Ho9L9kmKonrwF9RJlW6BxT1PVv/agBHQ==}
+    engines: {node: '>=16.9.0'}
 
   hookable@6.0.1:
     resolution: {integrity: sha512-uKGyY8BuzN/a5gvzvA+3FVWo0+wUjgtfSdnmjtrOVwQCZPHpHDH2WRO3VZSOeluYrHoDCiXFffZXs8Dj1ULWtw==}
@@ -1970,6 +1987,8 @@ snapshots:
   has-flag@4.0.0: {}
 
   help-me@5.0.0: {}
+
+  hono@4.11.9: {}
 
   hookable@6.0.1: {}
 
