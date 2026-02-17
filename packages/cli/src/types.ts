@@ -1,4 +1,4 @@
-export type Command = "build" | "check" | "report" | "stages";
+export type Command = "build" | "check" | "report" | "stages" | "compiler";
 
 export type TargetDiagnostics = {
   routes: number;
