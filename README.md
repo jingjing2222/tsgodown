@@ -119,6 +119,12 @@ Scaffold-oriented sample (real Fastify app structure) is available at:
 - `examples/fastify-scaffold-real/src/app.ts`
 - `examples/fastify-scaffold-real/src/routes/*`
 
+## CLI behavior
+
+- `tsgodown` (no subcommand) runs the compiler build flow (`build`).
+- Supported subcommands: `build`, `check`, `report`, `stages`.
+- The removed `compiler` transitional command is no longer accepted.
+
 ## Runtime contracts (404/405/Allow)
 
 Generated Go runtime keeps HTTP mismatch behavior deterministic:
