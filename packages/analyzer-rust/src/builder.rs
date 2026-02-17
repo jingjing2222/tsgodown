@@ -181,14 +181,14 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
                         continue;
                     }
                     let after_eq = after_name.trim_start_matches('=').trim_start();
-                    if let Some((is_async, params, _body)) = parse_arrow_fn(after_eq) {
+                    if let Some((is_async, params, body)) = parse_arrow_fn(after_eq) {
                         let lowered_params = lower_params(&params);
                         handlers.insert(
                             name.to_string(),
                             HandlerDef {
                                 is_async,
                                 params: lowered_params.clone(),
-                                semantics: lower_semantics(&lowered_params, src),
+                                semantics: lower_semantics(&lowered_params, &body),
                             },
                         );
                     }
@@ -197,28 +197,28 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
         }
 
         if let Some(rest) = trimmed.strip_prefix("async function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: true,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
         }
 
         if let Some(rest) = trimmed.strip_prefix("function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: false,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
@@ -392,8 +392,8 @@ fn parse_shorthand_route(
     let path_arg = args[0].trim();
     let handler_arg = args[1].trim();
 
-    let path = if let Some(v) = extract_quoted(path_arg) {
-        v.to_string()
+    let path = if let Some(v) = extract_string_literal(path_arg) {
+        v
     } else {
         diagnostics.push(diag(
             "error",
@@ -447,7 +447,7 @@ fn parse_route_object(
         return None;
     }
 
-    let method = if let Some(v) = extract_prop_quoted(arg, "method") {
+    let method = if let Some(v) = extract_prop_string_literal(arg, "method") {
         let upper = v.to_ascii_uppercase();
         if !ALLOWED_METHODS.contains(&upper.as_str()) {
             diagnostics.push(diag(
@@ -469,7 +469,8 @@ fn parse_route_object(
         return None;
     };
 
-    let path = extract_prop_quoted(arg, "url").or_else(|| extract_prop_quoted(arg, "path"));
+    let path = extract_prop_string_literal(arg, "url")
+        .or_else(|| extract_prop_string_literal(arg, "path"));
     let path = if let Some(v) = path {
         v
     } else {
@@ -536,18 +537,34 @@ fn split_top_level_commas(raw: &str) -> Vec<&str> {
     out
 }
 
-fn extract_prop_quoted(obj_literal: &str, key: &str) -> Option<String> {
-    let key_idx = obj_literal.find(key)?;
-    let after = obj_literal[key_idx + key.len()..].trim_start();
-    let after = after.strip_prefix(':')?.trim_start();
-    extract_quoted(after).map(ToString::to_string)
+fn extract_prop_string_literal(obj_literal: &str, key: &str) -> Option<String> {
+    let value = extract_prop_value(obj_literal, key)?;
+    extract_string_literal(value)
 }
 
 fn extract_prop_identifier(obj_literal: &str, key: &str) -> Option<String> {
-    let key_idx = obj_literal.find(key)?;
-    let after = obj_literal[key_idx + key.len()..].trim_start();
-    let after = after.strip_prefix(':')?.trim_start();
-    parse_named_handler(after)
+    let value = extract_prop_value(obj_literal, key)?;
+    parse_named_handler(value)
+}
+
+fn extract_prop_value<'a>(obj_literal: &'a str, key: &str) -> Option<&'a str> {
+    let trimmed = obj_literal.trim();
+    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
+        return None;
+    }
+
+    let inner = &trimmed[1..trimmed.len() - 1];
+    for entry in split_top_level_commas(inner) {
+        let Some((raw_key, raw_value)) = entry.split_once(':') else {
+            continue;
+        };
+        let raw_key = raw_key.trim();
+        let normalized_key = extract_string_literal(raw_key).unwrap_or_else(|| raw_key.to_string());
+        if normalized_key == key {
+            return Some(raw_value.trim());
+        }
+    }
+    None
 }
 
 fn parse_named_handler(raw: &str) -> Option<String> {
@@ -575,6 +592,21 @@ fn extract_quoted(raw: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn extract_string_literal(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.len() < 2 {
+        return None;
+    }
+
+    let first = trimmed.chars().next()?;
+    let last = trimmed.chars().last()?;
+    if (first != '\'' && first != '"') || first != last {
+        return None;
+    }
+
+    Some(trimmed[1..trimmed.len() - 1].to_string())
 }
 
 fn take_identifier(raw: &str) -> Option<&str> {

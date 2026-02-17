@@ -1,0 +1,11 @@
+modules:
+  - id=unsupported-semantic-edge.ts source_path=unsupported-semantic-edge.ts
+    exports:
+    imports:
+routes:
+handlers:
+diagnostics:
+  - level=error code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH message=route path must be a string literal source=unsupported-semantic-edge.ts
+  - level=error code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH message=route path must be a string literal source=unsupported-semantic-edge.ts
+  - level=error code=ANALYZER_UNSUPPORTED_INLINE_HANDLER message=route handler must be a named reference source=unsupported-semantic-edge.ts
+  - level=error code=ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD message=route object method must be one of GET|POST|PUT|DELETE|PATCH source=unsupported-semantic-edge.ts

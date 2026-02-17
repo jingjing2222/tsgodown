@@ -119,3 +119,11 @@ fn unsupported_patterns_emit_deterministic_diagnostics() {
 fn semantic_patterns_are_lowered_deterministically() {
     assert_fixture("semantic-patterns.ts", "semantic-patterns.golden.txt");
 }
+
+#[test]
+fn unsupported_semantic_edges_fail_closed_with_deterministic_diagnostics() {
+    assert_fixture(
+        "unsupported-semantic-edge.ts",
+        "unsupported-semantic-edge.golden.txt",
+    );
+}
