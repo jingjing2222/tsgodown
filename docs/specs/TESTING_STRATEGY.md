@@ -40,6 +40,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
 
 ## M3 runtime correctness/stability extension
 - Runtime executable-fixture coverage is extended beyond the M1/M2 happy-path checks.
+- Normative parity definition: [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md)
 - Primary test location: `packages/cli/test/commands.e2e.test.ts`
 - Key acceptance tests:
   - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`
