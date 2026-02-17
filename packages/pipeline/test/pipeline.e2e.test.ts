@@ -90,7 +90,7 @@ function assertGoMainScaffold(goSource: string) {
   assert.match(goSource, /^package main/m);
   assert.match(goSource, /func main\(\)/);
   assert.match(goSource, /router\.handle\("GET", "\/health", route0\)/);
-  assert.match(goSource, /TODO implement handler health for GET \/health/);
+  assert.match(goSource, /Handler response mode: return/);
 }
 
 function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {

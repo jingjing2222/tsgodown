@@ -181,14 +181,14 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
                         continue;
                     }
                     let after_eq = after_name.trim_start_matches('=').trim_start();
-                    if let Some((is_async, params, _body)) = parse_arrow_fn(after_eq) {
+                    if let Some((is_async, params, body)) = parse_arrow_fn(after_eq) {
                         let lowered_params = lower_params(&params);
                         handlers.insert(
                             name.to_string(),
                             HandlerDef {
                                 is_async,
                                 params: lowered_params.clone(),
-                                semantics: lower_semantics(&lowered_params, src),
+                                semantics: lower_semantics(&lowered_params, &body),
                             },
                         );
                     }
@@ -197,28 +197,28 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
         }
 
         if let Some(rest) = trimmed.strip_prefix("async function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: true,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
         }
 
         if let Some(rest) = trimmed.strip_prefix("function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: false,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
@@ -344,8 +344,12 @@ fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR 
     let uses_json = has_call("json");
     let uses_body = has_call("send") || has_call("body");
 
+    let has_next_param = params.iter().any(|param| param.role == "next");
+
     let response_mode = if response_param.is_some() {
         "response-object"
+    } else if has_next_param {
+        "next-callback"
     } else {
         "return"
     }

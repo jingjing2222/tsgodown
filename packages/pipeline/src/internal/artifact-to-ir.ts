@@ -30,7 +30,7 @@ export function buildProgramIrFromArtifacts(
         async: false,
         bodyRef: entry,
         semantics: {
-          responseMode: "unknown",
+          responseMode: "return",
           usesStatus: false,
           usesBody: false,
           usesHeaders: false,
