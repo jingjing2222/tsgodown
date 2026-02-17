@@ -4,11 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const examplesRoot = path.join(root, "examples");
 
-const requiredExamples = [
-  "fastify-min",
-  "fastify-complex",
-  "fastify-scaffold-real",
-];
+const requiredExamples = ["fastify-scaffold-real"];
 
 let hasError = false;
 

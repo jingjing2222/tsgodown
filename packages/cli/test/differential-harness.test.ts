@@ -9,7 +9,7 @@ const harnessPath = path.join(repoRoot, "scripts", "differential-harness.mjs");
 function runHarness(env: NodeJS.ProcessEnv = {}) {
   return spawnSync(
     process.execPath,
-    [harnessPath, "--scenario", "fastify-min-get-health"],
+    [harnessPath, "--scenario", "fastify-scaffold-real-get-health"],
     {
       cwd: repoRoot,
       encoding: "utf8",
@@ -46,7 +46,7 @@ test("differential harness emits deterministic report format for semantics-parit
   };
 
   assert.equal(report.version, "m4-differential-harness.v1");
-  assert.equal(report.scenario, "fastify-min-get-health");
+  assert.equal(report.scenario, "fastify-scaffold-real-get-health");
   assert.equal(report.semanticsSurface, "fastify.get + json response");
   assert.match(
     report.description,

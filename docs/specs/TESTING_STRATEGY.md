@@ -32,11 +32,11 @@ M1 release gate is fixed to the **single canonical path** below.
 - Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
 - Script entrypoint: [`scripts/m1-release-gate.sh`](../../scripts/m1-release-gate.sh)
 - Test location: `packages/cli/test/commands.e2e.test.ts`
-- Test name: `M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)` (current reference fixture name)
+- Test name: `M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)` (current reference fixture name)
 - Command: `pnpm run gate:m1`
 
 Verification items:
-1. Input: reference fixture TypeScript entry (`src/index.ts`) from tracked examples (currently `examples/fastify-min`)
+1. Input: reference fixture TypeScript entry (`src/index.ts`) from tracked examples (currently `examples/fastify-scaffold-real`)
 2. Execution: run CLI `build` through the Rust adapter path
 3. Output: confirm `dist-go/main.go` generation
 4. Assertions:
@@ -52,7 +52,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
 
 ## M4 semantics parity harness skeleton (global safety net)
 - Entrypoint: `scripts/differential-harness.mjs`
-- Representative scenario: `fastify-min-get-health` (current baseline scenario; parity harness design remains framework-agnostic)
+- Representative scenario: `fastify-scaffold-real-get-health` (current baseline scenario; parity harness design remains framework-agnostic)
 - Deterministic report contract:
   - `version: "m4-differential-harness.v1"`
   - stable `summary` (`total`, `matched`, `mismatched`, `pass`)

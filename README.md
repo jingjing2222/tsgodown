@@ -123,14 +123,19 @@ cargo build -p engine-core
 export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
-cd examples/fastify-min  # current reference fixture
+cd examples/fastify-scaffold-real  # current reference fixture
 pnpm install
 pnpm run build:go
+
+# generic simple CLI workspace (tsdown bundle + d.ts + sourcemap -> Go)
+cd ../generic-simple-cli-workspace
+pnpm install
+pnpm run check
 ```
 
 Output:
 
-- `examples/fastify-min/dist-go/main.go`
+- `examples/fastify-scaffold-real/dist-go/main.go`
 
 Scaffold-oriented sample (current Fastify reference app structure) is available at:
 
@@ -157,8 +162,7 @@ This contract is verified in emitter/CLI tests and in smoke workflows.
 
 When build output is incomplete, start here:
 
-- Fastify complex runbook: [`docs/FASTIFY_COMPLEX_RUNBOOK.md`](docs/FASTIFY_COMPLEX_RUNBOOK.md)
-- Failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
+- - Failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
 - M1 release gate and acceptance criteria: [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Testing strategy and boundaries: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
 - Canonical compiler-mode spec lock (supported subset / out-of-scope / fail-closed): [`docs/specs/COMPILER_MODE_CONTRACTS.md`](docs/specs/COMPILER_MODE_CONTRACTS.md)
@@ -176,7 +180,7 @@ Additional project docs:
 - `pnpm run format:check`
 - `pnpm run test:tdd`
 - `pnpm run perf:baseline`
-- `pnpm run devx:fastify-complex`
+- `pnpm run `
 - `pnpm run docs:scaffold:sync`
 - `./scripts/smoke-m1.sh`
 

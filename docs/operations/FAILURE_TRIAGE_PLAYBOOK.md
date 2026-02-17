@@ -78,7 +78,7 @@ cargo test --workspace --all-targets
 - Re-run `./scripts/smoke-m1.sh` locally.
 - Use built-in diagnostics:
   - `.tmp-smoke-m1-server.log` tail (runtime failures)
-  - `examples/fastify-min/dist-go/main.go` head (emission sanity)
+  - `examples/fastify-scaffold-real/dist-go/main.go` head (emission sanity)
   - printed env summary (`TSGODOWN_RUST_ENGINE_BIN`, ports, paths)
 - Confirm launcher executable:
   - `test -x ./scripts/rust-engine-launcher.sh`
@@ -101,9 +101,9 @@ Symptoms: non-200 health code, body mismatch, server exits early.
 
 Checklist:
 1. `tail -n 120 .tmp-smoke-m1-server.log`
-2. Inspect generated Go: `sed -n '1,160p' examples/fastify-min/dist-go/main.go`
+2. Inspect generated Go: `sed -n '1,160p' examples/fastify-scaffold-real/dist-go/main.go`
 3. Build/run manually:
-   - `cd examples/fastify-min/dist-go`
+   - `cd examples/fastify-scaffold-real/dist-go`
    - `go build -o tsgodown-local .`
    - `PORT=18080 ./tsgodown-local`
 4. Validate endpoint: `curl -i http://127.0.0.1:18080/health`

@@ -7,11 +7,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const engineCoreBin = path.join(repoRoot, "target", "debug", "engine-core");
 const rustLauncher = path.join(repoRoot, "scripts", "rust-engine-launcher.sh");
 
-const expectedFutureWorkspaces = [
-  // TODO(r2): enable as mandatory once corresponding PRs land.
-  // Expected path: examples/generic-simple-cli
-  // Expected path: examples/hono
-];
+const expectedTrackedWorkspaces = ["examples/fastify-scaffold-real"];
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, {
@@ -53,13 +49,23 @@ function readScripts(projectDirRel) {
   return raw.scripts ?? {};
 }
 
+function hasCommand(bin) {
+  return (
+    spawnSync(bin, ["--version"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).status === 0
+  );
+}
+
 function main() {
   const examples = listTrackedExamples();
 
-  for (const expectedPath of expectedFutureWorkspaces) {
+  for (const expectedPath of expectedTrackedWorkspaces) {
     if (!fs.existsSync(path.join(repoRoot, expectedPath))) {
-      console.log(
-        `[install-first] TODO workspace hook: waiting for ${expectedPath}`,
+      throw new Error(
+        `[install-first] expected tracked workspace missing: ${expectedPath}`,
       );
     }
   }
@@ -68,6 +74,14 @@ function main() {
       "[install-first] SKIP (no tracked examples with tsgodown.config.ts)",
     );
     return;
+  }
+
+  for (const expectedPath of expectedTrackedWorkspaces) {
+    if (!examples.includes(expectedPath)) {
+      throw new Error(
+        `[install-first] expected tracked workspace not registered (missing tsgodown.config.ts): ${expectedPath}`,
+      );
+    }
   }
 
   if (!fs.existsSync(rustLauncher)) {
@@ -88,6 +102,7 @@ function main() {
     TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
     TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
   };
+  const goAvailable = hasCommand("go");
 
   for (const projectDirRel of examples) {
     const scripts = readScripts(projectDirRel);
@@ -108,6 +123,25 @@ function main() {
       env,
     });
     run("pnpm", ["run", "build:go"], { cwd, env });
+    if (goAvailable) {
+      const goDir = path.join(cwd, "dist-go");
+      const goMod = path.join(goDir, "go.mod");
+      if (!fs.existsSync(goMod)) {
+        run("go", ["mod", "init", `example.com/${projectDirRel.replaceAll("/", "-")}`], {
+          cwd: goDir,
+          env,
+        });
+      }
+      run("go", ["build", "./..."], {
+        cwd: goDir,
+        env,
+      });
+      console.log(`[install-first] go build PASS ${projectDirRel}`);
+    } else {
+      console.log(
+        `[install-first] go unavailable; skipping compile check for ${projectDirRel}`,
+      );
+    }
 
     console.log(`[install-first] PASS ${projectDirRel}`);
   }

@@ -30,7 +30,7 @@ Classification keys:
 | tests | `packages/tsdown-driver/test/resolver-subset.test.ts` | file/test names with `subset` terminology | **postpone** | Should follow resolver API+diagnostics rename in one atomic PR to minimize churn. |
 | scripts/tests | `scripts/differential-harness.mjs`, `packages/cli/test/differential-harness.test.ts` | report field `subset` and subset-centric description | **postpone** | Field is part of report contract; change requires contract version bump + fixture consumers update. |
 | docs | `docs/specs/COMPILER_MODE_CONTRACTS.md`, `docs/specs/SEMANTIC_PARITY_CONTRACT.md`, `docs/specs/TESTING_STRATEGY.md`, `README.md` | supported-subset policy wording | **postpone** | This is current product contract, not accidental residue; cannot remove in R1 without spec change. |
-| docs (framework-centric) | `docs/specs/FASTIFY_COMPILER_MODE_STATUS.md`, `docs/FASTIFY_COMPLEX_RUNBOOK.md` | Fastify-specific framing | **postpone** | Still aligned with current milestone scope; move only when multi-framework strategy is approved. |
+| docs (framework-centric) | `docs/specs/FASTIFY_COMPILER_MODE_STATUS.md` | Fastify-specific framing | **postpone** | Still aligned with current milestone scope; move only when multi-framework strategy is approved. |
 
 ---
 

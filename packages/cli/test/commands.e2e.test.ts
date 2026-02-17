@@ -263,7 +263,7 @@ function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
 
   const modInit = spawnSync(
     "go",
-    ["mod", "init", "example.com/tsgodown-cli-fastify-min"],
+    ["mod", "init", "example.com/tsgodown-cli-fastify-scaffold-real"],
     {
       cwd: goDir,
       encoding: "utf8",
@@ -1033,8 +1033,8 @@ test("rust-only fixture matrix keeps build/check/report/stages deterministic", (
   }
 });
 
-test.skip("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> go build (if available)", () => {
-  const cwd = setupProjectFromFixture("fastify-min");
+test.skip("M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)", () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -1061,8 +1061,32 @@ test.skip("M1 release gate: CLI build fastify-min fixture -> dist-go/main.go -> 
   assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
 });
 
+test("example workspace compile gate: hono-scaffold-real builds and emitted Go compiles (if available)", () => {
+  const cwd = setupProjectFromExample("hono-scaffold-real");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
+  const parsed = parseJsonStdout(result.stdout);
+  assert.equal(parsed.command, "build");
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goMain = fs.readFileSync(goPath, "utf8");
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
+});
+
 test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtime", async () => {
-  const cwd = setupProjectFromFixture("fastify-min");
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
