@@ -228,6 +228,21 @@ If feature gating is needed, keep route declaration deterministic and gate behav
 
 ## 4) Governance
 
+### 4.1 Diagnostic code inventory linkage
+
+The full code+message inventory is maintained in `docs/specs/FASTIFY_UNSUPPORTED_INVENTORY.md`.
+
+<!-- AUTO-GENERATED:DIAGNOSTIC_CODES:START -->
+- `ANALYZER_UNRESOLVED_PLUGIN`
+- `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`
+- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`
+- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
+- `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
+- `DYNAMIC_IMPORT_DETECTED`
+<!-- AUTO-GENERATED:DIAGNOSTIC_CODES:END -->
+
 - This file is the **single source of truth** for Fastify analyzer mapping status.
 - If extractor behavior changes, update this file in the same PR as tests/implementation.
 - Keep diagnostic code spellings exact and stable.

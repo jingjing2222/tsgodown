@@ -13,6 +13,26 @@ The following codes are emitted when Fastify route extraction cannot proceed det
 
 ---
 
+## Canonical diagnostic messages (verbatim)
+
+These lines are managed by `scripts/check-fastify-diagnostics-sync.mjs` and must match `packages/analyzer-rust` exactly.
+
+<!-- AUTO-GENERATED:DIAGNOSTIC_MESSAGES:START -->
+- `ANALYZER_UNRESOLVED_PLUGIN`: `register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.`
+- `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`: `conditional route registration in if-block is unsupported for deterministic extraction ({}.{}(...)). Move route declaration to top-level plugin scope.`
+- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`: `unsupported dynamic path in {}.{}(...). Use string literal path (e.g. '/users/:id') for IR extraction.`
+- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`: `unsupported route object path in {}.route({{...}}). Provide string literal 'url' or 'path' (e.g. '/users/:id').`
+- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`: `unsupported non-reference handler in {}.{}('{}', handler). Extract handler to a named function and pass its identifier.`
+- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`: `unsupported route object handler in {}.route({{...}}). Provide named handler reference in 'handler' field.`
+- `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`: `unsupported register callback pattern on {}.register(...). Use inline function(plugin) {{ ... }} or named local plugin reference.`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`: `unsupported route object method in {}.route({{...}}): '{}'. Supported methods: GET|POST|PUT|DELETE|PATCH.`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`: `unsupported route object method in {}.route({{...}}): missing string 'method' or non-empty string array. Supported methods: GET|POST|PUT|DELETE|PATCH.`
+- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`: `unsupported route object pattern in {}.route(...). Provide an inline object literal (e.g. {{ method: 'GET', url: '/users', handler: listUsers }}).`
+- `DYNAMIC_IMPORT_DETECTED`: `dynamic import detected; use static import declarations for deterministic IR extraction.`
+<!-- AUTO-GENERATED:DIAGNOSTIC_MESSAGES:END -->
+
+---
+
 ### `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`
 
 **Current message shape**
@@ -239,3 +259,65 @@ Naming convention:
 
 These pairs are consumed by `packages/analyzer-rust/tests/fastify_ast_analyzer.rs` in
 `fixture_matrix_for_fastify_unsupported_diagnostics_bad_and_fixed_pairs`.
+
+---
+
+### `ANALYZER_UNRESOLVED_PLUGIN`
+
+**Current message shape**
+
+`register plugin '<pluginRef>' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.`
+
+**Bad**
+
+```ts
+import usersPlugin from "./users-plugin";
+fastify.register(usersPlugin);
+```
+
+**Fixed**
+
+```ts
+function usersPlugin(plugin: any) {
+  plugin.get("/users", listUsers);
+}
+
+fastify.register(usersPlugin);
+```
+
+_or_
+
+```ts
+fastify.register(function (plugin) {
+  plugin.get("/users", listUsers);
+});
+```
+
+**Rationale**
+
+Current plugin resolution is file-local for deterministic static extraction.
+
+---
+
+### `DYNAMIC_IMPORT_DETECTED`
+
+**Current message shape**
+
+`dynamic import detected; use static import declarations for deterministic IR extraction.`
+
+**Bad**
+
+```ts
+const moduleName = "./plugin";
+const plugin = await import(moduleName);
+```
+
+**Fixed**
+
+```ts
+import * as plugin from "./plugin";
+```
+
+**Rationale**
+
+Dynamic imports can alter module graph resolution at runtime and break deterministic analysis.
