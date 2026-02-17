@@ -2,6 +2,16 @@
 
 This IR spec is the single source of truth (SSoT) for `tsgodown`.
 
+## Version
+
+- **IR contract version:** `v1`
+- v1 is **schema-locked** for all currently declared nodes/fields below.
+- Any additive/removal/rename/type change is a contract change and must be done in a dedicated PR that updates:
+  1. this document,
+  2. `@tsgodown/ir-core` types,
+  3. Rust IR structs/tests,
+  4. downstream contract tests/fixtures.
+
 ## Principles
 - Do not store framework names (Fastify/Nest/Express) directly in IR.
 - IR expresses **semantics** only.
@@ -9,7 +19,7 @@ This IR spec is the single source of truth (SSoT) for `tsgodown`.
 - Rust core is the single runtime executor for analysis/IR extraction.
 - The TS runtime path does not generate IR directly and does not fall back to the TS analyzer when Rust fails.
 
-## Core IR Nodes
+## Core IR Nodes (v1 locked)
 
 ### ProgramIR
 ```ts
@@ -72,6 +82,29 @@ interface DiagnosticIR {
 }
 ```
 
+## Determinism contract (v1)
+
+To guarantee stable snapshots/fixtures and reproducible outputs, producer output must be normalized with the rules below.
+
+### Top-level ordering
+- `modules`: sort by `(id, sourcePath)` ascending lexical order.
+- `routes`: sort by `(path, method, handlerRef)` ascending lexical order.
+- `handlers`: sort by `(id)` ascending lexical order.
+- `diagnostics`: sort by `(levelRank, code, message, source.file, source.line, source.column)`.
+  - `levelRank`: `error < warn < info < unknown`
+  - missing source/line/column sort after present values.
+
+### Nested ordering
+- `ModuleIR.exports`: ascending lexical order.
+- `ModuleIR.imports`: sort by `(spec, kind, resolved)` ascending lexical order.
+- `HandlerIR.params`: preserve declared function-parameter order (semantic order).
+- `RouteIR.middlewareRefs`: preserve declared middleware order (execution order).
+
+### Stable IDs/names
+- `ModuleIR.id` and `HandlerIR.id` must be source-derived and stable across identical inputs.
+- If collision resolution is required, use deterministic suffixing (for example `_2`, `_3`, … in first-seen source order).
+- `RouteIR.handlerRef` must reference a stable handler identifier (`HandlerIR.id`) and must not use random/ephemeral tokens.
+
 ## analyzer-rust Fastify boundary (M1)
 `packages/analyzer-rust` keeps an **extract/diagnose only** scope in M1.
 
@@ -108,7 +141,6 @@ interface DiagnosticIR {
 ### SSoT boundary
 - analyzer-rust does not perform capability/policy decisions.
 - analyzer-rust does not emit `CAPABILITY_*` family codes.
-- The related contract is fixed in `packages/analyzer-rust/tests/contract_parity_regression.rs`.
 
 ## Data sources
 - tsdown artifacts (JS bundle)
