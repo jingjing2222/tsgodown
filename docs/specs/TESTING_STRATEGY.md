@@ -26,7 +26,7 @@ All feature implementation must follow the **Test First** principle.
 - Integration: rust adapter contract + pipeline orchestration
 - E2E: convert real example projects and verify the CLI/build contract
 
-## M1 release gate (Fastify -> Go compile success path)
+## M1 release gate (TS service fixture -> Go compile success path)
 M1 release gate is fixed to the **single canonical path** below.
 
 - Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
@@ -49,15 +49,15 @@ Note: the gate is limited to execution-path verification and does not cover inte
 - Runtime executable-fixture coverage is extended beyond the M1/M2 happy-path checks.
 - Normative parity definition: [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md)
 
-## M4 differential harness skeleton
+## M4 semantics parity harness skeleton (global safety net)
 - Entrypoint: `scripts/differential-harness.mjs`
-- Representative scenario: `fastify-min-get-health` (supported subset: `fastify.get + json response`)
+- Representative scenario: `fastify-min-get-health` (initial semantic envelope case: `GET route + JSON response`)
 - Deterministic report contract:
   - `version: "m4-differential-harness.v1"`
   - stable `summary` (`total`, `matched`, `mismatched`, `pass`)
   - sorted `cases[]` with normalized headers and explicit `diffs[]`
 - Fail conditions (fail-closed): missing TS/Go case, status mismatch, headers mismatch, body mismatch.
-- Local run: `pnpm run harness:differential`
+- Local run: `pnpm run harness:semantics-parity` (legacy alias: `pnpm run harness:differential`)
 - Primary test location: `packages/cli/test/commands.e2e.test.ts`
 - Key acceptance tests:
   - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`
@@ -84,7 +84,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace --all-targets`
-- `pnpm run gate:differential`
+- `pnpm run gate:semantics-parity`
 - `pnpm run gate:compliance`
 - `./scripts/smoke-m1.sh`
 
