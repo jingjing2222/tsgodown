@@ -37,23 +37,34 @@ function setupProject(
   return dir;
 }
 
+function copyRecursive(from: string, to: string) {
+  const stat = fs.statSync(from);
+  if (stat.isDirectory()) {
+    fs.mkdirSync(to, { recursive: true });
+    for (const entry of fs.readdirSync(from)) {
+      copyRecursive(path.join(from, entry), path.join(to, entry));
+    }
+    return;
+  }
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.copyFileSync(from, to);
+}
+
 function setupProjectFromFixture(name: string) {
   const sourceRoot = path.join(fixturesDir, "projects", name);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-cli-e2e-"));
   tempDirs.push(dir);
 
-  const copyRecursive = (from: string, to: string) => {
-    const stat = fs.statSync(from);
-    if (stat.isDirectory()) {
-      fs.mkdirSync(to, { recursive: true });
-      for (const entry of fs.readdirSync(from)) {
-        copyRecursive(path.join(from, entry), path.join(to, entry));
-      }
-      return;
-    }
-    fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.copyFileSync(from, to);
-  };
+  copyRecursive(sourceRoot, dir);
+  fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "dist", "index.js"), "export {};\n");
+  return dir;
+}
+
+function setupProjectFromExample(name: string) {
+  const sourceRoot = path.join(repoRoot, "examples", name);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-cli-e2e-"));
+  tempDirs.push(dir);
 
   copyRecursive(sourceRoot, dir);
   fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
@@ -217,31 +228,22 @@ function ensureGoRuntimeModule(goDir: string) {
   initializedGoRuntimeDirs.add(goDir);
 }
 
-type GoRouteExpectation = {
-  routePath: string;
-  method?: string;
-  expectedStatus?: number;
-  expectedBodyFragment?: string;
-};
-
-async function assertGoRunRoute(
+async function assertGoRunRequest(
   goDir: string,
-  expectation: GoRouteExpectation,
+  request: {
+    method?: string;
+    routePath: string;
+    expectedStatus: number;
+    expectedBodyFragment?: string;
+  },
 ) {
   if (!hasGoToolchain) {
     return;
   }
 
-  const {
-    routePath,
-    method = "GET",
-    expectedStatus = 501,
-    expectedBodyFragment,
-  } = expectation;
-
   ensureGoRuntimeModule(goDir);
 
-  const port = String(20000 + Math.floor(Math.random() * 1000));
+  const port = String(20000 + Math.floor(Math.random() * 30000));
   const child = spawn("go", ["run", "."], {
     cwd: goDir,
     env: {
@@ -259,10 +261,13 @@ async function assertGoRunRoute(
   try {
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}${routePath}`, {
-          method,
-          signal: AbortSignal.timeout(1000),
-        });
+        const response = await fetch(
+          `http://127.0.0.1:${port}${request.routePath}`,
+          {
+            method: request.method ?? "GET",
+            signal: AbortSignal.timeout(1000),
+          },
+        );
         status = response.status;
         body = await response.text();
         break;
@@ -274,12 +279,11 @@ async function assertGoRunRoute(
 
     assert.equal(
       status,
-      expectedStatus,
-      `server did not become ready for ${method} ${routePath}; lastError=${String(lastError)}`,
+      request.expectedStatus,
+      `server did not become ready for ${request.method ?? "GET"} ${request.routePath}; lastError=${String(lastError)}`,
     );
-
-    if (expectedBodyFragment) {
-      assert.match(body, new RegExp(expectedBodyFragment));
+    if (request.expectedBodyFragment) {
+      assert.match(body, new RegExp(request.expectedBodyFragment));
     }
   } finally {
     if (child.exitCode === null && !child.killed) {
@@ -310,6 +314,18 @@ async function assertGoRunRoute(
       });
     });
   }
+}
+
+async function assertGoRunRoute(
+  goDir: string,
+  routePath: string,
+  expectedBodyFragment: string,
+) {
+  await assertGoRunRequest(goDir, {
+    routePath,
+    expectedStatus: 501,
+    expectedBodyFragment,
+  });
 }
 
 function parseJsonStdout(stdout: string) {
@@ -906,18 +922,20 @@ test("M2 acceptance: TS fixture routes are reachable in generated Go runtime", a
   assert.equal(fs.existsSync(goPath), true);
 
   const goDir = path.dirname(goPath);
-  await assertGoRunRoute(goDir, {
-    routePath: "/health",
-    expectedBodyFragment: "TODO implement handler health for GET /health",
-  });
-  await assertGoRunRoute(goDir, {
-    routePath: "/users",
-    expectedBodyFragment: "TODO implement handler users for GET /users",
-  });
+  await assertGoRunRoute(
+    goDir,
+    "/health",
+    "TODO implement handler health for GET /health",
+  );
+  await assertGoRunRoute(
+    goDir,
+    "/users",
+    "TODO implement handler users for GET /users",
+  );
 });
 
-test("M3 acceptance: runtime method/path matrix fixture remains deterministic", async () => {
-  const cwd = setupProjectFromFixture("runtime-method-matrix");
+test("M2 acceptance: fastify-complex fixture preserves method contracts and path params", async () => {
+  const cwd = setupProjectFromExample("fastify-complex");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
@@ -932,33 +950,45 @@ test("M3 acceptance: runtime method/path matrix fixture remains deterministic", 
   const goPath = path.join(cwd, "dist-go", "main.go");
   assert.equal(fs.existsSync(goPath), true);
 
+  const goMain = fs.readFileSync(goPath, "utf8");
+  assert.match(goMain, /HandleFunc\("GET \/health"/);
+  assert.match(goMain, /HandleFunc\("POST \/users"/);
+  assert.match(goMain, /HandleFunc\("PATCH \/users\/{id}"/);
+  assert.match(goMain, /HandleFunc\("DELETE \/users\/{id}"/);
+  assert.match(goMain, /id := req\.PathValue\("id"\)/);
+
   const goDir = path.dirname(goPath);
-  await assertGoRunRoute(goDir, {
+  await assertGoRunRequest(goDir, {
+    method: "GET",
     routePath: "/health",
+    expectedStatus: 501,
     expectedBodyFragment: "TODO implement handler health for GET /health",
   });
-  await assertGoRunRoute(goDir, {
-    routePath: "/users",
+  await assertGoRunRequest(goDir, {
     method: "POST",
+    routePath: "/users",
+    expectedStatus: 501,
     expectedBodyFragment: "TODO implement handler createUser for POST /users",
   });
-  await assertGoRunRoute(goDir, {
-    routePath: "/users/:id",
-    method: "PUT",
+  await assertGoRunRequest(goDir, {
+    method: "PATCH",
+    routePath: "/users/abc-123",
+    expectedStatus: 501,
     expectedBodyFragment:
-      "TODO implement handler updateUser for PUT /users/:id",
+      "TODO implement handler updateUser for PATCH /users/:id",
   });
-
-  await assertGoRunRoute(goDir, {
-    routePath: "/users",
+  await assertGoRunRequest(goDir, {
+    method: "DELETE",
+    routePath: "/users/abc-123",
+    expectedStatus: 501,
+    expectedBodyFragment:
+      "TODO implement handler removeUser for DELETE /users/:id",
+  });
+  await assertGoRunRequest(goDir, {
     method: "GET",
+    routePath: "/users/abc-123",
     expectedStatus: 405,
     expectedBodyFragment: "Method Not Allowed",
-  });
-  await assertGoRunRoute(goDir, {
-    routePath: "/missing",
-    expectedStatus: 404,
-    expectedBodyFragment: "404 page not found",
   });
 });
 
