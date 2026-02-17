@@ -17,7 +17,7 @@ along with:
 
 ## Canonical diagnostic messages (verbatim)
 
-These lines are managed by `scripts/check-fastify-diagnostics-sync.mjs` and must match `packages/analyzer-rust` exactly.
+These canonical lines must stay aligned with `packages/analyzer-rust`.
 
 <!-- AUTO-GENERATED:DIAGNOSTIC_MESSAGES:START -->
 
