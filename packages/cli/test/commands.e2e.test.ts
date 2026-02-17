@@ -9,7 +9,6 @@ import { after, test } from "node:test";
 
 const tempDirs: string[] = [];
 const fixturesDir = path.join(import.meta.dirname, "fixtures");
-const cliEntry = path.resolve(import.meta.dirname, "..", "dist", "index.js");
 const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
 
 after(() => {
@@ -106,25 +105,9 @@ function createRustLauncher(cwd: string) {
   return launcherPath;
 }
 
-function runCli(
-  cwd: string,
-  command: "build" | "check" | "report" | "stages",
-  env?: NodeJS.ProcessEnv,
-) {
-  const result = spawnSync(process.execPath, [cliEntry, command, "--json"], {
-    cwd,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ...env,
-    },
-  });
-  return result;
-}
-
 const installedWorkspaceCliDirs = new Set<string>();
 
-function runInstalledWorkspaceCli(
+function runCli(
   cwd: string,
   command: "build" | "check" | "report" | "stages",
   env?: NodeJS.ProcessEnv,
@@ -1264,7 +1247,7 @@ test("M4 acceptance: real fastify scaffold fixture builds via installed workspac
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
 
-  const result = runInstalledWorkspaceCli(cwd, "build", {
+  const result = runCli(cwd, "build", {
     ...process.env,
     TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
     TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
