@@ -1181,6 +1181,31 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministi
   );
 });
 
+test("M4 acceptance: real fastify scaffold fixture builds but currently drops plugin-registered routes", () => {
+  const cwd = setupProjectFromFixture("fastify-scaffold-real");
+  const rustLauncher = resolveRustEngineLauncherScript();
+  const engineCoreBin = resolveEngineCoreBin();
+
+  const result = runCli(cwd, "build", {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
+  });
+
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+  assert.match(result.stdout, /entry: .*src\/app.ts/);
+  assert.match(result.stdout, /"routes"\s*:\s*0/);
+
+  const goPath = path.join(cwd, "dist-go", "main.go");
+  assert.equal(fs.existsSync(goPath), true);
+
+  const goMain = fs.readFileSync(goPath, "utf8");
+  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
+  assert.doesNotMatch(goMain, /POST \/users/);
+  assert.doesNotMatch(goMain, /PATCH \/users\/\{id\}/);
+  assert.doesNotMatch(goMain, /DELETE \/users\/\{id\}/);
+});
+
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
   const cwd = setupProjectFromFixture("error-missing-entry");
   const rustLauncher = createRustEngineLauncher(cwd, [
