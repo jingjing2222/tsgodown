@@ -97,8 +97,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Semantics parity proof gate (global safety net)
-        run: pnpm run gate:semantics-parity
+      - name: Semantics + differential runtime parity proof gate (global safety net)
+        run: pnpm run gate:differential
 
       - name: Compliance/guardrail gate
         run: pnpm run gate:compliance

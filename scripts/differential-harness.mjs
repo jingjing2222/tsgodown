@@ -4,21 +4,63 @@ const REPORT_VERSION = "m4-differential-harness.v1";
 
 const SCENARIOS = {
   "fastify-scaffold-real-get-health": {
-    semanticsSurface: "fastify.get + json response",
+    semanticsSurface: "fastify.get + text response",
     description:
-      "Representative semantics-parity safety-net scenario for deterministic GET /health behavior parity.",
+      "fastify-scaffold-real deterministic runtime parity scenario for GET /health scaffold behavior.",
     cases: [
       {
-        id: "health-get-200",
+        id: "health-get-501",
         request: {
           method: "GET",
           path: "/health",
         },
         expected: {
-          status: 200,
-          body: { ok: true },
+          status: 501,
+          body: "TODO implement handler health for GET /health\n",
           headers: {
-            "content-type": "application/json",
+            "content-type": "text/plain; charset=utf-8",
+          },
+        },
+      },
+    ],
+  },
+  "hono-scaffold-real-get-health": {
+    semanticsSurface: "hono.get + text response",
+    description:
+      "hono-scaffold-real deterministic runtime parity scenario for GET /health scaffold behavior.",
+    cases: [
+      {
+        id: "health-get-501",
+        request: {
+          method: "GET",
+          path: "/health",
+        },
+        expected: {
+          status: 501,
+          body: "TODO implement handler health for GET /health\n",
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+          },
+        },
+      },
+    ],
+  },
+  "generic-simple-cli-get-health": {
+    semanticsSurface: "generic simple CLI scaffold parity via generated health route",
+    description:
+      "generic-simple-cli deterministic runtime parity scenario for generated GET /health scaffold behavior.",
+    cases: [
+      {
+        id: "health-get-501",
+        request: {
+          method: "GET",
+          path: "/health",
+        },
+        expected: {
+          status: 501,
+          body: "TODO implement handler health for GET /health\n",
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
           },
         },
       },
@@ -167,7 +209,7 @@ function runGoRuntimeProbe(scenarioName) {
       response: forceMismatch
         ? {
             ...testCase.expected,
-            status: 501,
+            status: testCase.expected.status + 2,
           }
         : {
             ...testCase.expected,
@@ -183,6 +225,27 @@ function getArg(flag) {
 }
 
 function main() {
+  const runAll = process.argv.includes("--all");
+  if (runAll) {
+    const reports = Object.keys(SCENARIOS).map((scenarioName) => {
+      const tsProbe = runTsRuntimeProbe(scenarioName);
+      const goProbe = runGoRuntimeProbe(scenarioName);
+      return compareScenario({ scenarioName, tsProbe, goProbe });
+    });
+
+    const summary = {
+      totalScenarios: reports.length,
+      passedScenarios: reports.filter((report) => report.summary.pass).length,
+      failedScenarios: reports.filter((report) => !report.summary.pass).length,
+      pass: reports.every((report) => report.summary.pass),
+    };
+
+    process.stdout.write(
+      `${JSON.stringify({ version: REPORT_VERSION, summary, reports }, null, 2)}\n`,
+    );
+    process.exit(summary.pass ? 0 : 1);
+  }
+
   const scenarioName =
     getArg("--scenario") ?? "fastify-scaffold-real-get-health";
   if (!SCENARIOS[scenarioName]) {
