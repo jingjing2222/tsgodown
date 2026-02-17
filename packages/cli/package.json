@@ -13,6 +13,7 @@
     "test": "node --import tsx --test test/**/*.test.ts"
   },
   "dependencies": {
+    "@tsgodown/config": "workspace:*",
     "@tsgodown/core": "workspace:*"
   },
   "exports": {
@@ -20,6 +21,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
     }
   }
 }
