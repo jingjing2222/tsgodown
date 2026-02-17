@@ -1,0 +1,11 @@
+modules:
+  - id=unsupported-dynamic.ts source_path=unsupported-dynamic.ts
+    exports:
+    imports:
+routes:
+handlers:
+diagnostics:
+  - level=error code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH message=route path must be a string literal source=unsupported-dynamic.ts
+  - level=error code=ANALYZER_UNSUPPORTED_INLINE_HANDLER message=route handler must be a named reference source=unsupported-dynamic.ts
+  - level=error code=ANALYZER_UNSUPPORTED_INLINE_HANDLER message=route handler must be a named reference source=unsupported-dynamic.ts
+  - level=error code=DYNAMIC_IMPORT_DETECTED message=dynamic import(...) is unsupported in compiler mode source=unsupported-dynamic.ts
