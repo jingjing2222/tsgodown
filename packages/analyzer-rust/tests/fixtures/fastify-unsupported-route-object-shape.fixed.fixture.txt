@@ -1,0 +1,7 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function listUsers() {}
+
+fastify.route({ method: "GET", url: "/users", handler: listUsers });

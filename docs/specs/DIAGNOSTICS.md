@@ -223,3 +223,19 @@ fastify.route({ method: ["GET", "POST"], url: "/users", handler: usersHandler })
 **Rationale**
 
 Route-object methods must be present and limited to currently supported HTTP methods for deterministic extraction and emission.
+
+---
+
+## Fixture matrix for unsupported diagnostics
+
+Deterministic bad/fixed fixture pairs live in:
+
+- `packages/analyzer-rust/tests/fixtures/FASTIFY_UNSUPPORTED_FIXTURE_MATRIX.md`
+
+Naming convention:
+
+- `fastify-unsupported-<topic>.bad.fixture.txt`
+- `fastify-unsupported-<topic>.fixed.fixture.txt`
+
+These pairs are consumed by `packages/analyzer-rust/tests/fastify_ast_analyzer.rs` in
+`fixture_matrix_for_fastify_unsupported_diagnostics_bad_and_fixed_pairs`.

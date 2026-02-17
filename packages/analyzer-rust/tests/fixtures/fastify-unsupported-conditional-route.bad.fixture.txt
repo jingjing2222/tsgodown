@@ -1,0 +1,9 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function health() {}
+
+if (process.env.NODE_ENV === "development") {
+  fastify.get("/health", health);
+}

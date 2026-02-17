@@ -1,0 +1,5 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+fastify.route({ method: "POST", url: "/users", handler: async () => {} });

@@ -1,0 +1,7 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function getUser() {}
+
+fastify.route({ method: "GET", url: "/users/:id", handler: getUser });

@@ -1,0 +1,10 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function listUsers() {}
+function usersPlugin(plugin) {
+  plugin.get("/users", listUsers);
+}
+
+fastify.register(usersPlugin);

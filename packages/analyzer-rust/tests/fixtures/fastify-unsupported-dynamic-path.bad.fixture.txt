@@ -1,0 +1,8 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+const dynamicPath = "/users/:id";
+
+function getUser() {}
+
+fastify.get(dynamicPath, getUser);
