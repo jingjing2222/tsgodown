@@ -12,4 +12,5 @@ pub fn analyze_compiler_entry(_file: &str, _src: &str) -> ProgramIR {
         handlers: vec![],
         diagnostics: vec![],
     }
+    .normalize()
 }
