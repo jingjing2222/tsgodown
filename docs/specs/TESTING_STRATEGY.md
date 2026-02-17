@@ -58,13 +58,17 @@ Note: the gate is limited to execution-path verification and does not cover inte
 - analyzer-rust does not emit capability policy diagnostics (`CAPABILITY_*`).
 
 ## Required checks per PR/turn
-- `npm run build` (or `pnpm run build`)
-- `npm run test` (or `pnpm run test`)
-- For Rust-related changes:
-  - `cargo fmt --all --check`
-  - `cargo clippy --workspace --all-targets -- -D warnings`
-  - `cargo test --workspace --all-targets`
+- `pnpm install --frozen-lockfile`
+- `pnpm run lint`
+- `pnpm run format:check`
+- `pnpm run build`
+- `pnpm run test`
+- `cargo fmt --all --check`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace --all-targets`
+- `./scripts/smoke-m1.sh`
 
 ## Failure handling
 - Do not report features as complete when tests fail.
 - Report the 3-item set: failure cause / reproduction command / mitigation plan.
+- Classify and triage using [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](../operations/FAILURE_TRIAGE_PLAYBOOK.md).
