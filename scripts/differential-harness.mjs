@@ -4,9 +4,9 @@ const REPORT_VERSION = "m4-differential-harness.v1";
 
 const SCENARIOS = {
   "fastify-min-get-health": {
-    subset: "fastify.get + json response",
+    semanticsSurface: "fastify.get + json response",
     description:
-      "Representative supported-subset scenario for deterministic GET /health behavior parity.",
+      "Representative semantics-parity safety-net scenario for deterministic GET /health behavior parity.",
     cases: [
       {
         id: "health-get-200",
@@ -120,7 +120,7 @@ function compareScenario({ scenarioName, tsProbe, goProbe }) {
   const report = {
     version: REPORT_VERSION,
     scenario: scenarioName,
-    subset: scenario.subset,
+    semanticsSurface: scenario.semanticsSurface,
     description: scenario.description,
     deterministic: true,
     failConditions: [

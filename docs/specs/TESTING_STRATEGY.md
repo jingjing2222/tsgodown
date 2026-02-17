@@ -47,11 +47,12 @@ Note: the gate is limited to execution-path verification and does not cover inte
 
 ## M3 runtime correctness/stability extension
 - Runtime executable-fixture coverage is extended beyond the M1/M2 happy-path checks.
+- M3+ parity suites act as a semantics-parity ratchet: regressions are blocked and previously proven behavior stays protected as a global safety net.
 - Normative parity definition: [`SEMANTIC_PARITY_CONTRACT.md`](./SEMANTIC_PARITY_CONTRACT.md)
 
 ## M4 semantics parity harness skeleton (global safety net)
 - Entrypoint: `scripts/differential-harness.mjs`
-- Representative scenario: `fastify-min-get-health` (initial semantic envelope case: `GET route + JSON response`)
+- Representative scenario: `fastify-min-get-health` (semantics parity ratchet scope: `fastify.get + json response`)
 - Deterministic report contract:
   - `version: "m4-differential-harness.v1"`
   - stable `summary` (`total`, `matched`, `mismatched`, `pass`)
