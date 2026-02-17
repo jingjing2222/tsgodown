@@ -137,6 +137,70 @@ test("emitGoProject output is byte-for-byte stable across repeated runs", () => 
   assert.equal(first, second);
 });
 
+test("emitGoProject keeps deterministic output for equivalent IR with reordered handlers/diagnostics", () => {
+  const firstOutDir = createOutDir();
+  const secondOutDir = createOutDir();
+
+  const firstIr: ProgramIR = {
+    modules: [],
+    handlers: [
+      {
+        id: "createUser",
+        params: [{ role: "request", name: "req" }],
+        async: true,
+        semantics: { responseMode: "return" },
+      },
+      {
+        id: "health",
+        params: [
+          { role: "request", name: "req" },
+          { role: "response", name: "reply" },
+        ],
+        async: false,
+        semantics: { responseMode: "response-object" },
+      },
+    ],
+    diagnostics: [
+      {
+        level: "warn",
+        code: "LATE_WARNING",
+        message: "later warning",
+        source: { file: "src/server.ts", line: 20, column: 5 },
+      },
+      {
+        level: "warn",
+        code: "EARLY_WARNING",
+        message: "earlier warning",
+        source: { file: "src/server.ts", line: 2, column: 1 },
+      },
+    ],
+    routes: [
+      { method: "GET", path: "/health", handlerRef: "health" },
+      { method: "POST", path: "/users/:id", handlerRef: "createUser" },
+    ],
+  };
+
+  const secondIr: ProgramIR = {
+    ...firstIr,
+    handlers: [...firstIr.handlers].reverse(),
+    diagnostics: [...firstIr.diagnostics].reverse(),
+  };
+
+  emitGoProject(firstIr, firstOutDir);
+  emitGoProject(secondIr, secondOutDir);
+
+  const first = fs.readFileSync(path.join(firstOutDir, "main.go"), "utf8");
+  const second = fs.readFileSync(path.join(secondOutDir, "main.go"), "utf8");
+
+  assert.equal(first, second);
+  assert.match(second, /\[warn\] EARLY_WARNING: earlier warning/);
+  assert.match(second, /\[warn\] LATE_WARNING: later warning/);
+  assert.ok(
+    second.indexOf("[warn] EARLY_WARNING") <
+      second.indexOf("[warn] LATE_WARNING"),
+  );
+});
+
 test("emitGoProject representative fixtures stay locked to checked-in golden outputs", () => {
   for (const fixtureName of representativeFixtureNames) {
     const outDir = createOutDir();
