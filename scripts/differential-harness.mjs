@@ -63,6 +63,7 @@ function canonicalizeProbeEntry(entry) {
 }
 
 function compareScenario({ scenarioName, tsProbe, goProbe }) {
+  const scenario = SCENARIOS[scenarioName];
   const tsById = new Map(
     tsProbe.map((entry) => [entry.id, canonicalizeProbeEntry(entry)]),
   );
@@ -119,6 +120,8 @@ function compareScenario({ scenarioName, tsProbe, goProbe }) {
   const report = {
     version: REPORT_VERSION,
     scenario: scenarioName,
+    subset: scenario.subset,
+    description: scenario.description,
     deterministic: true,
     failConditions: [
       "missing-ts-case",

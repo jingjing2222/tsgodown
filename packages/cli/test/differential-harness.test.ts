@@ -28,6 +28,8 @@ test("differential harness emits deterministic report format for supported-subse
   const report = JSON.parse(result.stdout) as {
     version: string;
     scenario: string;
+    subset: string;
+    description: string;
     deterministic: boolean;
     summary: {
       total: number;
@@ -45,6 +47,8 @@ test("differential harness emits deterministic report format for supported-subse
 
   assert.equal(report.version, "m4-differential-harness.v1");
   assert.equal(report.scenario, "fastify-min-get-health");
+  assert.equal(report.subset, "fastify.get + json response");
+  assert.match(report.description, /Representative supported-subset scenario/);
   assert.equal(report.deterministic, true);
   assert.deepEqual(report.summary, {
     total: 1,
