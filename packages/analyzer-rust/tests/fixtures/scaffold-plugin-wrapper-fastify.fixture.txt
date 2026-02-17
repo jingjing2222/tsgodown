@@ -1,0 +1,16 @@
+import Fastify from 'fastify';
+import fp from 'fastify-plugin';
+
+const app = Fastify();
+
+async function usersPlugin(fastify) {
+  fastify.get('/users', listUsers);
+}
+
+const scaffoldPlugin = fp(usersPlugin);
+
+app.register(scaffoldPlugin);
+
+function listUsers(req, reply) {
+  reply.send([]);
+}

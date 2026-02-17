@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
-    extract_handler_ref, extract_object_string_prop, parse_inline_plugin, split_top_level,
-    unwrap_single_call_arg,
+    extract_handler_ref, extract_identifier, extract_object_string_prop, parse_inline_plugin,
+    split_top_level, unwrap_single_call_arg,
 };
 use crate::defs::{HandlerDef, PluginDef};
 use crate::diagnostics::diag;
@@ -18,6 +18,7 @@ pub(crate) fn analyze_register_call(
     prefix: &str,
     plugin_defs: &HashMap<String, PluginDef>,
     plugin_aliases: &HashMap<String, String>,
+    plugin_call_aliases: &HashMap<String, String>,
     handler_defs: &HashMap<String, HandlerDef>,
     routes: &mut Vec<RouteIR>,
     handlers: &mut Vec<HandlerIR>,
@@ -30,12 +31,33 @@ pub(crate) fn analyze_register_call(
         extract_object_string_prop(options_expr, "prefix").unwrap_or_default();
     let next_prefix = join_path(prefix, &prefix_from_register);
 
-    let mut candidates = vec![plugin_expr.to_string()];
-    let mut cursor = plugin_expr.to_string();
-    while let Some(inner) = unwrap_single_call_arg(&cursor) {
-        candidates.push(inner.clone());
-        cursor = inner;
+    let mut candidates = vec![];
+    let mut stack = vec![plugin_expr.to_string()];
+    let mut seen = HashSet::new();
+
+    while let Some(candidate) = stack.pop() {
+        let normalized = candidate.trim().to_string();
+        if normalized.is_empty() || !seen.insert(normalized.clone()) {
+            continue;
+        }
+
+        if let Some(inner) = unwrap_single_call_arg(&normalized) {
+            stack.push(inner);
+        }
+
+        if let Some(identifier) = extract_identifier(&normalized) {
+            if let Some(next) = plugin_aliases.get(&identifier) {
+                stack.push(next.clone());
+            }
+            if let Some(call_expr) = plugin_call_aliases.get(&identifier) {
+                stack.push(call_expr.clone());
+            }
+        }
+
+        candidates.push(normalized);
     }
+
+    let mut unresolved_plugin_ref: Option<String> = None;
 
     for candidate in &candidates {
         if let Some(inline) = parse_inline_plugin(candidate) {
@@ -46,6 +68,7 @@ pub(crate) fn analyze_register_call(
                 &next_prefix,
                 plugin_defs,
                 plugin_aliases,
+                plugin_call_aliases,
                 handler_defs,
                 routes,
                 handlers,
@@ -63,6 +86,7 @@ pub(crate) fn analyze_register_call(
                     &next_prefix,
                     plugin_defs,
                     plugin_aliases,
+                    plugin_call_aliases,
                     handler_defs,
                     routes,
                     handlers,
@@ -87,6 +111,7 @@ pub(crate) fn analyze_register_call(
                         &next_prefix,
                         plugin_defs,
                         plugin_aliases,
+                        plugin_call_aliases,
                         handler_defs,
                         routes,
                         handlers,
@@ -96,16 +121,22 @@ pub(crate) fn analyze_register_call(
                 }
             }
 
-            diagnostics.push(diag(
-                file,
-                "ANALYZER_UNRESOLVED_PLUGIN",
-                &format!(
-                    "register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
-                    plugin_ref
-                ),
-            ));
-            return;
+            if unresolved_plugin_ref.is_none() {
+                unresolved_plugin_ref = Some(plugin_ref);
+            }
         }
+    }
+
+    if let Some(plugin_ref) = unresolved_plugin_ref {
+        diagnostics.push(diag(
+            file,
+            "ANALYZER_UNRESOLVED_PLUGIN",
+            &format!(
+                "register plugin '{}' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.",
+                plugin_ref
+            ),
+        ));
+        return;
     }
 
     diagnostics.push(diag(
