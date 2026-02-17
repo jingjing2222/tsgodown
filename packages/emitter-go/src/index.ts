@@ -9,6 +9,7 @@ import {
   renderResolveListenAddr,
   renderRoute,
   renderRouteRegistry,
+  renderRuntimeRouter,
 } from "./render/index";
 
 export function emitGoProject(ir: ProgramIR, outDir: string) {
@@ -18,6 +19,7 @@ export function emitGoProject(ir: ProgramIR, outDir: string) {
   lines.push("package main", "");
   lines.push(...renderGoImports());
   lines.push(...renderDiagnosticsComments(ir.diagnostics));
+  lines.push(...renderRuntimeRouter());
   lines.push(...renderRouteRegistry(ir.routes));
   lines.push(...renderResolveListenAddr());
   lines.push(...renderMainFunction());

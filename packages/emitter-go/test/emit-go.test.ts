@@ -52,9 +52,18 @@ test("emitGoProject emits deterministic main.go scaffold with method-aware route
 
   const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
 
-  assert.match(emitted, /func registerRoutes\(mux \*http\.ServeMux\) \{/);
-  assert.match(emitted, /mux\.HandleFunc\("GET \/health", route0\)/);
-  assert.match(emitted, /mux\.HandleFunc\("POST \/users\/\{id\}", route1\)/);
+  assert.match(emitted, /func registerRoutes\(router \*runtimeRouter\) \{/);
+  assert.match(emitted, /router\.handle\("GET", "\/health", route0\)/);
+  assert.match(emitted, /router\.handle\("POST", "\/users\/\{id\}", route1\)/);
+  assert.match(emitted, /type runtimeRouter struct \{/);
+  assert.match(
+    emitted,
+    /func \(r \*runtimeRouter\) ServeHTTP\(w http\.ResponseWriter, req \*http\.Request\) \{/,
+  );
+  assert.match(
+    emitted,
+    /w\.Header\(\)\.Set\("Allow", strings\.Join\(allow, ", "\)\)/,
+  );
   assert.doesNotMatch(emitted, /if req\.Method != http\.MethodGet \{/);
   assert.doesNotMatch(emitted, /if req\.Method != http\.MethodPost \{/);
   assert.match(emitted, /\/\/ Route metadata:/);
@@ -143,7 +152,7 @@ test("emitGoProject normalizes route methods and extracts both colon and braces 
 
   assert.match(
     emitted,
-    /mux\.HandleFunc\("GET \/users\/\{userId\}\/orders\/\{orderId\}", route0\)/,
+    /router\.handle\("GET", "\/users\/\{userId\}\/orders\/\{orderId\}", route0\)/,
   );
   assert.match(emitted, /userId := req\.PathValue\("userId"\)/);
   assert.match(emitted, /orderId := req\.PathValue\("orderId"\)/);
@@ -170,7 +179,7 @@ test("emitGoProject falls back to GET for empty route methods to keep scaffold b
 
   const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
 
-  assert.match(emitted, /mux\.HandleFunc\("GET \/health", route0\)/);
+  assert.match(emitted, /router\.handle\("GET", "\/health", route0\)/);
   assert.match(
     emitted,
     /TODO\(tsgodown\): Implement handler "fallbackMethod" for GET \/health\./,
@@ -285,6 +294,36 @@ test(
   },
 );
 
+function shutdownServer(server: ReturnType<typeof spawn>) {
+  if (server.exitCode === null && !server.killed) {
+    server.kill("SIGTERM");
+  }
+
+  return new Promise<void>((resolve) => {
+    if (server.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    const forceKillTimer = setTimeout(() => {
+      if (server.exitCode === null) {
+        server.kill("SIGKILL");
+      }
+    }, 1500);
+
+    const settleTimer = setTimeout(() => {
+      clearTimeout(forceKillTimer);
+      resolve();
+    }, 5000);
+
+    server.once("close", () => {
+      clearTimeout(forceKillTimer);
+      clearTimeout(settleTimer);
+      resolve();
+    });
+  });
+}
+
 test(
   "emitGoProject smoke: generated server can boot and serve not-implemented route",
   { skip: !runGoSmoke },
@@ -348,33 +387,82 @@ test(
         /TODO implement handler health for GET \/health/,
       );
     } finally {
-      if (server.exitCode === null && !server.killed) {
-        server.kill("SIGTERM");
+      await shutdownServer(server);
+    }
+  },
+);
+
+test(
+  "emitGoProject smoke: runtime returns deterministic 404/405 for complex method/path matching",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = String(20000 + Math.floor(Math.random() * 1000));
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [
+          { id: "showUser", params: [], async: false },
+          { id: "deleteUser", params: [], async: false },
+        ],
+        diagnostics: [],
+        routes: [
+          { method: "GET", path: "/users/:id", handlerRef: "showUser" },
+          { method: "DELETE", path: "/users/:id", handlerRef: "deleteUser" },
+        ],
+      },
+      outDir,
+    );
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-status"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(
+      modInit.status,
+      0,
+      `go mod init failed in ${outDir}\nstdout:\n${modInit.stdout}\nstderr:\n${modInit.stderr}`,
+    );
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const base = `http://127.0.0.1:${port}`;
+    const deadline = Date.now() + 10_000;
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const warm = await fetch(`${base}/users/123`, {
+            signal: AbortSignal.timeout(1000),
+          });
+          if (warm.status > 0) break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
       }
 
-      await new Promise<void>((resolve) => {
-        if (server.exitCode !== null) {
-          resolve();
-          return;
-        }
-
-        const forceKillTimer = setTimeout(() => {
-          if (server.exitCode === null) {
-            server.kill("SIGKILL");
-          }
-        }, 1500);
-
-        const settleTimer = setTimeout(() => {
-          clearTimeout(forceKillTimer);
-          resolve();
-        }, 5000);
-
-        server.once("close", () => {
-          clearTimeout(forceKillTimer);
-          clearTimeout(settleTimer);
-          resolve();
-        });
+      const methodNotAllowed = await fetch(`${base}/users/123`, {
+        method: "POST",
+        signal: AbortSignal.timeout(1000),
       });
+      assert.equal(methodNotAllowed.status, 405);
+      assert.equal(methodNotAllowed.headers.get("allow"), "DELETE, GET");
+
+      const notFound = await fetch(`${base}/unknown/123`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(notFound.status, 404);
+    } finally {
+      await shutdownServer(server);
     }
   },
 );

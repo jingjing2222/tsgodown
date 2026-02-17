@@ -13,7 +13,7 @@ export function normalizeRoutePath(pathname: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-function toServeMuxPath(pathname: string): string {
+export function toServeMuxPath(pathname: string): string {
   return normalizeRoutePath(pathname).replaceAll(
     /:([A-Za-z_][A-Za-z0-9_]*)/g,
     "{$1}",
