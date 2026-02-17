@@ -1018,15 +1018,12 @@ test("M4 devx acceptance: fastify-complex fixture emits deterministic method/pat
   const goMain = fs.readFileSync(goPath, "utf8");
   assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
   assert.match(goMain, /mux\.HandleFunc\("POST \/users"/);
-  assert.match(goMain, /mux\.HandleFunc\("PUT \/users\/:id"/);
-  assert.match(goMain, /mux\.HandleFunc\("DELETE \/users\/:id"/);
+  assert.match(goMain, /mux\.HandleFunc\("PATCH \/users\/{id}"/);
+  assert.match(goMain, /mux\.HandleFunc\("DELETE \/users\/{id}"/);
+  assert.match(goMain, /TODO implement handler createUser for POST \/users/);
   assert.match(
     goMain,
-    /TODO implement handler createUserHandler for POST \/users/,
-  );
-  assert.match(
-    goMain,
-    /TODO implement handler deleteUserHandler for DELETE \/users\/:id/,
+    /TODO implement handler removeUser for DELETE \/users\/:id/,
   );
   assertGoMainScaffold(goMain);
 });

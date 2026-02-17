@@ -23,7 +23,7 @@ function removeUser(_req: unknown, reply: { send: (value: unknown) => void }) {
 
 fastify.get("/health", health);
 fastify.post("/users", createUser);
-fastify.put("/users/:id", updateUser);
+fastify.patch("/users/:id", updateUser);
 fastify.delete("/users/:id", removeUser);
 
 export { health, createUser, updateUser, removeUser };
