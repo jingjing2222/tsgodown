@@ -1,0 +1,11 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+fastify.get("/health", async (req, reply) => {
+  reply.send({ ok: true });
+});
+
+fastify.route({ method: "post", url: "/users", handler: function (request) {
+  return { ok: true };
+}});

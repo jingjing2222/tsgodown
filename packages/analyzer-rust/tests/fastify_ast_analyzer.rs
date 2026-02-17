@@ -78,7 +78,6 @@ fn emits_explicit_diagnostics_for_unsupported_patterns() {
         vec![
             "ANALYZER_UNRESOLVED_PLUGIN".to_string(),
             "ANALYZER_UNSUPPORTED_DYNAMIC_PATH".to_string(),
-            "ANALYZER_UNSUPPORTED_INLINE_HANDLER".to_string(),
         ]
     );
 
@@ -90,8 +89,7 @@ fn emits_explicit_diagnostics_for_unsupported_patterns() {
     assert!(messages
         .iter()
         .any(|m| m.contains("dynamic path") && m.contains("Use string literal path")));
-    assert!(messages.iter().any(|m| m.contains("non-reference handler")
-        && m.contains("Extract handler to a named function")));
+    assert!(!messages.iter().any(|m| m.contains("non-reference handler")));
     assert!(messages
         .iter()
         .any(|m| m.contains("register plugin 'externalPlugin'")
@@ -450,7 +448,13 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
     let (file, src) = fixture("unsupported-route-object-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);
 
-    assert!(ir.routes.is_empty());
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("POST", "/inline")]
+    );
 
     let actual = ir
         .diagnostics
@@ -495,12 +499,6 @@ fn emits_deterministic_boundary_diagnostics_for_unsupported_route_object_pattern
                 "warn",
                 file.as_str(),
             ),
-            (
-                "ANALYZER_UNSUPPORTED_INLINE_HANDLER",
-                "unsupported route object handler in fastify.route({...}). Provide named handler reference in 'handler' field.",
-                "warn",
-                file.as_str(),
-            ),
         ]
     );
 }
@@ -518,6 +516,84 @@ fn supports_route_object_method_array_extraction() {
         vec![
             ("PUT", "/things/:id", "replaceThing"),
             ("PATCH", "/things/:id", "replaceThing"),
+        ]
+    );
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn supports_route_object_method_variants_and_register_wrapper_plugin() {
+    let (file_route, src_route) = fixture("route-object-method-variants-fastify.fixture.txt");
+    let route_ir = analyze_fastify_entry(&file_route, &src_route);
+
+    assert_eq!(
+        route_ir
+            .routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("PATCH", "/users/:id", "updateUser"),
+            ("PUT", "/users/:id", "removeUser"),
+            ("DELETE", "/users/:id", "removeUser"),
+        ]
+    );
+    assert!(route_ir.diagnostics.is_empty());
+
+    let (file_register, src_register) = fixture("register-wrapper-fastify.fixture.txt");
+    let register_ir = analyze_fastify_entry(&file_register, &src_register);
+    assert_eq!(
+        register_ir
+            .routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("GET", "/v1/users", "listUsers")]
+    );
+    assert!(register_ir.diagnostics.is_empty());
+}
+
+#[test]
+fn supports_deterministic_inline_handler_synthesis() {
+    let (file, src) = fixture("inline-handler-synth-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/health", "__inline__get__a38f039b84b03a0a"),
+            ("POST", "/users", "__inline__route__73ddf17fee278333"),
+        ]
+    );
+
+    assert_eq!(
+        ir.handlers
+            .iter()
+            .map(|h| {
+                (
+                    h.id.as_str(),
+                    h.params
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.role.as_str()))
+                        .collect::<Vec<_>>(),
+                    h.r#async,
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "__inline__get__a38f039b84b03a0a",
+                vec![("req", "request"), ("reply", "response")],
+                true,
+            ),
+            (
+                "__inline__route__73ddf17fee278333",
+                vec![("request", "request")],
+                false,
+            ),
         ]
     );
     assert!(ir.diagnostics.is_empty());
