@@ -12,7 +12,7 @@ pub use ir::{
 };
 
 use defs::{collect_handler_definitions, collect_plugin_definitions, detect_root_instance_name};
-use diagnostics::diag;
+use diagnostics::{dedupe_diagnostics, diag};
 use traversal::analyze_scope;
 
 pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
@@ -40,7 +40,7 @@ pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
         diagnostics.push(diag(
             file,
             "DYNAMIC_IMPORT_DETECTED",
-            "dynamic import detected",
+            "dynamic import detected; use static import declarations for deterministic IR extraction.",
         ));
     }
 
@@ -48,6 +48,6 @@ pub fn analyze_fastify_entry(file: &str, src: &str) -> ProgramIR {
         modules: vec![],
         routes,
         handlers,
-        diagnostics,
+        diagnostics: dedupe_diagnostics(diagnostics),
     }
 }

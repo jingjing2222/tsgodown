@@ -1,0 +1,7 @@
+routes=[]
+handlers=[]
+diagnostics=[
+  {level=warn,code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH,message=unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.,source.file=duplicate-diagnostics-fastify.fixture.txt},
+  {level=warn,code=ANALYZER_UNSUPPORTED_INLINE_HANDLER,message=unsupported non-reference handler in fastify.post('/inline', handler). Extract handler to a named function and pass its identifier.,source.file=duplicate-diagnostics-fastify.fixture.txt},
+  {level=warn,code=ANALYZER_UNRESOLVED_PLUGIN,message=register plugin 'externalPlugin' could not be resolved in current file. Ensure plugin is declared in the same file or use an inline callback.,source.file=duplicate-diagnostics-fastify.fixture.txt},
+]
