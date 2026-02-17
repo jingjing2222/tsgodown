@@ -55,7 +55,10 @@ fastify.get("/health", health);
 
 **Rationale**
 
-Conditional route registration makes compile-time extraction non-deterministic. Routes must be declared at top-level plugin scope.
+Non-constant conditional route registration makes compile-time extraction non-deterministic.
+
+**Supported subset (no diagnostic):**
+- Compile-time constant conditions using boolean literals with `!`, `&&`, `||`, and parentheses. Only the active branch is extracted.
 
 ---
 
@@ -131,7 +134,13 @@ fastify.route({ method: "GET", url: "/users/:id", handler: getUser });
 
 **Rationale**
 
-Route paths must be string literals so analyzer output is deterministic and IR-ready.
+Route paths must be compile-time static strings so analyzer output is deterministic and IR-ready.
+
+**Supported subset (no diagnostic):**
+- `'...'`, `"..."`, and static template literals without interpolation (e.g. `` `/users/:id` ``).
+
+**Still rejected:**
+- Template literals with `${...}` interpolation and computed expressions.
 
 ---
 

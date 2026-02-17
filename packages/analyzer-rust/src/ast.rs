@@ -128,12 +128,26 @@ pub(crate) fn first_object_literal(src: &str) -> Option<String> {
 }
 
 pub(crate) fn extract_quoted_string(v: &str) -> Option<String> {
+    extract_static_string_literal(v)
+}
+
+pub(crate) fn extract_static_string_literal(v: &str) -> Option<String> {
     let t = v.trim();
-    if t.len() >= 2
-        && ((t.starts_with('"') && t.ends_with('"')) || (t.starts_with('\'') && t.ends_with('\'')))
-    {
+    if t.len() < 2 {
+        return None;
+    }
+
+    if (t.starts_with('"') && t.ends_with('"')) || (t.starts_with('\'') && t.ends_with('\'')) {
         return Some(t[1..t.len() - 1].to_string());
     }
+
+    if t.starts_with('`') && t.ends_with('`') {
+        let inner = &t[1..t.len() - 1];
+        if !inner.contains("${") {
+            return Some(inner.to_string());
+        }
+    }
+
     None
 }
 
@@ -149,7 +163,7 @@ pub(crate) fn extract_handler_ref(v: &str) -> Option<String> {
 
 pub(crate) fn extract_object_string_prop(obj: &str, key: &str) -> Option<String> {
     let pattern = format!(
-        r#"(?s)(?:\b{}\b|"{}")\s*:\s*("[^"]*"|'[^']*')"#,
+        r#"(?s)(?:\b{}\b|"{}")\s*:\s*("[^"]*"|'[^']*'|`[^`]*`)"#,
         regex::escape(key),
         regex::escape(key)
     );
@@ -205,7 +219,8 @@ pub(crate) fn unwrap_single_call_arg(expr: &str) -> Option<String> {
 pub(crate) fn parse_inline_handler_signature(expr: &str) -> Option<(Vec<String>, bool)> {
     let t = expr.trim();
 
-    let re_arrow = Regex::new(r"(?s)^(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>").unwrap();
+    let re_arrow = Regex::new(r"(?s)^(async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>")
+        .unwrap();
     if let Some(cap) = re_arrow.captures(t) {
         let params_src = cap
             .get(2)
@@ -234,7 +249,14 @@ pub(crate) fn parse_inline_handler_signature(expr: &str) -> Option<(Vec<String>,
     })
 }
 
-pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
+#[derive(Clone, Debug)]
+pub(crate) struct IfBlockInfo {
+    pub then_range: (usize, usize),
+    pub else_range: Option<(usize, usize)>,
+    pub condition_value: Option<bool>,
+}
+
+pub(crate) fn find_if_block_infos(src: &str) -> Vec<IfBlockInfo> {
     let bytes = src.as_bytes();
     let mut out = vec![];
     let mut i = 0usize;
@@ -254,21 +276,26 @@ pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
                 i += 2;
                 continue;
             }
-            let Some((_, cond_consumed)) = capture_balanced(&src[j + 1..], '(', ')') else {
+            let Some((condition_raw, cond_consumed)) = capture_balanced(&src[j + 1..], '(', ')') else {
                 i += 2;
                 continue;
             };
+            let condition_value = eval_static_bool_expr(&condition_raw);
+
             j = j + 1 + cond_consumed;
             while j < bytes.len() && bytes[j].is_ascii_whitespace() {
                 j += 1;
             }
+
+            let mut then_range = None;
             if j < bytes.len() && bytes[j] == b'{' {
                 if let Some((_, body_consumed)) = capture_balanced(&src[j + 1..], '{', '}') {
-                    out.push((j + 1, j + body_consumed));
+                    then_range = Some((j + 1, j + body_consumed));
                     j = j + 1 + body_consumed;
                 }
             }
 
+            let mut else_range = None;
             while j < bytes.len() && bytes[j].is_ascii_whitespace() {
                 j += 1;
             }
@@ -279,10 +306,18 @@ pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
                 }
                 if k < bytes.len() && bytes[k] == b'{' {
                     if let Some((_, else_consumed)) = capture_balanced(&src[k + 1..], '{', '}') {
-                        out.push((k + 1, k + else_consumed));
+                        else_range = Some((k + 1, k + else_consumed));
                         j = k + 1 + else_consumed;
                     }
                 }
+            }
+
+            if let Some(then_range) = then_range {
+                out.push(IfBlockInfo {
+                    then_range,
+                    else_range,
+                    condition_value,
+                });
             }
 
             i = j;
@@ -293,6 +328,120 @@ pub(crate) fn find_if_block_ranges(src: &str) -> Vec<(usize, usize)> {
     }
 
     out
+}
+
+// Intentionally no range-only helper; use find_if_block_infos for branch-aware handling.
+
+fn eval_static_bool_expr(src: &str) -> Option<bool> {
+    struct Parser<'a> {
+        s: &'a [u8],
+        i: usize,
+    }
+
+    impl<'a> Parser<'a> {
+        fn new(src: &'a str) -> Self {
+            Self {
+                s: src.as_bytes(),
+                i: 0,
+            }
+        }
+
+        fn parse(mut self) -> Option<bool> {
+            let value = self.parse_or()?;
+            self.ws();
+            if self.i == self.s.len() {
+                Some(value)
+            } else {
+                None
+            }
+        }
+
+        fn parse_or(&mut self) -> Option<bool> {
+            let mut left = self.parse_and()?;
+            loop {
+                self.ws();
+                if self.consume("||") {
+                    let right = self.parse_and()?;
+                    left = left || right;
+                } else {
+                    break;
+                }
+            }
+            Some(left)
+        }
+
+        fn parse_and(&mut self) -> Option<bool> {
+            let mut left = self.parse_not()?;
+            loop {
+                self.ws();
+                if self.consume("&&") {
+                    let right = self.parse_not()?;
+                    left = left && right;
+                } else {
+                    break;
+                }
+            }
+            Some(left)
+        }
+
+        fn parse_not(&mut self) -> Option<bool> {
+            self.ws();
+            if self.consume("!") {
+                return Some(!self.parse_not()?);
+            }
+            self.parse_primary()
+        }
+
+        fn parse_primary(&mut self) -> Option<bool> {
+            self.ws();
+            if self.consume("(") {
+                let v = self.parse_or()?;
+                self.ws();
+                if !self.consume(")") {
+                    return None;
+                }
+                return Some(v);
+            }
+            if self.consume_word("true") {
+                return Some(true);
+            }
+            if self.consume_word("false") {
+                return Some(false);
+            }
+            None
+        }
+
+        fn ws(&mut self) {
+            while self.i < self.s.len() && self.s[self.i].is_ascii_whitespace() {
+                self.i += 1;
+            }
+        }
+
+        fn consume(&mut self, token: &str) -> bool {
+            let b = token.as_bytes();
+            if self.i + b.len() <= self.s.len() && &self.s[self.i..self.i + b.len()] == b {
+                self.i += b.len();
+                true
+            } else {
+                false
+            }
+        }
+
+        fn consume_word(&mut self, word: &str) -> bool {
+            let b = word.as_bytes();
+            if self.i + b.len() > self.s.len() || &self.s[self.i..self.i + b.len()] != b {
+                return false;
+            }
+            let next = self.i + b.len();
+            if next < self.s.len() && is_ident_char(self.s[next]) {
+                return false;
+            }
+            self.i = next;
+            true
+        }
+    }
+
+    Parser::new(src).parse()
 }
 
 fn is_ident_char(b: u8) -> bool {

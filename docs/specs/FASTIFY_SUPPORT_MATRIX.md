@@ -93,9 +93,15 @@ fastify.route({ method: 'POST', url: '/users', handler: function (request) { ret
 
 These cases are supported with constraints (or intentionally bounded for deterministic extraction):
 
-- **Conditional route declarations are not extracted inside `if` blocks.**
-  - Determinism boundary: route graph must be statically stable.
-  - Emits `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE` (see Unsupported section).
+- **Conditional route declarations are partially supported for compile-time constant conditions only.**
+  - Supported condition subset: boolean literals with `!`, `&&`, `||`, and parentheses (e.g. `if (true && !false) { ... } else { ... }`).
+  - Analyzer extracts only the statically active branch.
+  - Non-constant conditions still emit `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`.
+
+- **Dynamic path expressions are partially supported for static template literals only.**
+  - Supported: backtick literals without interpolation (e.g. `` `/users/:id` ``).
+  - Rejected: template literals containing `${...}` and non-literal path expressions.
+  - Rejected cases emit `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`.
 
 - **Plugin/register analysis is static and file-local.**
   - Prefix composition + nested plugin traversal works for analyzable callbacks/definitions.
@@ -103,6 +109,13 @@ These cases are supported with constraints (or intentionally bounded for determi
 
 - **Method support is intentionally constrained in route-object mode.**
   - Route object methods must be one of `GET|POST|PUT|DELETE|PATCH`.
+
+### 2.1 Partial-support policy table
+
+| Pattern class | Supported subset | Rejected subset | Rationale |
+| --- | --- | --- | --- |
+| Conditional route registration | `if` condition statically reducible to boolean using literals + `!`/`&&`/`||`/parentheses; only active branch extracted | Runtime/env/data-dependent conditions | Keep route graph deterministic at compile time |
+| Path literal shape | `'...'`, `"..."`, and static `` `...` `` literals (no `${}`) | Interpolated templates and computed expressions | Require concrete compile-time path strings |
 
 ---
 
@@ -115,6 +128,10 @@ For each unsupported boundary below, the diagnostic code is canonical.
 When it triggers:
 - Shorthand route path is non-literal/dynamic.
 - Route object `url`/`path` is missing or non-literal.
+- Template literal path includes interpolation (e.g. `` `/users/${id}` ``).
+
+Note:
+- Static template literals without interpolation (e.g. `` `/users/:id` ``) are supported.
 
 Why unsupported:
 - Deterministic IR extraction requires concrete compile-time path strings.
@@ -219,10 +236,10 @@ fastify.route({ method: 'GET', url: '/users', handler: listUsers })
 ## 3.5 `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`
 
 When it triggers:
-- Fastify route registration appears in `if`-block conditional scope.
+- Fastify route registration appears in an `if`-block whose condition is not compile-time constant in the supported subset.
 
 Why unsupported:
-- Conditional registration can vary by runtime state/env, violating deterministic static extraction guarantees.
+- Non-constant conditional registration can vary by runtime state/env, violating deterministic static extraction guarantees.
 
 Recommended rewrite:
 

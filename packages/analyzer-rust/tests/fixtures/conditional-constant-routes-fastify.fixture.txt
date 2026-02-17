@@ -1,0 +1,22 @@
+import Fastify from "fastify";
+
+const fastify = Fastify();
+
+function alwaysOn() {}
+function gatedOn() {}
+function gatedOff() {}
+function fallback() {}
+
+fastify.get("/always", alwaysOn);
+
+if (true && !false) {
+  fastify.get("/gated-on", gatedOn);
+} else {
+  fastify.get("/gated-off", gatedOff);
+}
+
+if (false) {
+  fastify.get("/never", gatedOff);
+} else {
+  fastify.post("/fallback", fallback);
+}

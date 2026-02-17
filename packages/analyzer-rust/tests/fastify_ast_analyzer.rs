@@ -600,7 +600,7 @@ fn supports_deterministic_inline_handler_synthesis() {
 }
 
 #[test]
-fn emits_deterministic_diagnostics_and_skips_routes_in_if_blocks() {
+fn emits_deterministic_diagnostics_for_non_constant_if_blocks() {
     let (file, src) = fixture("conditional-routes-fastify.fixture.txt");
     let ir = analyze_fastify_entry(&file, &src);
 
@@ -628,6 +628,70 @@ fn emits_deterministic_diagnostics_and_skips_routes_in_if_blocks() {
         .diagnostics
         .iter()
         .all(|d| d.source.as_ref().map(|s| s.file.as_str()) == Some(file.as_str())));
+}
+
+#[test]
+fn extracts_routes_from_compile_time_constant_if_branches_only() {
+    let (file, src) = fixture("conditional-constant-routes-fastify.fixture.txt");
+    let ir = analyze_fastify_entry(&file, &src);
+
+    assert_eq!(
+        ir.routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/always", "alwaysOn"),
+            ("GET", "/gated-on", "gatedOn"),
+            ("POST", "/fallback", "fallback"),
+        ]
+    );
+
+    assert!(ir.diagnostics.is_empty());
+
+    assert!(ir
+        .routes
+        .iter()
+        .all(|r| r.path != "/gated-off" && r.path != "/never"));
+}
+
+#[test]
+fn supports_static_template_literal_paths_and_rejects_dynamic_templates() {
+    let (supported_file, supported_src) = fixture("template-literal-static-fastify.fixture.txt");
+    let supported_ir = analyze_fastify_entry(&supported_file, &supported_src);
+
+    assert_eq!(
+        supported_ir
+            .routes
+            .iter()
+            .map(|r| (r.method.as_str(), r.path.as_str(), r.handler_ref.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("GET", "/users/:id", "getUsers"),
+            ("GET", "/accounts/:id", "getAccounts"),
+        ]
+    );
+    assert!(supported_ir.diagnostics.is_empty());
+
+    let (rejected_file, rejected_src) = fixture("template-literal-dynamic-fastify.fixture.txt");
+    let rejected_ir = analyze_fastify_entry(&rejected_file, &rejected_src);
+
+    assert!(rejected_ir.routes.is_empty());
+    assert_eq!(
+        rejected_ir
+            .diagnostics
+            .iter()
+            .map(|d| (d.code.as_str(), d.message.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(
+            "ANALYZER_UNSUPPORTED_DYNAMIC_PATH",
+            "unsupported dynamic path in fastify.get(...). Use string literal path (e.g. '/users/:id') for IR extraction.",
+        )]
+    );
+    assert!(rejected_ir
+        .diagnostics
+        .iter()
+        .all(|d| d.source.as_ref().map(|s| s.file.as_str()) == Some(rejected_file.as_str())));
 }
 
 #[test]
