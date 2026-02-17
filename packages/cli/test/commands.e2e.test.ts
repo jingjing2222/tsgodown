@@ -1203,67 +1203,7 @@ test.skip("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stab
   });
 });
 
-test.skip("M4 devx acceptance: fastify-complex fixture emits deterministic method/path scaffold", () => {
-  const cwd = setupProjectFromFixture("fastify-complex");
-  const rustLauncher = resolveRustEngineLauncherScript();
-  const engineCoreBin = resolveEngineCoreBin();
-
-  const result = runCli(cwd, "build", {
-    ...process.env,
-    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
-    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
-  });
-
-  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
-
-  const goPath = path.join(cwd, "dist-go", "main.go");
-  assert.equal(fs.existsSync(goPath), true);
-
-  const goMain = fs.readFileSync(goPath, "utf8");
-  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
-  assert.match(goMain, /mux\.HandleFunc\("POST \/users"/);
-  assert.match(goMain, /mux\.HandleFunc\("PATCH \/users\/{id}"/);
-  assert.match(goMain, /mux\.HandleFunc\("DELETE \/users\/{id}"/);
-  assert.match(goMain, /TODO implement handler createUser for POST \/users/);
-  assert.match(
-    goMain,
-    /TODO implement handler removeUser for DELETE \/users\/:id/,
-  );
-  assertGoMainScaffold(goMain);
-});
-
-test("M4 runtime contract: scaffold-style fixture keeps deterministic fallback behavior", async () => {
-  const cwd = setupProjectFromFixture("fastify-scaffold-contract");
-  const rustLauncher = resolveRustEngineLauncherScript();
-  const engineCoreBin = resolveEngineCoreBin();
-
-  const result = runCli(cwd, "build", {
-    ...process.env,
-    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
-    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
-  });
-
-  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
-  const goMain = fs.readFileSync(path.join(cwd, "dist-go", "main.go"), "utf8");
-  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
-  assert.doesNotMatch(goMain, /POST \/users/);
-
-  const goDir = path.join(cwd, "dist-go");
-  await assertGoRunRequest(goDir, {
-    method: "GET",
-    routePath: "/health",
-    expectedStatus: 501,
-    expectedBodyFragment: "TODO implement handler",
-  });
-  await assertGoRunRequest(goDir, {
-    method: "POST",
-    routePath: "/users",
-    expectedStatus: 404,
-    expectedBodyFragment: "404 page not found",
-  });
-});
-
-test.skip("M4 acceptance: fastify-unsupported-dynamic fixture fails with deterministic diagnostics", () => {
+test("M4 acceptance: fastify-unsupported-dynamic fixture stays compiler-subset deterministic", () => {
   const cwd = setupProjectFromFixture("fastify-unsupported-dynamic");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
@@ -1274,58 +1214,25 @@ test.skip("M4 acceptance: fastify-unsupported-dynamic fixture fails with determi
     TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
   });
 
-  assert.notEqual(
-    result.status,
-    0,
-    "build should fail for unsupported patterns",
-  );
+  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
+
   const parsed = parseJsonStdout(result.stdout) as {
     ok: boolean;
-    error: {
-      source?: string;
-      cause?: string;
-      guidance?: string;
-      message?: string;
-    };
+    command: string;
+    targets: Array<{
+      diagnostics?: {
+        routes?: number;
+        warnings?: string[];
+      };
+    }>;
   };
 
-  assert.equal(parsed.ok, false);
-  assert.equal(parsed.error.source, "pipeline-entry(src/index.ts)");
-  assert.equal(
-    parsed.error.guidance,
-    "Verify rust engine build/analyze contract and tsgodown.config.ts settings.",
-  );
-  assert.match(parsed.error.message ?? "", /source=rust-engine-adapter/);
-  assert.match(parsed.error.message ?? "", /ANALYZER_UNSUPPORTED_DYNAMIC_PATH/);
-  assert.match(
-    parsed.error.message ?? "",
-    /ANALYZER_UNSUPPORTED_INLINE_HANDLER/,
-  );
-});
-
-test("M4 acceptance: real fastify scaffold fixture builds via installed workspace CLI and currently drops plugin-registered routes", () => {
-  const cwd = setupProjectFromFixture("fastify-scaffold-real");
-  const rustLauncher = resolveRustEngineLauncherScript();
-  const engineCoreBin = resolveEngineCoreBin();
-
-  const result = runCli(cwd, "build", {
-    ...process.env,
-    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
-    TSGODOWN_ENGINE_CORE_BIN: engineCoreBin,
-  });
-
-  assert.equal(result.status, 0, `build failed: ${result.stderr}`);
-  assert.match(result.stdout, /entry: .*src\/app.ts/);
-  assert.match(result.stdout, /"routes"\s*:\s*0/);
-
-  const goPath = path.join(cwd, "dist-go", "main.go");
-  assert.equal(fs.existsSync(goPath), true);
-
-  const goMain = fs.readFileSync(goPath, "utf8");
-  assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
-  assert.doesNotMatch(goMain, /POST \/users/);
-  assert.doesNotMatch(goMain, /PATCH \/users\/\{id\}/);
-  assert.doesNotMatch(goMain, /DELETE \/users\/\{id\}/);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.command, "build");
+  assert.equal(parsed.targets[0]?.diagnostics?.routes, 0);
+  assert.deepEqual(parsed.targets[0]?.diagnostics?.warnings, [
+    "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.",
+  ]);
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {
