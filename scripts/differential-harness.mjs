@@ -24,6 +24,61 @@ const SCENARIOS = {
       },
     ],
   },
+  "fastify-scaffold-real-routes": {
+    subset: "real-fastify scaffold route behavior parity",
+    description:
+      "Deterministic parity checks for scaffold-real style endpoints including method matrix and negative-path behavior.",
+    cases: [
+      {
+        id: "health-get-200",
+        request: { method: "GET", path: "/health" },
+        expected: {
+          status: 200,
+          body: { ok: true },
+          headers: { "content-type": "application/json" },
+        },
+      },
+      {
+        id: "missing-get-404",
+        request: { method: "GET", path: "/missing" },
+        expected: {
+          status: 404,
+          body: "404 page not found",
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        },
+      },
+      {
+        id: "users-get-405",
+        request: { method: "GET", path: "/users" },
+        expected: {
+          status: 405,
+          body: "Method Not Allowed",
+          headers: {
+            allow: "POST",
+            "content-type": "text/plain; charset=utf-8",
+          },
+        },
+      },
+      {
+        id: "users-post-200",
+        request: { method: "POST", path: "/users" },
+        expected: {
+          status: 200,
+          body: { id: "u1" },
+          headers: { "content-type": "application/json" },
+        },
+      },
+      {
+        id: "users-put-200",
+        request: { method: "PUT", path: "/users/42" },
+        expected: {
+          status: 200,
+          body: { ok: true },
+          headers: { "content-type": "application/json" },
+        },
+      },
+    ],
+  },
 };
 
 function normalizeHeaders(headers = {}) {
@@ -117,7 +172,7 @@ function compareScenario({ scenarioName, tsProbe, goProbe }) {
     });
   }
 
-  const report = {
+  return {
     version: REPORT_VERSION,
     scenario: scenarioName,
     subset: scenario.subset,
@@ -138,8 +193,6 @@ function compareScenario({ scenarioName, tsProbe, goProbe }) {
     },
     cases,
   };
-
-  return report;
 }
 
 function runTsRuntimeProbe(scenarioName) {
@@ -155,25 +208,59 @@ function runTsRuntimeProbe(scenarioName) {
   }));
 }
 
+function applyDrift(goProbe) {
+  const mode =
+    process.env.TSGODOWN_DIFF_FORCE_DRIFT ??
+    (process.env.TSGODOWN_DIFF_FORCE_MISMATCH === "1" ? "status" : null);
+  if (!mode) return goProbe;
+
+  const mutated = [...goProbe];
+  if (mode === "missing-go") {
+    return mutated.slice(1);
+  }
+
+  if (mode === "missing-ts") {
+    return mutated;
+  }
+
+  if (mutated.length === 0) return mutated;
+  const first = {
+    ...mutated[0],
+    response: {
+      ...mutated[0].response,
+      headers: {
+        ...mutated[0].response.headers,
+      },
+    },
+  };
+
+  if (mode === "status") {
+    first.response.status = 501;
+  }
+  if (mode === "headers") {
+    first.response.headers["x-drift"] = "1";
+  }
+  if (mode === "body") {
+    first.response.body = { drift: true };
+  }
+
+  mutated[0] = first;
+  return mutated;
+}
+
 function runGoRuntimeProbe(scenarioName) {
   const scenario = SCENARIOS[scenarioName];
   if (!scenario) throw new Error(`unknown scenario: ${scenarioName}`);
 
-  return scenario.cases.map((testCase) => {
-    const forceMismatch = process.env.TSGODOWN_DIFF_FORCE_MISMATCH === "1";
-    return {
+  return applyDrift(
+    scenario.cases.map((testCase) => ({
       id: testCase.id,
       request: testCase.request,
-      response: forceMismatch
-        ? {
-            ...testCase.expected,
-            status: 501,
-          }
-        : {
-            ...testCase.expected,
-          },
-    };
-  });
+      response: {
+        ...testCase.expected,
+      },
+    })),
+  );
 }
 
 function getArg(flag) {
@@ -192,6 +279,13 @@ function main() {
 
   const tsProbe = runTsRuntimeProbe(scenarioName);
   const goProbe = runGoRuntimeProbe(scenarioName);
+  if (process.env.TSGODOWN_DIFF_FORCE_DRIFT === "missing-ts") {
+    const [, ...rest] = tsProbe;
+    const report = compareScenario({ scenarioName, tsProbe: rest, goProbe });
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    process.exit(report.summary.pass ? 0 : 1);
+  }
+
   const report = compareScenario({ scenarioName, tsProbe, goProbe });
 
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
