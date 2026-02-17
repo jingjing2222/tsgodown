@@ -1,15 +1,21 @@
 # tsgodown
 
-## What is tsgodown
+## Primary goal (direction lock)
 
-`tsgodown` compiles a constrained Fastify codebase into a Go HTTP server.
+`tsgodown` is a **compiler-mode pipeline** for TypeScript services.
 
-- **Input**: TypeScript/JavaScript app code (Fastify-first profile)
-- **Compiler core**: Rust analyzer + IR pipeline
-- **Output**: Go project (`dist-go/main.go`) with deterministic routing behavior
-- **Goal**: keep a familiar `tsdown`-style build UX while producing production-oriented Go artifacts
+The primary goal is fixed as:
 
-This repository is intentionally strict: when a Fastify pattern cannot be extracted deterministically, the compiler skips it and emits explicit diagnostics.
+1. **tsdown bundling as compiler input**
+   - input artifact is the tsdown bundle plus `d.ts` and sourcemap metadata
+2. **AST + sourcemap + `d.ts`-driven IR/Go generation**
+   - analysis and lowering are driven by syntax + symbol/type surface + source mapping provenance
+3. **`go build` output**
+   - generated output must compile as a normal Go project/binary using the Go toolchain
+4. **100% behavioral coverage (scoped contract)**
+   - defined as: full behavioral match **within the declared supported subset**, proven by differential testing (TS runtime vs Go runtime), not by claiming universal JS/TS coverage
+
+This repository remains intentionally strict: when code is outside the supported subset or cannot be extracted deterministically, the compiler must emit explicit diagnostics/fallback behavior instead of silently guessing.
 
 ## Supported Fastify patterns
 
@@ -131,6 +137,7 @@ When build output is incomplete, start here:
 - Failure triage playbook: [`docs/operations/FAILURE_TRIAGE_PLAYBOOK.md`](docs/operations/FAILURE_TRIAGE_PLAYBOOK.md)
 - M1 release gate and acceptance criteria: [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Testing strategy and boundaries: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
+- Compiler-mode supported subset + proof contracts: [`docs/specs/COMPILER_MODE_CONTRACTS.md`](docs/specs/COMPILER_MODE_CONTRACTS.md)
 
 Additional project docs:
 
