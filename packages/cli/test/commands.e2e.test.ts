@@ -609,25 +609,47 @@ test("CLI JSON contract fixtures: warn path", () => {
   }
 });
 
-test("CLI default command kicks off compiler mode and fails deterministically", () => {
+test("CLI default command routes to build compiler path", () => {
   const cwd = setupProject([
     "const fastify = {} as any;",
     "const health = () => {};",
     "fastify.get('/health', health);",
   ]);
 
-  const result = runCliDefault(cwd);
-  assert.notEqual(result.status, 0, "default compiler kickoff should fail");
-  assert.match(
-    result.stderr,
-    /\[tsgodown\] command failed: \[compiler-mode\] default compiler kickoff is not implemented yet/,
-  );
-  assert.match(result.stderr, /source: cli-default-command/);
-  assert.match(result.stderr, /stage: COMPILER_KICKOFF/);
-  assert.match(
-    result.stderr,
-    /cause: compiler mode pipeline entrypoint missing/,
-  );
+  const rustLauncher = createRustEngineLauncher(cwd, [
+    "for await (const _ of process.stdin) { /* drain */ }",
+    "const response = {",
+    "  ok: true,",
+    "  diagnostics: ['engine=rust-binary-stub'],",
+    "  manifest: {",
+    "    buildId: '1122334455667788',",
+    "    entries: ['src/index.ts'],",
+    "    bundles: [{ file: 'dist/index.mjs', map: 'dist/index.mjs.map', format: 'esm', exports: [] }],",
+    "    types: ['dist/index.d.ts'],",
+    "    tsconfigPath: 'tsconfig.json'",
+    "  }",
+    "};",
+    "process.stdout.write(JSON.stringify(response));",
+  ]);
+
+  const result = runCliDefault(cwd, {
+    ...process.env,
+    TSGODOWN_RUST_ENGINE_BIN: rustLauncher,
+  });
+  assert.equal(result.status, 0, `default command failed: ${result.stderr}`);
+  assert.match(result.stdout, /\[tsgodown\] build completed/);
+});
+
+test("CLI rejects removed legacy compiler command", () => {
+  const cwd = setupProject([
+    "const fastify = {} as any;",
+    "const health = () => {};",
+    "fastify.get('/health', health);",
+  ]);
+
+  const result = runCli(cwd, "compiler");
+  assert.notEqual(result.status, 0, "legacy compiler command should fail");
+  assert.match(result.stderr, /\[tsgodown\] unsupported command: compiler/);
 });
 
 test("CLI fail diagnostics include source/cause/guidance contract", () => {
@@ -1230,9 +1252,7 @@ test("M4 acceptance: fastify-unsupported-dynamic fixture stays compiler-subset d
   assert.equal(parsed.ok, true);
   assert.equal(parsed.command, "build");
   assert.equal(parsed.targets[0]?.diagnostics?.routes, 0);
-  assert.deepEqual(parsed.targets[0]?.diagnostics?.warnings, [
-    "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.",
-  ]);
+  assert.deepEqual(parsed.targets[0]?.diagnostics?.warnings, []);
 });
 
 test("rust-only fixture matrix surfaces deterministic contract error path", () => {

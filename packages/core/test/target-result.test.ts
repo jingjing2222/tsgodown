@@ -21,8 +21,6 @@ test("buildTargetResult keeps plan fields and appends default diagnostics", () =
   assert.equal(result.emitted, true);
   assert.deepEqual(result.diagnostics, {
     routes: 0,
-    warnings: [
-      "DEPRECATED: TS core analyzer diagnostics are disabled after Rust cutover; use IR diagnostics from the Rust engine.",
-    ],
+    warnings: [],
   });
 });
