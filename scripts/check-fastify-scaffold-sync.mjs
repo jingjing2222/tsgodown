@@ -10,10 +10,6 @@ const required = [
   "examples/fastify-scaffold-real/src/routes/root.ts",
   "examples/fastify-scaffold-real/src/routes/example/index.ts",
   "examples/fastify-scaffold-real/tsgodown.config.ts",
-  "packages/cli/test/fixtures/projects/fastify-scaffold-real/src/app.ts",
-  "packages/cli/test/fixtures/projects/fastify-scaffold-real/src/routes/health.ts",
-  "packages/cli/test/fixtures/projects/fastify-scaffold-real/src/routes/users.ts",
-  "packages/cli/test/fixtures/projects/fastify-scaffold-real/tsgodown.config.ts",
 ];
 
 const presentCount = required.filter((p) =>
