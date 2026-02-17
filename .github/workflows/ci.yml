@@ -55,3 +55,139 @@ jobs:
       - name: Cargo test
         if: ${{ hashFiles('Cargo.toml') != '' }}
         run: cargo test --workspace --all-targets
+
+  smoke-executable:
+    name: Smoke executable path (TS -> Go -> run -> health)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build JS packages
+        run: pnpm run build
+
+      - name: Preflight diagnostics (env/bin)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PATH=$PATH"
+          for cmd in node pnpm cargo go curl; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+              echo "[ok] $cmd => $(command -v "$cmd")"
+            else
+              echo "[missing] required command '$cmd' not found on PATH"
+              echo "--- /usr/local/bin ---"
+              ls -la /usr/local/bin || true
+              echo "--- /usr/bin ---"
+              ls -la /usr/bin || true
+              exit 1
+            fi
+          done
+          node -v
+          pnpm -v
+          cargo --version
+          go version
+          curl --version | head -n 1
+          echo "TSGODOWN_RUST_ENGINE_BIN(default)=$GITHUB_WORKSPACE/scripts/rust-engine-launcher.sh"
+          test -x "$GITHUB_WORKSPACE/scripts/rust-engine-launcher.sh" || {
+            echo "missing executable launcher: $GITHUB_WORKSPACE/scripts/rust-engine-launcher.sh"
+            ls -la "$GITHUB_WORKSPACE/scripts" || true
+            exit 1
+          }
+
+      - name: Build Rust engine-core
+        run: cargo build -p engine-core
+
+      - name: Generate Go output from example
+        working-directory: examples/fastify-min
+        env:
+          TSGODOWN_RUST_ENGINE_BIN: ${{ github.workspace }}/scripts/rust-engine-launcher.sh
+        run: node ../../packages/cli/dist/index.js build
+
+      - name: Validate generated Go artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f examples/fastify-min/dist-go/main.go || {
+            echo "missing generated file: examples/fastify-min/dist-go/main.go"
+            find examples/fastify-min -maxdepth 3 -type f | sort
+            exit 1
+          }
+          if [ ! -f examples/fastify-min/dist-go/go.mod ]; then
+            echo "go.mod missing in generated output; creating temporary module for CI smoke"
+            (cd examples/fastify-min/dist-go && go mod init example.com/tsgodown-local)
+          fi
+
+      - name: Build and smoke run generated Go server
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd examples/fastify-min/dist-go
+          go build -o tsgodown-smoke .
+
+          cleanup() {
+            if [ -n "${SERVER_PID:-}" ] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+              kill "$SERVER_PID" || true
+              wait "$SERVER_PID" || true
+            fi
+          }
+          trap cleanup EXIT
+
+          if lsof -iTCP:8080 -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+            echo "port 8080 already in use before smoke run"
+            lsof -iTCP:8080 -sTCP:LISTEN -n -P || true
+            exit 1
+          fi
+
+          ./tsgodown-smoke >server.log 2>&1 &
+          SERVER_PID=$!
+
+          HEALTH_URL="http://127.0.0.1:8080/health"
+          echo "waiting for health endpoint: $HEALTH_URL"
+
+          ok=0
+          for i in {1..20}; do
+            status="$(curl --silent --show-error --output health.body --write-out "%{http_code}" "$HEALTH_URL" || true)"
+            body="$(tr -d '\r\n' < health.body 2>/dev/null || true)"
+            if [ "$status" = "501" ] && [ "$body" = "TODO implement handler health for GET /health" ]; then
+              echo "health check passed on attempt $i (status=$status body='$body')"
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            echo "health check failed after retries"
+            echo "last status=${status:-<none>} body='${body:-<none>}'"
+            echo "--- server.log ---"
+            cat server.log || true
+            exit 1
+          fi
+
+          echo "--- server.log ---"
+          cat server.log || true
