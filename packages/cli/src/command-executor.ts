@@ -1,4 +1,10 @@
-import { runBuild, runCheck, runReport, runStages } from "./commands/index.js";
+import {
+  runBuild,
+  runCheck,
+  runCompiler,
+  runReport,
+  runStages,
+} from "./commands/index.js";
 import type { Command } from "./types.js";
 
 export async function executeCommand(
@@ -15,6 +21,9 @@ export async function executeCommand(
       return;
     case "report":
       await runReport(cwd, json);
+      return;
+    case "compiler":
+      await runCompiler(cwd, json);
       return;
     case "stages":
       await runStages(cwd, json);

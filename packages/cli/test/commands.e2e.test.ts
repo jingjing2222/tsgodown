@@ -152,6 +152,46 @@ function runCli(
   return result;
 }
 
+function runCliDefault(cwd: string, env?: NodeJS.ProcessEnv) {
+  const packageJsonPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    fs.writeFileSync(
+      packageJsonPath,
+      JSON.stringify({ name: "tsgodown-e2e-scaffold", private: true }, null, 2),
+    );
+  }
+
+  if (!installedWorkspaceCliDirs.has(cwd)) {
+    const install = spawnSync(
+      "pnpm",
+      ["add", "-D", path.join(repoRoot, "packages", "cli")],
+      {
+        cwd,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...env,
+        },
+      },
+    );
+    assert.equal(
+      install.status,
+      0,
+      `pnpm add workspace cli failed: ${install.stderr || install.stdout}`,
+    );
+    installedWorkspaceCliDirs.add(cwd);
+  }
+
+  return spawnSync("pnpm", ["exec", "tsgodown"], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...env,
+    },
+  });
+}
+
 function createRustEngineLauncher(
   cwd: string,
   responseScript: string[],
@@ -567,6 +607,27 @@ test("CLI JSON contract fixtures: warn path", () => {
     const normalized = normalizeResult(cwd, parsed);
     assertSubset(normalized, fixture[command], command);
   }
+});
+
+test("CLI default command kicks off compiler mode and fails deterministically", () => {
+  const cwd = setupProject([
+    "const fastify = {} as any;",
+    "const health = () => {};",
+    "fastify.get('/health', health);",
+  ]);
+
+  const result = runCliDefault(cwd);
+  assert.notEqual(result.status, 0, "default compiler kickoff should fail");
+  assert.match(
+    result.stderr,
+    /\[tsgodown\] command failed: \[compiler-mode\] default compiler kickoff is not implemented yet/,
+  );
+  assert.match(result.stderr, /source: cli-default-command/);
+  assert.match(result.stderr, /stage: COMPILER_KICKOFF/);
+  assert.match(
+    result.stderr,
+    /cause: compiler mode pipeline entrypoint missing/,
+  );
 });
 
 test("CLI fail diagnostics include source/cause/guidance contract", () => {
