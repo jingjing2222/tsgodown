@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Check install-first example builds (pnpm install + build:go)
+        run: pnpm run examples:install-first:check
+
       - name: Test
         run: pnpm run test
 
