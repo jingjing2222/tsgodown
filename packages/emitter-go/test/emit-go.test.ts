@@ -319,8 +319,11 @@ test("emitGoProject falls back to GET for empty route methods to keep scaffold b
   assert.match(emitted, /router\.handle\("GET", "\/health", route0\)/);
   assert.match(
     emitted,
-    /TODO\(tsgodown\): Implement handler "fallbackMethod" for GET \/health\./,
+    /w\.Header\(\)\.Set\("Content-Type", "application\/json; charset=utf-8"\)/,
   );
+  assert.match(emitted, /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/);
+  assert.match(emitted, /"mode": "unknown"/);
+  assert.doesNotMatch(emitted, /TODO\(tsgodown\): Implement handler/);
 });
 
 test("emitGoProject avoids Go-unsafe path param bindings while preserving PathValue lookups", () => {
@@ -391,7 +394,7 @@ test("emitGoProject keeps middleware metadata comments deterministic for equival
   assert.match(second, /\/\/\s+Middleware:\s+\["a-trace","m-cache","z-auth"\]/);
 });
 
-test("emitGoProject TODO message uses stable handler display name for handler_* refs", () => {
+test("emitGoProject unknown handler semantics use concrete JSON fallback without TODO markers", () => {
   const sampleIr = readFixture("sample-ir");
   const outDir = createOutDir();
 
@@ -426,12 +429,13 @@ test("emitGoProject TODO message uses stable handler display name for handler_* 
   const goSource = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
   assert.match(
     goSource,
-    /fmt\.Fprintln\(w, "TODO implement handler health for GET \/health"\)/,
+    /w\.Header\(\)\.Set\("Content-Type", "application\/json; charset=utf-8"\)/,
   );
-  assert.doesNotMatch(
-    goSource,
-    /TODO implement handler handler_health for GET \/health/,
-  );
+  assert.match(goSource, /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/);
+  assert.match(goSource, /"handler": "handler_health"/);
+  assert.match(goSource, /"mode": "unknown"/);
+  assert.doesNotMatch(goSource, /TODO\(tsgodown\): Implement handler/);
+  assert.doesNotMatch(goSource, /TODO implement handler/);
 });
 
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {

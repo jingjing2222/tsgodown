@@ -16,9 +16,9 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },
@@ -37,9 +37,9 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },
@@ -59,9 +59,9 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "TODO implement handler health for GET /health\n",
+          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
           headers: {
-            "content-type": "text/plain; charset=utf-8",
+            "content-type": "application/json; charset=utf-8",
           },
         },
       },

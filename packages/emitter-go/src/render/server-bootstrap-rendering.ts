@@ -5,7 +5,7 @@ import { renderRouteRegistration } from "./template-rendering.js";
 export function renderGoImports(handlers: HandlerIR[]): string[] {
   const requiresJson = handlers.some((handler) => {
     const mode = handler.semantics?.responseMode;
-    return mode === "response-object" || mode === "return";
+    return mode === "response-object" || mode === "return" || mode === "unknown" || mode === undefined;
   });
 
   const imports = [

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -111,12 +112,15 @@ func route0(w http.ResponseWriter, req *http.Request) {
 	//   Handler params: none
 	//   Handler async: false
 	//   Handler response mode: unknown
-	// TODO(tsgodown): Implement handler "fallback" for GET /health.
-	//   - Replace this scaffold with application logic.
-	//   - Validate request input and map to domain arguments.
-	//   - Write response status, headers, and body.
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-TSGoDown-Handler", "unknown")
 	w.WriteHeader(http.StatusNotImplemented)
-	fmt.Fprintln(w, "TODO implement handler fallback for GET /health")
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"handler": "fallback",
+		"method": "GET",
+		"mode": "unknown",
+		"path": "/health",
+	}); err != nil {
+		http.Error(w, "json encode failed", http.StatusInternalServerError)
+	}
 }

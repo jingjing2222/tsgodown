@@ -1120,8 +1120,8 @@ test.skip("M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/m
   const goMain = fs.readFileSync(goPath, "utf8");
   assert.match(goMain, /mux\.HandleFunc\("GET \/health"/);
   assert.match(goMain, /mux\.HandleFunc\("GET \/users"/);
-  assert.match(goMain, /TODO implement handler health for GET \/health/);
-  assert.match(goMain, /TODO implement handler users for GET \/users/);
+  assert.match(goMain, /"mode": "unknown"/);
+  assert.doesNotMatch(goMain, /TODO implement handler/);
   assertGoMainScaffold(goMain);
   assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
 });
@@ -1146,12 +1146,12 @@ test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtim
   await assertGoRunRoute(
     goDir,
     "/health",
-    "TODO implement handler health for GET /health",
+    "\"mode\":\"unknown\"",
   );
   await assertGoRunRoute(
     goDir,
     "/users",
-    "TODO implement handler users for GET /users",
+    "\"mode\":\"unknown\"",
   );
 });
 
@@ -1183,27 +1183,27 @@ test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contrac
     method: "GET",
     routePath: "/health",
     expectedStatus: 501,
-    expectedBodyFragment: "TODO implement handler health for GET /health",
+    expectedBodyFragment: "\"mode\":\"unknown\"",
   });
   await assertGoRunRequest(goDir, {
     method: "POST",
     routePath: "/users",
     expectedStatus: 501,
-    expectedBodyFragment: "TODO implement handler createUser for POST /users",
+    expectedBodyFragment: "\"mode\":\"unknown\"",
   });
   await assertGoRunRequest(goDir, {
     method: "PATCH",
     routePath: "/users/abc-123",
     expectedStatus: 501,
     expectedBodyFragment:
-      "TODO implement handler updateUser for PATCH /users/:id",
+      "\"mode\":\"unknown\"",
   });
   await assertGoRunRequest(goDir, {
     method: "DELETE",
     routePath: "/users/abc-123",
     expectedStatus: 501,
     expectedBodyFragment:
-      "TODO implement handler removeUser for DELETE /users/:id",
+      "\"mode\":\"unknown\"",
   });
   await assertGoRunRequest(goDir, {
     method: "GET",
@@ -1273,7 +1273,7 @@ test.skip("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stab
     routePath: "/users/alpha",
     expectedStatus: 501,
     expectedBodyFragment:
-      "TODO implement handler updateUser for PUT /users/:id",
+      "\"mode\":\"unknown\"",
   });
   await assertGoRunRequest(goDir, {
     method: "GET",

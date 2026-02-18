@@ -6,7 +6,7 @@ EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-scaffold-real"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 PORT="${SMOKE_PORT:-18080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
-EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-TODO implement handler health for GET /health}"
+EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-"mode":"unknown"}"
 SERVER_LOG="${ROOT_DIR}/.tmp-smoke-m1-server.log"
 ENGINE_LAUNCHER="${ROOT_DIR}/.tmp-smoke-m1-engine-launcher.sh"
 
@@ -102,6 +102,7 @@ const GO_MAIN = [
   "package main",
   "",
   "import (",
+  "\t\"encoding/json\"",
   "\t\"fmt\"",
   "\t\"net/http\"",
   "\t\"os\"",
@@ -110,14 +111,16 @@ const GO_MAIN = [
   "func main() {",
   "\tmux := http.NewServeMux()",
   "\tmux.HandleFunc(\"GET /health\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
+  "\t\tw.Header().Set(\"Content-Type\", \"application/json; charset=utf-8\")",
+  "\t\tw.Header().Set(\"X-TSGoDown-Handler\", \"unknown\")",
   "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  "\t\tfmt.Fprintln(w, \"TODO implement handler health for GET /health\")",
+  "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"})",
   "\t})",
   "\tmux.HandleFunc(\"GET /users\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.Header().Set(\"Content-Type\", \"text/plain; charset=utf-8\")",
+  "\t\tw.Header().Set(\"Content-Type\", \"application/json; charset=utf-8\")",
+  "\t\tw.Header().Set(\"X-TSGoDown-Handler\", \"unknown\")",
   "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  "\t\tfmt.Fprintln(w, \"TODO implement handler users for GET /users\")",
+  "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"handler\":\"users\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/users\"})",
   "\t})",
   "\taddr := \":18080\"",
   "\tif port := os.Getenv(\"PORT\"); port != \"\" {",
