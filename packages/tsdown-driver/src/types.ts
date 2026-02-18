@@ -11,8 +11,8 @@ export interface ArtifactManifest {
   buildId: string;
   entries: string[];
   bundles: ArtifactBundle[];
-  types: string[];
-  tsconfigPath: string;
+  types?: string[];
+  tsconfigPath?: string;
 }
 
 interface BuildChunkLike {

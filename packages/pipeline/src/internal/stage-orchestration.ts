@@ -112,4 +112,26 @@ export function assertBuildArtifactContract(buildResult: RunBuildResult): void {
       `[pipeline] artifact contract violation: ${violations.join("; ")}`,
     );
   }
+
+  assertCompileInputContract(buildResult);
+}
+
+export function assertCompileInputContract(buildResult: RunBuildResult): void {
+  const violations: string[] = [];
+  const bundles = buildResult.manifest.bundles;
+
+  if (bundles.length === 0) {
+    violations.push("manifest.bundles must include at least one JS bundle");
+  }
+
+  const firstBundle = bundles[0];
+  if (!firstBundle?.file?.trim()) {
+    violations.push("manifest.bundles[0].file must be a non-empty string");
+  }
+
+  if (violations.length > 0) {
+    throw new Error(
+      `[pipeline] compile-input contract violation: ${violations.join("; ")}`,
+    );
+  }
 }

@@ -5,7 +5,12 @@ export function buildProgramIrFromArtifacts(
   buildResult: RunBuildResult,
   entry: string,
 ): ProgramIR {
-  const modules = buildResult.manifest.entries.map((manifestEntry, index) => ({
+  const manifestEntries =
+    buildResult.manifest.entries.length > 0
+      ? buildResult.manifest.entries
+      : [entry];
+
+  const modules = manifestEntries.map((manifestEntry, index) => ({
     id: `module_${index}`,
     sourcePath: manifestEntry,
     exports: [],

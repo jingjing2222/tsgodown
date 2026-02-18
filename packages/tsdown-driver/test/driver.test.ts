@@ -224,12 +224,19 @@ test("runBuild accepts status-envelope success variants and normalizes diagnosti
     name: string;
     status: "ok" | "success";
     buildId: string;
+    includeOptionalFields: boolean;
   }> = [
-    { name: "status=ok", status: "ok", buildId: "0011223344556677" },
     {
-      name: "status=success",
+      name: "status=ok with optional fields",
+      status: "ok",
+      buildId: "0011223344556677",
+      includeOptionalFields: true,
+    },
+    {
+      name: "status=success without optional fields",
       status: "success",
       buildId: "8899aabbccddeeff",
+      includeOptionalFields: false,
     },
   ];
 
@@ -251,8 +258,12 @@ test("runBuild accepts status-envelope success variants and normalizes diagnosti
                 exports: [],
               },
             ],
-            types: ["dist/index.d.ts"],
-            tsconfigPath: "tsconfig.json",
+            ...(fixture.includeOptionalFields
+              ? {
+                  types: ["dist/index.d.ts"],
+                  tsconfigPath: "tsconfig.json",
+                }
+              : {}),
           },
           diagnostics: ["  keep-me  ", "", 42],
         }),

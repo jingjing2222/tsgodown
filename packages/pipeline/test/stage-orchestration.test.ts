@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   assertBuildArtifactContract,
+  assertCompileInputContract,
   orchestratePipelineStages,
 } from "../src/internal/stage-orchestration.ts";
 
@@ -26,6 +27,26 @@ test("assertBuildArtifactContract reports missing/invalid artifact fields clearl
   );
 });
 
+test("assertCompileInputContract enforces minimal delegated compile envelope", () => {
+  assert.throws(
+    () =>
+      assertCompileInputContract({
+        mode: "rust-engine-adapter",
+        manifestPath: "artifacts/manifests/manifest.json",
+        manifestIndexPath: "artifacts/manifests/index.json",
+        manifest: {
+          buildId: "aabbccddeeff0011",
+          entries: ["src/index.ts"],
+          bundles: [],
+          types: [],
+          tsconfigPath: "tsconfig.json",
+        },
+        diagnostics: [],
+      }),
+    /compile-input contract violation: manifest\.bundles must include at least one JS bundle; manifest\.bundles\[0\]\.file must be a non-empty string/,
+  );
+});
+
 test("orchestratePipelineStages emits deterministic stage events through delivery stream", async () => {
   const stages: string[] = [];
 
@@ -41,7 +62,7 @@ test("orchestratePipelineStages emits deterministic stage events through deliver
       manifest: {
         buildId: "build-1",
         entries: ["src/index.ts"],
-        bundles: [],
+        bundles: [{ file: "dist/index.js" }],
         types: [],
         tsconfigPath: "tsconfig.json",
       },
