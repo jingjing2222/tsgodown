@@ -1,0 +1,9 @@
+modules:
+  - id=conditional-route.ts source_path=conditional-route.ts
+    exports:
+    imports:
+      - spec=fastify kind=esm resolved=<none>
+routes:
+handlers:
+diagnostics:
+  - level=error code=ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE message=conditional route registration is unsupported source=conditional-route.ts

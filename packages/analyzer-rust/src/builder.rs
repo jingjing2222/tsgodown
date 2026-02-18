@@ -21,6 +21,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let exports = collect_exports(src);
     let handler_defs = collect_handler_defs(src);
     let plugin_defs = collect_plugin_defs(src);
+    collect_conditional_route_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -168,6 +169,50 @@ fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -
 
     imports.sort_by(|a, b| a.spec.cmp(&b.spec).then_with(|| a.kind.cmp(&b.kind)));
     imports
+}
+
+fn collect_conditional_route_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    let mut conditional_depth: i32 = 0;
+
+    for line in src.lines() {
+        let trimmed = line.trim();
+
+        if conditional_depth == 0 && (trimmed.starts_with("if(") || trimmed.starts_with("if (")) {
+            conditional_depth = brace_delta(line).max(1);
+        } else if conditional_depth > 0 {
+            if has_route_invocation(trimmed) {
+                diagnostics.push(diag(
+                    "error",
+                    "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+                    "conditional route registration is unsupported",
+                    file,
+                ));
+                return;
+            }
+            conditional_depth += brace_delta(line);
+            if conditional_depth <= 0 {
+                conditional_depth = 0;
+            }
+        }
+    }
+}
+
+fn has_route_invocation(line: &str) -> bool {
+    ALLOWED_METHODS
+        .iter()
+        .map(|method| method.to_ascii_lowercase())
+        .any(|method| line.contains(format!(".{method}(").as_str()))
+        || line.contains(".route(")
+}
+
+fn brace_delta(raw: &str) -> i32 {
+    let opens = raw.chars().filter(|ch| *ch == '{').count() as i32;
+    let closes = raw.chars().filter(|ch| *ch == '}').count() as i32;
+    opens - closes
 }
 
 fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {

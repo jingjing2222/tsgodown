@@ -135,3 +135,8 @@ fn unsupported_register_boundaries_emit_spec_mapped_diagnostics() {
         "unsupported-register-boundaries.golden.txt",
     );
 }
+
+#[test]
+fn conditional_routes_emit_unsupported_diagnostic() {
+    assert_fixture("conditional-route.ts", "conditional-route.golden.txt");
+}
