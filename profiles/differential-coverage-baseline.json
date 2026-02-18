@@ -1,0 +1,10 @@
+{
+  "version": "m4-differential-harness.v1",
+  "minimumScenarios": 3,
+  "minimumTotalCases": 3,
+  "requiredScenarios": [
+    "fastify-scaffold-real-get-health",
+    "hono-scaffold-real-get-health",
+    "generic-simple-cli-get-health"
+  ]
+}
