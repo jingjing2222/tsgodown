@@ -769,12 +769,72 @@ test(
         signal: AbortSignal.timeout(1000),
       });
       assert.equal(methodNotAllowed.status, 405);
-      assert.equal(methodNotAllowed.headers.get("allow"), "DELETE, GET");
+      assert.equal(methodNotAllowed.headers.get("allow"), "DELETE, GET, HEAD");
 
       const notFound = await fetch(`${base}/unknown/123`, {
         signal: AbortSignal.timeout(1000),
       });
       assert.equal(notFound.status, 404);
+    } finally {
+      await shutdownServer(server);
+    }
+  },
+);
+
+test(
+  "emitGoProject smoke: method mismatch Allow includes implicit HEAD when GET route exists",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = String(await allocatePort());
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [{ id: "showUser", params: [], async: false }],
+        diagnostics: [],
+        routes: [{ method: "GET", path: "/users/:id", handlerRef: "showUser" }],
+      },
+      outDir,
+    );
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-head-allow"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const base = `http://127.0.0.1:${port}`;
+    const deadline = Date.now() + 10_000;
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const warm = await fetch(`${base}/users/42`, {
+            signal: AbortSignal.timeout(1000),
+          });
+          if (warm.status > 0) break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      const methodNotAllowed = await fetch(`${base}/users/42`, {
+        method: "POST",
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(methodNotAllowed.status, 405);
+      assert.equal(methodNotAllowed.headers.get("allow"), "GET, HEAD");
     } finally {
       await shutdownServer(server);
     }
@@ -853,7 +913,7 @@ test(
         signal: AbortSignal.timeout(1000),
       });
       assert.equal(methodNotAllowed.status, 405);
-      assert.equal(methodNotAllowed.headers.get("allow"), "GET, PATCH");
+      assert.equal(methodNotAllowed.headers.get("allow"), "GET, HEAD, PATCH");
 
       const notFound = await fetch(`${base}/api/v2/posts/42`, {
         signal: AbortSignal.timeout(1000),

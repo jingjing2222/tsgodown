@@ -37,6 +37,9 @@ func (r *runtimeRouter) handle(method string, pathPattern string, handler http.H
 		r.methodsByPathPattern[pathPattern] = methodSet
 	}
 	methodSet[method] = struct{}{}
+	if method == http.MethodGet {
+		methodSet[http.MethodHead] = struct{}{}
+	}
 }
 
 func (r *runtimeRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
