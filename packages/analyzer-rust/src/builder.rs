@@ -357,11 +357,13 @@ fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR 
         let anchor = format!("{receiver}.{via}(");
         let target_call = format!(".{target}(");
 
-        body_compact.match_indices(anchor.as_str()).any(|(start, _)| {
-            let rest = &body_compact[start..];
-            let statement_end = rest.find(';').unwrap_or(rest.len());
-            rest[..statement_end].contains(target_call.as_str())
-        })
+        body_compact
+            .match_indices(anchor.as_str())
+            .any(|(start, _)| {
+                let rest = &body_compact[start..];
+                let statement_end = rest.find(';').unwrap_or(rest.len());
+                rest[..statement_end].contains(target_call.as_str())
+            })
     };
 
     let has_call = |fn_name: &str| {
