@@ -29,7 +29,7 @@ test("assertBuildArtifactContract reports missing/invalid artifact fields clearl
   );
 });
 
-test("assertCompileInputContract enforces bundle + sourcemap + d.ts compile envelope", () => {
+test("assertCompileInputContract enforces minimal delegated compile envelope", () => {
   assert.throws(
     () =>
       assertCompileInputContract({
@@ -39,12 +39,12 @@ test("assertCompileInputContract enforces bundle + sourcemap + d.ts compile enve
         manifest: {
           buildId: "aabbccddeeff0011",
           entries: ["src/index.ts"],
-          bundles: [{ file: "dist/index.mjs", format: "esm", exports: [] }],
+          bundles: [],
           types: [],
           tsconfigPath: "tsconfig.json",
         },
         diagnostics: [],
       }),
-    /compile-input contract violation: manifest\.bundles\[0\]\.map must be a non-empty string; manifest\.types\[0\] must be a non-empty string/,
+    /compile-input contract violation: manifest\.bundles must include at least one JS bundle; manifest\.bundles\[0\]\.file must be a non-empty string/,
   );
 });

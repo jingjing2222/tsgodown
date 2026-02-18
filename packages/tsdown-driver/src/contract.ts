@@ -98,8 +98,8 @@ function isArtifactManifest(value: unknown): value is ArtifactManifest {
     typeof value.buildId === "string" &&
     Array.isArray(value.entries) &&
     Array.isArray(value.bundles) &&
-    Array.isArray(value.types) &&
-    typeof value.tsconfigPath === "string"
+    (value.types === undefined || Array.isArray(value.types)) &&
+    (value.tsconfigPath === undefined || typeof value.tsconfigPath === "string")
   );
 }
 

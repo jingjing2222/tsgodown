@@ -106,7 +106,6 @@ export function assertBuildArtifactContract(buildResult: RunBuildResult): void {
 export function assertCompileInputContract(buildResult: RunBuildResult): void {
   const violations: string[] = [];
   const bundles = buildResult.manifest.bundles;
-  const types = buildResult.manifest.types;
 
   if (bundles.length === 0) {
     violations.push("manifest.bundles must include at least one JS bundle");
@@ -115,13 +114,6 @@ export function assertCompileInputContract(buildResult: RunBuildResult): void {
   const firstBundle = bundles[0];
   if (!firstBundle?.file?.trim()) {
     violations.push("manifest.bundles[0].file must be a non-empty string");
-  }
-  if (!firstBundle?.map?.trim()) {
-    violations.push("manifest.bundles[0].map must be a non-empty string");
-  }
-
-  if (types.length === 0 || !types[0]?.trim()) {
-    violations.push("manifest.types[0] must be a non-empty string");
   }
 
   if (violations.length > 0) {
