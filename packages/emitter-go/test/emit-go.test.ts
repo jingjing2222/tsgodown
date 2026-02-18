@@ -215,6 +215,41 @@ test("emitGoProject keeps deterministic output for equivalent IR with reordered 
   );
 });
 
+test("emitGoProject emits literal object payload for supported return-mode bodyRef subset", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [
+        {
+          id: "health",
+          params: [],
+          async: false,
+          bodyRef: '{"ok":true,"message":"healthy"}',
+          semantics: {
+            responseMode: "return",
+            usesStatus: false,
+            usesBody: false,
+            usesHeaders: false,
+            usesJson: false,
+          },
+        },
+      ],
+      diagnostics: [],
+      routes: [{ method: "GET", path: "/health", handlerRef: "health" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(emitted, /"message": "healthy"/);
+  assert.match(emitted, /"ok": true/);
+  assert.doesNotMatch(emitted, /"handler": "health"/);
+  assert.doesNotMatch(emitted, /"mode": "return"/);
+});
+
 test("emitGoProject representative fixtures stay locked to checked-in golden outputs", () => {
   for (const fixtureName of representativeFixtureNames) {
     const outDir = createOutDir();
@@ -588,6 +623,83 @@ test(
       );
       assert.match(responseText, /"handler":"health"/);
       assert.match(responseText, /"mode":"response-object"/);
+    } finally {
+      await shutdownServer(server);
+    }
+  },
+);
+
+test(
+  "emitGoProject smoke: return-mode literal object payload bodyRef serves payload JSON",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = await allocateEphemeralPort();
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [
+          {
+            id: "health",
+            params: [],
+            async: false,
+            bodyRef: '{"ok":true,"message":"healthy"}',
+            semantics: {
+              responseMode: "return",
+              usesStatus: false,
+              usesBody: false,
+              usesHeaders: false,
+              usesJson: false,
+            },
+          },
+        ],
+        diagnostics: [],
+        routes: [{ method: "GET", path: "/health", handlerRef: "health" }],
+      },
+      outDir,
+    );
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-literal-payload"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const url = `http://127.0.0.1:${port}/health`;
+    const deadline = Date.now() + 10_000;
+    let responseStatus = 0;
+    let body = "";
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(1000),
+          });
+          responseStatus = response.status;
+          body = await response.text();
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      assert.equal(responseStatus, 200);
+      assert.match(body, /"ok":true/);
+      assert.match(body, /"message":"healthy"/);
+      assert.doesNotMatch(body, /"handler":"health"/);
+      assert.doesNotMatch(body, /"mode":"return"/);
     } finally {
       await shutdownServer(server);
     }
