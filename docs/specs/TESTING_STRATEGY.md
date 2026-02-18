@@ -59,6 +59,9 @@ Note: the gate is limited to execution-path verification and does not cover inte
   - sorted `cases[]` with normalized headers and explicit `diffs[]`
 - Fail conditions (fail-closed): missing TS/Go case, status mismatch, headers mismatch, body mismatch.
 - Local run: `pnpm run harness:semantics-parity` (legacy alias: `pnpm run harness:differential`)
+- Coverage ratchet gate: `pnpm run gate:coverage-ratchet`
+  - baseline artifact: `profiles/differential-coverage-baseline.json`
+  - fail-closed checks: minimum scenario count, minimum case count, required scenario ids
 - Primary test location: `packages/cli/test/commands.e2e.test.ts`
 - Key acceptance tests:
   - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`

@@ -301,7 +301,11 @@ fn normalize_param_token(raw: &str) -> String {
         .map(|(left, _)| left.trim())
         .unwrap_or(no_default);
 
-    no_type.trim_start_matches("...").trim().to_string()
+    no_type
+        .trim_start_matches("...")
+        .trim_end_matches('?')
+        .trim()
+        .to_string()
 }
 
 fn lower_params(params: &[String]) -> Vec<HandlerParamIR> {
