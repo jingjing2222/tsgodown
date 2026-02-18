@@ -47,7 +47,10 @@ export async function orchestratePipelineStages({
     };
 
     try {
-      emitStage("BUILD_ARTIFACTS", "[BUILD_ARTIFACTS] collecting build outputs");
+      emitStage(
+        "BUILD_ARTIFACTS",
+        "[BUILD_ARTIFACTS] collecting build outputs",
+      );
       const buildResult = await runBuildArtifacts(cwd);
       assertBuildArtifactContract(buildResult);
 
@@ -64,7 +67,10 @@ export async function orchestratePipelineStages({
       );
 
       stage = "EMIT_GO";
-      emitStage("EMIT_GO", "[EMIT_GO] writing Go scaffold (delegated to rust engine)");
+      emitStage(
+        "EMIT_GO",
+        "[EMIT_GO] writing Go scaffold (delegated to rust engine)",
+      );
 
       stage = "ON_SUCCESS";
       await config.onSuccess?.();
