@@ -321,7 +321,10 @@ test("emitGoProject falls back to GET for empty route methods to keep scaffold b
     emitted,
     /w\.Header\(\)\.Set\("Content-Type", "application\/json; charset=utf-8"\)/,
   );
-  assert.match(emitted, /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/);
+  assert.match(
+    emitted,
+    /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/,
+  );
   assert.match(emitted, /"mode": "unknown"/);
   assert.doesNotMatch(emitted, /TODO\(tsgodown\): Implement handler/);
 });
@@ -431,7 +434,10 @@ test("emitGoProject unknown handler semantics use concrete JSON fallback without
     goSource,
     /w\.Header\(\)\.Set\("Content-Type", "application\/json; charset=utf-8"\)/,
   );
-  assert.match(goSource, /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/);
+  assert.match(
+    goSource,
+    /w\.Header\(\)\.Set\("X-TSGoDown-Handler", "unknown"\)/,
+  );
   assert.match(goSource, /"handler": "handler_health"/);
   assert.match(goSource, /"mode": "unknown"/);
   assert.doesNotMatch(goSource, /TODO\(tsgodown\): Implement handler/);

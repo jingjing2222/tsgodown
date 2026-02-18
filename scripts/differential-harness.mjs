@@ -16,7 +16,7 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
+          body: '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
           headers: {
             "content-type": "application/json; charset=utf-8",
           },
@@ -37,7 +37,7 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
+          body: '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
           headers: {
             "content-type": "application/json; charset=utf-8",
           },
@@ -59,7 +59,7 @@ const SCENARIOS = {
         },
         expected: {
           status: 501,
-          body: "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
+          body: '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
           headers: {
             "content-type": "application/json; charset=utf-8",
           },

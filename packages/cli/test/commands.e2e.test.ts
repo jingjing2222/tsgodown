@@ -1143,16 +1143,8 @@ test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtim
   assert.equal(fs.existsSync(goPath), true);
 
   const goDir = path.dirname(goPath);
-  await assertGoRunRoute(
-    goDir,
-    "/health",
-    "\"mode\":\"unknown\"",
-  );
-  await assertGoRunRoute(
-    goDir,
-    "/users",
-    "\"mode\":\"unknown\"",
-  );
+  await assertGoRunRoute(goDir, "/health", '"mode":"unknown"');
+  await assertGoRunRoute(goDir, "/users", '"mode":"unknown"');
 });
 
 test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contracts and path params", async () => {
@@ -1183,27 +1175,25 @@ test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contrac
     method: "GET",
     routePath: "/health",
     expectedStatus: 501,
-    expectedBodyFragment: "\"mode\":\"unknown\"",
+    expectedBodyFragment: '"mode":"unknown"',
   });
   await assertGoRunRequest(goDir, {
     method: "POST",
     routePath: "/users",
     expectedStatus: 501,
-    expectedBodyFragment: "\"mode\":\"unknown\"",
+    expectedBodyFragment: '"mode":"unknown"',
   });
   await assertGoRunRequest(goDir, {
     method: "PATCH",
     routePath: "/users/abc-123",
     expectedStatus: 501,
-    expectedBodyFragment:
-      "\"mode\":\"unknown\"",
+    expectedBodyFragment: '"mode":"unknown"',
   });
   await assertGoRunRequest(goDir, {
     method: "DELETE",
     routePath: "/users/abc-123",
     expectedStatus: 501,
-    expectedBodyFragment:
-      "\"mode\":\"unknown\"",
+    expectedBodyFragment: '"mode":"unknown"',
   });
   await assertGoRunRequest(goDir, {
     method: "GET",
@@ -1272,8 +1262,7 @@ test.skip("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stab
     method: "PUT",
     routePath: "/users/alpha",
     expectedStatus: 501,
-    expectedBodyFragment:
-      "\"mode\":\"unknown\"",
+    expectedBodyFragment: '"mode":"unknown"',
   });
   await assertGoRunRequest(goDir, {
     method: "GET",

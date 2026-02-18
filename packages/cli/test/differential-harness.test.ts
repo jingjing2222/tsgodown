@@ -84,11 +84,11 @@ for (const scenario of scenarios) {
     );
     assert.equal(
       report.cases[0]?.ts.body,
-      "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
+      '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
     );
     assert.equal(
       report.cases[0]?.go.body,
-      "{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"}\n",
+      '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
     );
   });
 
