@@ -87,3 +87,24 @@ app.post("/users", createUser);
     assert!(semantics.uses_status);
     assert!(semantics.uses_body);
 }
+
+#[test]
+fn parses_optional_typed_handler_params() {
+    let src = r#"
+const createUser = (request?: FastifyRequest, reply?: FastifyReply) => {
+  reply?.status(201);
+  reply?.send({ ok: true });
+};
+
+app.post("/users", createUser);
+"#;
+
+    let ir = analyze_compiler_entry("fixture.ts", src);
+    let create_user = ir.handlers.iter().find(|h| h.id == "createUser").unwrap();
+
+    assert_eq!(create_user.params.len(), 2);
+    assert_eq!(create_user.params[0].name, "request");
+    assert_eq!(create_user.params[0].role, "request");
+    assert_eq!(create_user.params[1].name, "reply");
+    assert_eq!(create_user.params[1].role, "response");
+}
