@@ -62,13 +62,14 @@ app.get("/health", health);
 }
 
 #[test]
-fn parses_typed_and_default_handler_params_and_fastify_code_alias() {
+fn parses_typed_and_default_handler_params_and_response_aliases() {
     let src = r#"
 const createUser = (
   request: FastifyRequest,
   reply: FastifyReply = defaultReply
 ) => {
-  reply.code(201).send({ ok: true });
+  metrics.status(1).json({ ok: false });
+  reply.code(201).setHeader("x-request-id", request.id).json({ ok: true });
 };
 
 app.post("/users", createUser);
@@ -85,7 +86,9 @@ app.post("/users", createUser);
     assert_eq!(create_user.params[1].role, "response");
 
     assert!(semantics.uses_status);
-    assert!(semantics.uses_body);
+    assert!(!semantics.uses_body);
+    assert!(semantics.uses_json);
+    assert!(semantics.uses_headers);
 }
 
 #[test]

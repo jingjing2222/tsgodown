@@ -348,26 +348,41 @@ fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR 
         .find(|param| param.role == "response")
         .map(|param| param.name.clone());
 
-    let body_lower = body.to_ascii_lowercase();
+    let body_compact = body
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>();
     let response_param_lower = response_param
         .as_ref()
         .map(|name| name.to_ascii_lowercase());
+
+    let has_chained_call = |receiver: &str, via: &str, target: &str| {
+        let anchor = format!("{receiver}.{via}(");
+        let target_call = format!(".{target}(");
+
+        body_compact
+            .match_indices(anchor.as_str())
+            .any(|(start, _)| {
+                let rest = &body_compact[start..];
+                let statement_end = rest.find(';').unwrap_or(rest.len());
+                rest[..statement_end].contains(target_call.as_str())
+            })
+    };
 
     let has_call = |fn_name: &str| {
         response_param_lower
             .as_ref()
             .map(|response_name| {
-                body_lower.contains(&format!("{response_name}.{fn_name}("))
-                    || body_lower.contains(&format!("{response_name}.status("))
-                        && body_lower.contains(&format!(".{fn_name}("))
-                    || body_lower.contains(&format!("{response_name}.code("))
-                        && body_lower.contains(&format!(".{fn_name}("))
+                body_compact.contains(format!("{response_name}.{fn_name}(").as_str())
+                    || has_chained_call(response_name, "status", fn_name)
+                    || has_chained_call(response_name, "code", fn_name)
             })
             .unwrap_or(false)
     };
 
     let uses_status = has_call("status") || has_call("code");
-    let uses_headers = has_call("header") || has_call("headers");
+    let uses_headers = has_call("header") || has_call("headers") || has_call("setheader");
     let uses_json = has_call("json");
     let uses_body = has_call("send") || has_call("body");
 
