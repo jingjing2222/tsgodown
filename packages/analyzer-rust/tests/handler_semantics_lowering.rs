@@ -24,20 +24,17 @@ app.get("/health", health);
     assert_eq!(create_user.params[0].role, "request");
     assert_eq!(create_user.params[1].name, "reply");
     assert_eq!(create_user.params[1].role, "response");
-    assert_eq!(
-        create_user
-            .semantics
-            .as_ref()
-            .map(|s| s.response_mode.as_str()),
-        Some("response-object")
-    );
+    let create_semantics = create_user.semantics.as_ref().unwrap();
+    assert_eq!(create_semantics.response_mode, "response-object");
+    assert!(create_semantics.uses_status);
+    assert!(create_semantics.uses_body);
 
     let health = ir.handlers.iter().find(|h| h.id == "health").unwrap();
     assert!(health.params.is_empty());
-    assert_eq!(
-        health.semantics.as_ref().map(|s| s.response_mode.as_str()),
-        Some("return")
-    );
+    let health_semantics = health.semantics.as_ref().unwrap();
+    assert_eq!(health_semantics.response_mode, "return");
+    assert!(!health_semantics.uses_status);
+    assert!(!health_semantics.uses_body);
 }
 
 #[test]
