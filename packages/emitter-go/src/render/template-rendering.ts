@@ -102,6 +102,67 @@ function toTodoHandlerDisplayName(handlerRef: string): string {
   return handlerRef.replace(/^handler[_-]+/, "");
 }
 
+type JsonPrimitive = string | number | boolean | null;
+
+type JsonObject = Record<string, JsonPrimitive>;
+
+function toGoLiteral(value: JsonPrimitive): string {
+  if (value === null) return "nil";
+  if (typeof value === "string") return quoteGo(value);
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "nil";
+  }
+  return value ? "true" : "false";
+}
+
+function parseSupportedLiteralObjectPayload(
+  handler: HandlerIR | undefined,
+): JsonObject | null {
+  const bodyRef = handler?.bodyRef?.trim();
+  if (!bodyRef || !bodyRef.startsWith("{") || !bodyRef.endsWith("}")) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(bodyRef);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    for (const [, value] of entries) {
+      if (
+        value !== null &&
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+      ) {
+        return null;
+      }
+    }
+
+    return Object.fromEntries(
+      [...entries]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => [key, value as JsonPrimitive]),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function emitJsonEncodeBlock(payload: JsonObject): string[] {
+  return [
+    "\tif err := json.NewEncoder(w).Encode(map[string]any{",
+    ...Object.entries(payload).map(
+      ([key, value]) => `\t\t${quoteGo(key)}: ${toGoLiteral(value)},`,
+    ),
+    "\t}); err != nil {",
+    '\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
+    "\t}",
+  ];
+}
+
 function renderSemanticHandlerBehavior(
   route: RouteIR,
   handler: HandlerIR | undefined,
@@ -109,20 +170,21 @@ function renderSemanticHandlerBehavior(
   const mode = handler?.semantics?.responseMode ?? "unknown";
   const normalizedMethod = normalizeHttpMethod(route.method);
   const normalizedPath = normalizeRoutePath(route.path);
+  const literalPayload = parseSupportedLiteralObjectPayload(handler);
 
   if (mode === "response-object") {
     return [
       '\tw.Header().Set("Content-Type", "application/json; charset=utf-8")',
       '\tw.Header().Set("X-TSGoDown-Handler", "response-object")',
       "\tw.WriteHeader(http.StatusOK)",
-      "\tif err := json.NewEncoder(w).Encode(map[string]any{",
-      `\t\t"handler": ${quoteGo(route.handlerRef)},`,
-      `\t\t"method": ${quoteGo(normalizedMethod)},`,
-      `\t\t"path": ${quoteGo(normalizedPath)},`,
-      '\t\t"mode": "response-object",',
-      "\t}); err != nil {",
-      '\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
-      "\t}",
+      ...(literalPayload
+        ? emitJsonEncodeBlock(literalPayload)
+        : emitJsonEncodeBlock({
+            handler: route.handlerRef,
+            method: normalizedMethod,
+            path: normalizedPath,
+            mode: "response-object",
+          })),
     ];
   }
 
@@ -131,14 +193,14 @@ function renderSemanticHandlerBehavior(
       '\tw.Header().Set("Content-Type", "application/json; charset=utf-8")',
       '\tw.Header().Set("X-TSGoDown-Handler", "return")',
       "\tw.WriteHeader(http.StatusOK)",
-      "\tif err := json.NewEncoder(w).Encode(map[string]any{",
-      `\t\t"handler": ${quoteGo(route.handlerRef)},`,
-      `\t\t"method": ${quoteGo(normalizedMethod)},`,
-      `\t\t"path": ${quoteGo(normalizedPath)},`,
-      '\t\t"mode": "return",',
-      "\t}); err != nil {",
-      '\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
-      "\t}",
+      ...(literalPayload
+        ? emitJsonEncodeBlock(literalPayload)
+        : emitJsonEncodeBlock({
+            handler: route.handlerRef,
+            method: normalizedMethod,
+            path: normalizedPath,
+            mode: "return",
+          })),
     ];
   }
 
