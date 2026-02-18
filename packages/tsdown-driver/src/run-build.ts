@@ -90,6 +90,10 @@ function assertRunBuildArtifactContract(input: {
     }
   }
 
+  if (!Array.isArray(input.manifest?.bundles)) {
+    violations.push("manifest.bundles must be an array");
+  }
+
   for (const bundle of input.manifest?.bundles ?? []) {
     if (!isSafeRelativePath(bundle.file)) {
       violations.push(
@@ -110,7 +114,10 @@ function assertRunBuildArtifactContract(input: {
     }
   }
 
-  if (!isSafeRelativePath(input.manifest?.tsconfigPath ?? "")) {
+  if (
+    input.manifest.tsconfigPath !== undefined &&
+    !isSafeRelativePath(input.manifest.tsconfigPath)
+  ) {
     violations.push("manifest.tsconfigPath must be a safe relative path");
   }
 
