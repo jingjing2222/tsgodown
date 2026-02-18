@@ -1,9 +1,13 @@
 import { loadUserConfig } from "@tsgodown/config";
 
-import { orchestratePipelineStages } from "./internal/index.js";
+import {
+  type PipelineStageEvent,
+  orchestratePipelineStages,
+} from "./internal/index.js";
 
 export interface PipelineOptions {
   log?: (message: string) => void;
+  onStage?: (event: PipelineStageEvent) => void;
 }
 
 export async function runPipeline(cwd: string, options: PipelineOptions = {}) {
@@ -14,5 +18,6 @@ export async function runPipeline(cwd: string, options: PipelineOptions = {}) {
     cwd,
     configs,
     log,
+    onStage: options.onStage,
   });
 }
