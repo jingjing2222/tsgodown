@@ -181,14 +181,14 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
                         continue;
                     }
                     let after_eq = after_name.trim_start_matches('=').trim_start();
-                    if let Some((is_async, params, _body)) = parse_arrow_fn(after_eq) {
+                    if let Some((is_async, params, body)) = parse_arrow_fn(after_eq) {
                         let lowered_params = lower_params(&params);
                         handlers.insert(
                             name.to_string(),
                             HandlerDef {
                                 is_async,
                                 params: lowered_params.clone(),
-                                semantics: lower_semantics(&lowered_params, src),
+                                semantics: lower_semantics(&lowered_params, &body),
                             },
                         );
                     }
@@ -197,28 +197,28 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
         }
 
         if let Some(rest) = trimmed.strip_prefix("async function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: true,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
         }
 
         if let Some(rest) = trimmed.strip_prefix("function ") {
-            if let Some((name, params, _body)) = parse_function_decl(rest) {
+            if let Some((name, params, body)) = parse_function_decl(rest) {
                 let lowered_params = lower_params(&params);
                 handlers.insert(
                     name.to_string(),
                     HandlerDef {
                         is_async: false,
                         params: lowered_params.clone(),
-                        semantics: lower_semantics(&lowered_params, src),
+                        semantics: lower_semantics(&lowered_params, &body),
                     },
                 );
             }
@@ -281,10 +281,27 @@ fn parse_params(raw: &str) -> Option<Vec<String>> {
 
     let mut params = Vec::new();
     for token in split_top_level_commas(inner) {
-        let param = take_identifier(token.trim())?;
+        let token = normalize_param_token(token.trim());
+        let param = take_identifier(token.as_str())?;
         params.push(param.to_string());
     }
     Some(params)
+}
+
+fn normalize_param_token(raw: &str) -> String {
+    let trimmed = raw.trim();
+
+    let no_default = trimmed
+        .split_once('=')
+        .map(|(left, _)| left.trim())
+        .unwrap_or(trimmed);
+
+    let no_type = no_default
+        .split_once(':')
+        .map(|(left, _)| left.trim())
+        .unwrap_or(no_default);
+
+    no_type.trim_start_matches("...").trim().to_string()
 }
 
 fn lower_params(params: &[String]) -> Vec<HandlerParamIR> {
@@ -335,11 +352,17 @@ fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR 
     let has_call = |fn_name: &str| {
         response_param_lower
             .as_ref()
-            .map(|response_name| body_lower.contains(&format!("{response_name}.{fn_name}(")))
+            .map(|response_name| {
+                body_lower.contains(&format!("{response_name}.{fn_name}("))
+                    || body_lower.contains(&format!("{response_name}.status("))
+                        && body_lower.contains(&format!(".{fn_name}("))
+                    || body_lower.contains(&format!("{response_name}.code("))
+                        && body_lower.contains(&format!(".{fn_name}("))
+            })
             .unwrap_or(false)
     };
 
-    let uses_status = has_call("status");
+    let uses_status = has_call("status") || has_call("code");
     let uses_headers = has_call("header") || has_call("headers");
     let uses_json = has_call("json");
     let uses_body = has_call("send") || has_call("body");
