@@ -14,6 +14,10 @@ export function resolveEntry(config: UserConfig): string {
 }
 
 export function normalizePipelineCause(cause: unknown): string {
+  if (cause === null || cause === undefined) {
+    return "";
+  }
+
   return cause instanceof Error ? cause.message : String(cause);
 }
 
