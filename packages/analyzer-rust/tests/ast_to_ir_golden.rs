@@ -127,3 +127,11 @@ fn template_literal_paths_keep_static_literals_and_reject_interpolated_paths() {
         "template-literal-paths.golden.txt",
     );
 }
+
+#[test]
+fn unsupported_register_boundaries_emit_spec_mapped_diagnostics() {
+    assert_fixture(
+        "unsupported-register-boundaries.ts",
+        "unsupported-register-boundaries.golden.txt",
+    );
+}

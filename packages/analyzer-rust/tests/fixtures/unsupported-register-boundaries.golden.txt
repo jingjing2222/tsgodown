@@ -1,0 +1,9 @@
+modules:
+  - id=unsupported-register-boundaries.ts source_path=unsupported-register-boundaries.ts
+    exports:
+    imports:
+routes:
+handlers:
+diagnostics:
+  - level=error code=ANALYZER_UNRESOLVED_PLUGIN message=register plugin reference could not be resolved in current module source=unsupported-register-boundaries.ts
+  - level=error code=ANALYZER_UNSUPPORTED_REGISTER_CALLBACK message=register callback must be an inline function or same-file named reference source=unsupported-register-boundaries.ts
