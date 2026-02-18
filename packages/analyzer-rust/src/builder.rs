@@ -20,6 +20,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let imports = collect_imports(src, &mut diagnostics, file);
     let exports = collect_exports(src);
     let handler_defs = collect_handler_defs(src);
+    let plugin_defs = collect_plugin_defs(src);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -32,7 +33,9 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
         if let Some(route) = parse_route_object(stmt, &mut diagnostics, file) {
             referenced_handlers.insert(route.handler_ref.clone());
             routes.push(route);
+            continue;
         }
+        parse_register_boundary(stmt, &plugin_defs, &mut diagnostics, file);
     }
 
     routes.sort_by(|a, b| {
@@ -226,6 +229,48 @@ fn collect_handler_defs(src: &str) -> BTreeMap<String, HandlerDef> {
     }
 
     handlers
+}
+
+fn collect_plugin_defs(src: &str) -> BTreeSet<String> {
+    let mut defs = BTreeSet::new();
+
+    for stmt in collect_statements(src) {
+        let trimmed = stmt.trim();
+
+        if let Some(rest) = trimmed.strip_prefix("async function ") {
+            if let Some(name) = take_identifier(rest) {
+                defs.insert(name.to_string());
+            }
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("function ") {
+            if let Some(name) = take_identifier(rest) {
+                defs.insert(name.to_string());
+            }
+            continue;
+        }
+
+        for prefix in ["const ", "let ", "var "] {
+            if let Some(rest) = trimmed.strip_prefix(prefix) {
+                if let Some((name, after_name)) = split_identifier_and_rest(rest) {
+                    let after_name = after_name.trim_start();
+                    if !after_name.starts_with('=') {
+                        continue;
+                    }
+                    let after_eq = after_name.trim_start_matches('=').trim_start();
+                    if parse_arrow_fn(after_eq).is_some()
+                        || after_eq.starts_with("function")
+                        || after_eq.starts_with("async function")
+                    {
+                        defs.insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    defs
 }
 
 fn parse_arrow_fn(raw: &str) -> Option<(bool, Vec<String>, String)> {
@@ -541,6 +586,59 @@ fn parse_route_object(
         path,
         handler_ref: handler,
     })
+}
+
+fn parse_register_boundary(
+    stmt: &str,
+    plugin_defs: &BTreeSet<String>,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    if !stmt.contains(".register(") {
+        return;
+    }
+
+    let trimmed = stmt.trim_end_matches(';').trim();
+    let Some(open) = trimmed.find(".register(") else {
+        return;
+    };
+    let Some(close) = trimmed.rfind(')') else {
+        return;
+    };
+
+    let args_raw = trimmed[open + ".register(".len()..close].trim();
+    let args = split_top_level_commas(args_raw);
+    let Some(callback_arg) = args.first().map(|v| v.trim()) else {
+        return;
+    };
+
+    if callback_arg.starts_with("function")
+        || callback_arg.starts_with("async function")
+        || callback_arg.contains("=>")
+    {
+        return;
+    }
+
+    if let Some(plugin_ref) = parse_named_handler(callback_arg) {
+        if plugin_defs.contains(&plugin_ref) {
+            return;
+        }
+
+        diagnostics.push(diag(
+            "error",
+            "ANALYZER_UNRESOLVED_PLUGIN",
+            "register plugin reference could not be resolved in current module",
+            file,
+        ));
+        return;
+    }
+
+    diagnostics.push(diag(
+        "error",
+        "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK",
+        "register callback must be an inline function or same-file named reference",
+        file,
+    ));
 }
 
 fn split_top_level_commas(raw: &str) -> Vec<&str> {
