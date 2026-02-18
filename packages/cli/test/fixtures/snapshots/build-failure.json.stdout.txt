@@ -1,4 +1,5 @@
-[BUILD_ARTIFACTS] collecting tsdown build outputs
+[BUILD_ARTIFACTS] collecting build outputs
+[ON_FAILURE] src/index.ts failed at stage BUILD_ARTIFACTS
 {
   "ok": false,
   "error": {
