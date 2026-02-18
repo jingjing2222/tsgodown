@@ -589,11 +589,15 @@ fn parse_named_handler(raw: &str) -> Option<String> {
 }
 
 fn extract_quoted(raw: &str) -> Option<&str> {
-    for quote in ['\'', '"'] {
+    for quote in ['\'', '"', '`'] {
         if let Some(start) = raw.find(quote) {
             let rest = &raw[start + 1..];
             if let Some(end) = rest.find(quote) {
-                return Some(&rest[..end]);
+                let value = &rest[..end];
+                if quote == '`' && value.contains("${") {
+                    return None;
+                }
+                return Some(value);
             }
         }
     }

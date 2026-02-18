@@ -119,3 +119,11 @@ fn unsupported_patterns_emit_deterministic_diagnostics() {
 fn semantic_patterns_are_lowered_deterministically() {
     assert_fixture("semantic-patterns.ts", "semantic-patterns.golden.txt");
 }
+
+#[test]
+fn template_literal_paths_keep_static_literals_and_reject_interpolated_paths() {
+    assert_fixture(
+        "template-literal-paths.ts",
+        "template-literal-paths.golden.txt",
+    );
+}
