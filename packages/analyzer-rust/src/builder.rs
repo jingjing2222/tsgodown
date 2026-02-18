@@ -281,10 +281,27 @@ fn parse_params(raw: &str) -> Option<Vec<String>> {
 
     let mut params = Vec::new();
     for token in split_top_level_commas(inner) {
-        let param = take_identifier(token.trim())?;
+        let token = normalize_param_token(token.trim());
+        let param = take_identifier(token.as_str())?;
         params.push(param.to_string());
     }
     Some(params)
+}
+
+fn normalize_param_token(raw: &str) -> String {
+    let trimmed = raw.trim();
+
+    let no_default = trimmed
+        .split_once('=')
+        .map(|(left, _)| left.trim())
+        .unwrap_or(trimmed);
+
+    let no_type = no_default
+        .split_once(':')
+        .map(|(left, _)| left.trim())
+        .unwrap_or(no_default);
+
+    no_type.trim_start_matches("...").trim().to_string()
 }
 
 fn lower_params(params: &[String]) -> Vec<HandlerParamIR> {
@@ -335,11 +352,17 @@ fn lower_semantics(params: &[HandlerParamIR], body: &str) -> HandlerSemanticsIR 
     let has_call = |fn_name: &str| {
         response_param_lower
             .as_ref()
-            .map(|response_name| body_lower.contains(&format!("{response_name}.{fn_name}(")))
+            .map(|response_name| {
+                body_lower.contains(&format!("{response_name}.{fn_name}("))
+                    || body_lower.contains(&format!("{response_name}.status("))
+                        && body_lower.contains(&format!(".{fn_name}("))
+                    || body_lower.contains(&format!("{response_name}.code("))
+                        && body_lower.contains(&format!(".{fn_name}("))
+            })
             .unwrap_or(false)
     };
 
-    let uses_status = has_call("status");
+    let uses_status = has_call("status") || has_call("code");
     let uses_headers = has_call("header") || has_call("headers");
     let uses_json = has_call("json");
     let uses_body = has_call("send") || has_call("body");

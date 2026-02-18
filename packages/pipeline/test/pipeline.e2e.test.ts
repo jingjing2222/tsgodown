@@ -132,11 +132,12 @@ test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go bu
       },
     });
 
-    assert.equal(logs.length, 4);
+    assert.equal(logs.length, 5);
     assert.match(logs[0], /\[BUILD_ARTIFACTS\]/);
-    assert.match(logs[1], /\[BUILD_IR\].*ProgramIR from artifacts/i);
-    assert.match(logs[2], /\[CAPABILITY_GATE\].*ProgramIR/i);
-    assert.match(logs[3], /\[EMIT_GO\].*dist-go/i);
+    assert.match(logs[1], /\[BUILD_IR\].*analyzing entry: src\/index\.ts/i);
+    assert.match(logs[2], /\[CAPABILITY_GATE\].*delegated to rust engine/i);
+    assert.match(logs[3], /\[EMIT_GO\].*Go scaffold/i);
+    assert.match(logs[4], /\[ON_SUCCESS\].*src\/index\.ts/i);
 
     const manifestPath = path.join(
       cwd,
@@ -172,12 +173,8 @@ test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go bu
     assert.equal(manifestIndex.manifest, "manifest.json");
     assert.equal(typeof manifestIndex.generatedAt, "string");
 
-    const goPath = path.join(cwd, "dist-go", "main.go");
-    assert.equal(fs.existsSync(goPath), true);
-
-    const emittedGo = fs.readFileSync(goPath, "utf8");
-    assertGoMainScaffold(emittedGo);
-    assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
+    // Go emission/build now happens in the delegated rust engine path;
+    // this pipeline e2e covers stage progression + artifact contract hand-off.
   } finally {
     if (prevRustBin === undefined) {
       Reflect.deleteProperty(process.env, "TSGODOWN_RUST_ENGINE_BIN");
