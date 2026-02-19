@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { DiagnosticIR, ProgramIR } from "@tsgodown/ir-core";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
@@ -333,9 +334,11 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const rootedPath = params.sourceRoot.trim()
-    ? path.join(params.sourceRoot, params.sourcePath)
-    : params.sourcePath;
+  const sourceRootPath = toFileSystemPath(params.sourceRoot);
+  const sourcePath = toFileSystemPath(params.sourcePath);
+  const rootedPath = sourceRootPath.trim()
+    ? path.join(sourceRootPath, sourcePath)
+    : sourcePath;
 
   const resolved = path.isAbsolute(rootedPath)
     ? path.normalize(rootedPath)
@@ -356,4 +359,20 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
   return withoutDot;
+}
+
+function toFileSystemPath(value: string): string {
+  if (!value.trim()) {
+    return "";
+  }
+
+  if (value.startsWith("file://")) {
+    try {
+      return fileURLToPath(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
 }

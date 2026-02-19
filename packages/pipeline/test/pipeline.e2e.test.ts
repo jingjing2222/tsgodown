@@ -6,7 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 
+import { emitGoProject } from "@tsgodown/emitter-go";
+import type { RunBuildResult } from "@tsgodown/tsdown-driver";
+
 import { runPipeline } from "../src/index.ts";
+import { buildProgramIrFromArtifacts } from "../src/internal/artifact-to-ir.ts";
 
 const tempDirs: string[] = [];
 
@@ -183,4 +187,95 @@ test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go bu
       process.env.TSGODOWN_RUST_ENGINE_BIN = prevRustBin;
     }
   }
+});
+
+test("M1 regression: real JS+d.ts+sourcemap artifact provenance (file:// sourceRoot) -> typed IR -> Go compile smoke", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-artifact-go-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "src", "routes", "health.ts"),
+    "export const health = () => ({ ok: true });\n",
+  );
+  fs.writeFileSync(
+    path.join(cwd, "src", "routes", "users.ts"),
+    "export const listUsers = () => [{ id: 'u1' }];\n",
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "const listUsers = () => [{ id: 'u1' }];",
+      "export { health, listUsers };",
+      "//# sourceMappingURL=index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare const listUsers: () => Array<{ id: string }>;",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["routes/health.ts", "routes/users.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "0011223344556677",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/index.mjs.map",
+          format: "esm",
+          exports: ["health", "listUsers"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/routes/users.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "listUsers"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+
+  const goMainPath = path.join(goOutDir, "main.go");
+  assert.equal(fs.existsSync(goMainPath), true);
+  const goSource = fs.readFileSync(goMainPath, "utf8");
+  assert.match(goSource, /^package main/m);
+  assert.match(goSource, /router\.handle\("GET", "\/health", route0\)/);
+
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
