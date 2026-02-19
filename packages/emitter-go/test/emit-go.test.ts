@@ -475,6 +475,53 @@ test("emitGoProject renders diagnostic source without placeholder coordinates wh
   assert.doesNotMatch(emitted, /src\/generated\/entry\.js:\?:\?/);
 });
 
+test("emitGoProject renders column-only sourcemap diagnostic source without placeholder coordinates and keeps go build smoke green", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "SOURCEMAP_POSITION_COLUMN_ONLY",
+          message:
+            "sourcemap provided a stable source file but omitted generated line",
+          source: { file: "src/generated/chunk.js", column: 7 },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(
+    emitted,
+    /\/\/\s+\[warn\] SOURCEMAP_POSITION_COLUMN_ONLY: sourcemap provided a stable source file but omitted generated line/,
+  );
+  assert.match(emitted, /\/\/\s+at src\/generated\/chunk\.js/);
+  assert.doesNotMatch(emitted, /src\/generated\/chunk\.js:\?:7/);
+
+  if (hasGoToolchain) {
+    const modulePath =
+      "example.com/tsgodown-smoke/column-only-sourcemap-diagnostic";
+    const modInit = spawnSync("go", ["mod", "init", modulePath], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const build = spawnSync("go", ["build", "./..."], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+  }
+});
+
 test("emitGoProject keeps normalized repo-relative sourcemap diagnostic paths in comments and go-build flow", () => {
   const outDir = createOutDir();
 

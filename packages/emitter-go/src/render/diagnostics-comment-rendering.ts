@@ -16,7 +16,7 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
     return `${source.file}:${source.line}`;
   }
 
-  return `${source.file}:?:${source.column}`;
+  return source.file;
 }
 
 function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
