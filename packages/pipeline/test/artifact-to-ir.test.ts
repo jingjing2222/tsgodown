@@ -495,3 +495,72 @@ test("buildProgramIrFromArtifacts emits missing-map diagnostics with determinist
     column: 1,
   });
 });
+
+test("buildProgramIrFromArtifacts keeps indexed sourcemap source provenance deterministic when sections mix inherited sourceRoot and relative source paths", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-mixed-root-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    "export declare const ok: true;\n",
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: "../../src",
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sources: ["routes/health.ts", "./routes/users.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 8, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src/nested/..",
+            sources: ["routes/./users.ts", "routes/admin.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["ok"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/admin.ts", "src/routes/health.ts", "src/routes/users.ts"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+});
