@@ -140,6 +140,14 @@ function collectTypedExports(
 
     for (const line of sourceText.split(/\r?\n/)) {
       const trimmed = line.trim();
+
+      const defaultExportMatch = trimmed.match(
+        /^export\s+default\s+(?:declare\s+)?(?:async\s+)?(?:function|class)\b/,
+      );
+      if (defaultExportMatch) {
+        exportedNames.add("default");
+      }
+
       const match = trimmed.match(
         /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)/,
       );
