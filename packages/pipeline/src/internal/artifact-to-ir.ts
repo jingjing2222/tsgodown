@@ -694,8 +694,10 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const sourceRootPath = toFileSystemPath(stripQueryAndHash(params.sourceRoot));
-  const sourcePath = toFileSystemPath(stripQueryAndHash(params.sourcePath));
+  const sourceRootPath = normalizeDecodedSourceMapPathSegment(
+    params.sourceRoot,
+  );
+  const sourcePath = normalizeDecodedSourceMapPathSegment(params.sourcePath);
   if (!sourcePath.trim()) {
     return undefined;
   }
@@ -724,6 +726,17 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
   return withoutDot;
+}
+
+function normalizeDecodedSourceMapPathSegment(value: unknown): string {
+  const strippedValue = stripQueryAndHash(value);
+  const normalizedPath = toFileSystemPath(strippedValue);
+
+  if (typeof strippedValue === "string" && /^file:\/\//i.test(strippedValue)) {
+    return normalizedPath;
+  }
+
+  return String(stripQueryAndHash(normalizedPath));
 }
 
 function stripQueryAndHash(value: unknown): unknown {
