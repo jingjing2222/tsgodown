@@ -719,13 +719,28 @@ function normalizeSourceMapSourcePath(params: {
     ? normalized.slice(2)
     : normalized;
   if (
-    !withoutDot ||
-    withoutDot.startsWith("../") ||
-    path.isAbsolute(withoutDot)
+    withoutDot &&
+    !withoutDot.startsWith("../") &&
+    !path.isAbsolute(withoutDot)
   ) {
-    return undefined;
+    return withoutDot;
   }
-  return withoutDot;
+
+  if (
+    isUncFileUrlLike(params.sourcePath) ||
+    isUncFileUrlLike(params.sourceRoot)
+  ) {
+    const uncPortable = normalizePathSeparators(resolved).replace(/^\/+/, "");
+    if (
+      uncPortable &&
+      !uncPortable.startsWith("../") &&
+      !path.isAbsolute(uncPortable)
+    ) {
+      return uncPortable;
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeDecodedSourceMapPathSegment(value: unknown): string {
@@ -749,6 +764,10 @@ function decodeSourceMapUrlPath(sourceMapUrl: string): string {
   } catch {
     return sourceMapUrl;
   }
+}
+
+function isUncFileUrlLike(value: unknown): boolean {
+  return typeof value === "string" && /^file:\/\/[^/]/i.test(value.trim());
 }
 
 function toFileSystemPath(value: unknown): string {
