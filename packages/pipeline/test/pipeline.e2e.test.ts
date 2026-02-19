@@ -1271,11 +1271,11 @@ test("M1 regression: inline+external+indexed sourcemaps with d.ts typing union t
       "src/types/http.ts",
     ],
   );
-  assert.deepEqual(ir.modules[0]?.exports, [
-    "adminPing",
-    "health",
-    "listUsers",
-  ]);
+  assert.deepEqual(
+    ir.modules.find((module) => module.sourcePath === "src/types/http.ts")
+      ?.exports,
+    ["adminPing", "health", "listUsers"],
+  );
   assert.deepEqual(
     ir.diagnostics.map((d) => ({
       code: d.code,
@@ -1811,7 +1811,11 @@ test("M1 regression: multiple d.ts artifacts union typed exports while JS+d.ts s
     ir.modules.map((module) => module.sourcePath),
     ["src/routes/health.ts", "src/types/http.ts", "src/types/users.ts"],
   );
-  assert.deepEqual(ir.modules[0]?.exports, ["health", "listUsers"]);
+  assert.deepEqual(
+    ir.modules.find((module) => module.sourcePath === "src/types/http.ts")
+      ?.exports,
+    ["health", "listUsers"],
+  );
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
@@ -1893,7 +1897,11 @@ test("M1 regression: file:// sourceMappingURL on mjs+d.ts map comments resolves 
     ir.modules.map((module) => module.sourcePath),
     ["src/routes/health.ts", "src/types/health.ts"],
   );
-  assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthPayload"]);
+  assert.deepEqual(
+    ir.modules.find((module) => module.sourcePath === "src/types/health.ts")
+      ?.exports,
+    ["health", "HealthPayload"],
+  );
   assert.deepEqual(ir.diagnostics, []);
 
   const goOutDir = path.join(cwd, "dist-go");
