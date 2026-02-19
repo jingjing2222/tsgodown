@@ -165,7 +165,13 @@ function collectSourceEntriesFromSourceMap(
   cwd: string,
   diagnostics: DiagnosticIR[],
 ): string[] {
-  const mapPath = buildResult.manifest.bundles[0]?.map;
+  const bundleFilePath = buildResult.manifest.bundles[0]?.file;
+  const mapPath =
+    buildResult.manifest.bundles[0]?.map ??
+    discoverSourceMapPathFromBundle({
+      cwd,
+      bundlePath: bundleFilePath,
+    });
   if (!mapPath?.trim()) {
     diagnostics.push({
       level: "warn",
@@ -173,7 +179,7 @@ function collectSourceEntriesFromSourceMap(
       message:
         "missing sourcemap path required for deterministic source mapping",
       source: {
-        file: buildResult.manifest.bundles[0]?.file ?? "manifest.bundles[0]",
+        file: bundleFilePath ?? "manifest.bundles[0]",
         viaSourceMap: true,
         ...DETERMINISTIC_SOURCE_LOCATION,
       },
@@ -346,6 +352,43 @@ function deriveDeterministicLine(
   return {
     line: (line as number) + 1,
   };
+}
+
+function discoverSourceMapPathFromBundle(params: {
+  cwd: string;
+  bundlePath: string | undefined;
+}): string | undefined {
+  if (!params.bundlePath?.trim()) {
+    return undefined;
+  }
+
+  const absoluteBundlePath = path.join(params.cwd, params.bundlePath);
+  let bundleText = "";
+  try {
+    bundleText = fs.readFileSync(absoluteBundlePath, "utf8");
+  } catch {
+    return undefined;
+  }
+
+  const sourceMapUrlMatch = bundleText.match(
+    /\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/m,
+  );
+  const sourceMapUrl = sourceMapUrlMatch?.[1]?.trim();
+  if (!sourceMapUrl) {
+    return undefined;
+  }
+
+  if (sourceMapUrl.startsWith("data:")) {
+    return undefined;
+  }
+
+  const bundleDir = path.dirname(params.bundlePath);
+  const discoveredPath = path.isAbsolute(sourceMapUrl)
+    ? path.normalize(sourceMapUrl)
+    : path.normalize(path.join(bundleDir, sourceMapUrl));
+
+  const normalized = discoveredPath.replaceAll("\\", "/");
+  return normalized.startsWith("./") ? normalized.slice(2) : normalized;
 }
 
 function normalizeSourceMapSourcePath(params: {
