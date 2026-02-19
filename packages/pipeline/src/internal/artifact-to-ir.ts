@@ -713,9 +713,14 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const sourceRootPath = normalizeDecodedSourceMapPathSegment(
+  const decodedSourceRootPath = normalizeDecodedSourceMapPathSegment(
     params.sourceRoot,
   );
+  const sourceRootQueryIndex = decodedSourceRootPath.indexOf("?");
+  const sourceRootPath =
+    sourceRootQueryIndex >= 0
+      ? decodedSourceRootPath.slice(0, sourceRootQueryIndex)
+      : decodedSourceRootPath;
   const sourcePath = String(
     stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
   );
