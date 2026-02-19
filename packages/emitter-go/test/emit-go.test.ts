@@ -621,6 +621,49 @@ test("emitGoProject keeps deterministic comment rendering for indexed sourcemap 
   assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map:9/);
 });
 
+test("emitGoProject sorts same-file indexed missing-sources diagnostics by numeric line for stable Go comments", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+          message:
+            "indexed sourcemap section map is missing sources[]; section ignored for deterministic mapping",
+          source: {
+            file: "dist/maps/index.mjs.map",
+            viaSourceMap: true,
+            line: 21,
+          },
+        },
+        {
+          level: "warn",
+          code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+          message:
+            "indexed sourcemap section map is missing sources[]; section ignored for deterministic mapping",
+          source: {
+            file: "dist/maps/index.mjs.map",
+            viaSourceMap: true,
+            line: 4,
+          },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+  const line4 = emitted.indexOf("at dist/maps/index.mjs.map:4");
+  const line21 = emitted.indexOf("at dist/maps/index.mjs.map:21");
+  assert.ok(line4 >= 0 && line21 >= 0);
+  assert.ok(line4 < line21);
+});
+
 test("emitGoProject keeps normalized repo-relative sourcemap diagnostic paths in comments and go-build flow", () => {
   const outDir = createOutDir();
 
