@@ -722,6 +722,14 @@ function stripQueryAndHash(value: unknown): unknown {
   return typeof value === "string" ? value.replace(/[?#].*$/, "") : value;
 }
 
+function decodeSourceMapUrlPath(sourceMapUrl: string): string {
+  try {
+    return decodeURIComponent(sourceMapUrl);
+  } catch {
+    return sourceMapUrl;
+  }
+}
+
 function toFileSystemPath(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) {
     return "";
