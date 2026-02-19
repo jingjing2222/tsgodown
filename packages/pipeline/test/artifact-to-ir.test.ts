@@ -203,6 +203,64 @@ test("buildProgramIrFromArtifacts resolves indexed sourcemap sections determinis
   assert.deepEqual(ir.diagnostics, []);
 });
 
+test("buildProgramIrFromArtifacts normalizes absolute sourceRoot with mixed relative segments into stable repo-relative module paths", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-abs-root-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    "export declare const ok: true;\n",
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: path.join(cwd, "src", "nested", ".."),
+      sources: [
+        "./routes/../health.ts",
+        "./routes/users/../list.ts",
+        "./routes/../health.ts",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["ok"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/health.ts", "src/routes/list.ts"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+});
+
 test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing/invalid typed mapping metadata", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-diag-"),
