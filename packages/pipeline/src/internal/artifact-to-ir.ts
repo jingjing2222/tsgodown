@@ -165,20 +165,95 @@ function collectSourceEntriesFromSourceMap(
   cwd: string,
   diagnostics: DiagnosticIR[],
 ): string[] {
+  const normalized = new Set<string>();
+
   const bundleFilePath = buildResult.manifest.bundles[0]?.file;
-  let mapPath =
-    buildResult.manifest.bundles[0]?.map ??
-    discoverSourceMapPathFromBundle({
+  const bundleMapPath = buildResult.manifest.bundles[0]?.map;
+  const typePath = buildResult.manifest.types?.[0];
+
+  const sourceMapTargets: Array<{
+    artifactPath: string | undefined;
+    mapPath?: string;
+  }> = [
+    {
+      artifactPath: bundleFilePath,
+      mapPath: bundleMapPath,
+    },
+    {
+      artifactPath: typePath,
+    },
+  ];
+
+  let foundAnySourceMap = false;
+  for (const target of sourceMapTargets) {
+    if (!target.artifactPath?.trim()) {
+      continue;
+    }
+
+    const sourceMapResult = collectSourceMapEntriesFromArtifact({
       cwd,
-      bundlePath: bundleFilePath,
+      artifactPath: target.artifactPath,
+      declaredMapPath: target.mapPath,
+      diagnostics,
+    });
+
+    if (sourceMapResult.foundSourceMap) {
+      foundAnySourceMap = true;
+    }
+
+    for (const sourceEntry of sourceMapResult.entries) {
+      normalized.add(sourceEntry);
+    }
+  }
+
+  if (normalized.size > 0) {
+    return [...normalized].sort((a, b) => a.localeCompare(b));
+  }
+
+  if (!foundAnySourceMap) {
+    diagnostics.push({
+      level: "warn",
+      code: "PIPELINE_MISSING_SOURCEMAP_MAPPING",
+      message:
+        "missing sourcemap path required for deterministic source mapping",
+      source: {
+        file: bundleFilePath ?? typePath ?? "manifest.bundles[0]",
+        viaSourceMap: true,
+        ...DETERMINISTIC_SOURCE_LOCATION,
+      },
+    });
+  }
+
+  return [];
+}
+
+function collectSourceMapEntriesFromArtifact(params: {
+  cwd: string;
+  artifactPath: string;
+  declaredMapPath?: string;
+  diagnostics: DiagnosticIR[];
+}): {
+  entries: string[];
+  foundSourceMap: boolean;
+} {
+  const mapPath =
+    params.declaredMapPath?.trim() ||
+    discoverSourceMapPathFromArtifact({
+      cwd: params.cwd,
+      artifactPath: params.artifactPath,
     });
 
   let parsedMap: unknown;
+  let resolvedMapPath: string | undefined;
+
   if (mapPath?.trim()) {
     try {
-      parsedMap = JSON.parse(fs.readFileSync(path.join(cwd, mapPath), "utf8"));
+      parsedMap = JSON.parse(
+        fs.readFileSync(path.join(params.cwd, mapPath), "utf8"),
+      );
+      resolvedMapPath = mapPath;
     } catch {
-      diagnostics.push({
+      params.diagnostics.push({
         level: "warn",
         code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
         message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
@@ -188,54 +263,43 @@ function collectSourceEntriesFromSourceMap(
           ...DETERMINISTIC_SOURCE_LOCATION,
         },
       });
-      return [];
+      return { entries: [], foundSourceMap: true };
     }
   } else {
-    parsedMap = readInlineSourceMapFromBundle({
-      cwd,
-      bundlePath: bundleFilePath,
+    parsedMap = readInlineSourceMapFromArtifact({
+      cwd: params.cwd,
+      artifactPath: params.artifactPath,
     });
-    if (parsedMap) {
-      mapPath = bundleFilePath ?? "manifest.bundles[0]";
+    if (parsedMap !== undefined) {
+      resolvedMapPath = params.artifactPath;
     }
   }
 
-  if (!mapPath?.trim() || parsedMap === undefined) {
-    diagnostics.push({
-      level: "warn",
-      code: "PIPELINE_MISSING_SOURCEMAP_MAPPING",
-      message:
-        "missing sourcemap path required for deterministic source mapping",
-      source: {
-        file: bundleFilePath ?? "manifest.bundles[0]",
-        viaSourceMap: true,
-        ...DETERMINISTIC_SOURCE_LOCATION,
-      },
-    });
-    return [];
+  if (parsedMap === undefined || !resolvedMapPath?.trim()) {
+    return { entries: [], foundSourceMap: false };
   }
 
   const sourceEntries = collectSourceMapEntries(parsedMap, {
-    mapPath,
-    diagnostics,
+    mapPath: resolvedMapPath,
+    diagnostics: params.diagnostics,
   });
   if (sourceEntries.length === 0) {
-    diagnostics.push({
+    params.diagnostics.push({
       level: "warn",
       code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
       message:
         "sourcemap metadata missing sources[] for artifact-to-ir mapping",
       source: {
-        file: mapPath,
+        file: resolvedMapPath,
         viaSourceMap: true,
         ...DETERMINISTIC_SOURCE_LOCATION,
       },
     });
-    return [];
+    return { entries: [], foundSourceMap: true };
   }
 
-  const normalized = new Set<string>();
   let hasSparseEntries = false;
+  const normalized = new Set<string>();
   for (const entry of sourceEntries) {
     if (typeof entry.sourcePath !== "string" || !entry.sourcePath.trim()) {
       hasSparseEntries = true;
@@ -243,8 +307,8 @@ function collectSourceEntriesFromSourceMap(
     }
 
     const normalizedSource = normalizeSourceMapSourcePath({
-      cwd,
-      mapPath,
+      cwd: params.cwd,
+      mapPath: resolvedMapPath,
       sourceRoot: entry.sourceRoot,
       sourcePath: entry.sourcePath,
     });
@@ -254,19 +318,22 @@ function collectSourceEntriesFromSourceMap(
   }
 
   if (hasSparseEntries) {
-    diagnostics.push({
+    params.diagnostics.push({
       level: "warn",
       code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
       message:
         "sourcemap sections include sparse source entries; positional metadata omitted deterministically",
       source: {
-        file: mapPath,
+        file: resolvedMapPath,
         viaSourceMap: true,
       },
     });
   }
 
-  return [...normalized].sort((a, b) => a.localeCompare(b));
+  return {
+    entries: [...normalized].sort((a, b) => a.localeCompare(b)),
+    foundSourceMap: true,
+  };
 }
 
 function collectSourceMapEntries(
@@ -402,34 +469,34 @@ function deriveDeterministicLine(
   };
 }
 
-function discoverSourceMapPathFromBundle(params: {
+function discoverSourceMapPathFromArtifact(params: {
   cwd: string;
-  bundlePath: string | undefined;
+  artifactPath: string | undefined;
 }): string | undefined {
-  const bundlePath = params.bundlePath;
-  if (!bundlePath?.trim()) {
+  const artifactPath = params.artifactPath;
+  if (!artifactPath?.trim()) {
     return undefined;
   }
 
-  const sourceMapUrl = readSourceMapUrlFromBundle(params);
+  const sourceMapUrl = readSourceMapUrlFromArtifact(params);
   if (!sourceMapUrl || sourceMapUrl.startsWith("data:")) {
     return undefined;
   }
 
-  const bundleDir = path.dirname(bundlePath);
+  const artifactDir = path.dirname(artifactPath);
   const discoveredPath = path.isAbsolute(sourceMapUrl)
     ? path.normalize(sourceMapUrl)
-    : path.normalize(path.join(bundleDir, sourceMapUrl));
+    : path.normalize(path.join(artifactDir, sourceMapUrl));
 
   const normalized = discoveredPath.replaceAll("\\", "/");
   return normalized.startsWith("./") ? normalized.slice(2) : normalized;
 }
 
-function readInlineSourceMapFromBundle(params: {
+function readInlineSourceMapFromArtifact(params: {
   cwd: string;
-  bundlePath: string | undefined;
+  artifactPath: string | undefined;
 }): unknown | undefined {
-  const sourceMapUrl = readSourceMapUrlFromBundle(params);
+  const sourceMapUrl = readSourceMapUrlFromArtifact(params);
   if (!sourceMapUrl?.startsWith("data:")) {
     return undefined;
   }
@@ -463,23 +530,23 @@ function readInlineSourceMapFromBundle(params: {
   }
 }
 
-function readSourceMapUrlFromBundle(params: {
+function readSourceMapUrlFromArtifact(params: {
   cwd: string;
-  bundlePath: string | undefined;
+  artifactPath: string | undefined;
 }): string | undefined {
-  if (!params.bundlePath?.trim()) {
+  if (!params.artifactPath?.trim()) {
     return undefined;
   }
 
-  const absoluteBundlePath = path.join(params.cwd, params.bundlePath);
-  let bundleText = "";
+  const absoluteArtifactPath = path.join(params.cwd, params.artifactPath);
+  let artifactText = "";
   try {
-    bundleText = fs.readFileSync(absoluteBundlePath, "utf8");
+    artifactText = fs.readFileSync(absoluteArtifactPath, "utf8");
   } catch {
     return undefined;
   }
 
-  const sourceMapUrlMatch = bundleText.match(
+  const sourceMapUrlMatch = artifactText.match(
     /\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/m,
   );
   return sourceMapUrlMatch?.[1]?.trim();
