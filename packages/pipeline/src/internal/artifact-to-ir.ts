@@ -197,7 +197,10 @@ function collectSourceEntriesFromSourceMap(
     return [];
   }
 
-  const sourceEntries = collectSourceMapEntries(parsedMap);
+  const sourceEntries = collectSourceMapEntries(parsedMap, {
+    mapPath,
+    diagnostics,
+  });
   if (sourceEntries.length === 0) {
     diagnostics.push({
       level: "warn",
@@ -229,7 +232,13 @@ function collectSourceEntriesFromSourceMap(
   return [...normalized].sort((a, b) => a.localeCompare(b));
 }
 
-function collectSourceMapEntries(parsedMap: unknown): Array<{
+function collectSourceMapEntries(
+  parsedMap: unknown,
+  context?: {
+    mapPath: string;
+    diagnostics: DiagnosticIR[];
+  },
+): Array<{
   sourcePath: unknown;
   sourceRoot: string;
 }> {
@@ -259,13 +268,59 @@ function collectSourceMapEntries(parsedMap: unknown): Array<{
     if (typeof section !== "object" || section === null) {
       continue;
     }
+
+    const sectionOffset = (section as { offset?: unknown }).offset;
+    if (context && isSparseSourceMapOffset(sectionOffset)) {
+      context.diagnostics.push({
+        level: "warn",
+        code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+        message:
+          "indexed sourcemap section offset is partial; diagnostics remain file-scoped for deterministic mapping",
+        source: {
+          file: context.mapPath,
+          viaSourceMap: true,
+          ...(deriveDeterministicLine(sectionOffset) ?? {}),
+        },
+      });
+    }
+
     const sectionMap = (section as { map?: unknown }).map;
-    for (const nestedEntry of collectSourceMapEntries(sectionMap)) {
+    for (const nestedEntry of collectSourceMapEntries(sectionMap, context)) {
       entries.push(nestedEntry);
     }
   }
 
   return entries;
+}
+
+function isSparseSourceMapOffset(offset: unknown): boolean {
+  if (typeof offset !== "object" || offset === null) {
+    return true;
+  }
+
+  const line = (offset as { line?: unknown }).line;
+  const column = (offset as { column?: unknown }).column;
+  const hasLine = Number.isInteger(line) && (line as number) >= 0;
+  const hasColumn = Number.isInteger(column) && (column as number) >= 0;
+
+  return !hasLine || !hasColumn;
+}
+
+function deriveDeterministicLine(
+  offset: unknown,
+): Pick<NonNullable<DiagnosticIR["source"]>, "line"> | undefined {
+  if (typeof offset !== "object" || offset === null) {
+    return undefined;
+  }
+
+  const line = (offset as { line?: unknown }).line;
+  if (!Number.isInteger(line) || (line as number) < 0) {
+    return undefined;
+  }
+
+  return {
+    line: (line as number) + 1,
+  };
 }
 
 function normalizeSourceMapSourcePath(params: {

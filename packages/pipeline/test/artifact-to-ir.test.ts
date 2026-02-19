@@ -203,6 +203,102 @@ test("buildProgramIrFromArtifacts resolves indexed sourcemap sections determinis
   assert.deepEqual(ir.diagnostics, []);
 });
 
+test("buildProgramIrFromArtifacts emits deterministic diagnostics for indexed sourcemap sections with sparse offsets", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-sparse-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    "export declare const ok: true;\n",
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sections: [
+        {
+          offset: {},
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            sources: ["routes/z.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 4 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            sources: ["routes/a.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["ok"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/a.ts", "src/routes/z.ts"],
+  );
+  assert.deepEqual(
+    ir.diagnostics.filter(
+      (diag) => diag.code === "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+    ),
+    [
+      {
+        level: "warn",
+        code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+        message:
+          "indexed sourcemap section offset is partial; diagnostics remain file-scoped for deterministic mapping",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+        },
+      },
+      {
+        level: "warn",
+        code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+        message:
+          "indexed sourcemap section offset is partial; diagnostics remain file-scoped for deterministic mapping",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+          line: 5,
+        },
+      },
+    ],
+  );
+});
+
 test("buildProgramIrFromArtifacts normalizes absolute sourceRoot with mixed relative segments into stable repo-relative module paths", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-abs-root-"),
