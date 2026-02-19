@@ -2634,6 +2634,99 @@ test("M1 regression: Windows drive-letter file:// sourceRoot mixed with backslas
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: inline JS map + external d.ts map with encoded sourceRoot query/hash keeps deterministic typed IR provenance and Go compile smoke", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-js-encoded-dts-root-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  const sourceRootDir = path.join(cwd, "src#v1");
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "routes"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "types"), { recursive: true });
+
+  const inlineJsMap = {
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(
+      `file://${sourceRootDir.replace("#", "%23")}/`,
+    ).toString(),
+    sources: ["routes/health.ts?from=inline#frag"],
+    names: [],
+    mappings: "",
+  };
+  const inlineJsMapDataUrl = `data:application/json;charset=utf-8;base64,${Buffer.from(
+    JSON.stringify(inlineJsMap),
+    "utf8",
+  ).toString("base64")}`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=${inlineJsMapDataUrl}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthType { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map?cache=7#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: `${new URL(`file://${sourceRootDir.replace("#", "%23")}/`).toString()}?cache=types#decl`,
+      sources: ["./types/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "aa11bb22cc33dd44",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src#v1/routes/health.ts", "src#v1/types/health.ts"],
+  );
+  const typedModule = ir.modules.find(
+    (module) => module.sourcePath === "src#v1/types/health.ts",
+  );
+  assert.deepEqual(typedModule?.exports, ["health", "HealthType"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: file URL sourcemap sources with percent-encoded slash stay deterministic across JS+d.ts typed IR and Go compile path", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-e2e-file-url-encoded-slash-"),
