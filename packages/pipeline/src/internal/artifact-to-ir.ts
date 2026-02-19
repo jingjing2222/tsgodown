@@ -36,24 +36,14 @@ export function buildProgramIrFromArtifacts(
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
   const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
-  const declarationLinkedSources = collectDeclarationLinkedSourceEntries(
-    buildResult,
-    cwd,
-    diagnostics,
-  );
 
   const modules = moduleEntries
-    .map((manifestEntry, index) => {
-      const shouldAttachTypedExports =
-        declarationLinkedSources.size === 0 ||
-        declarationLinkedSources.has(manifestEntry);
-      return {
-        id: `module_${index}`,
-        sourcePath: manifestEntry,
-        exports: shouldAttachTypedExports ? typedExports : [],
-        imports: [],
-      };
-    })
+    .map((manifestEntry, index) => ({
+      id: `module_${index}`,
+      sourcePath: manifestEntry,
+      exports: typedExports,
+      imports: [],
+    }))
     .sort((a, b) =>
       a.sourcePath === b.sourcePath
         ? a.id.localeCompare(b.id)
@@ -575,7 +565,10 @@ function discoverSourceMapPathFromArtifact(params: {
     return undefined;
   }
 
-  const sanitizedSourceMapPath = sourceMapUrl.replace(/[?#].*$/, "").trim();
+  const decodedSourceMapUrl = decodeSourceMapUrlPath(sourceMapUrl);
+  const sanitizedSourceMapPath = decodedSourceMapUrl
+    .replace(/[?#].*$/, "")
+    .trim();
   if (!sanitizedSourceMapPath) {
     return undefined;
   }
@@ -717,6 +710,14 @@ function normalizeSourceMapSourcePath(params: {
 
 function stripQueryAndHash(value: unknown): unknown {
   return typeof value === "string" ? value.replace(/[?#].*$/, "") : value;
+}
+
+function decodeSourceMapUrlPath(sourceMapUrl: string): string {
+  try {
+    return decodeURIComponent(sourceMapUrl);
+  } catch {
+    return sourceMapUrl;
+  }
 }
 
 function toFileSystemPath(value: unknown): string {

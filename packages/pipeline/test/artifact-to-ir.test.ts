@@ -535,6 +535,92 @@ test("buildProgramIrFromArtifacts emits missing-map diagnostics with determinist
   });
 });
 
+test("buildProgramIrFromArtifacts discovers encoded d.ts sourceMappingURL map paths when manifest omits declared map and keeps export type references stable", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-encoded-dts-map-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export type HealthResponse = { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map%3Fcache%3Dv1%23types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: "../../src",
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "../../src",
+      sources: ["types/contracts.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["health"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/contracts.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthResponse"]);
+  assert.equal(
+    ir.diagnostics.some(
+      (diag) => diag.code === "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+    ),
+    false,
+  );
+});
+
 test("buildProgramIrFromArtifacts keeps deterministic module provenance ordering when JS + multiple d.ts sourcemaps contain duplicate logical paths in different relative forms", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-duplicate-relative-forms-"),

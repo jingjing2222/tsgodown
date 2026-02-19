@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -121,6 +121,64 @@ function assertGoBuildSuccessIfToolchainAvailable(goDir: string) {
     encoding: "utf8",
   });
   assert.equal(goBuild.status, 0, goBuild.stderr || goBuild.stdout);
+}
+
+async function assertGoHealthRuntimeReady(goDir: string) {
+  const hasGoToolchain =
+    spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
+  if (!hasGoToolchain) {
+    return;
+  }
+
+  const port = String(20_000 + Math.floor(Math.random() * 10_000));
+  const run = spawn("go", ["run", "."], {
+    cwd: goDir,
+    env: {
+      ...process.env,
+      PORT: port,
+    },
+    stdio: "ignore",
+  });
+
+  try {
+    const deadline = Date.now() + 10_000;
+    let response: Response | undefined;
+
+    while (Date.now() < deadline) {
+      try {
+        response = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    assert.ok(response, "go runtime /health endpoint did not become ready");
+    assert.equal(response.status, 501);
+    const payload = (await response.json()) as {
+      handler?: string;
+      method?: string;
+      mode?: string;
+      path?: string;
+    };
+    assert.equal(payload.method, "GET");
+    assert.equal(payload.path, "/health");
+    assert.equal(payload.mode, "unknown");
+  } finally {
+    if (run.exitCode === null && !run.killed) {
+      run.kill("SIGTERM");
+    }
+    await new Promise<void>((resolve) => {
+      if (run.exitCode !== null) {
+        resolve();
+        return;
+      }
+      run.once("close", () => resolve());
+      setTimeout(() => resolve(), 3000);
+    });
+  }
 }
 
 test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
@@ -278,6 +336,113 @@ test("M1 regression: real JS+d.ts+sourcemap artifact provenance (file:// sourceR
   assert.match(goSource, /router\.handle\("GET", "\/health", route0\)/);
 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
+test("M1 regression: executable-path integration keeps real JS+d.ts+sourcemap typed IR provenance stable and /health runtime reachable", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-executable-path-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthPayload { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["types/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "aa11bb22cc33dd44",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthPayload"]);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(
+    {
+      ...ir,
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_STABLE_SYMBOL_PROVENANCE",
+          message: "health symbol provenance pinned to source map lineage",
+          source: {
+            file: ir.modules[0]?.sourcePath ?? "src/routes/health.ts",
+            line: 1,
+            column: 1,
+          },
+        },
+      ],
+    },
+    goOutDir,
+  );
+
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assert.match(goMain, /\/\/\s+at src\/routes\/health\.ts:1:1/);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
 });
 
 test("M1 regression: JS sourcemap path discovered from bundle sourceMappingURL still drives typed IR -> Go compile smoke when manifest omits map", () => {
