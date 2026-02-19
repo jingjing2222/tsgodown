@@ -804,10 +804,11 @@ function stripQueryAndHash(value: unknown): unknown {
   }
 
   const afterHash = withoutQuery.slice(hashIndex + 1);
+  const decodedAfterHash = decodePathSegmentIfPossible(afterHash);
   if (
-    afterHash.includes("/") ||
-    afterHash.includes("\\") ||
-    /^[^/\\]+\.[A-Za-z0-9]+$/.test(afterHash)
+    decodedAfterHash.includes("/") ||
+    decodedAfterHash.includes("\\") ||
+    /^[^/\\]+\.[A-Za-z0-9]+$/.test(decodedAfterHash)
   ) {
     return withoutQuery;
   }
@@ -849,14 +850,23 @@ function toFileSystemPath(value: unknown): string {
         : trimmed.replace(/^file:/i, "file://"),
     );
     try {
-      return normalizePathSeparators(fileURLToPath(normalizedFileUrl));
+      const parsedUrl = new URL(normalizedFileUrl);
+      let normalizedFsPath = normalizePathSeparators(
+        fileURLToPath(normalizedFileUrl),
+      );
+      const decodedHashPayload = decodePathRepeatedly(parsedUrl.hash.slice(1));
+      if (decodedHashPayload && /[./\\]/.test(decodedHashPayload)) {
+        normalizedFsPath = `${normalizedFsPath.replace(/\/?$/, "/")}${decodedHashPayload}`;
+      }
+      return normalizePathSeparators(normalizedFsPath);
     } catch {
       try {
         const parsedUrl = new URL(normalizedFileUrl);
         let decodedPathname = decodePathRepeatedly(parsedUrl.pathname);
         const hashPayload = parsedUrl.hash.slice(1);
-        if (hashPayload && /[./\\]/.test(hashPayload)) {
-          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodePathRepeatedly(hashPayload)}`;
+        const decodedHashPayload = decodePathRepeatedly(hashPayload);
+        if (decodedHashPayload && /[./\\]/.test(decodedHashPayload)) {
+          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodedHashPayload}`;
         }
         const hostPrefix =
           parsedUrl.host && parsedUrl.hostname.toLowerCase() !== "localhost"
