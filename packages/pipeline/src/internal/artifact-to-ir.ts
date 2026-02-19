@@ -725,7 +725,8 @@ function normalizeSourceMapSourcePath(params: {
     stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
   )
     .replace(/%2f/gi, "/")
-    .replace(/%5c/gi, "/");
+    .replace(/%5c/gi, "/")
+    .replace(/%2e/gi, ".");
   if (!sourcePath.trim()) {
     return undefined;
   }
