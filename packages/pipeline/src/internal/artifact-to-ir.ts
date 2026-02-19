@@ -1,5 +1,9 @@
+import path from "node:path";
+
 import type { ProgramIR } from "@tsgodown/ir-core";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
+
+import { ingestArtifactMetadata } from "./artifact-metadata.js";
 
 export function buildProgramIrFromArtifacts(
   buildResult: RunBuildResult,
@@ -10,10 +14,13 @@ export function buildProgramIrFromArtifacts(
       ? buildResult.manifest.entries
       : [entry];
 
+  const repoRoot = resolveRepoRoot(buildResult.manifestPath);
+  const metadata = ingestArtifactMetadata(repoRoot, buildResult.manifest);
+
   const modules = manifestEntries.map((manifestEntry, index) => ({
     id: `module_${index}`,
-    sourcePath: manifestEntry,
-    exports: [],
+    sourcePath: metadata.sourcePath ?? manifestEntry,
+    exports: metadata.exports,
     imports: [],
   }));
 
@@ -43,6 +50,14 @@ export function buildProgramIrFromArtifacts(
         },
       },
     ],
-    diagnostics: [],
+    diagnostics: metadata.diagnostics,
   };
+}
+
+function resolveRepoRoot(manifestPath: string): string {
+  if (!path.isAbsolute(manifestPath)) {
+    return process.cwd();
+  }
+
+  return path.resolve(path.dirname(manifestPath), "..", "..");
 }
