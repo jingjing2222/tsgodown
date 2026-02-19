@@ -238,7 +238,9 @@ function collectSourceEntriesFromSourceMap(
   }
 
   if (normalized.size > 0) {
-    return [...normalized].sort((a, b) => a.localeCompare(b));
+    return canonicalizeDeclarationCompanionPaths([...normalized]).sort((a, b) =>
+      a.localeCompare(b),
+    );
   }
 
   if (!foundAnySourceMap) {
@@ -256,6 +258,23 @@ function collectSourceEntriesFromSourceMap(
   }
 
   return [];
+}
+
+function canonicalizeDeclarationCompanionPaths(entries: string[]): string[] {
+  const entrySet = new Set(entries);
+
+  for (const entry of entries) {
+    if (!entry.endsWith(".d.ts")) {
+      continue;
+    }
+
+    const tsCandidate = `${entry.slice(0, -".d.ts".length)}.ts`;
+    if (entrySet.has(tsCandidate)) {
+      entrySet.delete(entry);
+    }
+  }
+
+  return [...entrySet];
 }
 
 function collectSourceMapEntriesFromArtifact(params: {
