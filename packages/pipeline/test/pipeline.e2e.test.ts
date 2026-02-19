@@ -3296,6 +3296,100 @@ test("M1 regression: file URL sourcemap sources with percent-encoded slash stay 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: JS external ../src sourcemap + inline d.ts absolute file:// sources with query/hash keep typed IR dedupe, export linkage, and Go runtime smoke", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-js-external-dts-inline-fileurl-"),
+  );
+  tempDirs.push(cwd);
+
+  const sourceRootDir = path.join(cwd, "src");
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "routes"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "index.mjs",
+      sourceRoot: "../src",
+      sources: ["routes/health.ts?from=js#bundle"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const encodedTypeSource = new URL(
+    `file://${path.join(sourceRootDir, "types", "health.ts").replace("#", "%23")}?from=dts#types`,
+  ).toString();
+  const rawHashRouteSource = `file://${path.join(sourceRootDir, "routes", "health.ts")}?from=dts#route`;
+
+  const inlineDtsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.d.ts",
+    sources: [encodedTypeSource, rawHashRouteSource],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthType { ok: boolean }",
+      "export { health as healthHandler };",
+      "export type { HealthType as PublicHealthType };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineDtsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "cycle20aa11bb22cc33",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "healthHandler",
+    "PublicHealthType",
+  ]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
+
 test("M1 regression: chained JS external sourcemap + inline d.ts sourcemap keep canonical typed export source identity", () => {
   const cwd = fs.mkdtempSync(
     path.join(
