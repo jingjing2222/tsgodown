@@ -845,7 +845,10 @@ function toFileSystemPath(value: unknown): string {
         if (hashPayload && /[./\\]/.test(hashPayload)) {
           decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodeURIComponent(hashPayload)}`;
         }
-        const hostPrefix = parsedUrl.host ? `//${parsedUrl.host}` : "";
+        const hostPrefix =
+          parsedUrl.host && parsedUrl.hostname.toLowerCase() !== "localhost"
+            ? `//${parsedUrl.host}`
+            : "";
         return normalizePathSeparators(`${hostPrefix}${decodedPathname}`);
       } catch {
         return normalizePathSeparators(trimmed);
