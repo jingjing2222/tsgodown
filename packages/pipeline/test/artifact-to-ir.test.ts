@@ -1119,3 +1119,87 @@ test("buildProgramIrFromArtifacts preserves declaration linkage when JS sourcema
     "PublicHealthStatus",
   ]);
 });
+
+test("buildProgramIrFromArtifacts keeps deterministic typed linkage when JS sourcemap is external and d.ts sourcemap is inline data URL with file:// sourceRoot normalization edge", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "tsgodown-artifact-ir-external-js-inline-dts-file-url-",
+    ),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map?cache=5#bundle",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: `${new URL(`file://${path.join(cwd, "src")}/`).toString()}?cache=js#bundle`,
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const inlineDtsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.d.ts",
+    sourceRoot: `FILE://${path.join(cwd, "src", "nested", "..").replaceAll("/", "\\")}/?cache=types#decl`,
+    sources: ["types\\health-contract.ts?from=dts#inline"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthContract { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthContract as PublicHealthContract };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineDtsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "77889900aabbccdd",
+        entries: ["src/index.ts"],
+        bundles: [
+          { file: "dist/index.mjs", format: "esm", exports: ["health"] },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health-contract.ts"],
+  );
+  assert.deepEqual(
+    ir.modules.find(
+      (module) => module.sourcePath === "src/types/health-contract.ts",
+    )?.exports,
+    ["healthHandler", "PublicHealthContract"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+});
