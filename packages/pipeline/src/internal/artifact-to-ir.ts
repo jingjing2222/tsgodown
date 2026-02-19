@@ -36,14 +36,24 @@ export function buildProgramIrFromArtifacts(
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
   const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
+  const declarationLinkedSources = collectDeclarationLinkedSourceEntries(
+    buildResult,
+    cwd,
+    diagnostics,
+  );
 
   const modules = moduleEntries
-    .map((manifestEntry, index) => ({
-      id: `module_${index}`,
-      sourcePath: manifestEntry,
-      exports: typedExports,
-      imports: [],
-    }))
+    .map((manifestEntry, index) => {
+      const shouldAttachTypedExports =
+        declarationLinkedSources.size === 0 ||
+        declarationLinkedSources.has(manifestEntry);
+      return {
+        id: `module_${index}`,
+        sourcePath: manifestEntry,
+        exports: shouldAttachTypedExports ? typedExports : [],
+        imports: [],
+      };
+    })
     .sort((a, b) =>
       a.sourcePath === b.sourcePath
         ? a.id.localeCompare(b.id)
@@ -165,6 +175,31 @@ function collectTypedExports(
   }
 
   return [...exportedNames].sort((a, b) => a.localeCompare(b));
+}
+
+function collectDeclarationLinkedSourceEntries(
+  buildResult: RunBuildResult,
+  cwd: string,
+  diagnostics: DiagnosticIR[],
+): Set<string> {
+  const linkedSources = new Set<string>();
+
+  for (const typePath of buildResult.manifest.types ?? []) {
+    if (!typePath?.trim()) {
+      continue;
+    }
+
+    const sourceMapResult = collectSourceMapEntriesFromArtifact({
+      cwd,
+      artifactPath: typePath,
+      diagnostics,
+    });
+    for (const sourceEntry of sourceMapResult.entries) {
+      linkedSources.add(sourceEntry);
+    }
+  }
+
+  return linkedSources;
 }
 
 function collectSourceEntriesFromSourceMap(
