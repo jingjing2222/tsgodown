@@ -691,5 +691,9 @@ function toFileSystemPath(value: unknown): string {
     }
   }
 
-  return trimmed;
+  try {
+    return decodeURIComponent(trimmed);
+  } catch {
+    return trimmed;
+  }
 }
