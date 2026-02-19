@@ -630,9 +630,11 @@ function normalizeSourceMapSourcePath(params: {
 
   const sourceRootPath = toFileSystemPath(params.sourceRoot);
   const sourcePath = toFileSystemPath(params.sourcePath);
-  const rootedPath = sourceRootPath.trim()
-    ? path.join(sourceRootPath, sourcePath)
-    : sourcePath;
+  const rootedPath = path.isAbsolute(sourcePath)
+    ? sourcePath
+    : sourceRootPath.trim()
+      ? path.join(sourceRootPath, sourcePath)
+      : sourcePath;
 
   const resolved = path.isAbsolute(rootedPath)
     ? path.normalize(rootedPath)
