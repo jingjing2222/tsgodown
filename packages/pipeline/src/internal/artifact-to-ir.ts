@@ -36,6 +36,20 @@ export function buildProgramIrFromArtifacts(
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
   const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
+  const hasDeterministicTypedProvenance =
+    sourceMappedEntries.length > 0 && typedExports.length > 0;
+
+  if (typedExports.length > 0 && sourceMappedEntries.length === 0) {
+    diagnostics.push({
+      level: "warn",
+      code: "PIPELINE_INCOMPLETE_TYPED_PROVENANCE",
+      message:
+        "typed exports found in .d.ts metadata but sourcemap lineage is missing; exports omitted to keep typed provenance deterministic",
+      source: {
+        file: buildResult.manifest.types?.[0] ?? "manifest.types",
+      },
+    });
+  }
 
   const sortedModuleEntries = [...moduleEntries].sort((a, b) =>
     a.localeCompare(b),
@@ -44,7 +58,7 @@ export function buildProgramIrFromArtifacts(
   const modules = sortedModuleEntries.map((manifestEntry, index) => ({
     id: `module_${index}`,
     sourcePath: manifestEntry,
-    exports: typedExports,
+    exports: hasDeterministicTypedProvenance ? typedExports : [],
     imports: [],
   }));
 

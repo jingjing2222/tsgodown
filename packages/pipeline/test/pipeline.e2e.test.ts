@@ -4058,3 +4058,57 @@ test("M1 regression: file://localhost sourcemap sourceRoot end-to-end path keeps
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
   await assertGoHealthRuntimeReady(goOutDir);
 });
+
+test("M1 regression: typed exports are withheld when .d.ts exists but sourcemap lineage is missing", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-missing-map-typed-provenance-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    ["export declare const health: () => { ok: boolean };", ""].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "0aa1bb2cc3dd4ee5",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(ir.modules.map((module) => module.sourcePath), ["src/index.ts"]);
+  assert.deepEqual(ir.modules[0]?.exports, []);
+  assert.deepEqual(
+    ir.diagnostics.map((diagnostic) => diagnostic.code),
+    [
+      "PIPELINE_INCOMPLETE_TYPED_PROVENANCE",
+      "PIPELINE_MISSING_SOURCEMAP_MAPPING",
+    ],
+  );
+});
