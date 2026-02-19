@@ -727,10 +727,13 @@ function normalizeSourceMapSourcePath(params: {
   if (!sourcePath.trim()) {
     return undefined;
   }
+  const normalizedSourceRootPath = sourceRootPath.trim()
+    ? path.normalize(sourceRootPath)
+    : sourceRootPath;
   const rootedPath = isAbsoluteFileSystemPathLike(sourcePath)
     ? sourcePath
-    : sourceRootPath.trim()
-      ? path.join(sourceRootPath, sourcePath)
+    : normalizedSourceRootPath.trim()
+      ? path.join(normalizedSourceRootPath, sourcePath)
       : sourcePath;
 
   const resolved = isAbsoluteFileSystemPathLike(rootedPath)
