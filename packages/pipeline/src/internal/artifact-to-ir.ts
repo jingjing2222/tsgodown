@@ -258,6 +258,7 @@ function collectSourceMapEntries(
     mapPath: string;
     diagnostics: DiagnosticIR[];
   },
+  inheritedSourceRoot = "",
 ): Array<{
   sourcePath: unknown;
   sourceRoot: string;
@@ -270,7 +271,7 @@ function collectSourceMapEntries(
   const directSourceRoot =
     typeof (parsedMap as { sourceRoot?: unknown }).sourceRoot === "string"
       ? ((parsedMap as { sourceRoot: string }).sourceRoot ?? "")
-      : "";
+      : inheritedSourceRoot;
   if (Array.isArray(directSources)) {
     return directSources.map((sourcePath) => ({
       sourcePath,
@@ -305,7 +306,11 @@ function collectSourceMapEntries(
     }
 
     const sectionMap = (section as { map?: unknown }).map;
-    for (const nestedEntry of collectSourceMapEntries(sectionMap, context)) {
+    for (const nestedEntry of collectSourceMapEntries(
+      sectionMap,
+      context,
+      directSourceRoot,
+    )) {
       entries.push(nestedEntry);
     }
   }
@@ -380,8 +385,8 @@ function normalizeSourceMapSourcePath(params: {
   return withoutDot;
 }
 
-function toFileSystemPath(value: string): string {
-  if (!value.trim()) {
+function toFileSystemPath(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
     return "";
   }
 

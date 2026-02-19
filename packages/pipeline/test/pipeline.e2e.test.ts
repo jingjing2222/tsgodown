@@ -279,3 +279,92 @@ test("M1 regression: real JS+d.ts+sourcemap artifact provenance (file:// sourceR
 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: indexed sourcemap inherited file:// sourceRoot keeps typed IR provenance deterministic and survives Go diagnostic emission", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-indexed-inherit-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare const users: () => Array<{ id: string }>;",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sources: ["routes/health.ts", "routes/users.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "aabbccddeeff0011",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health", "users"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/routes/users.ts"],
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(
+    {
+      ...ir,
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_SOURCEMAP_PROVENANCE",
+          message:
+            "typed IR module provenance normalized from indexed sourcemap",
+          source: {
+            file: ir.modules[0]?.sourcePath ?? "src/index.ts",
+            line: 1,
+            column: 1,
+          },
+        },
+      ],
+    },
+    goOutDir,
+  );
+
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assert.match(goMain, /\/\/\s+at src\/routes\/health\.ts:1:1/);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
