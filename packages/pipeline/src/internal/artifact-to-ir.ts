@@ -727,15 +727,19 @@ function toFileSystemPath(value: unknown): string {
   const trimmed = value.trim();
   if (trimmed.startsWith("file://")) {
     try {
-      return fileURLToPath(trimmed);
+      return normalizePathSeparators(fileURLToPath(trimmed));
     } catch {
-      return trimmed;
+      return normalizePathSeparators(trimmed);
     }
   }
 
   try {
-    return decodeURIComponent(trimmed);
+    return normalizePathSeparators(decodeURIComponent(trimmed));
   } catch {
-    return trimmed;
+    return normalizePathSeparators(trimmed);
   }
+}
+
+function normalizePathSeparators(value: string): string {
+  return value.replaceAll("\\", "/");
 }
