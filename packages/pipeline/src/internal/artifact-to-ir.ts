@@ -699,17 +699,17 @@ function normalizeSourceMapSourcePath(params: {
   if (!sourcePath.trim()) {
     return undefined;
   }
-  const rootedPath = path.isAbsolute(sourcePath)
+  const rootedPath = isAbsoluteFileSystemPathLike(sourcePath)
     ? sourcePath
     : sourceRootPath.trim()
       ? path.join(sourceRootPath, sourcePath)
       : sourcePath;
 
-  const resolved = path.isAbsolute(rootedPath)
+  const resolved = isAbsoluteFileSystemPathLike(rootedPath)
     ? path.normalize(rootedPath)
     : path.normalize(path.join(path.dirname(params.mapPath), rootedPath));
 
-  const relativeToCwd = path.isAbsolute(resolved)
+  const relativeToCwd = isAbsoluteFileSystemPathLike(resolved)
     ? path.relative(params.cwd, resolved)
     : resolved;
   const normalized = relativeToCwd.replaceAll("\\", "/");
@@ -768,5 +768,22 @@ function toFileSystemPath(value: unknown): string {
 }
 
 function normalizePathSeparators(value: string): string {
-  return value.replaceAll("\\", "/");
+  const normalized = value.replaceAll("\\", "/");
+  return normalizeWindowsDrivePathToPortableAbsolute(normalized);
+}
+
+function normalizeWindowsDrivePathToPortableAbsolute(value: string): string {
+  const withDrive = value.match(/^\/?[A-Za-z]:(\/.*)$/);
+  if (!withDrive) {
+    return value;
+  }
+  return withDrive[1] ?? value;
+}
+
+function isAbsoluteFileSystemPathLike(value: string): boolean {
+  return (
+    path.isAbsolute(value) ||
+    /^[A-Za-z]:\//.test(value) ||
+    /^\/\/[A-Za-z0-9._-]+\//.test(value)
+  );
 }

@@ -2542,6 +2542,98 @@ test("M1 regression: Windows drive-letter/backslash sourcemap sourceRoot+sources
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: Windows drive-letter file:// sourceRoot mixed with backslash sources keeps deterministic JS+d.ts typed provenance and Go compile smoke", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-windows-drive-file-url-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthResponse { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  const windowsDriveFileRoot = `file:///C:${cwd.replaceAll("\\", "/")}/src/`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "..\\index.mjs",
+      sourceRoot: windowsDriveFileRoot,
+      sources: ["routes\\health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "..\\index.d.ts",
+      sourceRoot: windowsDriveFileRoot,
+      sources: [
+        `file:///C:${cwd.replaceAll("\\", "/")}/src/types\\health-response.ts`,
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "19aa55ff88ee33aa",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health-response.ts"],
+  );
+  const typedModule = ir.modules.find(
+    (module) => module.sourcePath === "src/types/health-response.ts",
+  );
+  assert.deepEqual(typedModule?.exports, ["health", "HealthResponse"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: file URL sourcemap sources with percent-encoded slash stay deterministic across JS+d.ts typed IR and Go compile path", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-e2e-file-url-encoded-slash-"),
