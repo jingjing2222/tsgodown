@@ -611,9 +611,10 @@ function readSourceMapUrlFromArtifact(params: {
     return undefined;
   }
 
-  const sourceMapUrlMatch = artifactText.match(
-    /\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/m,
-  );
+  const sourceMapUrlMatches = [
+    ...artifactText.matchAll(/\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/gm),
+  ];
+  const sourceMapUrlMatch = sourceMapUrlMatches.at(-1);
   return sourceMapUrlMatch?.[1]?.trim();
 }
 
