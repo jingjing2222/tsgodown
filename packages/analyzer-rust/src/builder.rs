@@ -182,6 +182,16 @@ fn collect_conditional_route_diagnostics(
         let trimmed = line.trim();
 
         if conditional_depth == 0 && (trimmed.starts_with("if(") || trimmed.starts_with("if (")) {
+            if has_route_invocation(trimmed) {
+                diagnostics.push(diag(
+                    "error",
+                    "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE",
+                    "conditional route registration is unsupported",
+                    file,
+                ));
+                return;
+            }
+
             conditional_depth = brace_delta(line).max(1);
         } else if conditional_depth > 0 {
             if has_route_invocation(trimmed) {
