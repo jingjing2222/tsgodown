@@ -1,49 +1,45 @@
 import type { DiagnosticIR } from "@tsgodown/ir-core";
 
+function normalizeDiagnosticPath(pathValue: string): string {
+  return pathValue.replaceAll("\\", "/");
+}
+
 function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
   const source = diagnostic.source;
   if (!source) return undefined;
+
+  const normalizedFile = normalizeDiagnosticPath(source.file);
 
   if (
     diagnostic.code === "PIPELINE_SOURCEMAP_SPARSE_MAPPING" ||
     (source.line == null && source.column == null)
   ) {
-    return source.file;
+    return normalizedFile;
   }
 
   if (source.line != null && source.column != null) {
-    return `${source.file}:${source.line}:${source.column}`;
+    return `${normalizedFile}:${source.line}:${source.column}`;
   }
 
   if (source.line != null) {
-    return `${source.file}:${source.line}`;
+    return `${normalizedFile}:${source.line}`;
   }
 
-  return source.file;
+  return `${normalizedFile}:${source.column}`;
 }
 
 function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
-  const sourceA = a.source;
-  const sourceB = b.source;
-
-  const fileOrder = (sourceA?.file ?? "").localeCompare(sourceB?.file ?? "");
-  if (fileOrder !== 0) {
-    return fileOrder;
-  }
-
-  const lineA = sourceA?.line ?? Number.MAX_SAFE_INTEGER;
-  const lineB = sourceB?.line ?? Number.MAX_SAFE_INTEGER;
-  if (lineA !== lineB) {
-    return lineA - lineB;
-  }
-
-  const columnA = sourceA?.column ?? Number.MAX_SAFE_INTEGER;
-  const columnB = sourceB?.column ?? Number.MAX_SAFE_INTEGER;
-  if (columnA !== columnB) {
-    return columnA - columnB;
-  }
+  const fileA = normalizeDiagnosticPath(a.source?.file ?? "");
+  const fileB = normalizeDiagnosticPath(b.source?.file ?? "");
+  const lineA = a.source?.line ?? Number.MAX_SAFE_INTEGER;
+  const lineB = b.source?.line ?? Number.MAX_SAFE_INTEGER;
+  const columnA = a.source?.column ?? Number.MAX_SAFE_INTEGER;
+  const columnB = b.source?.column ?? Number.MAX_SAFE_INTEGER;
 
   return (
+    fileA.localeCompare(fileB) ||
+    lineA - lineB ||
+    columnA - columnB ||
     a.level.localeCompare(b.level) ||
     a.code.localeCompare(b.code) ||
     a.message.localeCompare(b.message)

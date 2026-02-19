@@ -664,6 +664,96 @@ test("emitGoProject sorts same-file indexed missing-sources diagnostics by numer
   assert.ok(line4 < line21);
 });
 
+test("emitGoProject keeps deterministic ordering for mixed typed-IR sourcemap diagnostics across path styles", () => {
+  const firstOutDir = createOutDir();
+  const secondOutDir = createOutDir();
+
+  const baseDiagnostics: ProgramIR["diagnostics"] = [
+    {
+      level: "warn",
+      code: "PIPELINE_MISSING_SOURCEMAP_MAPPING",
+      message:
+        "missing sourcemap path required for deterministic source mapping",
+      source: {
+        file: "dist/index.mjs",
+        viaSourceMap: true,
+        line: 1,
+        column: 1,
+      },
+    },
+    {
+      level: "warn",
+      code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+      message:
+        "indexed sourcemap section offset is partial; diagnostics remain file-scoped for deterministic mapping",
+      source: { file: "dist/maps/index.mjs.map", viaSourceMap: true, line: 5 },
+    },
+    {
+      level: "warn",
+      code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+      message:
+        "sourcemap metadata missing sources[] for artifact-to-ir mapping",
+      source: {
+        file: "dist/maps/index.mjs.map",
+        viaSourceMap: true,
+        line: 1,
+        column: 1,
+      },
+    },
+  ];
+
+  const firstIr: ProgramIR = {
+    modules: [],
+    handlers: [{ id: "h", params: [], async: false }],
+    diagnostics: [...baseDiagnostics].reverse(),
+    routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+  };
+
+  const secondIr: ProgramIR = {
+    ...firstIr,
+    diagnostics: [
+      {
+        ...baseDiagnostics[2],
+        source: {
+          ...baseDiagnostics[2].source,
+          file: "dist\\maps\\index.mjs.map",
+        },
+      },
+      {
+        ...baseDiagnostics[0],
+        source: { ...baseDiagnostics[0].source, file: "dist\\index.mjs" },
+      },
+      {
+        ...baseDiagnostics[1],
+        source: {
+          ...baseDiagnostics[1].source,
+          file: "dist\\maps\\index.mjs.map",
+        },
+      },
+    ],
+  };
+
+  emitGoProject(firstIr, firstOutDir);
+  emitGoProject(secondIr, secondOutDir);
+
+  const first = fs.readFileSync(path.join(firstOutDir, "main.go"), "utf8");
+  const second = fs.readFileSync(path.join(secondOutDir, "main.go"), "utf8");
+
+  assert.equal(first, second);
+  assert.ok(
+    second.indexOf("PIPELINE_MISSING_SOURCEMAP_MAPPING") <
+      second.indexOf("PIPELINE_INVALID_SOURCEMAP_MAPPING"),
+  );
+  assert.ok(
+    second.indexOf("PIPELINE_INVALID_SOURCEMAP_MAPPING") <
+      second.indexOf("PIPELINE_SOURCEMAP_POSITION_PARTIAL"),
+  );
+  assert.match(second, /\/\/\s+at dist\/maps\/index\.mjs\.map:1:1/);
+  assert.match(second, /\/\/\s+at dist\/index\.mjs:1:1/);
+  assert.match(second, /\/\/\s+at dist\/maps\/index\.mjs\.map:5/);
+  assert.doesNotMatch(second, /dist\\maps\\index\.mjs\.map/);
+});
+
 test("emitGoProject keeps normalized repo-relative sourcemap diagnostic paths in comments and go-build flow", () => {
   const outDir = createOutDir();
 
