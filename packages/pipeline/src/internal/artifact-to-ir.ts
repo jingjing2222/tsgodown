@@ -540,9 +540,9 @@ function discoverSourceMapPathFromArtifact(params: {
     return undefined;
   }
 
-  const decodedSourceMapUrl = decodeSourceMapUrlPath(sourceMapUrl);
-  const sanitizedSourceMapPath = decodedSourceMapUrl
+  const sanitizedSourceMapPath = sourceMapUrl
     .replace(/[?#].*$/, "")
+    .replace(/%(?:3[fF]|23).*$/, "")
     .trim();
   if (!sanitizedSourceMapPath) {
     return undefined;
@@ -651,8 +651,11 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const sourceRootPath = toFileSystemPath(params.sourceRoot);
-  const sourcePath = toFileSystemPath(params.sourcePath);
+  const sourceRootPath = stripQueryAndHash(toFileSystemPath(params.sourceRoot));
+  const sourcePath = stripQueryAndHash(toFileSystemPath(params.sourcePath));
+  if (!sourcePath.trim()) {
+    return undefined;
+  }
   const rootedPath = path.isAbsolute(sourcePath)
     ? sourcePath
     : sourceRootPath.trim()
@@ -680,12 +683,8 @@ function normalizeSourceMapSourcePath(params: {
   return withoutDot;
 }
 
-function decodeSourceMapUrlPath(sourceMapUrl: string): string {
-  try {
-    return decodeURIComponent(sourceMapUrl);
-  } catch {
-    return sourceMapUrl;
-  }
+function stripQueryAndHash(value: string): string {
+  return value.replace(/[?#].*$/, "");
 }
 
 function toFileSystemPath(value: unknown): string {
@@ -694,17 +693,22 @@ function toFileSystemPath(value: unknown): string {
   }
 
   const trimmed = value.trim();
-  if (trimmed.startsWith("file://")) {
+  if (/^file:\/\//i.test(trimmed)) {
     try {
-      return fileURLToPath(trimmed);
+      const normalizedFileUrl = trimmed.replace(/^file:\/\//i, "file://");
+      return normalizePathSeparators(fileURLToPath(normalizedFileUrl));
     } catch {
-      return trimmed;
+      return normalizePathSeparators(trimmed);
     }
   }
 
   try {
-    return decodeURIComponent(trimmed);
+    return normalizePathSeparators(decodeURIComponent(trimmed));
   } catch {
-    return trimmed;
+    return normalizePathSeparators(trimmed);
   }
+}
+
+function normalizePathSeparators(value: string): string {
+  return value.replaceAll("\\", "/");
 }
