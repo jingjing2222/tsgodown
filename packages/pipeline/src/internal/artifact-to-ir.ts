@@ -260,6 +260,18 @@ function collectSourceMapEntriesFromArtifact(params: {
       if (parsedMap !== undefined) {
         resolvedMapPath = params.artifactPath;
       } else {
+        if (hasInlineSourceMapDataUrl(params)) {
+          params.diagnostics.push({
+            level: "warn",
+            code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+            message: `inline sourcemap data URL is malformed or invalid JSON: ${params.artifactPath}`,
+            source: {
+              file: params.artifactPath,
+              viaSourceMap: true,
+              ...DETERMINISTIC_SOURCE_LOCATION,
+            },
+          });
+        }
         params.diagnostics.push({
           level: "warn",
           code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
@@ -536,6 +548,14 @@ function readInlineSourceMapFromArtifact(params: {
   } catch {
     return undefined;
   }
+}
+
+function hasInlineSourceMapDataUrl(params: {
+  cwd: string;
+  artifactPath: string | undefined;
+}): boolean {
+  const sourceMapUrl = readSourceMapUrlFromArtifact(params);
+  return sourceMapUrl?.startsWith("data:") ?? false;
 }
 
 function readSourceMapUrlFromArtifact(params: {
