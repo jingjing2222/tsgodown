@@ -834,7 +834,11 @@ function toFileSystemPath(value: unknown): string {
     } catch {
       try {
         const parsedUrl = new URL(normalizedFileUrl);
-        const decodedPathname = decodeURIComponent(parsedUrl.pathname);
+        let decodedPathname = decodeURIComponent(parsedUrl.pathname);
+        const hashPayload = parsedUrl.hash.slice(1);
+        if (hashPayload && /[./\\]/.test(hashPayload)) {
+          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodeURIComponent(hashPayload)}`;
+        }
         const hostPrefix = parsedUrl.host ? `//${parsedUrl.host}` : "";
         return normalizePathSeparators(`${hostPrefix}${decodedPathname}`);
       } catch {
