@@ -600,7 +600,7 @@ function discoverSourceMapPathFromArtifact(params: {
     : path.normalize(path.join(artifactDir, normalizedSourceMapPath));
 
   const relativeToCwd = path.isAbsolute(discoveredPath)
-    ? path.relative(params.cwd, discoveredPath)
+    ? relativePathFromCwdPortable(params.cwd, discoveredPath)
     : discoveredPath;
   const normalized = relativeToCwd.replaceAll("\\", "/");
   const withoutDot = normalized.startsWith("./")
@@ -741,7 +741,7 @@ function normalizeSourceMapSourcePath(params: {
     : path.normalize(path.join(path.dirname(params.mapPath), rootedPath));
 
   const relativeToCwd = isAbsoluteFileSystemPathLike(resolved)
-    ? path.relative(params.cwd, resolved)
+    ? relativePathFromCwdPortable(params.cwd, resolved)
     : resolved;
   const normalized = relativeToCwd.replaceAll("\\", "/");
   const withoutDot = normalized.startsWith("./")
@@ -853,10 +853,10 @@ function toFileSystemPath(value: unknown): string {
     } catch {
       try {
         const parsedUrl = new URL(normalizedFileUrl);
-        let decodedPathname = decodeURIComponent(parsedUrl.pathname);
+        let decodedPathname = decodePathRepeatedly(parsedUrl.pathname);
         const hashPayload = parsedUrl.hash.slice(1);
         if (hashPayload && /[./\\]/.test(hashPayload)) {
-          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodeURIComponent(hashPayload)}`;
+          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodePathRepeatedly(hashPayload)}`;
         }
         const hostPrefix =
           parsedUrl.host && parsedUrl.hostname.toLowerCase() !== "localhost"
@@ -869,11 +869,25 @@ function toFileSystemPath(value: unknown): string {
     }
   }
 
-  try {
-    return normalizePathSeparators(decodeURIComponent(trimmed));
-  } catch {
-    return normalizePathSeparators(trimmed);
+  return normalizePathSeparators(decodePathRepeatedly(trimmed));
+}
+
+function decodePathRepeatedly(value: string): string {
+  let decoded = value;
+
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) {
+        return next;
+      }
+      decoded = next;
+    } catch {
+      return decoded;
+    }
   }
+
+  return decoded;
 }
 
 function normalizeDoubleEncodedFileUrlPathSeparators(value: string): string {
@@ -920,6 +934,31 @@ function normalizeWindowsDrivePathToPortableAbsolute(value: string): string {
     return value;
   }
   return withDrive[1] ?? value;
+}
+
+function relativePathFromCwdPortable(
+  cwd: string,
+  absolutePath: string,
+): string {
+  const directRelative = path.relative(cwd, absolutePath);
+  if (!directRelative.startsWith("..") && !path.isAbsolute(directRelative)) {
+    return directRelative;
+  }
+
+  const normalizedCwd = normalizePathSeparators(cwd).replace(/\/+$/, "");
+  const normalizedAbsolute = normalizePathSeparators(absolutePath);
+  const lowerCwd = normalizedCwd.toLowerCase();
+  const lowerAbsolute = normalizedAbsolute.toLowerCase();
+
+  if (lowerAbsolute === lowerCwd) {
+    return "";
+  }
+
+  if (!lowerAbsolute.startsWith(`${lowerCwd}/`)) {
+    return directRelative;
+  }
+
+  return normalizedAbsolute.slice(normalizedCwd.length + 1);
 }
 
 function isAbsoluteFileSystemPathLike(value: string): boolean {
