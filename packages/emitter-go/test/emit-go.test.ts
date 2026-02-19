@@ -475,6 +475,58 @@ test("emitGoProject renders diagnostic source without placeholder coordinates wh
   assert.doesNotMatch(emitted, /src\/generated\/entry\.js:\?:\?/);
 });
 
+test("emitGoProject keeps normalized repo-relative sourcemap diagnostic paths in comments and go-build flow", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [
+        {
+          id: "module_0",
+          sourcePath: "src/health.ts",
+          exports: ["health"],
+          imports: [],
+        },
+        {
+          id: "module_1",
+          sourcePath: "src/routes/list.ts",
+          exports: ["health"],
+          imports: [],
+        },
+      ],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "SOURCEMAP_NORMALIZED_PATH",
+          message: "normalized sourcemap source path for stable module mapping",
+          source: { file: "src/routes/list.ts", line: 1, column: 1 },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+  assert.match(emitted, /\/\/\s+at src\/routes\/list\.ts:1:1/);
+
+  if (hasGoToolchain) {
+    const modulePath = "example.com/tsgodown-smoke/normalized-sourcemap-paths";
+    const modInit = spawnSync("go", ["mod", "init", modulePath], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const build = spawnSync("go", ["build", "./..."], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+  }
+});
+
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
   const outDir = createOutDir();
 

@@ -216,6 +216,7 @@ function collectSourceEntriesFromSourceMap(
   const normalized = new Set<string>();
   for (const entry of sourceEntries) {
     const normalizedSource = normalizeSourceMapSourcePath({
+      cwd,
       mapPath,
       sourceRoot: entry.sourceRoot,
       sourcePath: entry.sourcePath,
@@ -268,6 +269,7 @@ function collectSourceMapEntries(parsedMap: unknown): Array<{
 }
 
 function normalizeSourceMapSourcePath(params: {
+  cwd: string;
   mapPath: string;
   sourceRoot: string;
   sourcePath: unknown;
@@ -279,11 +281,23 @@ function normalizeSourceMapSourcePath(params: {
   const rootedPath = params.sourceRoot.trim()
     ? path.join(params.sourceRoot, params.sourcePath)
     : params.sourcePath;
-  const resolved = path
-    .normalize(path.join(path.dirname(params.mapPath), rootedPath))
-    .replaceAll("\\", "/");
-  const withoutDot = resolved.startsWith("./") ? resolved.slice(2) : resolved;
-  if (withoutDot.startsWith("../")) {
+
+  const resolved = path.isAbsolute(rootedPath)
+    ? path.normalize(rootedPath)
+    : path.normalize(path.join(path.dirname(params.mapPath), rootedPath));
+
+  const relativeToCwd = path.isAbsolute(resolved)
+    ? path.relative(params.cwd, resolved)
+    : resolved;
+  const normalized = relativeToCwd.replaceAll("\\", "/");
+  const withoutDot = normalized.startsWith("./")
+    ? normalized.slice(2)
+    : normalized;
+  if (
+    !withoutDot ||
+    withoutDot.startsWith("../") ||
+    path.isAbsolute(withoutDot)
+  ) {
     return undefined;
   }
   return withoutDot;
