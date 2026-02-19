@@ -166,13 +166,41 @@ function collectSourceEntriesFromSourceMap(
   diagnostics: DiagnosticIR[],
 ): string[] {
   const bundleFilePath = buildResult.manifest.bundles[0]?.file;
-  const mapPath =
+  let mapPath =
     buildResult.manifest.bundles[0]?.map ??
     discoverSourceMapPathFromBundle({
       cwd,
       bundlePath: bundleFilePath,
     });
-  if (!mapPath?.trim()) {
+
+  let parsedMap: unknown;
+  if (mapPath?.trim()) {
+    try {
+      parsedMap = JSON.parse(fs.readFileSync(path.join(cwd, mapPath), "utf8"));
+    } catch {
+      diagnostics.push({
+        level: "warn",
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
+        source: {
+          file: mapPath,
+          viaSourceMap: true,
+          ...DETERMINISTIC_SOURCE_LOCATION,
+        },
+      });
+      return [];
+    }
+  } else {
+    parsedMap = readInlineSourceMapFromBundle({
+      cwd,
+      bundlePath: bundleFilePath,
+    });
+    if (parsedMap) {
+      mapPath = bundleFilePath ?? "manifest.bundles[0]";
+    }
+  }
+
+  if (!mapPath?.trim() || parsedMap === undefined) {
     diagnostics.push({
       level: "warn",
       code: "PIPELINE_MISSING_SOURCEMAP_MAPPING",
@@ -180,23 +208,6 @@ function collectSourceEntriesFromSourceMap(
         "missing sourcemap path required for deterministic source mapping",
       source: {
         file: bundleFilePath ?? "manifest.bundles[0]",
-        viaSourceMap: true,
-        ...DETERMINISTIC_SOURCE_LOCATION,
-      },
-    });
-    return [];
-  }
-
-  let parsedMap: unknown;
-  try {
-    parsedMap = JSON.parse(fs.readFileSync(path.join(cwd, mapPath), "utf8"));
-  } catch {
-    diagnostics.push({
-      level: "warn",
-      code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
-      message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
-      source: {
-        file: mapPath,
         viaSourceMap: true,
         ...DETERMINISTIC_SOURCE_LOCATION,
       },
@@ -395,6 +406,67 @@ function discoverSourceMapPathFromBundle(params: {
   cwd: string;
   bundlePath: string | undefined;
 }): string | undefined {
+  const bundlePath = params.bundlePath;
+  if (!bundlePath?.trim()) {
+    return undefined;
+  }
+
+  const sourceMapUrl = readSourceMapUrlFromBundle(params);
+  if (!sourceMapUrl || sourceMapUrl.startsWith("data:")) {
+    return undefined;
+  }
+
+  const bundleDir = path.dirname(bundlePath);
+  const discoveredPath = path.isAbsolute(sourceMapUrl)
+    ? path.normalize(sourceMapUrl)
+    : path.normalize(path.join(bundleDir, sourceMapUrl));
+
+  const normalized = discoveredPath.replaceAll("\\", "/");
+  return normalized.startsWith("./") ? normalized.slice(2) : normalized;
+}
+
+function readInlineSourceMapFromBundle(params: {
+  cwd: string;
+  bundlePath: string | undefined;
+}): unknown | undefined {
+  const sourceMapUrl = readSourceMapUrlFromBundle(params);
+  if (!sourceMapUrl?.startsWith("data:")) {
+    return undefined;
+  }
+
+  const dataUrlMatch = sourceMapUrl.match(/^data:([^,]*),(.*)$/);
+  if (!dataUrlMatch) {
+    return undefined;
+  }
+
+  const mediaType = dataUrlMatch[1] ?? "";
+  const payload = dataUrlMatch[2] ?? "";
+  const mediaTypeParts = mediaType
+    .split(";")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter(Boolean);
+
+  const mimeType = mediaTypeParts[0] ?? "";
+  if (mimeType && mimeType !== "application/json") {
+    return undefined;
+  }
+
+  const isBase64 = mediaTypeParts.includes("base64");
+
+  try {
+    const decoded = isBase64
+      ? Buffer.from(payload, "base64").toString("utf8")
+      : decodeURIComponent(payload);
+    return JSON.parse(decoded);
+  } catch {
+    return undefined;
+  }
+}
+
+function readSourceMapUrlFromBundle(params: {
+  cwd: string;
+  bundlePath: string | undefined;
+}): string | undefined {
   if (!params.bundlePath?.trim()) {
     return undefined;
   }
@@ -410,22 +482,7 @@ function discoverSourceMapPathFromBundle(params: {
   const sourceMapUrlMatch = bundleText.match(
     /\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/m,
   );
-  const sourceMapUrl = sourceMapUrlMatch?.[1]?.trim();
-  if (!sourceMapUrl) {
-    return undefined;
-  }
-
-  if (sourceMapUrl.startsWith("data:")) {
-    return undefined;
-  }
-
-  const bundleDir = path.dirname(params.bundlePath);
-  const discoveredPath = path.isAbsolute(sourceMapUrl)
-    ? path.normalize(sourceMapUrl)
-    : path.normalize(path.join(bundleDir, sourceMapUrl));
-
-  const normalized = discoveredPath.replaceAll("\\", "/");
-  return normalized.startsWith("./") ? normalized.slice(2) : normalized;
+  return sourceMapUrlMatch?.[1]?.trim();
 }
 
 function normalizeSourceMapSourcePath(params: {

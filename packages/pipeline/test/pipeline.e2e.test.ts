@@ -365,6 +365,94 @@ test("M1 regression: JS sourcemap path discovered from bundle sourceMappingURL s
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: inline data URL sourcemap with charset metadata keeps typed IR provenance and Go diagnostic mapping deterministic", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-map-charset-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare const listUsers: () => Array<{ id: string }>;",
+      "",
+    ].join("\n"),
+  );
+
+  const inlineMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["routes/health.ts", "routes/users.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "const listUsers = () => [{ id: 'u1' }];",
+      "export { health, listUsers };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "2233445566778899",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health", "listUsers"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/routes/users.ts"],
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(
+    {
+      ...ir,
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_SOURCEMAP_PROVENANCE",
+          message: "typed IR provenance emitted from inline data URL sourcemap",
+          source: {
+            file: ir.modules[0]?.sourcePath ?? "src/index.ts",
+            line: 1,
+            column: 1,
+          },
+        },
+      ],
+    },
+    goOutDir,
+  );
+
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assert.match(goMain, /\/\/\s+at src\/routes\/health\.ts:1:1/);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: indexed sourcemap inherited file:// sourceRoot keeps typed IR provenance deterministic and survives Go diagnostic emission", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-e2e-indexed-inherit-"),
