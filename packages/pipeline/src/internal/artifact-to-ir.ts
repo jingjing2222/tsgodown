@@ -37,18 +37,16 @@ export function buildProgramIrFromArtifacts(
 
   const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
 
-  const modules = moduleEntries
-    .map((manifestEntry, index) => ({
-      id: `module_${index}`,
-      sourcePath: manifestEntry,
-      exports: typedExports,
-      imports: [],
-    }))
-    .sort((a, b) =>
-      a.sourcePath === b.sourcePath
-        ? a.id.localeCompare(b.id)
-        : a.sourcePath.localeCompare(b.sourcePath),
-    );
+  const sortedModuleEntries = [...moduleEntries].sort((a, b) =>
+    a.localeCompare(b),
+  );
+
+  const modules = sortedModuleEntries.map((manifestEntry, index) => ({
+    id: `module_${index}`,
+    sourcePath: manifestEntry,
+    exports: typedExports,
+    imports: [],
+  }));
 
   const primaryHandlerId = "health";
 
