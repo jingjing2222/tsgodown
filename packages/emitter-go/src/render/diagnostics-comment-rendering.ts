@@ -31,14 +31,14 @@ function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
     return fileOrder;
   }
 
-  const lineA = sourceA?.line ?? -1;
-  const lineB = sourceB?.line ?? -1;
+  const lineA = sourceA?.line ?? Number.MAX_SAFE_INTEGER;
+  const lineB = sourceB?.line ?? Number.MAX_SAFE_INTEGER;
   if (lineA !== lineB) {
     return lineA - lineB;
   }
 
-  const columnA = sourceA?.column ?? -1;
-  const columnB = sourceB?.column ?? -1;
+  const columnA = sourceA?.column ?? Number.MAX_SAFE_INTEGER;
+  const columnB = sourceB?.column ?? Number.MAX_SAFE_INTEGER;
   if (columnA !== columnB) {
     return columnA - columnB;
   }
