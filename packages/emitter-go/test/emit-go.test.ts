@@ -444,6 +444,57 @@ test("emitGoProject unknown handler semantics use concrete JSON fallback without
   assert.doesNotMatch(goSource, /TODO implement handler/);
 });
 
+test("emitGoProject renders sparse indexed sourcemap diagnostics as file-only comments even when partial coordinates leak into source metadata", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+          message:
+            "sourcemap sections include sparse source entries; positional metadata omitted deterministically",
+          source: {
+            file: "dist/maps/index.mjs.map",
+            viaSourceMap: true,
+            line: 4,
+            column: 8,
+          },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+  assert.match(
+    emitted,
+    /\/\/\s+\[warn\] PIPELINE_SOURCEMAP_SPARSE_MAPPING: sourcemap sections include sparse source entries; positional metadata omitted deterministically/,
+  );
+  assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map/);
+  assert.doesNotMatch(emitted, /dist\/maps\/index\.mjs\.map:4:8/);
+
+  if (hasGoToolchain) {
+    const modulePath =
+      "example.com/tsgodown-smoke/sparse-file-only-diagnostics";
+    const modInit = spawnSync("go", ["mod", "init", modulePath], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const build = spawnSync("go", ["build", "./..."], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+  }
+});
+
 test("emitGoProject renders diagnostic source without placeholder coordinates when sourcemap omits line/column", () => {
   const outDir = createOutDir();
 
