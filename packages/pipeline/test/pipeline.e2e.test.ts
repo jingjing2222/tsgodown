@@ -1025,7 +1025,10 @@ test("M1 regression: indexed sourcemap section diagnostics preserve line+column 
 
 test("M1 regression: missing declared map file falls back to inline sourcemap for JS+d.ts typed IR -> Go compile path", () => {
   const cwd = fs.mkdtempSync(
-    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-missing-map-inline-fallback-"),
+    path.join(
+      os.tmpdir(),
+      "tsgodown-pipeline-e2e-missing-map-inline-fallback-",
+    ),
   );
   tempDirs.push(cwd);
 
