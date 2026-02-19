@@ -776,8 +776,9 @@ function normalizeDecodedSourceMapPathSegment(value: unknown): string {
   const strippedValue = stripQueryAndHash(value);
   const normalizedPath = toFileSystemPath(strippedValue);
 
-  if (typeof strippedValue === "string" && /^file:\/\//i.test(strippedValue)) {
-    return normalizedPath;
+  const queryIndex = normalizedPath.indexOf("?");
+  if (queryIndex >= 0) {
+    return normalizedPath.slice(0, queryIndex);
   }
 
   return normalizedPath;
