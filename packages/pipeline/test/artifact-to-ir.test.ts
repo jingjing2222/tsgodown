@@ -34,10 +34,20 @@ test("buildProgramIrFromArtifacts enriches module exports from d.ts and source l
   fs.mkdirSync(manifestDir, { recursive: true });
   fs.mkdirSync(distDir, { recursive: true });
 
-  fs.writeFileSync(path.join(distDir, "index.d.ts"), "export declare function health(): string;\nexport declare const version: string;\n", "utf8");
+  fs.writeFileSync(
+    path.join(distDir, "index.d.ts"),
+    "export declare function health(): string;\nexport declare const version: string;\n",
+    "utf8",
+  );
   fs.writeFileSync(
     path.join(distDir, "index.mjs.map"),
-    JSON.stringify({ version: 3, file: "index.mjs", sources: ["src/server.ts"], names: [], mappings: "" }),
+    JSON.stringify({
+      version: 3,
+      file: "index.mjs",
+      sources: ["src/server.ts"],
+      names: [],
+      mappings: "",
+    }),
     "utf8",
   );
 
@@ -77,7 +87,11 @@ test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing an
   fs.mkdirSync(manifestDir, { recursive: true });
   fs.mkdirSync(distDir, { recursive: true });
 
-  fs.writeFileSync(path.join(distDir, "index.d.ts"), "export declare function health(): string;\n", "utf8");
+  fs.writeFileSync(
+    path.join(distDir, "index.d.ts"),
+    "export declare function health(): string;\n",
+    "utf8",
+  );
   fs.writeFileSync(path.join(distDir, "bad.mjs.map"), "{not-json", "utf8");
 
   const ir = buildProgramIrFromArtifacts(

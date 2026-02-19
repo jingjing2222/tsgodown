@@ -49,13 +49,16 @@ function collectTypeExports(repoRoot: string, typeFiles: string[]): string[] {
 
       const braceExportMatch = /^\s*export\s*\{([^}]+)\}/.exec(line);
       if (braceExportMatch?.[1]) {
-        for (const segment of braceExportMatch[1].split(",").map((value) => value.trim())) {
+        for (const segment of braceExportMatch[1]
+          .split(",")
+          .map((value) => value.trim())) {
           if (!segment) {
             continue;
           }
-          const asMatch = /^(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/.exec(
-            segment,
-          );
+          const asMatch =
+            /^(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/.exec(
+              segment,
+            );
           if (!asMatch) {
             continue;
           }
