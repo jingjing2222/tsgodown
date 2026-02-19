@@ -663,7 +663,25 @@ function readSourceMapUrlFromArtifact(params: {
     ...artifactText.matchAll(/\/\/\#\s*sourceMappingURL\s*=\s*(\S+)\s*$/gm),
   ];
   const sourceMapUrlMatch = sourceMapUrlMatches.at(-1);
-  return sourceMapUrlMatch?.[1]?.trim();
+  return unwrapQuotedValue(sourceMapUrlMatch?.[1]?.trim());
+}
+
+function unwrapQuotedValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return value;
+  }
+
+  const singleQuoted = value.match(/^'([^']+)'$/);
+  if (singleQuoted?.[1]) {
+    return singleQuoted[1];
+  }
+
+  const doubleQuoted = value.match(/^"([^"]+)"$/);
+  if (doubleQuoted?.[1]) {
+    return doubleQuoted[1];
+  }
+
+  return value;
 }
 
 function normalizeSourceMapSourcePath(params: {
