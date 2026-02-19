@@ -540,7 +540,10 @@ function discoverSourceMapPathFromArtifact(params: {
     return undefined;
   }
 
-  const sanitizedSourceMapPath = sourceMapUrl.replace(/[?#].*$/, "").trim();
+  const decodedSourceMapUrl = decodeSourceMapUrlPath(sourceMapUrl);
+  const sanitizedSourceMapPath = decodedSourceMapUrl
+    .replace(/[?#].*$/, "")
+    .trim();
   if (!sanitizedSourceMapPath) {
     return undefined;
   }
@@ -675,6 +678,14 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
   return withoutDot;
+}
+
+function decodeSourceMapUrlPath(sourceMapUrl: string): string {
+  try {
+    return decodeURIComponent(sourceMapUrl);
+  } catch {
+    return sourceMapUrl;
+  }
 }
 
 function toFileSystemPath(value: unknown): string {
