@@ -1289,23 +1289,30 @@ test("M1 regression: indexed sourcemap section diagnostics preserve line+column 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
-test("M1 regression: missing declared map file falls back to inline sourcemap for JS+d.ts typed IR -> Go compile path", () => {
+test("M1 regression: declared invalid sourcemap path falls back to valid inline maps for both mjs and d.ts deterministically", () => {
   const cwd = fs.mkdtempSync(
-    path.join(
-      os.tmpdir(),
-      "tsgodown-pipeline-e2e-missing-map-inline-fallback-",
-    ),
+    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-inline-fallback-mjs-dts-"),
   );
   tempDirs.push(cwd);
 
   fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "contracts"), { recursive: true });
   fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
 
-  const inlineMapPayload = JSON.stringify({
+  const jsInlineMap = JSON.stringify({
     version: 3,
     file: "index.mjs",
     sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
-    sources: ["routes/health.ts", "routes/types.ts"],
+    sources: ["routes/health.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  const dtsInlineMap = JSON.stringify({
+    version: 3,
+    file: "index.d.ts",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["contracts/types.ts"],
     names: [],
     mappings: "",
   });
@@ -1313,16 +1320,19 @@ test("M1 regression: missing declared map file falls back to inline sourcemap fo
   fs.writeFileSync(
     path.join(cwd, "dist", "index.mjs"),
     [
-      "const health = () => ({ ok: true });",
-      "export { health };",
-      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineMapPayload, "utf8").toString("base64")}`,
+      "export const health = () => ({ ok: true });",
+      `//# sourceMappingURL=data:application/json;base64,${Buffer.from(jsInlineMap, "utf8").toString("base64")}`,
       "",
     ].join("\n"),
   );
 
   fs.writeFileSync(
     path.join(cwd, "dist", "index.d.ts"),
-    ["export declare const health: () => { ok: boolean };", ""].join("\n"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(dtsInlineMap, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
   );
 
   const buildResult: RunBuildResult = {
@@ -1330,7 +1340,7 @@ test("M1 regression: missing declared map file falls back to inline sourcemap fo
     manifestPath: "artifacts/manifests/manifest.json",
     manifestIndexPath: "artifacts/manifests/index.json",
     manifest: {
-      buildId: "0011aabb2233ccdd",
+      buildId: "77aa88bb99cc00dd",
       entries: ["src/index.ts"],
       bundles: [
         {
@@ -1349,13 +1359,15 @@ test("M1 regression: missing declared map file falls back to inline sourcemap fo
 
   assert.deepEqual(
     ir.modules.map((module) => module.sourcePath),
-    ["src/routes/health.ts", "src/routes/types.ts"],
+    ["src/contracts/types.ts", "src/routes/health.ts"],
   );
+  assert.deepEqual(ir.diagnostics, []);
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
   const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
   assert.match(goMain, /^package main/m);
+  assert.doesNotMatch(goMain, /dist\/maps\/missing-index\.mjs\.map/);
 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
