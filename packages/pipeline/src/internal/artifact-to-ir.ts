@@ -697,7 +697,9 @@ function normalizeSourceMapSourcePath(params: {
   const sourceRootPath = normalizeDecodedSourceMapPathSegment(
     params.sourceRoot,
   );
-  const sourcePath = normalizeDecodedSourceMapPathSegment(params.sourcePath);
+  const sourcePath = String(
+    stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
+  );
   if (!sourcePath.trim()) {
     return undefined;
   }
@@ -736,11 +738,34 @@ function normalizeDecodedSourceMapPathSegment(value: unknown): string {
     return normalizedPath;
   }
 
-  return String(stripQueryAndHash(normalizedPath));
+  return normalizedPath;
 }
 
 function stripQueryAndHash(value: unknown): unknown {
-  return typeof value === "string" ? value.replace(/[?#].*$/, "") : value;
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const queryIndex = value.indexOf("?");
+  const withoutQuery = queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+
+  const hashIndex = withoutQuery.indexOf("#");
+  if (hashIndex < 0) {
+    return withoutQuery;
+  }
+
+  // Preserve literal `#` path segments for filesystem-style paths where `#` is
+  // part of a real directory/file name, not a URL fragment marker.
+  if (/^[A-Za-z]:[\\/]/.test(withoutQuery)) {
+    return withoutQuery;
+  }
+
+  const afterHash = withoutQuery.slice(hashIndex + 1);
+  if (afterHash.includes("/") || afterHash.includes("\\")) {
+    return withoutQuery;
+  }
+
+  return withoutQuery.slice(0, hashIndex);
 }
 
 function decodeSourceMapUrlPath(sourceMapUrl: string): string {
