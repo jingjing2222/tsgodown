@@ -525,13 +525,28 @@ function discoverSourceMapPathFromArtifact(params: {
     return undefined;
   }
 
-  const artifactDir = path.dirname(artifactPath);
-  const discoveredPath = path.isAbsolute(sanitizedSourceMapPath)
-    ? path.normalize(sanitizedSourceMapPath)
-    : path.normalize(path.join(artifactDir, sanitizedSourceMapPath));
+  const normalizedSourceMapPath = toFileSystemPath(sanitizedSourceMapPath);
 
-  const normalized = discoveredPath.replaceAll("\\", "/");
-  return normalized.startsWith("./") ? normalized.slice(2) : normalized;
+  const artifactDir = path.dirname(artifactPath);
+  const discoveredPath = path.isAbsolute(normalizedSourceMapPath)
+    ? path.normalize(normalizedSourceMapPath)
+    : path.normalize(path.join(artifactDir, normalizedSourceMapPath));
+
+  const relativeToCwd = path.isAbsolute(discoveredPath)
+    ? path.relative(params.cwd, discoveredPath)
+    : discoveredPath;
+  const normalized = relativeToCwd.replaceAll("\\", "/");
+  const withoutDot = normalized.startsWith("./")
+    ? normalized.slice(2)
+    : normalized;
+  if (
+    !withoutDot ||
+    withoutDot.startsWith("../") ||
+    path.isAbsolute(withoutDot)
+  ) {
+    return undefined;
+  }
+  return withoutDot;
 }
 
 function readInlineSourceMapFromArtifact(params: {
