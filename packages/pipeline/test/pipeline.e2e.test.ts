@@ -1131,6 +1131,85 @@ test("M1 regression: inline+external+indexed sourcemaps with d.ts typing union t
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: invalid declared map + trailing inline sourcemap directives in mjs+dts preserve typed IR provenance union", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-map-precedence-inline-last-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "types"), { recursive: true });
+
+  const jsInlinePayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["routes/health.ts"],
+    names: [],
+    mappings: "",
+  });
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/missing-index.mjs.map?bad=1#declared",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(jsInlinePayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const dtsInlinePayload = JSON.stringify({
+    version: 3,
+    file: "index.d.ts",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["types/http.ts"],
+    names: [],
+    mappings: "",
+  });
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "//# sourceMappingURL=maps/missing-index.d.ts.map?bad=2#declared",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(dtsInlinePayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "199aa22bb33cc44",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/missing-index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/http.ts"],
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: mixed indexed sourcemap JS+d.ts typed IR diagnostics keep source mapping and deterministic Go comment ordering", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-e2e-indexed-mixed-diag-"),
