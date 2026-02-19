@@ -721,9 +721,10 @@ function normalizeSourceMapSourcePath(params: {
     sourceRootQueryIndex >= 0
       ? decodedSourceRootPath.slice(0, sourceRootQueryIndex)
       : decodedSourceRootPath;
-  const sourcePath = String(
-    stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
-  )
+  const decodedSourcePathSegment = decodePathSegmentIfPossible(
+    normalizeDecodedSourceMapPathSegment(params.sourcePath),
+  );
+  const sourcePath = String(stripQueryAndHash(decodedSourcePathSegment))
     .replace(/%2f/gi, "/")
     .replace(/%5c/gi, "/");
   if (!sourcePath.trim()) {
@@ -803,11 +804,23 @@ function stripQueryAndHash(value: unknown): unknown {
   }
 
   const afterHash = withoutQuery.slice(hashIndex + 1);
-  if (afterHash.includes("/") || afterHash.includes("\\")) {
+  if (
+    afterHash.includes("/") ||
+    afterHash.includes("\\") ||
+    /^[^/\\]+\.[A-Za-z0-9]+$/.test(afterHash)
+  ) {
     return withoutQuery;
   }
 
   return withoutQuery.slice(0, hashIndex);
+}
+
+function decodePathSegmentIfPossible(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function decodeSourceMapUrlPath(sourceMapUrl: string): string {
@@ -845,7 +858,10 @@ function toFileSystemPath(value: unknown): string {
         if (hashPayload && /[./\\]/.test(hashPayload)) {
           decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodeURIComponent(hashPayload)}`;
         }
-        const hostPrefix = parsedUrl.host ? `//${parsedUrl.host}` : "";
+        const hostPrefix =
+          parsedUrl.host && parsedUrl.hostname.toLowerCase() !== "localhost"
+            ? `//${parsedUrl.host}`
+            : "";
         return normalizePathSeparators(`${hostPrefix}${decodedPathname}`);
       } catch {
         return normalizePathSeparators(trimmed);
