@@ -261,13 +261,25 @@ function collectSourceEntriesFromSourceMap(
 function canonicalizeDeclarationCompanionPaths(entries: string[]): string[] {
   const entrySet = new Set(entries);
 
+  const companionSuffixes: Array<{
+    declaration: string;
+    implementation: string;
+  }> = [
+    { declaration: ".d.ts", implementation: ".ts" },
+    { declaration: ".d.mts", implementation: ".mts" },
+    { declaration: ".d.cts", implementation: ".cts" },
+  ];
+
   for (const entry of entries) {
-    if (!entry.endsWith(".d.ts")) {
+    const companion = companionSuffixes.find(({ declaration }) =>
+      entry.endsWith(declaration),
+    );
+    if (!companion) {
       continue;
     }
 
-    const tsCandidate = `${entry.slice(0, -".d.ts".length)}.ts`;
-    if (entrySet.has(tsCandidate)) {
+    const implementationCandidate = `${entry.slice(0, -companion.declaration.length)}${companion.implementation}`;
+    if (entrySet.has(implementationCandidate)) {
       entrySet.delete(entry);
     }
   }
