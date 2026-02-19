@@ -28,18 +28,42 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
   return `${normalizedFile}:${source.column}`;
 }
 
+function renderedSourceScopeRank(diagnostic: DiagnosticIR): number {
+  const source = diagnostic.source;
+  if (!source) return 3;
+
+  const normalizedFile = normalizeDiagnosticPath(source.file);
+  const renderedSource = formatDiagnosticSource(diagnostic);
+
+  if (!renderedSource || renderedSource === normalizedFile) {
+    return 2;
+  }
+
+  if (source.line != null) {
+    return 0;
+  }
+
+  return 1;
+}
+
 function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
   const fileA = normalizeDiagnosticPath(a.source?.file ?? "");
   const fileB = normalizeDiagnosticPath(b.source?.file ?? "");
+  const scopeRankA = renderedSourceScopeRank(a);
+  const scopeRankB = renderedSourceScopeRank(b);
   const lineA = a.source?.line ?? Number.MAX_SAFE_INTEGER;
   const lineB = b.source?.line ?? Number.MAX_SAFE_INTEGER;
   const columnA = a.source?.column ?? Number.MAX_SAFE_INTEGER;
   const columnB = b.source?.column ?? Number.MAX_SAFE_INTEGER;
+  const sourceA = formatDiagnosticSource(a) ?? "";
+  const sourceB = formatDiagnosticSource(b) ?? "";
 
   return (
     fileA.localeCompare(fileB) ||
+    scopeRankA - scopeRankB ||
     lineA - lineB ||
     columnA - columnB ||
+    sourceA.localeCompare(sourceB) ||
     a.level.localeCompare(b.level) ||
     a.code.localeCompare(b.code) ||
     a.message.localeCompare(b.message)
