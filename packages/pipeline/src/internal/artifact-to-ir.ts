@@ -726,11 +726,18 @@ function toFileSystemPath(value: unknown): string {
 
   const trimmed = value.trim();
   if (/^file:\/\//i.test(trimmed)) {
+    const normalizedFileUrl = trimmed.replace(/^file:\/\//i, "file://");
     try {
-      const normalizedFileUrl = trimmed.replace(/^file:\/\//i, "file://");
       return normalizePathSeparators(fileURLToPath(normalizedFileUrl));
     } catch {
-      return normalizePathSeparators(trimmed);
+      try {
+        const parsedUrl = new URL(normalizedFileUrl);
+        const decodedPathname = decodeURIComponent(parsedUrl.pathname);
+        const hostPrefix = parsedUrl.host ? `//${parsedUrl.host}` : "";
+        return normalizePathSeparators(`${hostPrefix}${decodedPathname}`);
+      } catch {
+        return normalizePathSeparators(trimmed);
+      }
     }
   }
 
