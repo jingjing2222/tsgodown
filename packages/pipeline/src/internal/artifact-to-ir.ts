@@ -135,7 +135,9 @@ function collectTypedExports(
         exportedNames.add(match[1]);
       }
 
-      const braceExportMatch = trimmed.match(/^export\s*\{([^}]+)\}/);
+      const braceExportMatch = trimmed.match(
+        /^export\s+(?:type\s+)?\{([^}]+)\}/,
+      );
       if (braceExportMatch?.[1]) {
         for (const segment of braceExportMatch[1].split(",")) {
           const symbol = segment
