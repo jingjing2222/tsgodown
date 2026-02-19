@@ -203,7 +203,7 @@ test("buildProgramIrFromArtifacts resolves indexed sourcemap sections determinis
   assert.deepEqual(ir.diagnostics, []);
 });
 
-test("buildProgramIrFromArtifacts emits deterministic diagnostics for indexed sourcemap sections with sparse offsets", () => {
+test("buildProgramIrFromArtifacts emits deterministic diagnostics for indexed sourcemap sections with sparse offsets and missing section sources", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-sparse-"),
   );
@@ -234,6 +234,15 @@ test("buildProgramIrFromArtifacts emits deterministic diagnostics for indexed so
             version: 3,
             sourceRoot: "../../src",
             sources: ["routes/a.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 8 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            names: [],
             mappings: "",
           },
         },
@@ -293,6 +302,36 @@ test("buildProgramIrFromArtifacts emits deterministic diagnostics for indexed so
           file: "dist/maps/index.mjs.map",
           viaSourceMap: true,
           line: 5,
+        },
+      },
+      {
+        level: "warn",
+        code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
+        message:
+          "indexed sourcemap section offset is partial; diagnostics remain file-scoped for deterministic mapping",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+          line: 9,
+        },
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    ir.diagnostics.filter(
+      (diag) => diag.code === "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+    ),
+    [
+      {
+        level: "warn",
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "indexed sourcemap section map is missing sources[]; section ignored for deterministic mapping",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+          line: 9,
         },
       },
     ],
