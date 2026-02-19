@@ -36,24 +36,14 @@ export function buildProgramIrFromArtifacts(
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
   const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
-  const declarationLinkedSources = collectDeclarationLinkedSourceEntries(
-    buildResult,
-    cwd,
-    diagnostics,
-  );
 
   const modules = moduleEntries
-    .map((manifestEntry, index) => {
-      const shouldAttachTypedExports =
-        declarationLinkedSources.size === 0 ||
-        declarationLinkedSources.has(manifestEntry);
-      return {
-        id: `module_${index}`,
-        sourcePath: manifestEntry,
-        exports: shouldAttachTypedExports ? typedExports : [],
-        imports: [],
-      };
-    })
+    .map((manifestEntry, index) => ({
+      id: `module_${index}`,
+      sourcePath: manifestEntry,
+      exports: typedExports,
+      imports: [],
+    }))
     .sort((a, b) =>
       a.sourcePath === b.sourcePath
         ? a.id.localeCompare(b.id)
