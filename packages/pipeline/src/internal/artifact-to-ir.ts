@@ -520,15 +520,15 @@ function discoverSourceMapPathFromArtifact(params: {
     return undefined;
   }
 
-  const sanitizedSourceMapUrl = sourceMapUrl.replace(/[?#].*$/, "").trim();
-  if (!sanitizedSourceMapUrl) {
+  const sanitizedSourceMapPath = sourceMapUrl.replace(/[?#].*$/, "").trim();
+  if (!sanitizedSourceMapPath) {
     return undefined;
   }
 
   const artifactDir = path.dirname(artifactPath);
-  const discoveredPath = path.isAbsolute(sanitizedSourceMapUrl)
-    ? path.normalize(sanitizedSourceMapUrl)
-    : path.normalize(path.join(artifactDir, sanitizedSourceMapUrl));
+  const discoveredPath = path.isAbsolute(sanitizedSourceMapPath)
+    ? path.normalize(sanitizedSourceMapPath)
+    : path.normalize(path.join(artifactDir, sanitizedSourceMapPath));
 
   const normalized = discoveredPath.replaceAll("\\", "/");
   return normalized.startsWith("./") ? normalized.slice(2) : normalized;

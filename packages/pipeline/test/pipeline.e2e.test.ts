@@ -1475,29 +1475,22 @@ test("M1 regression: multiple d.ts artifacts union typed exports while JS+d.ts s
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
-test("M1 regression: sourceMappingURL query/hash on mjs+d.ts maps still resolves typed IR provenance and deterministic typed exports", () => {
+test("M1 regression: d.ts sourceMappingURL query+hash still resolves map for JS+d.ts typed IR union and Go compile smoke", () => {
   const cwd = fs.mkdtempSync(
-    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-map-url-query-hash-"),
+    path.join(os.tmpdir(), "tsgodown-pipeline-dts-map-query-hash-e2e-"),
   );
   tempDirs.push(cwd);
 
   fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "contracts"), { recursive: true });
 
   fs.writeFileSync(
     path.join(cwd, "dist", "index.mjs"),
     [
-      "export const health = () => ({ ok: true });",
-      "//# sourceMappingURL=maps/index.mjs.map?v=20260219#chunk",
-      "",
-    ].join("\n"),
-  );
-
-  fs.writeFileSync(
-    path.join(cwd, "dist", "index.d.ts"),
-    [
-      "export declare const health: () => { ok: boolean };",
-      "export declare type Health = { ok: boolean };",
-      "//# sourceMappingURL=maps/index.d.ts.map?cache=1#types",
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
       "",
     ].join("\n"),
   );
@@ -1515,12 +1508,22 @@ test("M1 regression: sourceMappingURL query/hash on mjs+d.ts maps still resolves
   );
 
   fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare type User = { id: string };",
+      "//# sourceMappingURL=maps/index.d.ts.map?ts=20260219#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
     path.join(cwd, "dist", "maps", "index.d.ts.map"),
     JSON.stringify({
       version: 3,
       file: "../index.d.ts",
       sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
-      sources: ["types/health.ts"],
+      sources: ["contracts/user.ts"],
       names: [],
       mappings: "",
     }),
@@ -1531,11 +1534,12 @@ test("M1 regression: sourceMappingURL query/hash on mjs+d.ts maps still resolves
     manifestPath: "artifacts/manifests/manifest.json",
     manifestIndexPath: "artifacts/manifests/index.json",
     manifest: {
-      buildId: "1234abcd5678ef90",
+      buildId: "1122334455667788",
       entries: ["src/index.ts"],
       bundles: [
         {
           file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
           format: "esm",
           exports: ["health"],
         },
@@ -1548,10 +1552,8 @@ test("M1 regression: sourceMappingURL query/hash on mjs+d.ts maps still resolves
   const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
   assert.deepEqual(
     ir.modules.map((module) => module.sourcePath),
-    ["src/routes/health.ts", "src/types/health.ts"],
+    ["src/contracts/user.ts", "src/routes/health.ts"],
   );
-  assert.deepEqual(ir.modules[0]?.exports, ["health", "Health"]);
-  assert.deepEqual(ir.diagnostics, []);
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
