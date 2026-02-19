@@ -259,38 +259,56 @@ function collectSourceMapEntriesFromArtifact(params: {
       );
       resolvedMapPath = mapPath;
     } catch {
-      const inlineParsedMap = readInlineSourceMapFromArtifact({
+      const discoveredMapPath = discoverSourceMapPathFromArtifact({
         cwd: params.cwd,
         artifactPath: params.artifactPath,
       });
 
-      if (inlineParsedMap !== undefined) {
-        parsedMap = inlineParsedMap;
-        resolvedMapPath = params.artifactPath;
-      } else {
-        if (hasInlineSourceMapDataUrl(params)) {
+      if (discoveredMapPath && discoveredMapPath !== mapPath) {
+        try {
+          parsedMap = JSON.parse(
+            fs.readFileSync(path.join(params.cwd, discoveredMapPath), "utf8"),
+          );
+          resolvedMapPath = discoveredMapPath;
+        } catch {
+          // Fall through to inline sourcemap fallback below.
+        }
+      }
+
+      if (parsedMap === undefined) {
+        const inlineParsedMap = readInlineSourceMapFromArtifact({
+          cwd: params.cwd,
+          artifactPath: params.artifactPath,
+        });
+
+        if (inlineParsedMap !== undefined) {
+          parsedMap = inlineParsedMap;
+          resolvedMapPath = params.artifactPath;
+        } else {
+          if (hasInlineSourceMapDataUrl(params)) {
+            params.diagnostics.push({
+              level: "warn",
+              code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+              message: `inline sourcemap data URL is malformed or invalid JSON: ${params.artifactPath}`,
+              source: {
+                file: params.artifactPath,
+                viaSourceMap: true,
+                ...DETERMINISTIC_SOURCE_LOCATION,
+              },
+            });
+          }
           params.diagnostics.push({
             level: "warn",
             code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
-            message: `inline sourcemap data URL is malformed or invalid JSON: ${params.artifactPath}`,
+            message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
             source: {
-              file: params.artifactPath,
+              file: mapPath,
               viaSourceMap: true,
               ...DETERMINISTIC_SOURCE_LOCATION,
             },
           });
+          return { entries: [], foundSourceMap: true };
         }
-        params.diagnostics.push({
-          level: "warn",
-          code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
-          message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
-          source: {
-            file: mapPath,
-            viaSourceMap: true,
-            ...DETERMINISTIC_SOURCE_LOCATION,
-          },
-        });
-        return { entries: [], foundSourceMap: true };
       }
     }
   } else {
