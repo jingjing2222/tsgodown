@@ -91,8 +91,10 @@ function collectTypedExports(
   cwd: string,
   diagnostics: DiagnosticIR[],
 ): string[] {
-  const typePath = buildResult.manifest.types?.[0];
-  if (!typePath?.trim()) {
+  const typePaths = (buildResult.manifest.types ?? []).filter((typePath) =>
+    typePath?.trim(),
+  );
+  if (typePaths.length === 0) {
     diagnostics.push({
       level: "warn",
       code: "PIPELINE_MISSING_TYPES_METADATA",
@@ -105,42 +107,45 @@ function collectTypedExports(
     return [];
   }
 
-  const absoluteTypePath = path.join(cwd, typePath);
-  let sourceText = "";
-  try {
-    sourceText = fs.readFileSync(absoluteTypePath, "utf8");
-  } catch {
-    diagnostics.push({
-      level: "warn",
-      code: "PIPELINE_MISSING_TYPES_METADATA",
-      message: `declared types file is unreadable: ${typePath}`,
-      source: {
-        file: typePath,
-      },
-    });
-    return [];
-  }
-
   const exportedNames = new Set<string>();
-  for (const line of sourceText.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    const match = trimmed.match(
-      /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)/,
-    );
-    if (match?.[1]) {
-      exportedNames.add(match[1]);
+
+  for (const typePath of typePaths) {
+    const absoluteTypePath = path.join(cwd, typePath);
+    let sourceText = "";
+    try {
+      sourceText = fs.readFileSync(absoluteTypePath, "utf8");
+    } catch {
+      diagnostics.push({
+        level: "warn",
+        code: "PIPELINE_MISSING_TYPES_METADATA",
+        message: `declared types file is unreadable: ${typePath}`,
+        source: {
+          file: typePath,
+        },
+      });
+      continue;
     }
 
-    const braceExportMatch = trimmed.match(/^export\s*\{([^}]+)\}/);
-    if (braceExportMatch?.[1]) {
-      for (const segment of braceExportMatch[1].split(",")) {
-        const symbol = segment
-          .trim()
-          .match(
-            /^(?:type\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/,
-          );
-        if (symbol) {
-          exportedNames.add(symbol[2] ?? symbol[1]);
+    for (const line of sourceText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      const match = trimmed.match(
+        /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)/,
+      );
+      if (match?.[1]) {
+        exportedNames.add(match[1]);
+      }
+
+      const braceExportMatch = trimmed.match(/^export\s*\{([^}]+)\}/);
+      if (braceExportMatch?.[1]) {
+        for (const segment of braceExportMatch[1].split(",")) {
+          const symbol = segment
+            .trim()
+            .match(
+              /^(?:type\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/,
+            );
+          if (symbol) {
+            exportedNames.add(symbol[2] ?? symbol[1]);
+          }
         }
       }
     }
@@ -152,7 +157,7 @@ function collectTypedExports(
       code: "PIPELINE_INVALID_TYPES_METADATA",
       message: "no named exports could be parsed from .d.ts metadata",
       source: {
-        file: typePath,
+        file: typePaths[0] ?? "manifest.types",
       },
     });
   }
