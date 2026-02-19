@@ -111,6 +111,14 @@ fn route_object_literal_is_lowered_deterministically() {
 }
 
 #[test]
+fn route_object_reference_is_lowered_deterministically() {
+    assert_fixture(
+        "route-object-reference.ts",
+        "route-object-reference.golden.txt",
+    );
+}
+
+#[test]
 fn unsupported_patterns_emit_deterministic_diagnostics() {
     assert_fixture("unsupported-dynamic.ts", "unsupported-dynamic.golden.txt");
 }
