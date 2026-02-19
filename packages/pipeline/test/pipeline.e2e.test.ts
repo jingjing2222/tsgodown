@@ -351,7 +351,8 @@ test("M1 regression: indexed sourcemap inherited file:// sourceRoot keeps typed 
         {
           level: "warn",
           code: "PIPELINE_SOURCEMAP_PROVENANCE",
-          message: "typed IR module provenance normalized from indexed sourcemap",
+          message:
+            "typed IR module provenance normalized from indexed sourcemap",
           source: {
             file: ir.modules[0]?.sourcePath ?? "src/index.ts",
             line: 1,
