@@ -713,9 +713,14 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const sourceRootPath = normalizeDecodedSourceMapPathSegment(
+  const decodedSourceRootPath = normalizeDecodedSourceMapPathSegment(
     params.sourceRoot,
   );
+  const sourceRootQueryIndex = decodedSourceRootPath.indexOf("?");
+  const sourceRootPath =
+    sourceRootQueryIndex >= 0
+      ? decodedSourceRootPath.slice(0, sourceRootQueryIndex)
+      : decodedSourceRootPath;
   const sourcePath = String(
     stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
   )
@@ -872,7 +877,24 @@ function normalizeDoubleEncodedFileUrlPathSeparators(value: string): string {
 
 function normalizePathSeparators(value: string): string {
   const normalized = value.replaceAll("\\", "/");
-  return normalizeWindowsDrivePathToPortableAbsolute(normalized);
+  const uncNormalized = normalizeWindowsUncAuthorityAndShareCase(normalized);
+  return normalizeWindowsDrivePathToPortableAbsolute(uncNormalized);
+}
+
+function normalizeWindowsUncAuthorityAndShareCase(value: string): string {
+  const uncMatch = value.match(/^\/\/([^/]+)\/([^/]+)(\/.*)?$/);
+  if (!uncMatch) {
+    return value;
+  }
+
+  const host = uncMatch[1]?.toLowerCase();
+  const share = uncMatch[2]?.toLowerCase();
+  const rest = uncMatch[3] ?? "";
+  if (!host || !share) {
+    return value;
+  }
+
+  return `//${host}/${share}${rest}`;
 }
 
 function normalizeWindowsDrivePathToPortableAbsolute(value: string): string {

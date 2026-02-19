@@ -2369,6 +2369,97 @@ test("M1 regression: inline JS data URL sourcemap + external d.ts map dedupe dup
   await assertGoHealthRuntimeReady(goOutDir);
 });
 
+test("M1 regression: inline JS sourcemap + external d.ts.map dedupe canonical source when sourceRoot query markers are raw vs percent-encoded", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "tsgodown-pipeline-inline-external-sourceroot-fragment-canonical-e2e-",
+    ),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+
+  const inlineJsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: "../src?types=inline",
+    sources: ["routes/health.ts?from=inline#js"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;base64,${Buffer.from(inlineJsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthStatus { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthStatus as PublicHealthStatus };",
+      "//# sourceMappingURL=maps/index.d.ts.map?rev=22#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "..%2F..%2Fsrc%3Ftypes%3Dinline",
+      sources: ["routes/./health.ts%3Ffrom%3Dtypes%23decl"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "2222222222222222",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "healthHandler",
+    "PublicHealthStatus",
+  ]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
+
 test("M1 regression: real JS+d.ts+sourcemap keeps stable symbol/type linkage for export type braces with query/hash map URL", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-dts-export-type-linkage-e2e-"),
@@ -3740,6 +3831,101 @@ test("M1 regression: UNC file URL sourcemap sources normalize deterministically 
     ["server/share/src/routes/health.ts", "server/share/src/types/health.ts"],
   );
   assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthPayload"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
+test("M1 regression: inline JS + external d.ts sourcemaps normalize UNC host/share casing and separators to stable typed provenance", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-unc-inline-js-dts-external-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  const jsInlineMap = {
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: "file://SERVER/Share/src",
+    sources: [
+      "routes\\health.ts?from=js#raw",
+      "routes/%68ealth.ts?from=js#enc",
+    ],
+    names: [],
+    mappings: "",
+  };
+  const jsInlineMapDataUrl = `data:application/json;base64,${Buffer.from(
+    JSON.stringify(jsInlineMap),
+    "utf8",
+  ).toString("base64")}`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=${jsInlineMapDataUrl}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthContract { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "file://server/share/src/nested/..",
+      sources: ["routes/health.ts?from=dts#raw", "types\\health-contract.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "4b9a2de1f0c38765",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    [
+      "server/share/src/routes/health.ts",
+      "server/share/src/types/health-contract.ts",
+    ],
+  );
+  const typesModule = ir.modules.find(
+    (module) =>
+      module.sourcePath === "server/share/src/types/health-contract.ts",
+  );
+  assert.deepEqual(typesModule?.exports, ["health", "HealthContract"]);
   assert.deepEqual(ir.diagnostics, []);
 
   const goOutDir = path.join(cwd, "dist-go");
