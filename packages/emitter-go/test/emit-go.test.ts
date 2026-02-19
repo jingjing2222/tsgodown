@@ -444,6 +444,37 @@ test("emitGoProject unknown handler semantics use concrete JSON fallback without
   assert.doesNotMatch(goSource, /TODO implement handler/);
 });
 
+test("emitGoProject renders diagnostic source without placeholder coordinates when sourcemap omits line/column", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "SOURCEMAP_POSITION_PARTIAL",
+          message:
+            "sourcemap provided original file without stable generated coordinates",
+          source: { file: "src/generated/entry.js" },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+
+  assert.match(
+    emitted,
+    /\/\/\s+\[warn\] SOURCEMAP_POSITION_PARTIAL: sourcemap provided original file without stable generated coordinates/,
+  );
+  assert.match(emitted, /\/\/\s+at src\/generated\/entry\.js/);
+  assert.doesNotMatch(emitted, /src\/generated\/entry\.js:\?:\?/);
+});
+
 test("emitGoProject surfaces IR diagnostics as actionable comments without adding adapter policy", () => {
   const outDir = createOutDir();
 

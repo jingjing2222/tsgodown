@@ -4,9 +4,19 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
   const source = diagnostic.source;
   if (!source) return undefined;
 
-  const line = source.line ?? "?";
-  const column = source.column ?? "?";
-  return `${source.file}:${line}:${column}`;
+  if (source.line == null && source.column == null) {
+    return source.file;
+  }
+
+  if (source.line != null && source.column != null) {
+    return `${source.file}:${source.line}:${source.column}`;
+  }
+
+  if (source.line != null) {
+    return `${source.file}:${source.line}`;
+  }
+
+  return `${source.file}:?:${source.column}`;
 }
 
 function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
