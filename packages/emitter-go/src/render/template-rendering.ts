@@ -98,10 +98,6 @@ function formatHandlerParams(handler: HandlerIR | undefined): string {
   return handler.params.map((p) => `${p.role}:${p.name}`).join(", ");
 }
 
-function toTodoHandlerDisplayName(handlerRef: string): string {
-  return handlerRef.replace(/^handler[_-]+/, "");
-}
-
 type JsonPrimitive = string | number | boolean | null;
 
 type JsonObject = Record<string, JsonPrimitive>;
@@ -211,17 +207,16 @@ function renderSemanticHandlerBehavior(
     ];
   }
 
-  const todoHandlerName = toTodoHandlerDisplayName(route.handlerRef);
-  const todoMessage = `TODO implement handler ${todoHandlerName} for ${normalizedMethod} ${normalizedPath}`;
   return [
-    `\t// TODO(tsgodown): Implement handler ${quoteGo(route.handlerRef)} for ${normalizedMethod} ${normalizedPath}.`,
-    "\t//   - Replace this scaffold with application logic.",
-    "\t//   - Validate request input and map to domain arguments.",
-    "\t//   - Write response status, headers, and body.",
-    "",
-    '\tw.Header().Set("Content-Type", "text/plain; charset=utf-8")',
-    "\tw.WriteHeader(http.StatusNotImplemented)",
-    `\tfmt.Fprintln(w, ${quoteGo(todoMessage)})`,
+    '	w.Header().Set("Content-Type", "application/json; charset=utf-8")',
+    '	w.Header().Set("X-TSGoDown-Handler", "unknown")',
+    "	w.WriteHeader(http.StatusNotImplemented)",
+    ...emitJsonEncodeBlock({
+      handler: route.handlerRef,
+      method: normalizedMethod,
+      mode: "unknown",
+      path: normalizedPath,
+    }),
   ];
 }
 

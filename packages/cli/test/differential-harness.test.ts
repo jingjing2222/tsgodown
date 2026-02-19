@@ -76,19 +76,19 @@ for (const scenario of scenarios) {
     assert.equal(report.cases[0]?.go.status, 501);
     assert.equal(
       report.cases[0]?.ts.headers["content-type"],
-      "text/plain; charset=utf-8",
+      "application/json; charset=utf-8",
     );
     assert.equal(
       report.cases[0]?.go.headers["content-type"],
-      "text/plain; charset=utf-8",
+      "application/json; charset=utf-8",
     );
     assert.equal(
       report.cases[0]?.ts.body,
-      "TODO implement handler health for GET /health\n",
+      '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
     );
     assert.equal(
       report.cases[0]?.go.body,
-      "TODO implement handler health for GET /health\n",
+      '{"handler":"health","method":"GET","mode":"unknown","path":"/health"}\n',
     );
   });
 
