@@ -671,17 +671,22 @@ function unwrapQuotedValue(value: string | undefined): string | undefined {
     return value;
   }
 
-  const singleQuoted = value.match(/^'([^']+)'$/);
+  let normalized = value;
+  normalized = normalized
+    .replace(/^\\+(["'])/, "$1")
+    .replace(/\\+(["'])$/, "$1");
+
+  const singleQuoted = normalized.match(/^'([^']+)'$/);
   if (singleQuoted?.[1]) {
     return singleQuoted[1];
   }
 
-  const doubleQuoted = value.match(/^"([^"]+)"$/);
+  const doubleQuoted = normalized.match(/^"([^"]+)"$/);
   if (doubleQuoted?.[1]) {
     return doubleQuoted[1];
   }
 
-  return value;
+  return normalized;
 }
 
 function normalizeSourceMapSourcePath(params: {
