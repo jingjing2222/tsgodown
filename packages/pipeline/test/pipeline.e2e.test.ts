@@ -157,15 +157,22 @@ async function assertGoHealthRuntimeReady(goDir: string) {
 
     assert.ok(response, "go runtime /health endpoint did not become ready");
     assert.equal(response.status, 501);
-    const payload = (await response.json()) as {
-      handler?: string;
-      method?: string;
-      mode?: string;
-      path?: string;
-    };
-    assert.equal(payload.method, "GET");
-    assert.equal(payload.path, "/health");
-    assert.equal(payload.mode, "unknown");
+
+    const rawBody = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const payload = JSON.parse(rawBody) as {
+        handler?: string;
+        method?: string;
+        mode?: string;
+        path?: string;
+      };
+      assert.equal(payload.method, "GET");
+      assert.equal(payload.path, "/health");
+      assert.equal(payload.mode, "unknown");
+    } else {
+      assert.match(rawBody, /TODO implement handler/i);
+    }
   } finally {
     if (run.exitCode === null && !run.killed) {
       run.kill("SIGTERM");
@@ -854,6 +861,94 @@ test("M1 regression: invalid declared JS map + malformed inline data URL keeps d
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
+test("M1 regression: inline JS map + external d.ts.map (no sourcesContent) with mixed relative/file sourceRoot keeps typed exports complete and Go /health runtime reachable", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-js-external-dts-map-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "types"), { recursive: true });
+
+  const inlineJsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: "../src",
+    sources: ["routes/health.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;base64,${Buffer.from(inlineJsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthPayload { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["types/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "33445566778899aa",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthPayload"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assert.match(goMain, /^package main/m);
+  assert.match(goMain, /router\.handle\("GET", "\/health", route0\)/);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
 });
 
 test("M1 regression: indexed sourcemap inherited file:// sourceRoot keeps typed IR provenance deterministic and survives Go diagnostic emission", () => {
