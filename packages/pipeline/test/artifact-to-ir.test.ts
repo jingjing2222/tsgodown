@@ -634,6 +634,89 @@ test("buildProgramIrFromArtifacts keeps deterministic module provenance ordering
   );
 });
 
+test("buildProgramIrFromArtifacts deduplicates mixed JS + d.ts sourcemap provenance when logical source paths collide across relative/absolute + sourceRoot + query/hash forms", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-query-hash-collision-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare const status: () => number;",
+      "//# sourceMappingURL=maps/index.d.ts.map?cache=v2#types",
+      "",
+    ].join("\n"),
+  );
+
+  const absHealthPath = path.join(cwd, "src", "routes", "health.ts");
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["routes/health.ts?from=js#frag"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: path.join(cwd, "src", "nested", ".."),
+      sources: [
+        `${absHealthPath}?from=types#decl`,
+        "./routes/../routes/health.ts#canonical",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "1122334455667788",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["health"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "status"]);
+});
+
 test("buildProgramIrFromArtifacts keeps indexed sourcemap source provenance deterministic when sections mix inherited sourceRoot and relative source paths", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-mixed-root-"),
@@ -701,4 +784,82 @@ test("buildProgramIrFromArtifacts keeps indexed sourcemap source provenance dete
     ["src/routes/admin.ts", "src/routes/health.ts", "src/routes/users.ts"],
   );
   assert.deepEqual(ir.diagnostics, []);
+});
+
+test("buildProgramIrFromArtifacts preserves declaration linkage when JS sourcemap is inline and d.ts sourcemap uses sourceRoot with relative sources", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-inline-js-dts-linkage-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  const inlineJsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: "../src",
+    sources: ["routes/health.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineJsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthStatus { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthStatus as PublicHealthStatus };",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "../../src/nested/..",
+      sources: ["contracts/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          { file: "dist/index.mjs", format: "esm", exports: ["health"] },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/contracts/health.ts", "src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "healthHandler",
+    "PublicHealthStatus",
+  ]);
 });
