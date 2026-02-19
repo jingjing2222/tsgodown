@@ -1203,3 +1203,78 @@ test("buildProgramIrFromArtifacts keeps deterministic typed linkage when JS sour
   );
   assert.deepEqual(ir.diagnostics, []);
 });
+
+test("buildProgramIrFromArtifacts canonicalizes declaration companion sources for .d.mts maps when JS + d.mts sourcemaps resolve to the same logical module", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-dmts-companion-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sources: ["../../src/routes/health.mts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.mts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "export { health as healthHandler };",
+      "//# sourceMappingURL=maps/index.d.mts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.mts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.mts",
+      sources: ["../../src/routes/health.d.mts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "dmts001122334455",
+        entries: ["src/index.ts"],
+        bundles: [
+          { file: "dist/index.mjs", format: "esm", exports: ["health"] },
+        ],
+        types: ["dist/index.d.mts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.mts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["healthHandler"]);
+  assert.deepEqual(ir.diagnostics, []);
+});
