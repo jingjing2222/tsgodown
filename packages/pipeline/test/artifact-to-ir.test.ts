@@ -1203,3 +1203,173 @@ test("buildProgramIrFromArtifacts keeps deterministic typed linkage when JS sour
   );
   assert.deepEqual(ir.diagnostics, []);
 });
+
+test("buildProgramIrFromArtifacts canonicalizes mixed JS+d.ts sourcemap sources when encoded query/hash variants collide across file URL and relative paths", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "tsgodown-artifact-ir-encoded-query-hash-canonical-",
+    ),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  const encodedSrcRoot = new URL(`file://${path.join(cwd, "src")}/`).toString();
+  const encodedHealthFileUrl = new URL(
+    `file://${path.join(cwd, "src", "routes", "health.ts")}`,
+  ).toString();
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: encodedSrcRoot,
+      sources: [
+        "routes/health.ts%3Ffrom%3Djs%23frag",
+        `${encodedHealthFileUrl}%3Ffrom%3Djs%23frag`,
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "../../src",
+      sources: ["./routes/health.ts?from=dts#decl", "routes/./health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "99aa00bb11cc22dd",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["health"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health"]);
+  assert.deepEqual(ir.diagnostics, []);
+});
+
+test("buildProgramIrFromArtifacts canonicalizes encoded query/hash carried inside file:// sourceRoot before resolving relative sources", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-encoded-root-query-hash-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  const plainRoot = new URL(`file://${path.join(cwd, "src")}/`).toString();
+  const encodedVariantRoot = `${plainRoot.slice(0, -1)}%3Frev%3D1%23build/`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: encodedVariantRoot,
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: plainRoot,
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aa11bb22cc33dd44",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["health"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+});
