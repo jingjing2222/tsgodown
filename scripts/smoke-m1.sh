@@ -6,7 +6,7 @@ EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-scaffold-real"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 PORT="${SMOKE_PORT:-18080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
-EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-"mode":"unknown"}"
+EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-\"mode\":\"unknown\"}"
 SERVER_LOG="${ROOT_DIR}/.tmp-smoke-m1-server.log"
 ENGINE_LAUNCHER="${ROOT_DIR}/.tmp-smoke-m1-engine-launcher.sh"
 
