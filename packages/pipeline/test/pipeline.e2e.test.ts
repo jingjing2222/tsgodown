@@ -3962,3 +3962,96 @@ test("M1 regression: JS+d.ts sourcemap provenance normalizes file://localhost au
   emitGoProject(ir, goOutDir);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: inline JS data URL + external d.ts.map normalize UNC file URL sources with double-encoded query/hash to one canonical typed provenance and healthy Go runtime", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "tsgodown-pipeline-inline-js-external-dts-unc-double-encoded-e2e-",
+    ),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  const inlineJsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sources: [
+      "file://Server/Share/src/routes/health.ts?from=js#bundle",
+      "file://server/share/src/routes/%68ealth.ts?from=js2#bundle2",
+    ],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineJsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthShape { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthShape };",
+      "//# sourceMappingURL=maps/index.d.ts.map?cache=1#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "file://SERVER/SHARE/src/?from=types#decl",
+      sources: [
+        "routes/health.ts%253Ffrom%253Ddts%2523types",
+        "routes/health.ts?from=dts-raw#types-raw",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "uncdouble00112233",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["server/share/src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["healthHandler", "HealthShape"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
