@@ -1,6 +1,7 @@
 import type { UserConfig } from "@tsgodown/config";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
 
+import { buildProgramIrFromArtifacts } from "./artifact-to-ir.js";
 import { formatPipelineFailure, resolveEntry } from "./result-normalization.js";
 import { runBuildArtifactsViaRustAdapter } from "./rust-adapter-boundary.js";
 
@@ -59,6 +60,7 @@ export async function orchestratePipelineStages({
         "BUILD_IR",
         `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
       );
+      buildProgramIrFromArtifacts(buildResult, entry, { cwd });
 
       stage = "CAPABILITY_GATE";
       emitStage(
