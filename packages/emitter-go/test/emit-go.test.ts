@@ -444,7 +444,7 @@ test("emitGoProject unknown handler semantics use concrete JSON fallback without
   assert.doesNotMatch(goSource, /TODO implement handler/);
 });
 
-test("emitGoProject renders sparse indexed sourcemap diagnostics as file-only comments even when partial coordinates leak into source metadata", () => {
+test("emitGoProject preserves sparse indexed sourcemap diagnostic coordinates when provided for deterministic ordering", () => {
   const outDir = createOutDir();
 
   emitGoProject(
@@ -475,8 +475,7 @@ test("emitGoProject renders sparse indexed sourcemap diagnostics as file-only co
     emitted,
     /\/\/\s+\[warn\] PIPELINE_SOURCEMAP_SPARSE_MAPPING: sourcemap sections include sparse source entries; positional metadata omitted deterministically/,
   );
-  assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map/);
-  assert.doesNotMatch(emitted, /dist\/maps\/index\.mjs\.map:4:8/);
+  assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map:4:8/);
 
   if (hasGoToolchain) {
     const modulePath =

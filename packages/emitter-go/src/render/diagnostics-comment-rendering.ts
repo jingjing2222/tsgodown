@@ -10,10 +10,7 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
 
   const normalizedFile = normalizeDiagnosticPath(source.file);
 
-  if (
-    diagnostic.code === "PIPELINE_SOURCEMAP_SPARSE_MAPPING" ||
-    (source.line == null && source.column == null)
-  ) {
+  if (source.line == null && source.column == null) {
     return normalizedFile;
   }
 
