@@ -253,11 +253,13 @@ function collectSourceMapEntriesFromArtifact(params: {
       );
       resolvedMapPath = mapPath;
     } catch {
-      parsedMap = readInlineSourceMapFromArtifact({
+      const inlineParsedMap = readInlineSourceMapFromArtifact({
         cwd: params.cwd,
         artifactPath: params.artifactPath,
       });
-      if (parsedMap !== undefined) {
+
+      if (inlineParsedMap !== undefined) {
+        parsedMap = inlineParsedMap;
         resolvedMapPath = params.artifactPath;
       } else {
         if (hasInlineSourceMapDataUrl(params)) {
@@ -404,7 +406,7 @@ function collectSourceMapEntries(
         source: {
           file: context.mapPath,
           viaSourceMap: true,
-          ...(deriveDeterministicLine(sectionOffset) ?? {}),
+          ...(deriveDeterministicLocation(sectionOffset) ?? {}),
         },
       });
     }
@@ -428,7 +430,7 @@ function collectSourceMapEntries(
         source: {
           file: context.mapPath,
           viaSourceMap: true,
-          ...(deriveDeterministicLine(sectionOffset) ?? {}),
+          ...(deriveDeterministicLocation(sectionOffset) ?? {}),
         },
       });
     }
@@ -472,9 +474,12 @@ function isSparseSourceMapOffset(offset: unknown): boolean {
   return !hasLine || !hasColumn;
 }
 
-function deriveDeterministicLine(
+function deriveDeterministicLocation(
   offset: unknown,
-): Pick<NonNullable<DiagnosticIR["source"]>, "line"> | undefined {
+):
+  | Pick<NonNullable<DiagnosticIR["source"]>, "line">
+  | Pick<NonNullable<DiagnosticIR["source"]>, "line" | "column">
+  | undefined {
   if (typeof offset !== "object" || offset === null) {
     return undefined;
   }
@@ -482,6 +487,14 @@ function deriveDeterministicLine(
   const line = (offset as { line?: unknown }).line;
   if (!Number.isInteger(line) || (line as number) < 0) {
     return undefined;
+  }
+
+  const column = (offset as { column?: unknown }).column;
+  if (Number.isInteger(column) && (column as number) >= 0) {
+    return {
+      line: (line as number) + 1,
+      column: (column as number) + 1,
+    };
   }
 
   return {
