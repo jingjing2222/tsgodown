@@ -592,7 +592,21 @@ test("M1 regression: declared external JS map missing falls back to inline data 
     ir.modules.map((module) => module.sourcePath),
     ["dist/index.d.ts", "dist/index.mjs"],
   );
-  assert.deepEqual(ir.diagnostics, []);
+  assert.deepEqual(
+    ir.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      file: diagnostic.source?.file,
+    })),
+    [
+      {
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "sourcemap metadata is missing or invalid JSON: dist/maps/index.mjs.map",
+        file: "dist/maps/index.mjs.map",
+      },
+    ],
+  );
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
