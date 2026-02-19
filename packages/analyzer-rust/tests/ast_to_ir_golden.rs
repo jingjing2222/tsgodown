@@ -140,3 +140,11 @@ fn unsupported_register_boundaries_emit_spec_mapped_diagnostics() {
 fn conditional_routes_emit_unsupported_diagnostic() {
     assert_fixture("conditional-route.ts", "conditional-route.golden.txt");
 }
+
+#[test]
+fn single_line_conditional_routes_emit_unsupported_diagnostic() {
+    assert_fixture(
+        "conditional-route-single-line.ts",
+        "conditional-route-single-line.golden.txt",
+    );
+}
