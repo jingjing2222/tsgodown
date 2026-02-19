@@ -21,6 +21,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let exports = collect_exports(src);
     let handler_defs = collect_handler_defs(src);
     let plugin_defs = collect_plugin_defs(src);
+    let route_object_defs = collect_route_object_defs(src);
     collect_conditional_route_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
@@ -31,7 +32,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
             routes.push(route);
             continue;
         }
-        if let Some(route) = parse_route_object(stmt, &mut diagnostics, file) {
+        if let Some(route) = parse_route_object(stmt, &route_object_defs, &mut diagnostics, file) {
             referenced_handlers.insert(route.handler_ref.clone());
             routes.push(route);
             continue;
@@ -328,6 +329,37 @@ fn collect_plugin_defs(src: &str) -> BTreeSet<String> {
     defs
 }
 
+fn collect_route_object_defs(src: &str) -> BTreeMap<String, String> {
+    let mut defs = BTreeMap::new();
+
+    for stmt in collect_statements(src) {
+        let trimmed = stmt.trim_end_matches(';').trim();
+
+        for prefix in ["const ", "let ", "var "] {
+            let Some(rest) = trimmed.strip_prefix(prefix) else {
+                continue;
+            };
+
+            let Some((name_raw, rhs_raw)) = rest.split_once('=') else {
+                continue;
+            };
+
+            let name = name_raw.trim();
+            if take_identifier(name) != Some(name) {
+                continue;
+            }
+
+            let rhs = rhs_raw.trim();
+            let rhs = rhs.strip_suffix(" as const").unwrap_or(rhs).trim();
+            if rhs.starts_with('{') && rhs.ends_with('}') {
+                defs.insert(name.to_string(), rhs.to_string());
+            }
+        }
+    }
+
+    defs
+}
+
 fn parse_arrow_fn(raw: &str) -> Option<(bool, Vec<String>, String)> {
     let mut trimmed = raw.trim();
     let is_async = if let Some(rest) = trimmed.strip_prefix("async") {
@@ -567,6 +599,7 @@ fn parse_shorthand_route(
 
 fn parse_route_object(
     stmt: &str,
+    route_object_defs: &BTreeMap<String, String>,
     diagnostics: &mut Vec<DiagnosticIR>,
     file: &str,
 ) -> Option<RouteIR> {
@@ -579,7 +612,21 @@ fn parse_route_object(
     let close = trimmed.rfind(')')?;
     let arg = trimmed[open..close].trim();
 
-    if !arg.starts_with('{') || !arg.ends_with('}') {
+    let object_literal = if arg.starts_with('{') && arg.ends_with('}') {
+        arg.to_string()
+    } else if let Some(route_ref) = parse_named_handler(arg) {
+        if let Some(object_literal) = route_object_defs.get(&route_ref) {
+            object_literal.clone()
+        } else {
+            diagnostics.push(diag(
+                "error",
+                "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
+                "fastify.route(...) requires an inline object literal",
+                file,
+            ));
+            return None;
+        }
+    } else {
         diagnostics.push(diag(
             "error",
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
@@ -587,9 +634,9 @@ fn parse_route_object(
             file,
         ));
         return None;
-    }
+    };
 
-    let method = if let Some(v) = extract_prop_quoted(arg, "method") {
+    let method = if let Some(v) = extract_prop_quoted(&object_literal, "method") {
         let upper = v.to_ascii_uppercase();
         if !ALLOWED_METHODS.contains(&upper.as_str()) {
             diagnostics.push(diag(
@@ -611,7 +658,8 @@ fn parse_route_object(
         return None;
     };
 
-    let path = extract_prop_quoted(arg, "url").or_else(|| extract_prop_quoted(arg, "path"));
+    let path = extract_prop_quoted(&object_literal, "url")
+        .or_else(|| extract_prop_quoted(&object_literal, "path"));
     let path = if let Some(v) = path {
         v
     } else {
@@ -624,7 +672,7 @@ fn parse_route_object(
         return None;
     };
 
-    let handler = if let Some(v) = extract_prop_identifier(arg, "handler") {
+    let handler = if let Some(v) = extract_prop_identifier(&object_literal, "handler") {
         v
     } else {
         diagnostics.push(diag(
