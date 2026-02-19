@@ -816,11 +816,25 @@ function stripQueryAndHash(value: unknown): unknown {
 }
 
 function decodePathSegmentIfPossible(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
+  return decodePathRepeatedly(value);
+}
+
+function decodePathRepeatedly(value: string, maxIterations = 4): string {
+  let decoded = value;
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) {
+        return next;
+      }
+      decoded = next;
+    } catch {
+      return decoded;
+    }
   }
+
+  return decoded;
 }
 
 function decodeSourceMapUrlPath(sourceMapUrl: string): string {
@@ -853,10 +867,10 @@ function toFileSystemPath(value: unknown): string {
     } catch {
       try {
         const parsedUrl = new URL(normalizedFileUrl);
-        let decodedPathname = decodeURIComponent(parsedUrl.pathname);
+        let decodedPathname = decodePathRepeatedly(parsedUrl.pathname);
         const hashPayload = parsedUrl.hash.slice(1);
         if (hashPayload && /[./\\]/.test(hashPayload)) {
-          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodeURIComponent(hashPayload)}`;
+          decodedPathname = `${decodedPathname.replace(/\/?$/, "/")}${decodePathRepeatedly(hashPayload)}`;
         }
         const hostPrefix =
           parsedUrl.host && parsedUrl.hostname.toLowerCase() !== "localhost"
@@ -869,11 +883,7 @@ function toFileSystemPath(value: unknown): string {
     }
   }
 
-  try {
-    return normalizePathSeparators(decodeURIComponent(trimmed));
-  } catch {
-    return normalizePathSeparators(trimmed);
-  }
+  return normalizePathSeparators(decodePathRepeatedly(trimmed));
 }
 
 function normalizeDoubleEncodedFileUrlPathSeparators(value: string): string {
