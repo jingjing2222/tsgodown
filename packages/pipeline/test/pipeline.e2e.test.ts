@@ -3471,6 +3471,111 @@ test("M1 regression: UNC file URL sourcemap sources normalize deterministically 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: external JS sourcemap with relative sourceRoot + inline d.ts data URL map canonicalize absolute file:// query/hash sources into stable typed linkage", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "tsgodown-pipeline-external-js-inline-dts-abs-fileurl-e2e-",
+    ),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: "../../src/nested/..",
+      sources: [
+        "./routes/health.ts?from=js#bundle",
+        "./types/health-contract.ts",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const healthAbsFileUrl = new URL(
+    `file://${path.join(cwd, "src", "routes", "health.ts")}`,
+  ).toString();
+  const contractAbsFileUrl = new URL(
+    `file://${path.join(cwd, "src", "types", "health-contract.ts")}`,
+  ).toString();
+
+  const inlineDtsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.d.ts",
+    sources: [
+      `${healthAbsFileUrl}?from=types#decl`,
+      `${healthAbsFileUrl}%3Ffrom%3Dtypes%23decl-encoded`,
+      `${contractAbsFileUrl}?from=types#decl`,
+    ],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "export interface HealthContract { ok: boolean; }",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;base64,${Buffer.from(inlineDtsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "2121212121212121",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health-contract.ts"],
+  );
+  assert.deepEqual(
+    ir.modules.find((module) => module.sourcePath === "src/routes/health.ts")
+      ?.exports,
+    ["health", "HealthContract"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: mixed inline JS map + external d.ts map canonicalize duplicate logical modules across percent-encoded paths and differing sourceRoot forms", async () => {
   const cwd = fs.mkdtempSync(
     path.join(
