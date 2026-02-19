@@ -3743,3 +3743,98 @@ test("M1 regression: UNC file URL sourcemap sources normalize deterministically 
   emitGoProject(ir, goOutDir);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: inline JS + external d.ts sourcemaps normalize UNC host/share casing and separators to stable typed provenance", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-unc-inline-js-dts-external-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  const jsInlineMap = {
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: "file://SERVER/Share/src",
+    sources: [
+      "routes\\health.ts?from=js#raw",
+      "routes/%68ealth.ts?from=js#enc",
+    ],
+    names: [],
+    mappings: "",
+  };
+  const jsInlineMapDataUrl = `data:application/json;base64,${Buffer.from(
+    JSON.stringify(jsInlineMap),
+    "utf8",
+  ).toString("base64")}`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=${jsInlineMapDataUrl}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthContract { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "file://server/share/src/nested/..",
+      sources: ["routes/health.ts?from=dts#raw", "types\\health-contract.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "4b9a2de1f0c38765",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    [
+      "server/share/src/routes/health.ts",
+      "server/share/src/types/health-contract.ts",
+    ],
+  );
+  const typesModule = ir.modules.find(
+    (module) =>
+      module.sourcePath === "server/share/src/types/health-contract.ts",
+  );
+  assert.deepEqual(typesModule?.exports, ["health", "HealthContract"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
