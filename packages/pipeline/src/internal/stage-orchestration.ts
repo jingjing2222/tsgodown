@@ -61,6 +61,7 @@ export async function orchestratePipelineStages({
         "BUILD_IR",
         `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
       );
+      buildProgramIrFromArtifacts(buildResult, entry, { cwd });
 
       stage = "CAPABILITY_GATE";
       emitStage(

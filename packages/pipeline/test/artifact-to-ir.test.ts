@@ -26,36 +26,35 @@ test("buildProgramIrFromArtifacts falls back to resolved entry when manifest ent
   assert.equal(ir.modules[0]?.sourcePath, "src/index.ts");
 });
 
-test("buildProgramIrFromArtifacts enriches module exports from d.ts and source location from sourcemap", () => {
+test("buildProgramIrFromArtifacts ingests d.ts and sourcemap into deterministic typed module metadata", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-artifact-ir-"));
-  const manifestDir = path.join(cwd, "artifacts", "manifests");
-  const distDir = path.join(cwd, "dist");
-
-  fs.mkdirSync(manifestDir, { recursive: true });
-  fs.mkdirSync(distDir, { recursive: true });
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
 
   fs.writeFileSync(
-    path.join(distDir, "index.d.ts"),
-    "export declare function health(): string;\nexport declare const version: string;\n",
-    "utf8",
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare function zed(req: unknown): Promise<void>;",
+      "export declare const alpha: () => { ok: boolean };",
+      "",
+    ].join("\n"),
   );
+
   fs.writeFileSync(
-    path.join(distDir, "index.mjs.map"),
+    path.join(cwd, "dist", "index.mjs.map"),
     JSON.stringify({
       version: 3,
       file: "index.mjs",
-      sources: ["src/server.ts"],
+      sources: ["../src/z-route.ts", "../src/a-route.ts", "../src/z-route.ts"],
       names: [],
       mappings: "",
     }),
-    "utf8",
   );
 
   const ir = buildProgramIrFromArtifacts(
     {
       mode: "rust-engine-adapter",
-      manifestPath: path.join(manifestDir, "manifest.json"),
-      manifestIndexPath: path.join(manifestDir, "index.json"),
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
       manifest: {
         buildId: "aabbccddeeff0011",
         entries: ["src/index.ts"],
@@ -64,7 +63,7 @@ test("buildProgramIrFromArtifacts enriches module exports from d.ts and source l
             file: "dist/index.mjs",
             map: "dist/index.mjs.map",
             format: "esm",
-            exports: [],
+            exports: ["zed", "alpha"],
           },
         ],
         types: ["dist/index.d.ts"],
@@ -72,60 +71,51 @@ test("buildProgramIrFromArtifacts enriches module exports from d.ts and source l
       diagnostics: [],
     },
     "src/index.ts",
+    { cwd },
   );
 
-  assert.deepEqual(ir.modules[0]?.exports, ["health", "version"]);
-  assert.equal(ir.modules[0]?.sourcePath, "src/server.ts");
-  assert.equal(ir.diagnostics.length, 0);
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/a-route.ts", "src/z-route.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["alpha", "zed"]);
+  assert.deepEqual(ir.diagnostics, []);
 });
 
-test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing and invalid sourcemaps", () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-artifact-ir-"));
-  const manifestDir = path.join(cwd, "artifacts", "manifests");
-  const distDir = path.join(cwd, "dist");
-
-  fs.mkdirSync(manifestDir, { recursive: true });
-  fs.mkdirSync(distDir, { recursive: true });
-
-  fs.writeFileSync(
-    path.join(distDir, "index.d.ts"),
-    "export declare function health(): string;\n",
-    "utf8",
+test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing/invalid typed mapping metadata", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-diag-"),
   );
-  fs.writeFileSync(path.join(distDir, "bad.mjs.map"), "{not-json", "utf8");
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(path.join(cwd, "dist", "broken.map"), "{oops");
 
   const ir = buildProgramIrFromArtifacts(
     {
       mode: "rust-engine-adapter",
-      manifestPath: path.join(manifestDir, "manifest.json"),
-      manifestIndexPath: path.join(manifestDir, "index.json"),
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
       manifest: {
         buildId: "aabbccddeeff0011",
         entries: ["src/index.ts"],
         bundles: [
           {
             file: "dist/index.mjs",
-            format: "esm",
-            exports: [],
-          },
-          {
-            file: "dist/bad.mjs",
-            map: "dist/bad.mjs.map",
+            map: "dist/broken.map",
             format: "esm",
             exports: [],
           },
         ],
-        types: ["dist/index.d.ts"],
       },
       diagnostics: [],
     },
     "src/index.ts",
+    { cwd },
   );
 
   assert.deepEqual(
     ir.diagnostics.map((diag) => diag.code),
-    ["ARTIFACT_SOURCEMAP_INVALID", "ARTIFACT_SOURCEMAP_MISSING"],
+    ["PIPELINE_INVALID_SOURCEMAP_MAPPING", "PIPELINE_MISSING_TYPES_METADATA"],
   );
-  assert.equal(ir.diagnostics[0]?.source?.file, "dist/bad.mjs.map");
   assert.equal(ir.diagnostics[0]?.source?.viaSourceMap, true);
 });
