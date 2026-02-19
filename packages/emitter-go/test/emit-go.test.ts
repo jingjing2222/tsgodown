@@ -643,6 +643,79 @@ function assertBuildsWithGoToolchain(fixture: ProgramIR, fixtureName: string) {
 }
 
 test(
+  "emitGoProject smoke: file-only sparse sourcemap diagnostics keep runtime semantics stable",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = await allocateEphemeralPort();
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [{ id: "h", params: [], async: false }],
+        diagnostics: [
+          {
+            level: "warn",
+            code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+            message:
+              "indexed sourcemap section had sparse mappings; positional metadata omitted deterministically",
+            source: { file: "dist/maps/index.mjs.map", viaSourceMap: true },
+          },
+        ],
+        routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+      },
+      outDir,
+    );
+
+    const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+    assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map/);
+    assert.doesNotMatch(emitted, /dist\/maps\/index\.mjs\.map:\?:\?/);
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-sparse-sourcemap"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const url = `http://127.0.0.1:${port}/health`;
+    const deadline = Date.now() + 10_000;
+    let responseStatus = 0;
+    let responseText = "";
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(1000),
+          });
+          responseStatus = response.status;
+          responseText = await response.text();
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      assert.equal(responseStatus, 501);
+      assert.match(responseText, /"handler":"h"/);
+      assert.match(responseText, /"mode":"unknown"/);
+    } finally {
+      await shutdownServer(server);
+    }
+  },
+);
+
+test(
   "emitGoProject smoke: generated representative fixtures can go build",
   { skip: !runGoSmoke },
   () => {
