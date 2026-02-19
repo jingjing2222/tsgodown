@@ -1474,3 +1474,86 @@ test("M1 regression: multiple d.ts artifacts union typed exports while JS+d.ts s
   emitGoProject(ir, goOutDir);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: sourceMappingURL query/hash on mjs+d.ts maps still resolves typed IR provenance and deterministic typed exports", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-map-url-query-hash-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map?v=20260219#chunk",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare type Health = { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map?cache=1#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["types/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "1234abcd5678ef90",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "Health"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
