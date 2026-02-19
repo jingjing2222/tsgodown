@@ -599,6 +599,91 @@ test("M1 regression: declared external JS map missing falls back to inline data 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: invalid declared JS map + inline fallback still preserves d.ts typed exports and deterministic warning", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-fallback-typed-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare const listUsers: () => Array<{ id: string }>;;",
+      "",
+    ].join("\n"),
+  );
+
+  const inlineMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["routes/health.ts", "routes/users.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "const listUsers = () => [{ id: 'u1' }];",
+      "export { health, listUsers };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "5566778899001122",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/missing-index.mjs.map",
+          format: "esm",
+          exports: ["health", "listUsers"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/routes/users.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "listUsers"]);
+  assert.deepEqual(
+    ir.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      file: diagnostic.source?.file,
+    })),
+    [
+      {
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "sourcemap metadata is missing or invalid JSON: dist/maps/missing-index.mjs.map",
+        file: "dist/maps/missing-index.mjs.map",
+      },
+    ],
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: invalid declared JS map + malformed inline data URL keeps deterministic warnings and stable d.ts provenance ordering", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-inline-map-malformed-e2e-"),
