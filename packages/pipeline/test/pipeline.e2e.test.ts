@@ -4061,7 +4061,10 @@ test("M1 regression: file://localhost sourcemap sourceRoot end-to-end path keeps
 
 test("M1 regression: typed exports are withheld when .d.ts exists but sourcemap lineage is missing", () => {
   const cwd = fs.mkdtempSync(
-    path.join(os.tmpdir(), "tsgodown-pipeline-missing-map-typed-provenance-e2e-"),
+    path.join(
+      os.tmpdir(),
+      "tsgodown-pipeline-missing-map-typed-provenance-e2e-",
+    ),
   );
   tempDirs.push(cwd);
 
@@ -4069,11 +4072,9 @@ test("M1 regression: typed exports are withheld when .d.ts exists but sourcemap 
 
   fs.writeFileSync(
     path.join(cwd, "dist", "index.mjs"),
-    [
-      "const health = () => ({ ok: true });",
-      "export { health };",
-      "",
-    ].join("\n"),
+    ["const health = () => ({ ok: true });", "export { health };", ""].join(
+      "\n",
+    ),
   );
 
   fs.writeFileSync(
@@ -4102,7 +4103,10 @@ test("M1 regression: typed exports are withheld when .d.ts exists but sourcemap 
 
   const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
 
-  assert.deepEqual(ir.modules.map((module) => module.sourcePath), ["src/index.ts"]);
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/index.ts"],
+  );
   assert.deepEqual(ir.modules[0]?.exports, []);
   assert.deepEqual(
     ir.diagnostics.map((diagnostic) => diagnostic.code),
