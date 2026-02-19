@@ -168,20 +168,19 @@ function collectSourceEntriesFromSourceMap(
   const normalized = new Set<string>();
 
   const bundleFilePath = buildResult.manifest.bundles[0]?.file;
-  const bundleMapPath = buildResult.manifest.bundles[0]?.map;
   const typePath = buildResult.manifest.types?.[0];
 
   const sourceMapTargets: Array<{
     artifactPath: string | undefined;
     mapPath?: string;
   }> = [
-    {
-      artifactPath: bundleFilePath,
-      mapPath: bundleMapPath,
-    },
-    {
-      artifactPath: typePath,
-    },
+    ...buildResult.manifest.bundles.map((bundle) => ({
+      artifactPath: bundle.file,
+      mapPath: bundle.map,
+    })),
+    ...(buildResult.manifest.types ?? []).map((declaredTypePath) => ({
+      artifactPath: declaredTypePath,
+    })),
   ];
 
   let foundAnySourceMap = false;
