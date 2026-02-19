@@ -594,13 +594,14 @@ function toFileSystemPath(value: unknown): string {
     return "";
   }
 
-  if (value.startsWith("file://")) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("file://")) {
     try {
-      return fileURLToPath(value);
+      return fileURLToPath(trimmed);
     } catch {
-      return value;
+      return trimmed;
     }
   }
 
-  return value;
+  return trimmed;
 }
