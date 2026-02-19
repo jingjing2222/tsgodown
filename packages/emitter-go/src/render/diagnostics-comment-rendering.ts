@@ -23,11 +23,27 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
 }
 
 function compareDiagnostics(a: DiagnosticIR, b: DiagnosticIR): number {
-  const sourceA = formatDiagnosticSource(a) ?? "";
-  const sourceB = formatDiagnosticSource(b) ?? "";
+  const sourceA = a.source;
+  const sourceB = b.source;
+
+  const fileOrder = (sourceA?.file ?? "").localeCompare(sourceB?.file ?? "");
+  if (fileOrder !== 0) {
+    return fileOrder;
+  }
+
+  const lineA = sourceA?.line ?? -1;
+  const lineB = sourceB?.line ?? -1;
+  if (lineA !== lineB) {
+    return lineA - lineB;
+  }
+
+  const columnA = sourceA?.column ?? -1;
+  const columnB = sourceB?.column ?? -1;
+  if (columnA !== columnB) {
+    return columnA - columnB;
+  }
 
   return (
-    sourceA.localeCompare(sourceB) ||
     a.level.localeCompare(b.level) ||
     a.code.localeCompare(b.code) ||
     a.message.localeCompare(b.message)

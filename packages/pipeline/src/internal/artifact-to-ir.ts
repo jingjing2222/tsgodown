@@ -306,16 +306,53 @@ function collectSourceMapEntries(
     }
 
     const sectionMap = (section as { map?: unknown }).map;
-    for (const nestedEntry of collectSourceMapEntries(
+    const nestedEntries = collectSourceMapEntries(
       sectionMap,
       context,
       directSourceRoot,
-    )) {
+    );
+    if (
+      context &&
+      nestedEntries.length === 0 &&
+      isMissingSectionSources(sectionMap)
+    ) {
+      context.diagnostics.push({
+        level: "warn",
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "indexed sourcemap section map is missing sources[]; section ignored for deterministic mapping",
+        source: {
+          file: context.mapPath,
+          viaSourceMap: true,
+          ...(deriveDeterministicLine(sectionOffset) ?? {}),
+        },
+      });
+    }
+
+    for (const nestedEntry of nestedEntries) {
       entries.push(nestedEntry);
     }
   }
 
   return entries;
+}
+
+function isMissingSectionSources(sectionMap: unknown): boolean {
+  if (typeof sectionMap !== "object" || sectionMap === null) {
+    return false;
+  }
+
+  const hasSourcesArray = Array.isArray(
+    (sectionMap as { sources?: unknown }).sources,
+  );
+  if (hasSourcesArray) {
+    return false;
+  }
+
+  const hasSectionsArray = Array.isArray(
+    (sectionMap as { sections?: unknown }).sections,
+  );
+  return !hasSectionsArray;
 }
 
 function isSparseSourceMapOffset(offset: unknown): boolean {
