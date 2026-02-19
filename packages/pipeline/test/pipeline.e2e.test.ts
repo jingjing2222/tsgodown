@@ -2153,3 +2153,120 @@ test("M1 regression: missing declared bundle map query/hash falls back to source
   assert.doesNotMatch(goMain, /missing-index\.mjs\.map/);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: JS+d.ts indexed sourcemap sections union deterministic typed IR provenance across mixed relative/absolute sourceRoot", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-indexed-union-mixed-root-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface User { id: string }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sources: ["routes/health.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 2, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: " ../../src/shared/.. ",
+            sources: ["contracts/session.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+            sources: ["types/user.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 1, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: " ../../src ",
+            sources: ["contracts/session.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "c0ffee0011223344",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/contracts/session.ts", "src/routes/health.ts", "src/types/user.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, ["health", "User"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
