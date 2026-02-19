@@ -1721,3 +1721,93 @@ test("M1 regression: d.ts sourceMappingURL query+hash still resolves map for JS+
   emitGoProject(ir, goOutDir);
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
+
+test("M1 regression: real JS+d.ts+sourcemap keeps stable symbol/type linkage for export type braces with query/hash map URL", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-dts-export-type-linkage-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "contracts"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map?rev=4#bundle",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["routes/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthStatus { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthStatus as PublicHealthStatus };",
+      "//# sourceMappingURL=maps/index.d.ts.map?rev=4#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["contracts/health.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "deadbeefcafefeed",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/contracts/health.ts", "src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "healthHandler",
+    "PublicHealthStatus",
+  ]);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
