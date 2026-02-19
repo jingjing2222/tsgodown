@@ -56,6 +56,7 @@ export async function orchestratePipelineStages({
       assertBuildArtifactContract(buildResult);
 
       stage = "BUILD_IR";
+      buildProgramIrFromArtifacts(buildResult, entry);
       emitStage(
         "BUILD_IR",
         `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,

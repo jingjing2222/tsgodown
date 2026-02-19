@@ -124,6 +124,20 @@ function collectTypedExports(
     if (match?.[1]) {
       exportedNames.add(match[1]);
     }
+
+    const braceExportMatch = trimmed.match(/^export\s*\{([^}]+)\}/);
+    if (braceExportMatch?.[1]) {
+      for (const segment of braceExportMatch[1].split(",")) {
+        const symbol = segment
+          .trim()
+          .match(
+            /^(?:type\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/,
+          );
+        if (symbol) {
+          exportedNames.add(symbol[2] ?? symbol[1]);
+        }
+      }
+    }
   }
 
   if (exportedNames.size === 0) {

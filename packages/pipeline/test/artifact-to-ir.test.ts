@@ -1,8 +1,7 @@
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
-import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildProgramIrFromArtifacts } from "../src/internal/artifact-to-ir.ts";
