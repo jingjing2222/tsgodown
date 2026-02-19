@@ -262,12 +262,19 @@ function canonicalizeDeclarationCompanionPaths(entries: string[]): string[] {
   const entrySet = new Set(entries);
 
   for (const entry of entries) {
-    if (!entry.endsWith(".d.ts")) {
+    if (entry.endsWith(".d.ts")) {
+      const tsCandidate = `${entry.slice(0, -".d.ts".length)}.ts`;
+      if (entrySet.has(tsCandidate)) {
+        entrySet.delete(entry);
+      }
+    }
+
+    if (!entry.startsWith("dist/src/")) {
       continue;
     }
 
-    const tsCandidate = `${entry.slice(0, -".d.ts".length)}.ts`;
-    if (entrySet.has(tsCandidate)) {
+    const sourceCandidate = entry.slice("dist/".length);
+    if (entrySet.has(sourceCandidate)) {
       entrySet.delete(entry);
     }
   }
