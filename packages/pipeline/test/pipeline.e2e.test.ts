@@ -2826,6 +2826,100 @@ test("M1 regression: Windows drive-letter file:// sourceRoot mixed with backslas
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: mixed file:///C:/ and C:\\ sourceRoot with percent-encoded segments dedupes typed IR provenance deterministically", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-mixed-windows-root-encoded-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  const sourceRootDir = path.join(cwd, "src#v1");
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "routes"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthResponse { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  const windowsDriveFileRoot = `file:///C:${cwd.replaceAll("\\", "/")}/src%23v1/`;
+  const windowsDriveBackslashRoot = `C:${cwd.replaceAll("/", "\\\\")}\\src#v1`;
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "..\\index.mjs",
+      sourceRoot: windowsDriveFileRoot,
+      sources: ["routes%2Fhealth.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "..\\index.d.ts",
+      sourceRoot: windowsDriveBackslashRoot,
+      sources: ["types\\health-response.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "f0aa11bb22cc33dd",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src#v1/routes/health.ts", "src#v1/types/health-response.ts"],
+  );
+  const typedModule = ir.modules.find(
+    (module) => module.sourcePath === "src#v1/types/health-response.ts",
+  );
+  assert.deepEqual(typedModule?.exports, ["health", "HealthResponse"]);
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: inline JS map + external d.ts map with encoded sourceRoot query/hash keeps deterministic typed IR provenance and Go compile smoke", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-inline-js-encoded-dts-root-e2e-"),
@@ -3185,6 +3279,103 @@ test("M1 regression: legacy //@ sourceMappingURL directives in JS+d.ts are disco
     ["src/routes/health.ts", "src/types/health.ts"],
   );
   assert.deepEqual(ir.modules[0]?.exports, ["health", "HealthPayload"]);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
+test("M1 regression: relative sourceRoot + encoded source variants across JS+d.ts maps dedupe to deterministic typed IR and Go smoke", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-e2e-relative-encoded-dedupe-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "routes"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare interface HealthDTO { ok: boolean }",
+      "//# sourceMappingURL=maps/index.d.ts.map?rev=20#types",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: "../../src",
+      sources: [
+        "routes/health.ts?rev=20#raw",
+        "routes%2Fhealth.ts?rev=20#encoded",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "../../src/nested/..",
+      sources: [
+        "./routes/health.ts?rev=20#decl",
+        "types/health.ts?rev=20#types",
+        "types%2Fhealth.ts?rev=20#types-encoded",
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "f0e1d2c3b4a59687",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts", "src/types/health.ts"],
+  );
+  const typesModule = ir.modules.find(
+    (module) => module.sourcePath === "src/types/health.ts",
+  );
+  assert.deepEqual(typesModule?.exports, ["health", "HealthDTO"]);
+  assert.deepEqual(ir.diagnostics, []);
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);
