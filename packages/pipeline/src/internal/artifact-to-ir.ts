@@ -734,7 +734,11 @@ function normalizeSourceMapSourcePath(params: {
       ? decodedSourceRootPath.slice(0, sourceRootQueryIndex)
       : decodedSourceRootPath;
   const sourcePath = String(
-    stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
+    stripQueryAndHash(
+      normalizeDoubleEncodedQueryHashMarkers(
+        normalizeDecodedSourceMapPathSegment(params.sourcePath),
+      ),
+    ),
   )
     .replace(/%2f/gi, "/")
     .replace(/%5c/gi, "/");
@@ -800,10 +804,14 @@ function stripQueryAndHash(value: unknown): unknown {
   }
 
   const queryIndex = value.indexOf("?");
-  const withoutQuery = queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+  const encodedQueryIndex = queryIndex < 0 ? value.search(/%3f/i) : queryIndex;
+  const withoutQuery =
+    encodedQueryIndex >= 0 ? value.slice(0, encodedQueryIndex) : value;
 
   const hashIndex = withoutQuery.indexOf("#");
-  if (hashIndex < 0) {
+  const encodedHashIndex =
+    hashIndex < 0 ? withoutQuery.search(/%23/i) : hashIndex;
+  if (encodedHashIndex < 0) {
     return withoutQuery;
   }
 
@@ -813,12 +821,12 @@ function stripQueryAndHash(value: unknown): unknown {
     return withoutQuery;
   }
 
-  const afterHash = withoutQuery.slice(hashIndex + 1);
+  const afterHash = withoutQuery.slice(encodedHashIndex + 1);
   if (afterHash.includes("/") || afterHash.includes("\\")) {
     return withoutQuery;
   }
 
-  return withoutQuery.slice(0, hashIndex);
+  return withoutQuery.slice(0, encodedHashIndex);
 }
 
 function decodeSourceMapUrlPath(sourceMapUrl: string): string {
@@ -827,6 +835,19 @@ function decodeSourceMapUrlPath(sourceMapUrl: string): string {
   } catch {
     return sourceMapUrl;
   }
+}
+
+function normalizeDoubleEncodedQueryHashMarkers(value: string): string {
+  let normalized = value;
+  for (let i = 0; i < 2; i += 1) {
+    const next = normalized.replace(/%253f/gi, "%3F").replace(/%2523/gi, "%23");
+    if (next === normalized) {
+      break;
+    }
+    normalized = next;
+  }
+
+  return normalized.replace(/%3f/gi, "?").replace(/%23/gi, "#");
 }
 
 function isUncFileUrlLike(value: unknown): boolean {
