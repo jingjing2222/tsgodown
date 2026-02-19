@@ -197,21 +197,8 @@ function collectSourceEntriesFromSourceMap(
     return [];
   }
 
-  const sources =
-    typeof parsedMap === "object" &&
-    parsedMap !== null &&
-    "sources" in parsedMap
-      ? (parsedMap as { sources?: unknown[] }).sources
-      : undefined;
-  const sourceRoot =
-    typeof parsedMap === "object" &&
-    parsedMap !== null &&
-    "sourceRoot" in parsedMap &&
-    typeof (parsedMap as { sourceRoot?: unknown }).sourceRoot === "string"
-      ? (parsedMap as { sourceRoot: string }).sourceRoot
-      : "";
-
-  if (!Array.isArray(sources)) {
+  const sourceEntries = collectSourceMapEntries(parsedMap);
+  if (sourceEntries.length === 0) {
     diagnostics.push({
       level: "warn",
       code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
@@ -227,11 +214,11 @@ function collectSourceEntriesFromSourceMap(
   }
 
   const normalized = new Set<string>();
-  for (const sourcePath of sources) {
+  for (const entry of sourceEntries) {
     const normalizedSource = normalizeSourceMapSourcePath({
       mapPath,
-      sourceRoot,
-      sourcePath,
+      sourceRoot: entry.sourceRoot,
+      sourcePath: entry.sourcePath,
     });
     if (normalizedSource) {
       normalized.add(normalizedSource);
@@ -239,6 +226,45 @@ function collectSourceEntriesFromSourceMap(
   }
 
   return [...normalized].sort((a, b) => a.localeCompare(b));
+}
+
+function collectSourceMapEntries(parsedMap: unknown): Array<{
+  sourcePath: unknown;
+  sourceRoot: string;
+}> {
+  if (typeof parsedMap !== "object" || parsedMap === null) {
+    return [];
+  }
+
+  const directSources = (parsedMap as { sources?: unknown }).sources;
+  const directSourceRoot =
+    typeof (parsedMap as { sourceRoot?: unknown }).sourceRoot === "string"
+      ? ((parsedMap as { sourceRoot: string }).sourceRoot ?? "")
+      : "";
+  if (Array.isArray(directSources)) {
+    return directSources.map((sourcePath) => ({
+      sourcePath,
+      sourceRoot: directSourceRoot,
+    }));
+  }
+
+  const sections = (parsedMap as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+
+  const entries: Array<{ sourcePath: unknown; sourceRoot: string }> = [];
+  for (const section of sections) {
+    if (typeof section !== "object" || section === null) {
+      continue;
+    }
+    const sectionMap = (section as { map?: unknown }).map;
+    for (const nestedEntry of collectSourceMapEntries(sectionMap)) {
+      entries.push(nestedEntry);
+    }
+  }
+
+  return entries;
 }
 
 function normalizeSourceMapSourcePath(params: {

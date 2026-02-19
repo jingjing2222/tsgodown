@@ -134,6 +134,75 @@ test("buildProgramIrFromArtifacts resolves sourcemap sourceRoot deterministicall
   );
 });
 
+test("buildProgramIrFromArtifacts resolves indexed sourcemap sections deterministically for module locations", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    "export declare const ok: true;\n",
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            sources: ["routes/z.ts", "routes/a.ts"],
+            mappings: "",
+          },
+        },
+        {
+          offset: { line: 10, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            sources: ["routes/a.ts", "routes/m.ts"],
+            mappings: "",
+          },
+        },
+      ],
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["ok"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/a.ts", "src/routes/m.ts", "src/routes/z.ts"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+});
+
 test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing/invalid typed mapping metadata", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-diag-"),
