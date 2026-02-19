@@ -253,17 +253,37 @@ function collectSourceMapEntriesFromArtifact(params: {
       );
       resolvedMapPath = mapPath;
     } catch {
-      params.diagnostics.push({
-        level: "warn",
-        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
-        message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
-        source: {
-          file: mapPath,
-          viaSourceMap: true,
-          ...DETERMINISTIC_SOURCE_LOCATION,
-        },
+      parsedMap = readInlineSourceMapFromArtifact({
+        cwd: params.cwd,
+        artifactPath: params.artifactPath,
       });
-      return { entries: [], foundSourceMap: true };
+      if (parsedMap !== undefined) {
+        resolvedMapPath = params.artifactPath;
+      } else {
+        if (hasInlineSourceMapDataUrl(params)) {
+          params.diagnostics.push({
+            level: "warn",
+            code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+            message: `inline sourcemap data URL is malformed or invalid JSON: ${params.artifactPath}`,
+            source: {
+              file: params.artifactPath,
+              viaSourceMap: true,
+              ...DETERMINISTIC_SOURCE_LOCATION,
+            },
+          });
+        }
+        params.diagnostics.push({
+          level: "warn",
+          code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+          message: `sourcemap metadata is missing or invalid JSON: ${mapPath}`,
+          source: {
+            file: mapPath,
+            viaSourceMap: true,
+            ...DETERMINISTIC_SOURCE_LOCATION,
+          },
+        });
+        return { entries: [], foundSourceMap: true };
+      }
     }
   } else {
     parsedMap = readInlineSourceMapFromArtifact({
@@ -528,6 +548,14 @@ function readInlineSourceMapFromArtifact(params: {
   } catch {
     return undefined;
   }
+}
+
+function hasInlineSourceMapDataUrl(params: {
+  cwd: string;
+  artifactPath: string | undefined;
+}): boolean {
+  const sourceMapUrl = readSourceMapUrlFromArtifact(params);
+  return sourceMapUrl?.startsWith("data:") ?? false;
 }
 
 function readSourceMapUrlFromArtifact(params: {

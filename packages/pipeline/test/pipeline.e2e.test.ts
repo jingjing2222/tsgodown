@@ -535,6 +535,162 @@ test("M1 regression: indexed sourcemap with mixed sourceRoot variants preserves 
   assertGoBuildSuccessIfToolchainAvailable(goOutDir);
 });
 
+test("M1 regression: declared external JS map missing falls back to inline data URL map for JS+d.ts typed IR provenance", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-map-fallback-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    ["export declare const health: () => { ok: boolean };", ""].join("\n"),
+  );
+
+  const inlineMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(`file://${path.join(cwd, "dist")}/`).toString(),
+    sources: ["index.mjs", "index.d.ts"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "9988776655443322",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["dist/index.d.ts", "dist/index.mjs"],
+  );
+  assert.deepEqual(ir.diagnostics, []);
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
+test("M1 regression: invalid declared JS map + malformed inline data URL keeps deterministic warnings and stable d.ts provenance ordering", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-inline-map-malformed-e2e-"),
+  );
+  tempDirs.push(cwd);
+
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, "src", "contracts"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+      sources: ["contracts/zeta.ts", "contracts/alpha.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "//# sourceMappingURL=data:application/json;base64,this-is-not-base64-json",
+      "",
+    ].join("\n"),
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "1029384756019283",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: "dist/index.mjs",
+          map: "dist/maps/missing-index.mjs.map",
+          format: "esm",
+          exports: ["health"],
+        },
+      ],
+      types: ["dist/index.d.ts"],
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/contracts/alpha.ts", "src/contracts/zeta.ts"],
+  );
+  assert.deepEqual(
+    ir.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      file: diagnostic.source?.file,
+    })),
+    [
+      {
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "inline sourcemap data URL is malformed or invalid JSON: dist/index.mjs",
+        file: "dist/index.mjs",
+      },
+      {
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "sourcemap metadata is missing or invalid JSON: dist/maps/missing-index.mjs.map",
+        file: "dist/maps/missing-index.mjs.map",
+      },
+    ],
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+});
+
 test("M1 regression: indexed sourcemap inherited file:// sourceRoot keeps typed IR provenance deterministic and survives Go diagnostic emission", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-e2e-indexed-inherit-"),
