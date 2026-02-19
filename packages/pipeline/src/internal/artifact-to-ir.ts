@@ -718,7 +718,9 @@ function normalizeSourceMapSourcePath(params: {
   );
   const sourcePath = String(
     stripQueryAndHash(normalizeDecodedSourceMapPathSegment(params.sourcePath)),
-  );
+  )
+    .replace(/%2f/gi, "/")
+    .replace(/%5c/gi, "/");
   if (!sourcePath.trim()) {
     return undefined;
   }
@@ -820,8 +822,13 @@ function toFileSystemPath(value: unknown): string {
   }
 
   const trimmed = value.trim();
-  if (/^file:\/\//i.test(trimmed)) {
-    const normalizedFileUrl = trimmed.replace(/^file:\/\//i, "file://");
+
+  if (/^file:/i.test(trimmed)) {
+    const normalizedFileUrl = normalizeDoubleEncodedFileUrlPathSeparators(
+      /^file:\/\//i.test(trimmed)
+        ? trimmed.replace(/^file:\/\//i, "file://")
+        : trimmed.replace(/^file:/i, "file://"),
+    );
     try {
       return normalizePathSeparators(fileURLToPath(normalizedFileUrl));
     } catch {
@@ -841,6 +848,22 @@ function toFileSystemPath(value: unknown): string {
   } catch {
     return normalizePathSeparators(trimmed);
   }
+}
+
+function normalizeDoubleEncodedFileUrlPathSeparators(value: string): string {
+  let normalized = value;
+  for (let i = 0; i < 2; i += 1) {
+    const next = normalized.replace(/%252f/gi, "%2F").replace(/%255c/gi, "%5C");
+    if (next === normalized) {
+      break;
+    }
+    normalized = next;
+  }
+  if (/^file:\/\/%2f/i.test(normalized)) {
+    normalized = normalized.replace(/^file:\/\/%2f/i, "file:///");
+  }
+
+  return normalized;
 }
 
 function normalizePathSeparators(value: string): string {
