@@ -1106,9 +1106,17 @@ test("M1 regression: inline+external+indexed sourcemaps with d.ts typing union t
       "src/types/http.ts",
     ],
   );
-  assert.deepEqual(ir.modules[0]?.exports, ["adminPing", "health", "listUsers"]);
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "adminPing",
+    "health",
+    "listUsers",
+  ]);
   assert.deepEqual(
-    ir.diagnostics.map((d) => ({ code: d.code, file: d.source?.file, line: d.source?.line })),
+    ir.diagnostics.map((d) => ({
+      code: d.code,
+      file: d.source?.file,
+      line: d.source?.line,
+    })),
     [
       {
         code: "PIPELINE_SOURCEMAP_POSITION_PARTIAL",
