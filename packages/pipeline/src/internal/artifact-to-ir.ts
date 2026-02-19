@@ -4,6 +4,11 @@ import path from "node:path";
 import type { DiagnosticIR, ProgramIR } from "@tsgodown/ir-core";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
 
+const DETERMINISTIC_SOURCE_LOCATION = {
+  line: 1,
+  column: 1,
+} as const;
+
 interface ArtifactToIrOptions {
   cwd?: string;
 }
@@ -169,6 +174,7 @@ function collectSourceEntriesFromSourceMap(
       source: {
         file: buildResult.manifest.bundles[0]?.file ?? "manifest.bundles[0]",
         viaSourceMap: true,
+        ...DETERMINISTIC_SOURCE_LOCATION,
       },
     });
     return [];
@@ -185,6 +191,7 @@ function collectSourceEntriesFromSourceMap(
       source: {
         file: mapPath,
         viaSourceMap: true,
+        ...DETERMINISTIC_SOURCE_LOCATION,
       },
     });
     return [];
@@ -196,6 +203,13 @@ function collectSourceEntriesFromSourceMap(
     "sources" in parsedMap
       ? (parsedMap as { sources?: unknown[] }).sources
       : undefined;
+  const sourceRoot =
+    typeof parsedMap === "object" &&
+    parsedMap !== null &&
+    "sourceRoot" in parsedMap &&
+    typeof (parsedMap as { sourceRoot?: unknown }).sourceRoot === "string"
+      ? (parsedMap as { sourceRoot: string }).sourceRoot
+      : "";
 
   if (!Array.isArray(sources)) {
     diagnostics.push({
@@ -206,6 +220,7 @@ function collectSourceEntriesFromSourceMap(
       source: {
         file: mapPath,
         viaSourceMap: true,
+        ...DETERMINISTIC_SOURCE_LOCATION,
       },
     });
     return [];
@@ -213,17 +228,37 @@ function collectSourceEntriesFromSourceMap(
 
   const normalized = new Set<string>();
   for (const sourcePath of sources) {
-    if (typeof sourcePath !== "string" || !sourcePath.trim()) {
-      continue;
-    }
-    const resolved = path
-      .normalize(path.join(path.dirname(mapPath), sourcePath))
-      .replaceAll("\\", "/");
-    const withoutDot = resolved.startsWith("./") ? resolved.slice(2) : resolved;
-    if (!withoutDot.startsWith("../")) {
-      normalized.add(withoutDot);
+    const normalizedSource = normalizeSourceMapSourcePath({
+      mapPath,
+      sourceRoot,
+      sourcePath,
+    });
+    if (normalizedSource) {
+      normalized.add(normalizedSource);
     }
   }
 
   return [...normalized].sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeSourceMapSourcePath(params: {
+  mapPath: string;
+  sourceRoot: string;
+  sourcePath: unknown;
+}): string | undefined {
+  if (typeof params.sourcePath !== "string" || !params.sourcePath.trim()) {
+    return undefined;
+  }
+
+  const rootedPath = params.sourceRoot.trim()
+    ? path.join(params.sourceRoot, params.sourcePath)
+    : params.sourcePath;
+  const resolved = path
+    .normalize(path.join(path.dirname(params.mapPath), rootedPath))
+    .replaceAll("\\", "/");
+  const withoutDot = resolved.startsWith("./") ? resolved.slice(2) : resolved;
+  if (withoutDot.startsWith("../")) {
+    return undefined;
+  }
+  return withoutDot;
 }
