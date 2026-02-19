@@ -725,9 +725,10 @@ function toFileSystemPath(value: unknown): string {
   }
 
   const trimmed = value.trim();
-  if (trimmed.startsWith("file://")) {
+  if (/^file:\/\//i.test(trimmed)) {
     try {
-      return normalizePathSeparators(fileURLToPath(trimmed));
+      const normalizedFileUrl = trimmed.replace(/^file:\/\//i, "file://");
+      return normalizePathSeparators(fileURLToPath(normalizedFileUrl));
     } catch {
       return normalizePathSeparators(trimmed);
     }
