@@ -754,6 +754,75 @@ test("emitGoProject keeps deterministic ordering for mixed typed-IR sourcemap di
   assert.doesNotMatch(second, /dist\\maps\\index\.mjs\.map/);
 });
 
+test("emitGoProject keeps deterministic line-scoped-before-file-only ordering for mixed indexed sourcemap diagnostics with path normalization", () => {
+  const firstOutDir = createOutDir();
+  const secondOutDir = createOutDir();
+
+  const firstIr: ProgramIR = {
+    modules: [],
+    handlers: [{ id: "h", params: [], async: false }],
+    diagnostics: [
+      {
+        level: "warn",
+        code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+        message:
+          "indexed sourcemap section had sparse mappings; positional metadata omitted deterministically",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+          line: 1,
+        },
+      },
+      {
+        level: "warn",
+        code: "PIPELINE_INVALID_SOURCEMAP_MAPPING",
+        message:
+          "indexed sourcemap section map is missing sources[]; section ignored for deterministic mapping",
+        source: {
+          file: "dist/maps/index.mjs.map",
+          viaSourceMap: true,
+          line: 2,
+        },
+      },
+    ],
+    routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+  };
+
+  const secondIr: ProgramIR = {
+    ...firstIr,
+    diagnostics: [
+      {
+        ...firstIr.diagnostics[1],
+        source: {
+          ...firstIr.diagnostics[1].source,
+          file: "dist\\maps\\index.mjs.map",
+        },
+      },
+      {
+        ...firstIr.diagnostics[0],
+        source: {
+          ...firstIr.diagnostics[0].source,
+          file: "dist\\maps\\index.mjs.map",
+        },
+      },
+    ],
+  };
+
+  emitGoProject(firstIr, firstOutDir);
+  emitGoProject(secondIr, secondOutDir);
+
+  const first = fs.readFileSync(path.join(firstOutDir, "main.go"), "utf8");
+  const second = fs.readFileSync(path.join(secondOutDir, "main.go"), "utf8");
+
+  assert.equal(first, second);
+  assert.doesNotMatch(second, /dist\\maps\\index\.mjs\.map/);
+
+  const lineScopedIndex = second.indexOf("at dist/maps/index.mjs.map:2");
+  const fileOnlyIndex = second.indexOf("at dist/maps/index.mjs.map\n");
+  assert.ok(lineScopedIndex >= 0 && fileOnlyIndex >= 0);
+  assert.ok(lineScopedIndex < fileOnlyIndex);
+});
+
 test("emitGoProject keeps normalized repo-relative sourcemap diagnostic paths in comments and go-build flow", () => {
   const outDir = createOutDir();
 
