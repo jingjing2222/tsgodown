@@ -963,6 +963,85 @@ test("buildProgramIrFromArtifacts keeps indexed sourcemap source provenance dete
   assert.deepEqual(ir.diagnostics, []);
 });
 
+test("buildProgramIrFromArtifacts preserves deterministic declaration linkage and provenance ordering for mixed inline/file sourcemaps when JS sourcesContent collides with d.ts sourceRoot-relative sources", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-inline-file-mixed-linkage-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  const inlineJsMapPayload = JSON.stringify({
+    version: 3,
+    file: "index.mjs",
+    sourceRoot: new URL(`file://${path.join(cwd, "src")}/`).toString(),
+    sources: ["routes/health.ts?from=js#inline"],
+    sourcesContent: ["export const health = () => ({ ok: true });\n"],
+    names: [],
+    mappings: "",
+  });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${Buffer.from(inlineJsMapPayload, "utf8").toString("base64")}`,
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "declare const health: () => { ok: boolean };",
+      "declare interface HealthStatus { ok: boolean; }",
+      "export { health as healthHandler };",
+      "export type { HealthStatus as PublicHealthStatus };",
+      "//# sourceMappingURL=maps/index.d.ts.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: "../../src/nested/..",
+      sources: ["routes/./health.ts#decl"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          { file: "dist/index.mjs", format: "esm", exports: ["health"] },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+  assert.deepEqual(ir.modules[0]?.exports, [
+    "healthHandler",
+    "PublicHealthStatus",
+  ]);
+});
+
 test("buildProgramIrFromArtifacts preserves declaration linkage when JS sourcemap is inline and d.ts sourcemap uses sourceRoot with relative sources", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-inline-js-dts-linkage-"),
