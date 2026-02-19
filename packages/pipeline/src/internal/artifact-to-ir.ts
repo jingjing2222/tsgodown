@@ -686,8 +686,8 @@ function normalizeSourceMapSourcePath(params: {
     return undefined;
   }
 
-  const sourceRootPath = stripQueryAndHash(toFileSystemPath(params.sourceRoot));
-  const sourcePath = stripQueryAndHash(toFileSystemPath(params.sourcePath));
+  const sourceRootPath = toFileSystemPath(stripQueryAndHash(params.sourceRoot));
+  const sourcePath = toFileSystemPath(stripQueryAndHash(params.sourcePath));
   if (!sourcePath.trim()) {
     return undefined;
   }
@@ -718,8 +718,8 @@ function normalizeSourceMapSourcePath(params: {
   return withoutDot;
 }
 
-function stripQueryAndHash(value: string): string {
-  return value.replace(/[?#].*$/, "");
+function stripQueryAndHash(value: unknown): unknown {
+  return typeof value === "string" ? value.replace(/[?#].*$/, "") : value;
 }
 
 function toFileSystemPath(value: unknown): string {

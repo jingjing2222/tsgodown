@@ -803,6 +803,97 @@ test("buildProgramIrFromArtifacts deduplicates mixed JS + d.ts sourcemap provena
   assert.deepEqual(ir.modules[0]?.exports, ["health", "status"]);
 });
 
+test("buildProgramIrFromArtifacts keeps deterministic dedupe/order when JS+d.ts sourcemaps overlap relative/absolute sources under file:// sourceRoot containing encoded # segments", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-overlap-encoded-hash-root-"),
+  );
+
+  const sourceRootDir = path.join(cwd, "src#v1");
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "routes"), { recursive: true });
+  fs.mkdirSync(path.join(sourceRootDir, "types"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "export const health = () => ({ ok: true });",
+      "//# sourceMappingURL=maps/index.mjs.map",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    [
+      "export declare const health: () => { ok: boolean };",
+      "export declare type HealthType = { ok: boolean };",
+      "//# sourceMappingURL=maps/index.d.ts.map?rev=17#types",
+      "",
+    ].join("\n"),
+  );
+
+  const encodedSourceRoot = new URL(
+    `file://${sourceRootDir.replace("#", "%23")}/`,
+  ).toString();
+  const absoluteHealthPath = path.join(sourceRootDir, "routes", "health.ts");
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sourceRoot: encodedSourceRoot,
+      sources: [
+        "routes/health.ts",
+        new URL(`file://${absoluteHealthPath.replace("#", "%23")}`).toString(),
+      ],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.d.ts.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.d.ts",
+      sourceRoot: encodedSourceRoot,
+      sources: ["./routes/./health.ts", "types/http.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "1717171717171717",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["health"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src#v1/routes/health.ts", "src#v1/types/http.ts"],
+  );
+});
+
 test("buildProgramIrFromArtifacts keeps indexed sourcemap source provenance deterministic when sections mix inherited sourceRoot and relative source paths", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-mixed-root-"),
