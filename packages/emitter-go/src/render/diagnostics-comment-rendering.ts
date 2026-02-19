@@ -4,7 +4,10 @@ function formatDiagnosticSource(diagnostic: DiagnosticIR): string | undefined {
   const source = diagnostic.source;
   if (!source) return undefined;
 
-  if (source.line == null && source.column == null) {
+  if (
+    diagnostic.code === "PIPELINE_SOURCEMAP_SPARSE_MAPPING" ||
+    (source.line == null && source.column == null)
+  ) {
     return source.file;
   }
 

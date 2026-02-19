@@ -444,6 +444,57 @@ test("emitGoProject unknown handler semantics use concrete JSON fallback without
   assert.doesNotMatch(goSource, /TODO implement handler/);
 });
 
+test("emitGoProject renders sparse indexed sourcemap diagnostics as file-only comments even when partial coordinates leak into source metadata", () => {
+  const outDir = createOutDir();
+
+  emitGoProject(
+    {
+      modules: [],
+      handlers: [{ id: "h", params: [], async: false }],
+      diagnostics: [
+        {
+          level: "warn",
+          code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+          message:
+            "sourcemap sections include sparse source entries; positional metadata omitted deterministically",
+          source: {
+            file: "dist/maps/index.mjs.map",
+            viaSourceMap: true,
+            line: 4,
+            column: 8,
+          },
+        },
+      ],
+      routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+    },
+    outDir,
+  );
+
+  const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+  assert.match(
+    emitted,
+    /\/\/\s+\[warn\] PIPELINE_SOURCEMAP_SPARSE_MAPPING: sourcemap sections include sparse source entries; positional metadata omitted deterministically/,
+  );
+  assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map/);
+  assert.doesNotMatch(emitted, /dist\/maps\/index\.mjs\.map:4:8/);
+
+  if (hasGoToolchain) {
+    const modulePath =
+      "example.com/tsgodown-smoke/sparse-file-only-diagnostics";
+    const modInit = spawnSync("go", ["mod", "init", modulePath], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const build = spawnSync("go", ["build", "./..."], {
+      cwd: outDir,
+      encoding: "utf8",
+    });
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+  }
+});
+
 test("emitGoProject renders diagnostic source without placeholder coordinates when sourcemap omits line/column", () => {
   const outDir = createOutDir();
 
@@ -641,6 +692,79 @@ function assertBuildsWithGoToolchain(fixture: ProgramIR, fixtureName: string) {
     `go build failed for fixture ${fixtureName} in ${outDir}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
 }
+
+test(
+  "emitGoProject smoke: file-only sparse sourcemap diagnostics keep runtime semantics stable",
+  { skip: !runGoSmoke },
+  async () => {
+    const outDir = createOutDir();
+    const port = await allocateEphemeralPort();
+
+    emitGoProject(
+      {
+        modules: [],
+        handlers: [{ id: "h", params: [], async: false }],
+        diagnostics: [
+          {
+            level: "warn",
+            code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+            message:
+              "indexed sourcemap section had sparse mappings; positional metadata omitted deterministically",
+            source: { file: "dist/maps/index.mjs.map", viaSourceMap: true },
+          },
+        ],
+        routes: [{ method: "GET", path: "/health", handlerRef: "h" }],
+      },
+      outDir,
+    );
+
+    const emitted = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
+    assert.match(emitted, /\/\/\s+at dist\/maps\/index\.mjs\.map/);
+    assert.doesNotMatch(emitted, /dist\/maps\/index\.mjs\.map:\?:\?/);
+
+    const modInit = spawnSync(
+      "go",
+      ["mod", "init", "example.com/tsgodown-runtime-sparse-sourcemap"],
+      {
+        cwd: outDir,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(modInit.status, 0, modInit.stderr || modInit.stdout);
+
+    const server = spawn("go", ["run", "."], {
+      cwd: outDir,
+      env: { ...process.env, PORT: port },
+      stdio: "ignore",
+    });
+
+    const url = `http://127.0.0.1:${port}/health`;
+    const deadline = Date.now() + 10_000;
+    let responseStatus = 0;
+    let responseText = "";
+
+    try {
+      while (Date.now() < deadline) {
+        try {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(1000),
+          });
+          responseStatus = response.status;
+          responseText = await response.text();
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      assert.equal(responseStatus, 501);
+      assert.match(responseText, /"handler":"h"/);
+      assert.match(responseText, /"mode":"unknown"/);
+    } finally {
+      await shutdownServer(server);
+    }
+  },
+);
 
 test(
   "emitGoProject smoke: generated representative fixtures can go build",

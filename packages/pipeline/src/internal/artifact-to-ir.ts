@@ -218,7 +218,13 @@ function collectSourceEntriesFromSourceMap(
   }
 
   const normalized = new Set<string>();
+  let hasSparseEntries = false;
   for (const entry of sourceEntries) {
+    if (typeof entry.sourcePath !== "string" || !entry.sourcePath.trim()) {
+      hasSparseEntries = true;
+      continue;
+    }
+
     const normalizedSource = normalizeSourceMapSourcePath({
       cwd,
       mapPath,
@@ -228,6 +234,19 @@ function collectSourceEntriesFromSourceMap(
     if (normalizedSource) {
       normalized.add(normalizedSource);
     }
+  }
+
+  if (hasSparseEntries) {
+    diagnostics.push({
+      level: "warn",
+      code: "PIPELINE_SOURCEMAP_SPARSE_MAPPING",
+      message:
+        "sourcemap sections include sparse source entries; positional metadata omitted deterministically",
+      source: {
+        file: mapPath,
+        viaSourceMap: true,
+      },
+    });
   }
 
   return [...normalized].sort((a, b) => a.localeCompare(b));

@@ -357,6 +357,71 @@ test("buildProgramIrFromArtifacts normalizes absolute sourceRoot with mixed rela
   assert.deepEqual(ir.diagnostics, []);
 });
 
+test("buildProgramIrFromArtifacts emits deterministic file-only diagnostics for sparse indexed sourcemap sections", () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-indexed-sparse-"),
+  );
+  fs.mkdirSync(path.join(cwd, "dist", "maps"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.d.ts"),
+    "export declare const ok: true;\n",
+  );
+  fs.writeFileSync(
+    path.join(cwd, "dist", "maps", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "../index.mjs",
+      sections: [
+        {
+          offset: { line: 0, column: 0 },
+          map: {
+            version: 3,
+            sourceRoot: "../../src",
+            sources: [null, "", "routes/health.ts"],
+            mappings: ";;;",
+          },
+        },
+      ],
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/maps/index.mjs.map",
+            format: "esm",
+            exports: ["ok"],
+          },
+        ],
+        types: ["dist/index.d.ts"],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(
+    ir.modules.map((module) => module.sourcePath),
+    ["src/routes/health.ts"],
+  );
+  assert.deepEqual(
+    ir.diagnostics
+      .filter((diag) => diag.code === "PIPELINE_SOURCEMAP_SPARSE_MAPPING")
+      .map((diag) => diag.source),
+    [{ file: "dist/maps/index.mjs.map", viaSourceMap: true }],
+  );
+});
+
 test("buildProgramIrFromArtifacts emits deterministic diagnostics for missing/invalid typed mapping metadata", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-diag-"),
