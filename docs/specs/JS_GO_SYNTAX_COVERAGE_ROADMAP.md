@@ -152,6 +152,17 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 - [ ] Add adoption playbook templates for phased rollout in existing services
 - [ ] Add success metrics rubric (migration lead time, rollback rate, parity defect rate)
 
+### M13 — MDN census mapping and host-boundary partitioning
+- [x] Define MDN census matrix schema with domain/status/evidence columns
+- [ ] Import full MDN JavaScript reference inventory into capability rows
+- [ ] Partition every row into LANG_CORE / BUILTIN / HOST_WEB / HOST_NODE
+- [ ] Apply SUPPORTED / PLANNED / EXCEPTION status to every row
+- [ ] Require explicit rationale for every EXCEPTION row
+- [ ] Attach parity-evidence links for SUPPORTED rows
+- [ ] Attach deterministic-diagnostics evidence for UNSUPPORTED/EXCEPTION rows
+- [ ] Add drift check: issue #117 checklist rows must map to capability IDs
+- [ ] Add release report export from census matrix summary
+
 ## Exception baseline (explicitly allowed unsupported)
 - Direct browser DOM manipulation (`window`, `document`, layout/paint/event-loop coupling to browser engine)
 - Browser rendering pipeline dependent behavior (CSSOM/layout timing)
@@ -160,6 +171,6 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 All other language-level syntax/semantics are roadmap implementation targets.
 
 ## Checklist summary
-- Total checklist items: 116
-- Completed now: 4
-- Remaining: 112
+- Total checklist items: 125
+- Completed now: 5
+- Remaining: 120
