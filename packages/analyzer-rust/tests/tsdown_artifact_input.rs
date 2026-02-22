@@ -337,3 +337,21 @@ void raw;
     assert!(codes.contains(&"ANALYZER_DEPRECATED_UNESCAPE_API"));
     assert!(codes.contains(&"ANALYZER_DEPRECATED_LEGACY_ACCESSOR_API"));
 }
+
+#[test]
+fn handles_already_executing_generator_pattern_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+function* task() {
+  task.next();
+  yield 1;
+}
+export const marker = 1;
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+}
