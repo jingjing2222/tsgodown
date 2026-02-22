@@ -433,3 +433,19 @@ export class BadField {
     assert!(output.contains("arguments"));
     assert!(output.contains("not allowed in class field initializer"));
 }
+
+#[test]
+fn handles_array_sort_argument_pattern_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+const values = [3, 1, 2];
+values.sort(123);
+export const marker = values.length;
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+}
