@@ -188,7 +188,7 @@ async function assertGoHealthRuntimeReady(goDir: string) {
   }
 }
 
-test("M1 regression: runPipeline fastify scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
+test("M1 regression [SUPPORTED]: runPipeline scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
   const cwd = setupProject();
   const logs: string[] = [];
   const launcherPath = createRustLauncher(cwd);

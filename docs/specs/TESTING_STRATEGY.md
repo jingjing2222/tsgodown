@@ -65,7 +65,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
   - fail-closed checks: minimum scenario count, minimum case count, required scenario ids
 - Primary test location: `packages/cli/test/commands.e2e.test.ts`
 - Key acceptance tests:
-  - `M2 acceptance: TS fixture routes are reachable in generated Go runtime`
+  - `M2 acceptance [SUPPORTED]: reference fixture routes are reachable in generated Go runtime`
   - `M3 acceptance: runtime method/path matrix fixture remains deterministic`
 - Deterministic assertions must include:
   - method-aware route checks (`GET`, `POST`, `PUT`)

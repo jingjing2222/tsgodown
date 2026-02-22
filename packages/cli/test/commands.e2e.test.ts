@@ -962,7 +962,7 @@ test("CLI surfaces rust adapter error propagation format", () => {
   );
 });
 
-test.skip("fastify-scaffold-real workspace build emits Go scaffold and keeps tsdown compile inputs", () => {
+test.skip("[SUPPORTED] scaffold workspace build emits Go scaffold and keeps tsdown compile inputs", () => {
   const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = createRustEngineLauncher(cwd, [
     "for await (const _ of process.stdin) { /* drain */ }",
@@ -1126,7 +1126,7 @@ test.skip("M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/m
   assertGoBuildSuccessIfToolchainAvailable(path.dirname(goPath));
 });
 
-test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtime", async () => {
+test.skip("M2 acceptance [SUPPORTED]: reference fixture routes are reachable in generated Go runtime", async () => {
   const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
@@ -1147,7 +1147,7 @@ test.skip("M2 acceptance: TS fixture routes are reachable in generated Go runtim
   await assertGoRunRoute(goDir, "/users", '"mode":"unknown"');
 });
 
-test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contracts and path params", async () => {
+test.skip("M2 acceptance [SUPPORTED]: reference fixture preserves method contracts and path params", async () => {
   const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
@@ -1204,7 +1204,7 @@ test.skip("M2 acceptance: fastify-scaffold-real fixture preserves method contrac
   });
 });
 
-test.skip("M3 regression: fastify-scaffold-real keeps method/path scaffold stable", async () => {
+test.skip("M3 regression [SUPPORTED]: reference fixture keeps method/path scaffold stable", async () => {
   const cwd = setupProjectFromFixture("fastify-scaffold-real");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
@@ -1241,7 +1241,7 @@ test.skip("M3 regression: fastify-scaffold-real keeps method/path scaffold stabl
   });
 });
 
-test.skip("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stable", async () => {
+test.skip("M3 regression [SUPPORTED]: runtime method matrix keeps 404/405/Allow stable", async () => {
   const cwd = setupProjectFromFixture("runtime-method-matrix");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
@@ -1279,7 +1279,7 @@ test.skip("M3 regression: runtime-method-matrix fixture keeps 404/405/Allow stab
   });
 });
 
-test("M4 acceptance: fastify-unsupported-dynamic fixture stays compiler-subset deterministic", () => {
+test("M4 acceptance [UNSUPPORTED]: dynamic-route fixture stays compiler-subset deterministic", () => {
   const cwd = setupProjectFromFixture("fastify-unsupported-dynamic");
   const rustLauncher = resolveRustEngineLauncherScript();
   const engineCoreBin = resolveEngineCoreBin();
