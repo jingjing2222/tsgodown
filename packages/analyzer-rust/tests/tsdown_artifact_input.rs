@@ -464,3 +464,18 @@ export const marker = 1;
     assert!(output.contains("await"));
     assert!(output.contains("Cannot use `await` as an identifier in an async context"));
 }
+
+#[test]
+fn reports_bad_await_error_from_tsdown_parser() {
+    let output = build_with_tsdown_error(
+        r#"
+function f() {
+  await 1;
+}
+export const marker = 1;
+"#,
+    );
+
+    assert!(output.contains("await"));
+    assert!(output.contains("only allowed within async functions"));
+}
