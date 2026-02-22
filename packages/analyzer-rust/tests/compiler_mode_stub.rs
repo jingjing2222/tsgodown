@@ -59,3 +59,24 @@ class Counter {
         "class private elements are currently unsupported in compiler mode"
     );
 }
+
+#[test]
+fn collects_default_exported_class_with_constructor_symbol() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export default class HealthController {
+  constructor(service) {
+    this.service = service;
+  }
+}
+"#,
+    );
+
+    assert_eq!(ir.modules.len(), 1);
+    assert_eq!(
+        ir.modules[0].exports,
+        vec!["HealthController".to_string()]
+    );
+    assert!(ir.diagnostics.is_empty());
+}
