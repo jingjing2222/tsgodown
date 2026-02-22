@@ -313,3 +313,27 @@ export class Cache {
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn detects_deprecated_and_obsolete_features_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+const text = escape("a b");
+const raw = unescape(text);
+obj.__defineGetter__("x", () => 1);
+void raw;
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    let codes = ir
+        .diagnostics
+        .iter()
+        .map(|diag| diag.code.as_str())
+        .collect::<Vec<_>>();
+    assert!(codes.contains(&"ANALYZER_DEPRECATED_ESCAPE_API"));
+    assert!(codes.contains(&"ANALYZER_DEPRECATED_UNESCAPE_API"));
+    assert!(codes.contains(&"ANALYZER_DEPRECATED_LEGACY_ACCESSOR_API"));
+}
