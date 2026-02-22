@@ -449,3 +449,18 @@ export const marker = values.length;
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn reports_await_yield_in_parameter_error_from_tsdown_parser() {
+    let output = build_with_tsdown_error(
+        r#"
+async function f(await x) {
+  return x;
+}
+export const marker = 1;
+"#,
+    );
+
+    assert!(output.contains("await"));
+    assert!(output.contains("Cannot use `await` as an identifier in an async context"));
+}
