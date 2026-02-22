@@ -8,7 +8,7 @@
   "scripts": {
     "build": "pnpm -r --filter './packages/*' run build",
     "dev": "pnpm --filter tsgodown run dev",
-    "tsgodown": "node --import tsx packages/cli/src/index.ts",
+    "tsgodown": "node packages/cli/dist/index.js",
     "manifest:sample": "tsx scripts/generate-manifest.ts",
     "test": "pnpm -r --filter './packages/*' --if-present run test",
     "test:tdd": "pnpm run build && pnpm run test",
@@ -35,9 +35,10 @@
     "harness:differential": "pnpm run harness:semantics-parity"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^24.3.0",
+    "tsdown": "^0.20.3",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.2",
-    "@biomejs/biome": "^1.9.4"
+    "typescript": "^5.9.2"
   }
 }

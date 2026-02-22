@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsdown --config tsdown.config.ts",
     "test": "node --import tsx --test ./test/**/*.test.ts"
   },
   "exports": {

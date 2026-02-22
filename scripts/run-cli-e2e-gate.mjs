@@ -19,13 +19,9 @@ if (!pattern) {
 
 const outDir = path.join(repoRoot, ".tmp", "cli-e2e-gate");
 const tsTestPath = path.join("packages", "cli", "test", "commands.e2e.test.ts");
-const jsTestPath = path.join(
-  outDir,
-  "packages",
-  "cli",
-  "test",
-  "commands.e2e.test.js",
-);
+const tsTestAbsPath = path.join(repoRoot, tsTestPath);
+const tsdownOutDir = path.join(outDir, "packages", "cli", "test");
+const jsTestPath = path.join(tsdownOutDir, "commands.e2e.test.js");
 const fixtureSrcDir = path.join(
   repoRoot,
   "packages",
@@ -38,31 +34,27 @@ const fixtureOutDir = path.join(outDir, "packages", "cli", "test", "fixtures");
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
-const tsc = spawnSync(
+const tsdownConfigPath = path.join(outDir, "tsdown.e2e.config.ts");
+fs.writeFileSync(
+  tsdownConfigPath,
+  `export default {
+  entry: { "commands.e2e.test": ${JSON.stringify(tsTestAbsPath)} },
+  outDir: ${JSON.stringify(tsdownOutDir)},
+  format: ["esm"],
+  dts: false,
+  sourcemap: false,
+  clean: true,
+  fixedExtension: false,
+  outExtensions: ({ format }) => ({
+    js: format === "es" ? ".js" : ".cjs",
+  }),
+};
+`,
+);
+
+const tsdown = spawnSync(
   "pnpm",
-  [
-    "exec",
-    "tsc",
-    "--pretty",
-    "false",
-    "--module",
-    "nodenext",
-    "--moduleResolution",
-    "nodenext",
-    "--target",
-    "ES2022",
-    "--types",
-    "node",
-    "--skipLibCheck",
-    "--esModuleInterop",
-    "--noEmitOnError",
-    "false",
-    "--rootDir",
-    ".",
-    "--outDir",
-    outDir,
-    tsTestPath,
-  ],
+  ["exec", "tsdown", "--config", tsdownConfigPath],
   {
     cwd: repoRoot,
     encoding: "utf8",
@@ -70,15 +62,8 @@ const tsc = spawnSync(
 );
 
 if (!fs.existsSync(jsTestPath)) {
-  process.stderr.write(tsc.stderr || tsc.stdout || "tsc failed\n");
-  process.exit(tsc.status ?? 1);
-}
-
-if (tsc.status !== 0) {
-  process.stderr.write(
-    "[run-cli-e2e-gate] continuing with emitted JS despite TypeScript diagnostics\n",
-  );
-  if (tsc.stderr) process.stderr.write(tsc.stderr);
+  process.stderr.write(tsdown.stderr || tsdown.stdout || "tsdown failed\n");
+  process.exit(tsdown.status ?? 1);
 }
 
 fs.mkdirSync(path.dirname(fixtureOutDir), { recursive: true });
