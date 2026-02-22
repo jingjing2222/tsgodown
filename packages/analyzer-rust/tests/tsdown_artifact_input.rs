@@ -260,3 +260,20 @@ export class Counter {
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn supports_class_public_fields_from_tsdown_js_dts_sourcemap_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+export class ProfileController {
+  retries = 3;
+  label = "ok";
+}
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+}
