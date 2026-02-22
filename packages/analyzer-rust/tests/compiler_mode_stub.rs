@@ -14,3 +14,25 @@ fn returns_module_envelope_for_compiler_mode_core_builder() {
     assert!(ir.handlers.is_empty());
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn collects_exported_class_symbols_in_module_exports() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class HealthController {
+  handle() {
+    return { ok: true };
+  }
+}
+"#,
+    );
+
+    assert_eq!(ir.modules.len(), 1);
+    assert_eq!(
+        ir.modules[0].exports,
+        vec!["HealthController".to_string()]
+    );
+    assert!(ir.routes.is_empty());
+    assert!(ir.diagnostics.is_empty());
+}

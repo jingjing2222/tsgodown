@@ -130,6 +130,7 @@ fn collect_exports(src: &str) -> Vec<String> {
             "export const ",
             "export function ",
             "export async function ",
+            "export class ",
         ] {
             if let Some(rest) = trimmed.strip_prefix(prefix) {
                 if let Some(name) = take_identifier(rest) {
