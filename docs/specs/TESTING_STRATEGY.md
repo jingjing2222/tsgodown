@@ -3,11 +3,13 @@
 ## Non-negotiable rule
 All feature implementation must follow the **Test First** principle.
 
-## Milestone lock (M5 -> M1 -> M2 -> M3 -> M4)
-- This strategy follows the locked execution/reporting sequence: `M5 -> M1 -> M2 -> M3 -> M4`.
-- M5 defines compiler-mode contracts and fail-closed policy.
-- M1/M2/M3 define executable proof expansion.
-- M4 enforces architecture guardrails + release/triage DoD discipline.
+## Milestone lock (M0 -> M1 -> M2 -> M3 -> M4 -> M5)
+- This strategy follows roadmap issue `#117` as source of truth and the locked execution/reporting sequence: `M0 -> M1 -> M2 -> M3 -> M4 -> M5`.
+- M0 aligns issue/docs/gates and removes stale status drift.
+- M1 defines capability taxonomy and fail-closed policy.
+- M2/M3 define executable proof expansion and determinism hardening.
+- M4 enforces coverage ratchet + capability-based expansion controls.
+- M5 finalizes production release/rollback discipline.
 
 ## Architecture guardrails (M4)
 - Rust core is the **only** runtime analysis/build engine.

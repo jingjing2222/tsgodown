@@ -23,15 +23,17 @@ Canonical compiler input contract (framework-agnostic): `tsdown` bundled JS + so
 
 ## Milestone lock (execution sequence)
 
-Documentation and gate execution follow this fixed sequence:
+Documentation and gate execution follow roadmap issue `#117` as source of truth.
+Current fixed sequence:
 
-`M5 -> M1 -> M2 -> M3 -> M4`
+`M0 -> M1 -> M2 -> M3 -> M4 -> M5`
 
-- `M5`: compiler-mode direction lock and contract freeze
+- `M0`: roadmap/docs/gates source-of-truth alignment
 - `M1`: canonical compile-success gate (`pnpm run gate:m1`)
 - `M2`: generated runtime reachability acceptance
 - `M3`: deterministic runtime behavior/perf guard extensions
-- `M4`: architecture guardrails, triage/release discipline, and DoD closure policy
+- `M4`: coverage ratchet + capability-based expansion controls
+- `M5`: production readiness and release discipline
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 

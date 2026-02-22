@@ -6,9 +6,9 @@ It is not a default roadmap narrative for compiler scope.
 Default roadmap and release decisions must be anchored in capability-first compiler contracts.
 If framework-specific status is needed, keep it explicitly in compatibility context only.
 
-Milestone sequence remains locked for contract/evidence tracking:
+Milestone sequence remains locked to roadmap issue `#117` for contract/evidence tracking:
 
-`M5 -> M1 -> M2 -> M3 -> M4`
+`M0 -> M1 -> M2 -> M3 -> M4 -> M5`
 
 Canonical compiler contract source:
 
