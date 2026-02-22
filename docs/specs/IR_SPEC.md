@@ -105,8 +105,9 @@ To guarantee stable snapshots/fixtures and reproducible outputs, producer output
 - If collision resolution is required, use deterministic suffixing (for example `_2`, `_3`, … in first-seen source order).
 - `RouteIR.handlerRef` must reference a stable handler identifier (`HandlerIR.id`) and must not use random/ephemeral tokens.
 
-## analyzer-rust Fastify boundary (M1)
+## analyzer-rust extraction boundary (M1)
 `packages/analyzer-rust` keeps an **extract/diagnose only** scope in M1.
+The boundary below reflects the current route-extractor grammar used by compatibility fixtures.
 
 ### Supported boundary (currently guaranteed extraction range)
 - Shorthand route: `fastify.<method>('literal-path', namedHandler)`

@@ -35,9 +35,10 @@ Documentation and gate execution follow this fixed sequence:
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 
-## Supported route-extraction patterns
+## Current route-extraction grammar (reference boundary)
 
-The current extractor supports deterministic route-extraction patterns that are stable for compiler-mode backend builds:
+The current extractor supports deterministic route-extraction patterns that are stable for compiler-mode builds.
+These examples describe the present reference boundary, not permanent framework-coupled scope.
 
 - `fastify.<method>("/literal", handlerRef)` where method is `get|post|put|delete|patch`
 - `fastify.route({ ... })` with inline object literal:
@@ -123,16 +124,16 @@ cargo build -p engine-core
 export TSGODOWN_RUST_ENGINE_BIN="$(pwd)/scripts/rust-engine-launcher.sh"
 export TSGODOWN_ENGINE_CORE_BIN="$(pwd)/target/debug/engine-core"
 
-cd examples/fastify-scaffold-real  # current reference fixture
+cd examples/generic-simple-cli  # default neutral reference fixture
 pnpm install
 pnpm run build:go
 ```
 
 Output:
 
-- `examples/fastify-scaffold-real/dist-go/main.go`
+- `examples/generic-simple-cli/dist-go/main.go`
 
-Scaffold-oriented sample (current Fastify reference app structure) is available at:
+Scaffold-oriented compatibility sample (Fastify-shaped) is available at:
 
 - `examples/fastify-scaffold-real/src/app.ts`
 - `examples/fastify-scaffold-real/src/routes/*`
@@ -141,8 +142,10 @@ Framework-agnostic simple CLI workspace sample is available at:
 
 - `examples/generic-simple-cli/src/index.ts`
 
-Official-style Hono workspace sample is available at:
+Compatibility-track framework samples (optional references, non-default) are available at:
 
+- `examples/COMPAT_TRACK.md`
+- `examples/fastify-scaffold-real/src/app.ts`
 - `examples/hono-scaffold-real/src/index.ts`
 
 ## CLI behavior

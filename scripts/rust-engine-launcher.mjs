@@ -49,7 +49,7 @@ function renderGoMainScaffold(routes) {
     "}",
     "",
     "func main() {",
-    '\tfmt.Println("tsgodown-fastify-runtime-ready")',
+    '\tfmt.Println("tsgodown-runtime-ready")',
     "\tmux := http.NewServeMux()",
     ...routes.flatMap((route) => {
       const pathParams = extractPathParamNames(route.path);
@@ -198,7 +198,6 @@ ensureExecutable(engineCoreBin, "engine-core binary");
 const analyzeRequest = {
   manifest: {
     entry: "src/index.ts",
-    framework: "fastify",
   },
   config: {},
 };

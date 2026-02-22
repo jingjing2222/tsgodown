@@ -247,8 +247,7 @@ function main() {
     process.exit(summary.pass ? 0 : 1);
   }
 
-  const scenarioName =
-    getArg("--scenario") ?? "fastify-scaffold-real-get-health";
+  const scenarioName = getArg("--scenario") ?? "generic-simple-cli-get-health";
   if (!SCENARIOS[scenarioName]) {
     console.error(`Unknown scenario: ${scenarioName}`);
     console.error(`Available scenarios: ${Object.keys(SCENARIOS).join(", ")}`);

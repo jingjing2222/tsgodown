@@ -2,9 +2,9 @@
 
 This document defines diagnostics emitted by the compiler-mode Rust analysis path.
 
-## Fastify diagnostics status
+## Current analyzer diagnostics status
 
-Fastify unsupported-pattern diagnostics are currently not emitted.
+Framework-specific unsupported-pattern diagnostics are currently not emitted.
 The canonical diagnostic block below is intentionally empty until new Rust diagnostics are introduced.
 
 If diagnostics are added again, update this file in the same PR.
@@ -23,4 +23,4 @@ These canonical lines must stay aligned with `packages/analyzer-rust`.
 
 ## Notes
 
-- The empty generated block above is intentional while no Fastify diagnostics are emitted.
+- The empty generated block above is intentional while no framework-specific diagnostics are emitted.

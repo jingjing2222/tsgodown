@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedAt": "1970-01-01T00:00:00.000Z",
   "scenarios": {
-    "cli-build-fastify-scaffold-real": {
+    "cli-build-generic-simple-cli": {
       "medianMs": null
     },
     "cli-check-multi-file": {

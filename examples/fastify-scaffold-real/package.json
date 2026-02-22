@@ -1,6 +1,7 @@
 {
   "name": "fastify-scaffold-real",
   "version": "1.0.0",
+  "tsgodownExampleTrack": "compat",
   "description": "This project was bootstrapped with Fastify-CLI.",
   "main": "app.ts",
   "directories": {

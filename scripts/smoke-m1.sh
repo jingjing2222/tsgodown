@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EXAMPLE_DIR="${ROOT_DIR}/examples/fastify-scaffold-real"
+EXAMPLE_DIR="${ROOT_DIR}/examples/generic-simple-cli"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
 PORT="${SMOKE_PORT:-18080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/health"
@@ -126,7 +126,7 @@ const GO_MAIN = [
   "\tif port := os.Getenv(\"PORT\"); port != \"\" {",
   "\t\taddr = \":\" + port",
   "\t}",
-  "\tfmt.Println(\"tsgodown-fastify-scaffold-real-ready\")",
+  "\tfmt.Println(\"tsgodown-smoke-ready\")",
   "\t_ = http.ListenAndServe(addr, mux)",
   "}",
   "",
@@ -169,7 +169,7 @@ if [[ ! -x "${TSGODOWN_RUST_ENGINE_BIN}" ]]; then
   exit 1
 fi
 
-log "build: fastify-scaffold-real -> dist-go"
+log "build: generic-simple-cli -> dist-go"
 (
   cd "${EXAMPLE_DIR}"
   rm -rf dist-go

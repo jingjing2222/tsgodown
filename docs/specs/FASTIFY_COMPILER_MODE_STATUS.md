@@ -1,8 +1,12 @@
-# Fastify Compiler-Mode Status (Minimal)
+# Fastify Compatibility Status (Non-Default Reference)
 
-This project tracks Fastify status through compiler-mode contracts and executable proof gates.
+This document is a compatibility reference for Fastify-shaped fixtures.
+It is not a default roadmap narrative for compiler scope.
 
-Milestone sequence is locked and must be referenced consistently in roadmap/issues/PRs:
+Default roadmap and release decisions must be anchored in capability-first compiler contracts.
+If framework-specific status is needed, keep it explicitly in compatibility context only.
+
+Milestone sequence remains locked for contract/evidence tracking:
 
 `M5 -> M1 -> M2 -> M3 -> M4`
 
@@ -15,6 +19,7 @@ Related compiler references:
 - Diagnostics behavior: `docs/specs/DIAGNOSTICS.md`
 - Capability gate (compile viability): `docs/specs/CAPABILITY_MATRIX.md`
 - Near-term execution gate: `docs/specs/M1_RELEASE_GATE.md`
-- Backlog/roadmap queue (post-M4 expansion planning only): `docs/backlog/NODE_COMPAT_MATRIX.md`
+- Compatibility backlog queue (post-M4 planning only): `docs/backlog/NODE_COMPAT_MATRIX.md`
 
-Policy: support claims are made through compiler-mode contracts + differential proof obligations; roadmap items do not imply support until the corresponding milestone gate evidence is green.
+Policy: support claims are made through compiler-mode contracts + differential proof obligations.
+Framework fixture status does not imply default support boundaries unless the milestone gate evidence is green.
