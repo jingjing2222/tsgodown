@@ -347,13 +347,21 @@ export class Counter {
   }
 }
 "#,
-        Some("es2018"),
+        Some("esnext"),
     );
 
+    assert!(bundled.js_source.contains("#count"));
     assert!(!bundled.dts_source.trim().is_empty());
     assert!(!bundled.sourcemap_source.trim().is_empty());
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
-    assert!(ir.diagnostics.is_empty());
+    assert!(
+        !ir.diagnostics
+            .iter()
+            .any(|diag| diag.code == "ANALYZER_UNSUPPORTED_CLASS_PRIVATE_ELEMENTS"),
+        "unexpected private-element diagnostic: {:?}\njs:\n{}",
+        ir.diagnostics,
+        bundled.js_source
+    );
 }
 
 #[test]

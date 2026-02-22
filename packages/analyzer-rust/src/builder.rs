@@ -242,42 +242,11 @@ fn collect_conditional_route_diagnostics(
 }
 
 fn collect_class_private_element_diagnostics(
-    src: &str,
-    diagnostics: &mut Vec<DiagnosticIR>,
-    file: &str,
+    _src: &str,
+    _diagnostics: &mut Vec<DiagnosticIR>,
+    _file: &str,
 ) {
-    let mut class_depth: i32 = 0;
-
-    for line in src.lines() {
-        let trimmed = line.trim();
-        let starts_class = trimmed.contains("class ");
-        if starts_class {
-            class_depth = (class_depth + brace_delta(line)).max(1);
-        } else if class_depth > 0 {
-            class_depth += brace_delta(line);
-        }
-
-        if class_depth > 0
-            && trimmed.contains('#')
-            && trimmed
-                .chars()
-                .skip_while(|ch| *ch != '#')
-                .nth(1)
-                .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
-        {
-            diagnostics.push(diag(
-                "error",
-                "ANALYZER_UNSUPPORTED_CLASS_PRIVATE_ELEMENTS",
-                "class private elements are currently unsupported in compiler mode",
-                file,
-            ));
-            return;
-        }
-
-        if class_depth <= 0 {
-            class_depth = 0;
-        }
-    }
+    // Compiler mode currently accepts class private elements without emitting a feature diagnostic.
 }
 
 fn collect_class_constructor_diagnostics(
