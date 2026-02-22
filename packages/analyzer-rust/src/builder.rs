@@ -27,6 +27,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     collect_class_extends_diagnostics(src, &mut diagnostics, file);
     collect_class_public_field_diagnostics(src, &mut diagnostics, file);
     collect_class_static_member_diagnostics(src, &mut diagnostics, file);
+    collect_deprecated_feature_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -423,6 +424,49 @@ fn is_supported_static_member(member_src: &str) -> bool {
     };
     let tail = src[name.len()..].trim_start();
     tail.starts_with('(') || tail.starts_with('=') || tail.starts_with(';')
+}
+
+fn collect_deprecated_feature_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    for line in src.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("with (") || trimmed.starts_with("with(") {
+            diagnostics.push(diag(
+                "warn",
+                "ANALYZER_DEPRECATED_WITH_STATEMENT",
+                "with statement is deprecated/obsolete and unsupported in compiler mode",
+                file,
+            ));
+        }
+        if trimmed.contains("escape(") {
+            diagnostics.push(diag(
+                "warn",
+                "ANALYZER_DEPRECATED_ESCAPE_API",
+                "escape() is deprecated; use encodeURI/encodeURIComponent",
+                file,
+            ));
+        }
+        if trimmed.contains("unescape(") {
+            diagnostics.push(diag(
+                "warn",
+                "ANALYZER_DEPRECATED_UNESCAPE_API",
+                "unescape() is deprecated; use decodeURI/decodeURIComponent",
+                file,
+            ));
+        }
+        if trimmed.contains(".__defineGetter__(") || trimmed.contains(".__defineSetter__(") {
+            diagnostics.push(diag(
+                "warn",
+                "ANALYZER_DEPRECATED_LEGACY_ACCESSOR_API",
+                "__defineGetter__/__defineSetter__ are deprecated legacy accessors",
+                file,
+            ));
+        }
+    }
 }
 
 fn has_route_invocation(line: &str) -> bool {
