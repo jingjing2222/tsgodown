@@ -277,3 +277,20 @@ export class ProfileController {
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn supports_class_static_members_from_tsdown_js_dts_sourcemap_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+export class Cache {
+  static VERSION = 1;
+  static reset() {}
+}
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+}
