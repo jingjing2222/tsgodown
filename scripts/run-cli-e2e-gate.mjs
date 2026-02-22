@@ -76,7 +76,7 @@ if (!fs.existsSync(jsTestPath)) {
 
 if (tsc.status !== 0) {
   process.stderr.write(
-    `[run-cli-e2e-gate] continuing with emitted JS despite TypeScript diagnostics\n`,
+    "[run-cli-e2e-gate] continuing with emitted JS despite TypeScript diagnostics\n",
   );
   if (tsc.stderr) process.stderr.write(tsc.stderr);
 }
