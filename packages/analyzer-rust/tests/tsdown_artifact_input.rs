@@ -2,7 +2,10 @@ use analyzer_rust::analyze_compiler_entry;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -17,8 +20,9 @@ fn create_temp_project_dir() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_nanos();
+    let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "tsgodown-analyzer-rust-artifact-test-{}-{nonce}",
+        "tsgodown-analyzer-rust-artifact-test-{}-{nonce}-{seq}",
         std::process::id()
     ))
 }
@@ -45,10 +49,19 @@ fn read_first_existing(paths: &[PathBuf], label: &str) -> String {
 }
 
 fn build_with_tsdown(ts_source: &str) -> TsdownArtifacts {
+    build_with_tsdown_target(ts_source, None)
+}
+
+fn build_with_tsdown_target(ts_source: &str, target: Option<&str>) -> TsdownArtifacts {
     let project_dir = create_temp_project_dir();
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).expect("temp src dir must be creatable");
     fs::write(src_dir.join("index.ts"), ts_source).expect("fixture ts source must be writable");
+    let target_line = if let Some(target) = target {
+        format!("  target: \"{target}\",\n")
+    } else {
+        String::new()
+    };
     fs::write(
         project_dir.join("tsdown.config.ts"),
         format!(
@@ -58,11 +71,13 @@ export default {{
   outDir: "{}",
   sourcemap: true,
   dts: true,
+{}
   format: ["esm"],
 }};
 "#,
             src_dir.join("index.ts").display(),
-            project_dir.join("dist").display()
+            project_dir.join("dist").display(),
+            target_line
         ),
     )
     .expect("tsdown config must be writable");
@@ -217,6 +232,27 @@ export class HealthController {
   }
 }
 "#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn supports_class_private_elements_from_tsdown_js_dts_sourcemap_artifacts() {
+    let bundled = build_with_tsdown_target(
+        r#"
+export class Counter {
+  #count = 0;
+  increment() {
+    this.#count += 1;
+    return this.#count;
+  }
+}
+"#,
+        Some("es2018"),
     );
 
     assert!(!bundled.dts_source.trim().is_empty());
