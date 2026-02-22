@@ -80,3 +80,39 @@ export default class HealthController {
     );
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn supports_simple_class_extends_clause() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class ApiController extends BaseController {
+  constructor() {}
+}
+"#,
+    );
+
+    assert_eq!(ir.modules.len(), 1);
+    assert_eq!(ir.modules[0].exports, vec!["ApiController".to_string()]);
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn emits_diagnostic_for_non_identifier_extends_target() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class ApiController extends buildBase() {}
+"#,
+    );
+
+    assert_eq!(ir.diagnostics.len(), 1);
+    assert_eq!(
+        ir.diagnostics[0].code,
+        "ANALYZER_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION"
+    );
+    assert_eq!(
+        ir.diagnostics[0].message,
+        "class extends target must be a simple identifier in compiler mode"
+    );
+}

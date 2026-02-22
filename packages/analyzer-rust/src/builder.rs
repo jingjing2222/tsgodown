@@ -24,6 +24,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let route_object_defs = collect_route_object_defs(src);
     collect_conditional_route_diagnostics(src, &mut diagnostics, file);
     collect_class_private_element_diagnostics(src, &mut diagnostics, file);
+    collect_class_extends_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -251,6 +252,59 @@ fn collect_class_private_element_diagnostics(
         if class_depth <= 0 {
             class_depth = 0;
         }
+    }
+}
+
+fn collect_class_extends_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) {
+    for stmt in collect_statements(src) {
+        let trimmed = stmt.trim();
+        let class_rest = if let Some(rest) = trimmed.strip_prefix("class ") {
+            Some(rest)
+        } else if let Some(rest) = trimmed.strip_prefix("export class ") {
+            Some(rest)
+        } else {
+            trimmed.strip_prefix("export default class ")
+        };
+
+        let Some(class_rest) = class_rest else {
+            continue;
+        };
+
+        let after_name = if let Some((_, rest)) = split_identifier_and_rest(class_rest) {
+            rest.trim_start()
+        } else {
+            class_rest.trim_start()
+        };
+
+        let Some(after_extends) = after_name.strip_prefix("extends ") else {
+            continue;
+        };
+
+        if parse_simple_extends_target(after_extends).is_none() {
+            diagnostics.push(diag(
+                "error",
+                "ANALYZER_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION",
+                "class extends target must be a simple identifier in compiler mode",
+                file,
+            ));
+            return;
+        }
+    }
+}
+
+fn parse_simple_extends_target(input: &str) -> Option<&str> {
+    let target = input.trim_start();
+    let id = take_identifier(target)?;
+    let tail = target[id.len()..].trim_start();
+    if tail.is_empty()
+        || tail.starts_with('{')
+        || tail.starts_with("implements ")
+        || tail.starts_with("/*")
+        || tail.starts_with("//")
+    {
+        Some(id)
+    } else {
+        None
     }
 }
 
