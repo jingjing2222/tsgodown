@@ -479,3 +479,24 @@ export const marker = 1;
     assert!(output.contains("await"));
     assert!(output.contains("only allowed within async functions"));
 }
+
+#[test]
+fn emits_diagnostic_for_computed_constructor_name_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+export class WeirdConstructor {
+  ["constructor"]() {}
+}
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    let codes = ir
+        .diagnostics
+        .iter()
+        .map(|diag| diag.code.as_str())
+        .collect::<Vec<_>>();
+    assert!(codes.contains(&"ANALYZER_UNSUPPORTED_COMPUTED_CONSTRUCTOR"));
+}

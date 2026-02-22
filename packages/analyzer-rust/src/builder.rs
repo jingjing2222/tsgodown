@@ -24,6 +24,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let route_object_defs = collect_route_object_defs(src);
     collect_conditional_route_diagnostics(src, &mut diagnostics, file);
     collect_class_private_element_diagnostics(src, &mut diagnostics, file);
+    collect_class_constructor_diagnostics(src, &mut diagnostics, file);
     collect_class_extends_diagnostics(src, &mut diagnostics, file);
     collect_class_public_field_diagnostics(src, &mut diagnostics, file);
     collect_class_static_member_diagnostics(src, &mut diagnostics, file);
@@ -247,6 +248,39 @@ fn collect_class_private_element_diagnostics(
                 "error",
                 "ANALYZER_UNSUPPORTED_CLASS_PRIVATE_ELEMENTS",
                 "class private elements are currently unsupported in compiler mode",
+                file,
+            ));
+            return;
+        }
+
+        if class_depth <= 0 {
+            class_depth = 0;
+        }
+    }
+}
+
+fn collect_class_constructor_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    let mut class_depth: i32 = 0;
+
+    for line in src.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("class ") {
+            class_depth = (class_depth + brace_delta(line)).max(1);
+        } else if class_depth > 0 {
+            class_depth += brace_delta(line);
+        }
+
+        if class_depth > 0
+            && (trimmed.contains("[\"constructor\"](") || trimmed.contains("['constructor']("))
+        {
+            diagnostics.push(diag(
+                "error",
+                "ANALYZER_UNSUPPORTED_COMPUTED_CONSTRUCTOR",
+                "computed constructor names are unsupported in compiler mode",
                 file,
             ));
             return;
