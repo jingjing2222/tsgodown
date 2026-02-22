@@ -621,7 +621,7 @@ fn parse_route_object(
             diagnostics.push(diag(
                 "error",
                 "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
-                "fastify.route(...) requires an inline object literal",
+                "route object call requires an inline object literal",
                 file,
             ));
             return None;
@@ -630,7 +630,7 @@ fn parse_route_object(
         diagnostics.push(diag(
             "error",
             "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE",
-            "fastify.route(...) requires an inline object literal",
+            "route object call requires an inline object literal",
             file,
         ));
         return None;
