@@ -192,3 +192,37 @@ export class Cache {
         "static class member name must be a simple identifier in compiler mode"
     );
 }
+
+#[test]
+fn supports_static_initialization_blocks() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class Cache {
+  static {
+    const seed = 1;
+    void seed;
+  }
+}
+"#,
+    );
+
+    assert_eq!(ir.modules[0].exports, vec!["Cache".to_string()]);
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn ignores_static_block_body_for_public_field_computed_diagnostic() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class Cache {
+  static {
+    [dynamicName] = 1;
+  }
+}
+"#,
+    );
+
+    assert!(ir.diagnostics.is_empty());
+}

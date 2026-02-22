@@ -316,6 +316,7 @@ fn collect_class_public_field_diagnostics(
     file: &str,
 ) {
     let mut class_depth: i32 = 0;
+    let mut static_block_depth: i32 = 0;
 
     for line in src.lines() {
         let trimmed = line.trim();
@@ -325,6 +326,27 @@ fn collect_class_public_field_diagnostics(
             continue;
         }
         if class_depth <= 0 {
+            continue;
+        }
+
+        if static_block_depth > 0 {
+            static_block_depth += brace_delta(line);
+            if static_block_depth <= 0 {
+                static_block_depth = 0;
+            }
+            class_depth += brace_delta(line);
+            if class_depth <= 0 {
+                class_depth = 0;
+            }
+            continue;
+        }
+
+        if trimmed.starts_with("static {") || trimmed.starts_with("static{") {
+            static_block_depth = brace_delta(line).max(1);
+            class_depth += brace_delta(line);
+            if class_depth <= 0 {
+                class_depth = 0;
+            }
             continue;
         }
 
