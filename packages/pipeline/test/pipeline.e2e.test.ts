@@ -474,6 +474,61 @@ export class HealthController {
   await assertGoHealthRuntimeReady(goOutDir);
 });
 
+test("M4 regression [SUPPORTED]: tsdown class private elements artifacts -> AST IR -> Go build/run", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-private-elements-tsdown-"),
+  );
+  tempDirs.push(cwd);
+
+  const built = buildTsdownArtifactsForFixture(
+    cwd,
+    `
+export class PrivateCounter {
+  #count = 0;
+
+  inc() {
+    this.#count += 1;
+    return this.#count;
+  }
+}
+`,
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "private-elements-ast-go-001",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: built.bundleFile,
+          map: built.bundleMapFile,
+          format: "esm",
+          exports: [],
+        },
+      ],
+      types: [built.dtsFile],
+      tsconfigPath: "tsconfig.json",
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.ok(
+    ir.modules[0]?.exports.includes("PrivateCounter"),
+    `missing private-elements class export in AST/d.ts merged IR exports: ${JSON.stringify(ir.modules[0]?.exports ?? [])}`,
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
+
 test("M1 regression: real JS+d.ts+sourcemap artifact provenance (file:// sourceRoot) -> typed IR -> Go compile smoke", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-pipeline-artifact-go-e2e-"),
