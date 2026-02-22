@@ -26,14 +26,14 @@ const jsTestPath = path.join(
   "test",
   "commands.e2e.test.js",
 );
-const fixtureSrcDir = path.join(repoRoot, "packages", "cli", "test", "fixtures");
-const fixtureOutDir = path.join(
-  outDir,
+const fixtureSrcDir = path.join(
+  repoRoot,
   "packages",
   "cli",
   "test",
   "fixtures",
 );
+const fixtureOutDir = path.join(outDir, "packages", "cli", "test", "fixtures");
 
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
