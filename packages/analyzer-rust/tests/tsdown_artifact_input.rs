@@ -178,3 +178,31 @@ export default class HealthController {
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn supports_class_extends_from_tsdown_js_dts_sourcemap_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+class BaseController {
+  handle() {
+    return 1;
+  }
+}
+export class ApiController extends BaseController {
+  constructor() {
+    super();
+  }
+}
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(
+        ir.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}\njs:\n{}",
+        ir.diagnostics,
+        bundled.js_source
+    );
+}
