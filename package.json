@@ -20,7 +20,7 @@
     "gate:semantics-parity": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI JSON contract fixtures: success path|CLI JSON contract fixtures: warn path|rust-only fixture matrix surfaces deterministic contract error path\" && cargo test -p rust-bundler-manifest-v1 --test contract && pnpm run harness:differential && pnpm run gate:coverage-ratchet",
     "gate:coverage-ratchet": "node scripts/check-differential-coverage-ratchet.mjs",
     "gate:differential": "pnpm run gate:semantics-parity",
-    "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path",
+    "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path && pnpm run guard:framework-defaults",
     "perf:baseline": "tsx scripts/perf-baseline.ts",
     "docs:scaffold:sync": "node scripts/check-fastify-scaffold-sync.mjs",
     "scaffold:sync:check": "node scripts/check-scaffold-sync.mjs",
@@ -28,7 +28,9 @@
     "examples:install-first:check": "node scripts/check-example-install-first.mjs",
     "guard:compiler-mode-only": "node scripts/guard-compiler-mode-only.mjs",
     "guard:core-path": "node scripts/guard-core-path-no-framework-branching.mjs",
+    "guard:framework-defaults": "node scripts/guard-framework-defaults.mjs",
     "test:guard:core-path": "node --test scripts/guard-core-path-no-framework-branching.test.mjs",
+    "test:guard:framework-defaults": "node --test scripts/guard-framework-defaults.test.mjs",
     "harness:semantics-parity": "node scripts/differential-harness.mjs --all",
     "harness:differential": "pnpm run harness:semantics-parity"
   },
