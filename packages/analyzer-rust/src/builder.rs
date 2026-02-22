@@ -25,6 +25,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     collect_conditional_route_diagnostics(src, &mut diagnostics, file);
     collect_class_private_element_diagnostics(src, &mut diagnostics, file);
     collect_class_extends_diagnostics(src, &mut diagnostics, file);
+    collect_class_public_field_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -305,6 +306,51 @@ fn parse_simple_extends_target(input: &str) -> Option<&str> {
         Some(id)
     } else {
         None
+    }
+}
+
+fn collect_class_public_field_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    let mut class_depth: i32 = 0;
+
+    for line in src.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.contains("class ") {
+            class_depth = (class_depth + brace_delta(line)).max(1);
+            continue;
+        }
+        if class_depth <= 0 {
+            continue;
+        }
+
+        let candidate = trimmed.trim_end_matches(';').trim_start();
+        let looks_like_field = !candidate.is_empty()
+            && !candidate.starts_with('#')
+            && !candidate.starts_with("constructor(")
+            && !candidate.starts_with("get ")
+            && !candidate.starts_with("set ")
+            && !candidate.starts_with("async ")
+            && !candidate.contains('(')
+            && !candidate.starts_with("return ");
+
+        if looks_like_field && candidate.starts_with('[') {
+            diagnostics.push(diag(
+                "error",
+                "ANALYZER_UNSUPPORTED_COMPUTED_CLASS_FIELD",
+                "computed class field names are unsupported in compiler mode",
+                file,
+            ));
+            return;
+        }
+
+        class_depth += brace_delta(line);
+        if class_depth <= 0 {
+            class_depth = 0;
+        }
     }
 }
 

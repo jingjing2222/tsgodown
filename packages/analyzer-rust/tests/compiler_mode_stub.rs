@@ -116,3 +116,41 @@ export class ApiController extends buildBase() {}
         "class extends target must be a simple identifier in compiler mode"
     );
 }
+
+#[test]
+fn supports_simple_public_class_fields() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class ProfileController {
+  retries = 3;
+  label = "ok";
+}
+"#,
+    );
+
+    assert_eq!(ir.modules[0].exports, vec!["ProfileController".to_string()]);
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn emits_diagnostic_for_computed_public_class_fields() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class ProfileController {
+  [dynamicName] = 1;
+}
+"#,
+    );
+
+    assert_eq!(ir.diagnostics.len(), 1);
+    assert_eq!(
+        ir.diagnostics[0].code,
+        "ANALYZER_UNSUPPORTED_COMPUTED_CLASS_FIELD"
+    );
+    assert_eq!(
+        ir.diagnostics[0].message,
+        "computed class field names are unsupported in compiler mode"
+    );
+}
