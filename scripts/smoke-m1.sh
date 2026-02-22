@@ -173,7 +173,7 @@ log "build: generic-simple-cli -> dist-go"
 (
   cd "${EXAMPLE_DIR}"
   rm -rf dist-go
-  node --import tsx ../../packages/cli/src/index.ts build
+  node ../../packages/cli/dist/index.js build
 )
 
 if [[ ! -f "${DIST_GO_DIR}/main.go" ]]; then

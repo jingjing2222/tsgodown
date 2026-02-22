@@ -9,7 +9,9 @@ import { after, test } from "node:test";
 
 const tempDirs: string[] = [];
 const fixturesDir = path.join(import.meta.dirname, "fixtures");
-const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
+const repoRoot =
+  process.env.TSGODOWN_REPO_ROOT ??
+  path.resolve(import.meta.dirname, "..", "..", "..");
 
 after(() => {
   for (const dir of tempDirs) {
