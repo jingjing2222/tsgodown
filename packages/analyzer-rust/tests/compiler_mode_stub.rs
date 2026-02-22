@@ -4,7 +4,8 @@ mod tsdown_fixture;
 
 #[test]
 fn returns_module_envelope_for_compiler_mode_core_builder() {
-    let bundled = tsdown_fixture::build_inline_source("export const health = () => ({ ok: true });");
+    let bundled =
+        tsdown_fixture::build_inline_source("export const health = () => ({ ok: true });");
     let ir = analyze_compiler_entry("src/index.ts", &bundled);
 
     assert_eq!(ir.modules.len(), 1);

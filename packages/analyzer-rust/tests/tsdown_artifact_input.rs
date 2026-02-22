@@ -65,8 +65,8 @@ export default {{
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let bundled_source =
-        fs::read_to_string(project_dir.join("dist").join("index.mjs")).expect("bundled mjs missing");
+    let bundled_source = fs::read_to_string(project_dir.join("dist").join("index.mjs"))
+        .expect("bundled mjs missing");
     fs::remove_dir_all(&project_dir).expect("temp project cleanup must succeed");
     bundled_source
 }
