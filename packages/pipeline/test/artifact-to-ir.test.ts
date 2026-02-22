@@ -82,6 +82,61 @@ test("buildProgramIrFromArtifacts ingests d.ts and sourcemap into deterministic 
   assert.deepEqual(ir.diagnostics, []);
 });
 
+test("buildProgramIrFromArtifacts derives exports from JS AST when types metadata is missing", () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-artifact-ir-ast-"));
+  fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs"),
+    [
+      "const health = () => ({ ok: true });",
+      "export { health };",
+      "export default health;",
+      "",
+    ].join("\n"),
+  );
+
+  fs.writeFileSync(
+    path.join(cwd, "dist", "index.mjs.map"),
+    JSON.stringify({
+      version: 3,
+      file: "index.mjs",
+      sources: ["../src/index.ts"],
+      names: [],
+      mappings: "",
+    }),
+  );
+
+  const ir = buildProgramIrFromArtifacts(
+    {
+      mode: "rust-engine-adapter",
+      manifestPath: "artifacts/manifests/manifest.json",
+      manifestIndexPath: "artifacts/manifests/index.json",
+      manifest: {
+        buildId: "aabbccddeeff0011",
+        entries: ["src/index.ts"],
+        bundles: [
+          {
+            file: "dist/index.mjs",
+            map: "dist/index.mjs.map",
+            format: "esm",
+            exports: [],
+          },
+        ],
+      },
+      diagnostics: [],
+    },
+    "src/index.ts",
+    { cwd },
+  );
+
+  assert.deepEqual(ir.modules[0]?.exports, ["default", "health"]);
+  assert.equal(
+    ir.diagnostics.some((diag) => diag.code === "PIPELINE_MISSING_TYPES_METADATA"),
+    false,
+  );
+});
+
 test("buildProgramIrFromArtifacts resolves sourcemap sourceRoot deterministically for module locations", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "tsgodown-artifact-ir-root-"),

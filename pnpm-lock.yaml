@@ -139,6 +139,9 @@ importers:
       '@tsgodown/tsdown-driver':
         specifier: workspace:*
         version: link:../tsdown-driver
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   packages/tsdown-driver:
     dependencies:

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import type { DiagnosticIR, ProgramIR } from "@tsgodown/ir-core";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
@@ -35,16 +36,34 @@ export function buildProgramIrFromArtifacts(
   const moduleEntries =
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
-  const typedExports = collectTypedExports(buildResult, cwd, diagnostics);
+  const astExports = collectAstExportsFromBundles(buildResult, cwd, diagnostics);
+  const hasTypeMetadata = (buildResult.manifest.types ?? []).some((typePath) =>
+    typePath?.trim(),
+  );
+  const typedExports = hasTypeMetadata
+    ? collectTypedExports(buildResult, cwd, diagnostics)
+    : [];
+  if (!hasTypeMetadata && astExports.length === 0) {
+    diagnostics.push({
+      level: "warn",
+      code: "PIPELINE_MISSING_TYPES_METADATA",
+      message:
+        "missing .d.ts metadata required for typed artifact-to-ir mapping",
+      source: {
+        file: "manifest.types",
+      },
+    });
+  }
+  const resolvedExports = hasTypeMetadata ? typedExports : astExports;
   const hasDeterministicTypedProvenance =
-    sourceMappedEntries.length > 0 && typedExports.length > 0;
+    sourceMappedEntries.length > 0 && resolvedExports.length > 0;
 
-  if (typedExports.length > 0 && sourceMappedEntries.length === 0) {
+  if (resolvedExports.length > 0 && sourceMappedEntries.length === 0) {
     diagnostics.push({
       level: "warn",
       code: "PIPELINE_INCOMPLETE_TYPED_PROVENANCE",
       message:
-        "typed exports found in .d.ts metadata but sourcemap lineage is missing; exports omitted to keep typed provenance deterministic",
+        "export symbols found but sourcemap lineage is missing; exports omitted to keep provenance deterministic",
       source: {
         file: buildResult.manifest.types?.[0] ?? "manifest.types",
       },
@@ -58,7 +77,7 @@ export function buildProgramIrFromArtifacts(
   const modules = sortedModuleEntries.map((manifestEntry, index) => ({
     id: `module_${index}`,
     sourcePath: manifestEntry,
-    exports: hasDeterministicTypedProvenance ? typedExports : [],
+    exports: hasDeterministicTypedProvenance ? resolvedExports : [],
     imports: [],
   }));
 
@@ -96,6 +115,85 @@ export function buildProgramIrFromArtifacts(
     ],
     diagnostics,
   };
+}
+
+function collectAstExportsFromBundles(
+  buildResult: RunBuildResult,
+  cwd: string,
+  _diagnostics: DiagnosticIR[],
+): string[] {
+  const exportedNames = new Set<string>();
+
+  for (const bundle of buildResult.manifest.bundles) {
+    if (!bundle.file?.trim()) {
+      continue;
+    }
+    const absoluteBundlePath = path.join(cwd, bundle.file);
+    let sourceText = "";
+    try {
+      sourceText = fs.readFileSync(absoluteBundlePath, "utf8");
+    } catch {
+      continue;
+    }
+
+    const sourceFile = ts.createSourceFile(
+      absoluteBundlePath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+
+    for (const statement of sourceFile.statements) {
+      if (ts.isExportAssignment(statement)) {
+        exportedNames.add("default");
+        continue;
+      }
+
+      if (ts.isExportDeclaration(statement)) {
+        if (
+          statement.exportClause &&
+          ts.isNamedExports(statement.exportClause)
+        ) {
+          for (const item of statement.exportClause.elements) {
+            exportedNames.add(item.name.text);
+          }
+        }
+        continue;
+      }
+
+      if (
+        !statement.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement)
+      ) {
+        if (statement.name?.text) {
+          exportedNames.add(statement.name.text);
+        }
+        if (statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) {
+          exportedNames.add("default");
+        }
+        continue;
+      }
+
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name)) {
+            exportedNames.add(declaration.name.text);
+          }
+        }
+      }
+    }
+  }
+
+  return [...exportedNames].sort((a, b) => a.localeCompare(b));
 }
 
 function collectTypedExports(

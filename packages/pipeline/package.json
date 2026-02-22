@@ -13,7 +13,8 @@
     "@tsgodown/emitter-go": "workspace:*",
     "@tsgodown/ir-core": "workspace:*",
     "@tsgodown/node-compat": "workspace:*",
-    "@tsgodown/tsdown-driver": "workspace:*"
+    "@tsgodown/tsdown-driver": "workspace:*",
+    "typescript": "^5.9.2"
   },
   "exports": {
     ".": {

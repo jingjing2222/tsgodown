@@ -1,4 +1,10 @@
+import http from "node:http";
+import { spawn, spawnSync } from "node:child_process";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
 import type { UserConfig } from "@tsgodown/config";
+import { emitGoProject } from "@tsgodown/emitter-go";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
 
 import { buildProgramIrFromArtifacts } from "./artifact-to-ir.js";
@@ -25,6 +31,7 @@ export interface StageOrchestrationOptions {
   log: (message: string) => void;
   onStage?: (event: PipelineStageEvent) => void;
   runBuildArtifacts?: (cwd: string) => Promise<RunBuildResult>;
+  verifyGoRunnable?: boolean;
 }
 
 export async function orchestratePipelineStages({
@@ -33,6 +40,7 @@ export async function orchestratePipelineStages({
   log,
   onStage,
   runBuildArtifacts = runBuildArtifactsViaRustAdapter,
+  verifyGoRunnable = process.env.TSGODOWN_VERIFY_GO_RUNNABLE === "1",
 }: StageOrchestrationOptions): Promise<void> {
   for (const config of configs) {
     const entry = resolveEntry(config);
@@ -56,12 +64,14 @@ export async function orchestratePipelineStages({
       assertBuildArtifactContract(buildResult);
 
       stage = "BUILD_IR";
-      buildProgramIrFromArtifacts(buildResult, entry);
+      const ir = buildProgramIrFromArtifacts(buildResult, entry);
       emitStage(
         "BUILD_IR",
         `[BUILD_IR] analyzing entry: ${entry} (delegated to rust engine, buildId=${buildResult.manifest.buildId})`,
       );
-      buildProgramIrFromArtifacts(buildResult, entry, { cwd });
+      const sourceMappedIr = buildProgramIrFromArtifacts(buildResult, entry, {
+        cwd,
+      });
 
       stage = "CAPABILITY_GATE";
       emitStage(
@@ -70,10 +80,15 @@ export async function orchestratePipelineStages({
       );
 
       stage = "EMIT_GO";
+      const goOutDir = path.join(cwd, "dist-go");
+      emitGoProject(sourceMappedIr.modules.length > 0 ? sourceMappedIr : ir, goOutDir);
       emitStage(
         "EMIT_GO",
-        "[EMIT_GO] writing Go scaffold (delegated to rust engine)",
+        `[EMIT_GO] wrote Go scaffold to ${goOutDir}`,
       );
+      if (verifyGoRunnable) {
+        await verifyCompiledGoRuntime(goOutDir, emitStage);
+      }
 
       stage = "ON_SUCCESS";
       await config.onSuccess?.();
@@ -89,6 +104,88 @@ export async function orchestratePipelineStages({
       });
     }
   }
+}
+
+async function verifyCompiledGoRuntime(
+  goOutDir: string,
+  emitStage: (currentStage: PipelineStage, message: string) => void,
+): Promise<void> {
+  const version = spawnSync("go", ["version"], { encoding: "utf8" });
+  if (version.status !== 0) {
+    emitStage(
+      "EMIT_GO",
+      "[EMIT_GO] Go toolchain not available; skipped compile/runtime verification",
+    );
+    return;
+  }
+
+  const binaryName = process.platform === "win32" ? "tsgodown-local.exe" : "tsgodown-local";
+  const binaryPath = path.join(goOutDir, binaryName);
+
+  const build = spawnSync("go", ["build", "-o", binaryName, "."], {
+    cwd: goOutDir,
+    encoding: "utf8",
+  });
+  if (build.status !== 0) {
+    throw new Error(
+      `[pipeline] go build failed: ${(build.stderr || build.stdout || "").trim()}`,
+    );
+  }
+  emitStage("EMIT_GO", `[EMIT_GO] go build succeeded: ${binaryPath}`);
+
+  const port = String(19000 + Math.floor(Math.random() * 500));
+  const runtime = spawn(binaryPath, [], {
+    cwd: goOutDir,
+    env: {
+      ...process.env,
+      PORT: port,
+    },
+    stdio: "ignore",
+  });
+
+  try {
+    await waitForHealthRuntime(port);
+    emitStage("EMIT_GO", `[EMIT_GO] go runtime health check passed on :${port}`);
+  } finally {
+    if (!runtime.killed) {
+      runtime.kill("SIGTERM");
+    }
+  }
+}
+
+async function waitForHealthRuntime(port: string): Promise<void> {
+  const startedAt = Date.now();
+  const timeoutMs = 8_000;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await requestStatusCode(port, "/health");
+    if (status !== null && status >= 200 && status < 500) {
+      return;
+    }
+    await sleep(200);
+  }
+  throw new Error("[pipeline] go runtime health check timed out");
+}
+
+function requestStatusCode(port: string, pathname: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port: Number(port),
+        path: pathname,
+        timeout: 400,
+      },
+      (res) => {
+        resolve(res.statusCode ?? null);
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on("error", () => resolve(null));
+  });
 }
 
 export function assertBuildArtifactContract(buildResult: RunBuildResult): void {
