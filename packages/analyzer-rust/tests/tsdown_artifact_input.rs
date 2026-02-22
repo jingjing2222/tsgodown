@@ -311,6 +311,31 @@ export class HealthController {
 }
 
 #[test]
+fn collects_class_exported_via_export_list_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+class HealthController {
+  handle() {
+    return { ok: true };
+  }
+}
+export { HealthController };
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(ir.diagnostics.is_empty());
+    assert!(
+        ir.modules[0].exports.iter().any(|name| name == "HealthController"),
+        "missing export symbol; exports={:?}\njs:\n{}",
+        ir.modules[0].exports,
+        bundled.js_source
+    );
+}
+
+#[test]
 fn supports_class_private_elements_from_tsdown_js_dts_sourcemap_artifacts() {
     let bundled = build_with_tsdown_target(
         r#"

@@ -132,6 +132,27 @@ fn collect_exports(src: &str) -> Vec<String> {
     let mut exports = BTreeSet::new();
     for line in src.lines() {
         let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("export {") {
+            if let Some(end) = rest.find('}') {
+                let inside = &rest[..end];
+                for raw_entry in inside.split(',') {
+                    let entry = raw_entry.trim();
+                    if entry.is_empty() {
+                        continue;
+                    }
+                    let exported_name = if let Some((_, alias)) = entry.split_once(" as ") {
+                        alias.trim()
+                    } else {
+                        entry
+                    };
+                    if let Some(name) = take_identifier(exported_name) {
+                        exports.insert(name.to_string());
+                    }
+                }
+            }
+            continue;
+        }
+
         for prefix in [
             "export const ",
             "export function ",
