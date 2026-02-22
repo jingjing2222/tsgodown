@@ -6,9 +6,9 @@ All feature implementation must follow the **Test First** principle.
 ## Milestone lock (M0 -> M1 -> M2 -> M3 -> M4 -> M5)
 - This strategy follows roadmap issue `#117` as source of truth and the locked execution/reporting sequence: `M0 -> M1 -> M2 -> M3 -> M4 -> M5`.
 - M0 aligns issue/docs/gates and removes stale status drift.
-- M1 defines capability taxonomy and fail-closed policy.
-- M2/M3 define executable proof expansion and determinism hardening.
-- M4 enforces coverage ratchet + capability-based expansion controls.
+- M1 defines syntax capability taxonomy and fail-closed policy.
+- M2/M3 define JS<->Go semantic parity proof expansion and determinism hardening.
+- M4 enforces coverage ratchet + capability-based expansion controls across language categories.
 - M5 finalizes production release/rollback discipline.
 
 ## Architecture guardrails (M4)
@@ -28,22 +28,22 @@ All feature implementation must follow the **Test First** principle.
 - Integration: rust adapter contract + pipeline orchestration
 - E2E: convert real example projects and verify the CLI/build contract
 
-## M1 release gate (TS service artifact fixture -> Go compile success path)
+## M1 release gate (TS artifact fixture -> Go compile success path)
 M1 release gate is fixed to the **single canonical path** below.
 
 - Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
 - Script entrypoint: [`scripts/m1-release-gate.sh`](../../scripts/m1-release-gate.sh)
 - Test location: `packages/cli/test/commands.e2e.test.ts`
 - Canonical gate intent: `CLI build reference fixture -> dist-go/main.go -> go build (if available)`
-- Current test id: `M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)`
+- Current test id: `M1 release gate: CLI build reference fixture -> dist-go/main.go -> go build (if available)`
 - Command: `pnpm run gate:m1`
 
 Verification items:
-1. Input: reference fixture TypeScript entry (`src/index.ts`) from tracked examples (current fixture: `examples/fastify-scaffold-real`)
+1. Input: reference fixture TypeScript entry (`src/index.ts`) from tracked examples
 2. Execution: run CLI `build` through the Rust adapter path
 3. Output: confirm `dist-go/main.go` generation
 4. Assertions:
-   - Go scaffold shape (`package main`, `func main()`, `GET /health` route binding)
+   - Go scaffold shape (`package main`, `func main()`, and deterministic bootstrap structure)
    - if the Go toolchain exists, `go build ./...` succeeds
 
 Note: the gate is limited to execution-path verification and does not cover internal implementation details of `analyzer-rust` / `emitter-go`.
@@ -73,13 +73,13 @@ Note: the gate is limited to execution-path verification and does not cover inte
   - method-aware route checks (`GET`, `POST`, `PUT`)
   - scaffold TODO body checks for named handlers
   - negative path behavior (`405 Method Not Allowed`, `404 page not found`)
-- `scripts/smoke-m1.sh` must validate deterministic route behavior (`/health`, `/users`, `/missing`) instead of single-endpoint liveness only.
+- `scripts/smoke-m1.sh` must validate deterministic behavior matrix (positive/negative cases) instead of single-endpoint liveness only.
 
 ## analyzer-rust boundary contract (M1)
 - Keep `packages/analyzer-rust/tests/contract_parity_regression.rs` as the fixed SSoT contract test for analyzer-rust.
 - Fix supported and unsupported boundaries using fixture-based tests.
 - Unsupported boundaries must include **DiagnosticIR.code mapping** to prevent regressions.
-  - e.g. `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`, `ANALYZER_UNSUPPORTED_INLINE_HANDLER`, `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
+  - e.g. syntax/capability diagnostics such as unsupported dynamic semantics identifiers
 - analyzer-rust does not emit capability policy diagnostics (`CAPABILITY_*`).
 
 ## Required checks per PR/turn

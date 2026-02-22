@@ -38,83 +38,24 @@ Current fixed sequence:
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 Roadmap drift reconciliation log: `docs/operations/ROADMAP_DRIFT_RECONCILIATION.md`.
 
-## Current route-extraction grammar (reference boundary)
+## JS -> Go syntax coverage roadmap (non-backend-first)
 
-The current extractor supports deterministic route-extraction patterns that are stable for compiler-mode builds.
-These examples describe the present reference boundary, not permanent framework-coupled scope.
+This project is not limited to backend/router translation.
+The roadmap target is broad JavaScript/TypeScript semantics coverage to Go, with explicit host-boundary exceptions.
 
-- `fastify.<method>("/literal", handlerRef)` where method is `get|post|put|delete|patch`
-- `fastify.route({ ... })` with inline object literal:
-  - `method`: string (`"GET"`) or non-empty array (`["PUT", "PATCH"]`)
-  - `url` or `path`: string literal
-  - `handler`: named handler reference
-- `fastify.register(...)` with:
-  - inline callback plugin, or
-  - named local plugin reference
-  - optional `prefix` composition across nested plugins
-- named handlers (including common member references) that the analyzer can resolve
+Normative checklist source:
 
-Supported example:
+- issue `#117` roadmap checklist
+- `docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md`
 
-```ts
-import Fastify from "fastify";
+Principle:
 
-const app = Fastify();
+- default direction is "make currently unsupported syntax work"
+- unsupported decisions must be temporary and evidence-backed
+- long-term target is "all language-level syntax/semantics covered"
+- explicit non-targets are host-bound operations that cannot be made runtime-equivalent in pure Go compiler output (for example direct browser DOM control)
 
-async function listUsers(req, reply) {
-  return [{ id: "u1" }];
-}
-
-function replaceThing(req, reply) {
-  reply.send({ ok: true });
-}
-
-app.get("/users", listUsers);
-app.route({
-  method: ["PUT", "PATCH"],
-  url: "/things/:id",
-  handler: replaceThing,
-});
-```
-
-## Unsupported route patterns + diagnostics codes
-
-When unsupported patterns are found, `tsgodown` emits warnings with deterministic codes.
-
-Common unsupported patterns:
-
-- dynamic/non-literal route paths
-- inline/anonymous route handlers where named references are required
-- `fastify.route(...)` object shapes that are not directly analyzable
-- unresolved plugin references
-- conditional route registration (`if (...) { fastify.get(...) }`)
-
-Example (unsupported):
-
-```ts
-import Fastify from "fastify";
-
-const app = Fastify();
-
-const dynamicPath = "/users/" + process.env.VERSION;
-app.get(dynamicPath, async (req, reply) => {
-  reply.send({ ok: true });
-});
-
-if (process.env.EXPERIMENTAL === "1") {
-  app.get("/exp", expHandler);
-}
-```
-
-Diagnostics you will see:
-
-- `ANALYZER_UNSUPPORTED_DYNAMIC_PATH`
-- `ANALYZER_UNSUPPORTED_INLINE_HANDLER`
-- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE`
-- `ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD`
-- `ANALYZER_UNRESOLVED_PLUGIN`
-- `ANALYZER_UNSUPPORTED_REGISTER_CALLBACK`
-- `ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE`
+Current status and unsupported details are tracked by capability/syntax IDs, never by framework names.
 
 ## Quickstart
 
@@ -175,6 +116,7 @@ When build output is incomplete, start here:
 - M1 release gate and acceptance criteria: [`docs/specs/M1_RELEASE_GATE.md`](docs/specs/M1_RELEASE_GATE.md)
 - Testing strategy and boundaries: [`docs/specs/TESTING_STRATEGY.md`](docs/specs/TESTING_STRATEGY.md)
 - Canonical compiler-mode spec lock (supported subset / out-of-scope / fail-closed): [`docs/specs/COMPILER_MODE_CONTRACTS.md`](docs/specs/COMPILER_MODE_CONTRACTS.md)
+- JS<->Go syntax coverage roadmap mirror: [`docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md`](docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md)
 
 Additional project docs:
 

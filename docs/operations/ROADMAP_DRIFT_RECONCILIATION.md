@@ -15,6 +15,9 @@ Source of truth: issue `#117` milestone checklist.
   - default gate path now uses non-compat baseline example
 - Default gate/docs language aligned to capability-first wording:
   - docs/specs and README no longer treat framework sample names as product scope boundaries
+- Added syntax-first roadmap mirror for issue #117:
+  - `docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md`
+  - roadmap language now states language-level coverage target with explicit host-bound exceptions only
 
 ## Reconciliation rule
 
