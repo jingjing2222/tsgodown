@@ -8,6 +8,11 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 - Out of scope by default: host-bound runtime APIs that require browser/process embedding not representable as pure compiler output (example: direct browser DOM control)
 - Policy: unsupported items are temporary backlog unless they are explicit host-bound exceptions
 
+## Canonical full checklist
+- `docs/specs/MDN_JS_REFERENCE_FULL_CHECKLIST.md` is the canonical exhaustive JS reference checklist.
+- Current snapshot contains 1294 MDN JavaScript Reference entries (one row per MDN reference page).
+- Issue `#117` tracks milestone progress and gating state; the full line-by-line census lives in the file above.
+
 ## Milestones and checklist
 
 ### M0 — Source of truth and policy lock
@@ -154,8 +159,8 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 
 ### M13 — MDN census mapping and host-boundary partitioning
 - [x] Define MDN census matrix schema with domain/status/evidence columns
-- [ ] Import full MDN JavaScript reference inventory into capability rows
-- [ ] Partition every row into LANG_CORE / BUILTIN / HOST_WEB / HOST_NODE
+- [x] Import full MDN JavaScript reference inventory into capability rows
+- [x] Partition every row into LANG_CORE / BUILTIN / HOST_WEB / HOST_NODE
 - [ ] Apply SUPPORTED / PLANNED / EXCEPTION status to every row
 - [ ] Require explicit rationale for every EXCEPTION row
 - [ ] Attach parity-evidence links for SUPPORTED rows
@@ -172,5 +177,5 @@ All other language-level syntax/semantics are roadmap implementation targets.
 
 ## Checklist summary
 - Total checklist items: 125
-- Completed now: 5
-- Remaining: 120
+- Completed now: 7
+- Remaining: 118

@@ -119,6 +119,7 @@ When build output is incomplete, start here:
 - Canonical compiler-mode spec lock (supported subset / out-of-scope / fail-closed): [`docs/specs/COMPILER_MODE_CONTRACTS.md`](docs/specs/COMPILER_MODE_CONTRACTS.md)
 - JS<->Go syntax coverage roadmap mirror: [`docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md`](docs/specs/JS_GO_SYNTAX_COVERAGE_ROADMAP.md)
 - MDN census mapping matrix (domain/status/evidence): [`docs/specs/MDN_JS_CENSUS_MATRIX.md`](docs/specs/MDN_JS_CENSUS_MATRIX.md)
+- MDN full JS reference checklist (1294-entry census): [`docs/specs/MDN_JS_REFERENCE_FULL_CHECKLIST.md`](docs/specs/MDN_JS_REFERENCE_FULL_CHECKLIST.md)
 
 Additional project docs:
 
