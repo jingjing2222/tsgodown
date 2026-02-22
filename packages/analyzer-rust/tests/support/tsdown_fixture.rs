@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -16,12 +19,14 @@ fn create_temp_project_dir() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_nanos();
+    let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "tsgodown-analyzer-rust-artifact-test-{}-{nonce}",
-        std::process::id()
+        "tsgodown-analyzer-rust-artifact-test-{}-{nonce}-{seq}",
+        std::process::id(),
     ))
 }
 
+#[allow(dead_code)]
 pub fn build_inline_source(ts_source: &str) -> String {
     let project_dir = create_temp_project_dir();
     let src_dir = project_dir.join("src");
@@ -32,6 +37,7 @@ pub fn build_inline_source(ts_source: &str) -> String {
     bundled
 }
 
+#[allow(dead_code)]
 pub fn build_fixture_path(source_path: &Path) -> String {
     let project_dir = create_temp_project_dir();
     let src_dir = project_dir.join("src");

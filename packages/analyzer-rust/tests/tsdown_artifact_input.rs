@@ -72,14 +72,12 @@ export default {{
 }
 
 #[test]
-fn detects_generator_reentry_from_tsdown_bundled_output() {
+fn detects_computed_static_member_from_tsdown_bundled_output() {
     let bundled = build_with_tsdown(
         r#"
-function* task() {
-  task.next();
-  yield 1;
+export class Cache {
+  static [nameExpr] = 1;
 }
-export { task };
 "#,
     );
 
@@ -89,7 +87,7 @@ export { task };
         .iter()
         .map(|diag| diag.code.as_str())
         .collect::<Vec<_>>();
-    assert!(codes.contains(&"ANALYZER_POTENTIAL_GENERATOR_REENTRY"));
+    assert!(codes.contains(&"ANALYZER_UNSUPPORTED_STATIC_CLASS_MEMBER"));
 }
 
 #[test]
