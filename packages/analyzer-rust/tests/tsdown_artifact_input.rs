@@ -355,3 +355,24 @@ export const marker = 1;
     let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
     assert!(ir.diagnostics.is_empty());
 }
+
+#[test]
+fn handles_already_has_pragma_pattern_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+'use strict';
+'use strict';
+export const marker = 1;
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    let codes = ir
+        .diagnostics
+        .iter()
+        .map(|diag| diag.code.as_str())
+        .collect::<Vec<_>>();
+    assert!(!codes.contains(&"ANALYZER_DUPLICATE_PRAGMA"));
+}
