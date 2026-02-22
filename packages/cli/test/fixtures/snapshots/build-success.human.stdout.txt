@@ -1,7 +1,7 @@
 [BUILD_ARTIFACTS] collecting build outputs
 [BUILD_IR] analyzing entry: src/index.ts (delegated to rust engine, buildId=1122334455667788)
 [CAPABILITY_GATE] validating required capabilities (delegated to rust engine)
-[EMIT_GO] writing Go scaffold (delegated to rust engine)
+[EMIT_GO] wrote Go scaffold to <CWD>/dist-go
 [ON_SUCCESS] completed pipeline for src/index.ts
 [tsgodown] build completed
 cwd: <CWD>
