@@ -17,8 +17,8 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 - [ ] Add script that verifies issue checklist count/sync against docs mirror
 - [ ] Add mandatory PR template section for syntax-capability evidence
 - [ ] Define exception process for host-bound non-target syntax/API
-- [ ] Freeze milestone naming and progression policy for all reports
-- [ ] Publish "supported/unsupported/planned" transition criteria
+- [x] Freeze milestone naming and progression policy for all reports
+- [ ] Publish supported/unsupported/planned transition criteria
 
 ### M1 — Syntax capability taxonomy (JS vs Go mapping)
 - [ ] Define stable syntax capability IDs by ECMAScript category
@@ -108,6 +108,50 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 - [ ] Production incident playbook for semantic regression
 - [ ] Monthly roadmap review to convert unsupported backlog into implementation items
 
+### M9 — TypeScript type-system fidelity and erasure boundaries
+- [ ] Define type-erasure contract so runtime semantics stay unchanged by TS-only syntax removal
+- [ ] Support generic function/class syntax lowering without runtime behavioral drift
+- [ ] Map conditional/mapped types metadata into diagnostics-quality hints (non-runtime)
+- [ ] Define `enum`/`const enum` lowering policy and parity tests
+- [ ] Define namespace/declaration-merging handling policy and deterministic diagnostics
+- [ ] Add decorator syntax policy (supported subset vs deterministic reject) with migration guidance
+- [ ] Add `.d.ts`-only symbol resolution ambiguity diagnostics with precise source ranges
+- [ ] Add type-only import/export elision parity tests for side-effect safety
+- [ ] Add `satisfies`/`as const` compile-surface handling policy and coverage cases
+
+### M10 — Runtime interop, observability, and hardening
+- [ ] Define JS number semantics vs Go numeric type mapping contract (overflow/precision boundaries)
+- [ ] Define UTF-16 string semantic edge handling policy (surrogate pairs, indexing caveats)
+- [ ] Add panic/error boundary contract to preserve JS-style error observability guarantees
+- [ ] Add source-map-linked stack trace normalization spec for generated Go runtime failures
+- [ ] Add debugger/profiler metadata emission contract for generated Go artifacts
+- [ ] Add sandbox/security policy for dynamic code surfaces (`eval`, `Function` constructor)
+- [ ] Add module loading trust policy for remote/file URL edge cases and deterministic rejection paths
+- [ ] Add memory/GC-sensitive semantics watchlist and differential stress tests
+- [ ] Add long-run stability suite for async/resource leak regression detection
+
+### M11 — Conformance corpus and fuzzing expansion
+- [ ] Build ECMAScript grammar-category fixture corpus with per-capability traceability IDs
+- [ ] Add reducer-based minimization pipeline for failing JS->Go parity cases
+- [ ] Add AST-level mutation fuzzing for expression/control-flow stress coverage
+- [ ] Add artifact-level fuzzing for malformed sourcemap/d.ts/manifest resilience
+- [ ] Add differential oracle checks across Node LTS variants for reference stability
+- [ ] Add seeded randomized scenario packs with deterministic replay metadata
+- [ ] Add flaky-case quarantine policy with auto-expiry and owner escalation
+- [ ] Add nightly long-matrix conformance runs with trend snapshots
+- [ ] Add coverage heatmap export for capability buckets vs fixture families
+
+### M12 — Migration UX and ecosystem compatibility
+- [ ] Add unsupported-syntax to migration-hint catalog with codemod-ready recipes
+- [ ] Define compatibility profile tiers (`strict`, `balanced`, `max`) and gate impacts
+- [ ] Add compiler guidance for replacing host-bound APIs with portable abstractions
+- [ ] Add deterministic deprecation lifecycle policy for temporary syntax shims
+- [ ] Add package-boundary interop tests for mixed JS/TS monorepo layouts
+- [ ] Add generated-Go API stability policy for downstream integration points
+- [ ] Add error-message localization/normalization policy for CI readability
+- [ ] Add adoption playbook templates for phased rollout in existing services
+- [ ] Add success metrics rubric (migration lead time, rollback rate, parity defect rate)
+
 ## Exception baseline (explicitly allowed unsupported)
 - Direct browser DOM manipulation (`window`, `document`, layout/paint/event-loop coupling to browser engine)
 - Browser rendering pipeline dependent behavior (CSSOM/layout timing)
@@ -116,6 +160,6 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 All other language-level syntax/semantics are roadmap implementation targets.
 
 ## Checklist summary
-- Total checklist items: 81
-- Completed now: 2
-- Remaining: 79
+- Total checklist items: 116
+- Completed now: 3
+- Remaining: 113
