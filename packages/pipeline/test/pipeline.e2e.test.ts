@@ -188,7 +188,10 @@ async function assertGoHealthRuntimeReady(goDir: string) {
   }
 }
 
-function buildTsdownArtifactsForConstructorFixture(cwd: string): {
+function buildTsdownArtifactsForFixture(
+  cwd: string,
+  sourceCode: string,
+): {
   bundleFile: string;
   bundleMapFile: string;
   dtsFile: string;
@@ -198,14 +201,7 @@ function buildTsdownArtifactsForConstructorFixture(cwd: string): {
   fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
   fs.writeFileSync(
     path.join(cwd, "src", "index.ts"),
-    [
-      "export default class HealthController {",
-      "  constructor(private readonly service: string) {",
-      "    void this.service;",
-      "  }",
-      "}",
-      "",
-    ].join("\n"),
+    `${sourceCode.trim()}\n`,
   );
   fs.writeFileSync(
     path.join(cwd, "tsdown.config.ts"),
@@ -323,7 +319,16 @@ test("M4 regression [SUPPORTED]: tsdown constructor artifacts -> AST IR export(d
   );
   tempDirs.push(cwd);
 
-  const built = buildTsdownArtifactsForConstructorFixture(cwd);
+  const built = buildTsdownArtifactsForFixture(
+    cwd,
+    `
+export default class HealthController {
+  constructor(private readonly service: string) {
+    void this.service;
+  }
+}
+`,
+  );
 
   const buildResult: RunBuildResult = {
     mode: "rust-engine-adapter",
@@ -352,6 +357,63 @@ test("M4 regression [SUPPORTED]: tsdown constructor artifacts -> AST IR export(d
     ir.modules[0]?.exports.includes("default"),
     `missing default export in AST/d.ts merged IR exports: ${JSON.stringify(ir.modules[0]?.exports ?? [])}`,
   );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
+
+test("M4 regression [SUPPORTED]: tsdown class extends artifacts -> AST IR -> Go build/run", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-extends-tsdown-"),
+  );
+  tempDirs.push(cwd);
+
+  const built = buildTsdownArtifactsForFixture(
+    cwd,
+    `
+class BaseController {}
+export default class HealthController extends BaseController {
+  constructor() {
+    super();
+  }
+}
+`,
+  );
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "extends-ast-go-001",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: built.bundleFile,
+          map: built.bundleMapFile,
+          format: "esm",
+          exports: [],
+        },
+      ],
+      types: [built.dtsFile],
+      tsconfigPath: "tsconfig.json",
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.ok(
+    !ir.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "PIPELINE_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION",
+    ),
+    `unexpected extends diagnostic: ${JSON.stringify(ir.diagnostics)}`,
+  );
+  assert.ok(ir.modules[0]?.exports.includes("default"));
 
   const goOutDir = path.join(cwd, "dist-go");
   emitGoProject(ir, goOutDir);

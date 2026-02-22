@@ -146,6 +146,16 @@ function collectAstExportsFromBundles(
 
     for (const statement of sourceFile.statements) {
       if (ts.isExportAssignment(statement)) {
+        if (
+          ts.isClassExpression(statement.expression) &&
+          statement.expression.heritageClauses
+        ) {
+          collectUnsupportedExtendsDiagnostic(
+            statement.expression.heritageClauses,
+            diagnostics,
+            bundle.file,
+          );
+        }
         exportedNames.add("default");
         continue;
       }
@@ -174,6 +184,13 @@ function collectAstExportsFromBundles(
         ts.isFunctionDeclaration(statement) ||
         ts.isClassDeclaration(statement)
       ) {
+        if (ts.isClassDeclaration(statement) && statement.heritageClauses) {
+          collectUnsupportedExtendsDiagnostic(
+            statement.heritageClauses,
+            diagnostics,
+            bundle.file,
+          );
+        }
         if (statement.name?.text) {
           exportedNames.add(statement.name.text);
         }
@@ -194,6 +211,45 @@ function collectAstExportsFromBundles(
   }
 
   return [...exportedNames].sort((a, b) => a.localeCompare(b));
+}
+
+function collectUnsupportedExtendsDiagnostic(
+  heritageClauses: readonly ts.HeritageClause[],
+  diagnostics: DiagnosticIR[],
+  sourceFile: string,
+): void {
+  const extendsClause = heritageClauses.find(
+    (clause) => clause.token === ts.SyntaxKind.ExtendsKeyword,
+  );
+  if (!extendsClause) {
+    return;
+  }
+  const target = extendsClause.types[0]?.expression;
+  if (!target || isSupportedExtendsTarget(target)) {
+    return;
+  }
+  diagnostics.push({
+    level: "error",
+    code: "PIPELINE_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION",
+    message:
+      "class extends target must be identifier/member path or null in compiler mode",
+    source: {
+      file: sourceFile,
+    },
+  });
+}
+
+function isSupportedExtendsTarget(target: ts.Expression): boolean {
+  if (ts.isIdentifier(target)) {
+    return true;
+  }
+  if (target.kind === ts.SyntaxKind.NullKeyword) {
+    return true;
+  }
+  if (ts.isPropertyAccessExpression(target)) {
+    return isSupportedExtendsTarget(target.expression);
+  }
+  return false;
 }
 
 function collectTypedExports(
