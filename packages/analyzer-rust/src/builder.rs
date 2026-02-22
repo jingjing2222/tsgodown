@@ -23,6 +23,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     let plugin_defs = collect_plugin_defs(src);
     let route_object_defs = collect_route_object_defs(src);
     collect_conditional_route_diagnostics(src, &mut diagnostics, file);
+    collect_class_private_element_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -209,6 +210,45 @@ fn collect_conditional_route_diagnostics(
             if conditional_depth <= 0 {
                 conditional_depth = 0;
             }
+        }
+    }
+}
+
+fn collect_class_private_element_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    let mut class_depth: i32 = 0;
+
+    for line in src.lines() {
+        let trimmed = line.trim();
+        let starts_class = trimmed.contains("class ");
+        if starts_class {
+            class_depth = (class_depth + brace_delta(line)).max(1);
+        } else if class_depth > 0 {
+            class_depth += brace_delta(line);
+        }
+
+        if class_depth > 0
+            && trimmed.contains('#')
+            && trimmed
+                .chars()
+                .skip_while(|ch| *ch != '#')
+                .nth(1)
+                .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        {
+            diagnostics.push(diag(
+                "error",
+                "ANALYZER_UNSUPPORTED_CLASS_PRIVATE_ELEMENTS",
+                "class private elements are currently unsupported in compiler mode",
+                file,
+            ));
+            return;
+        }
+
+        if class_depth <= 0 {
+            class_depth = 0;
         }
     }
 }
