@@ -37,6 +37,7 @@ Current fixed sequence:
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 Roadmap drift reconciliation log: `docs/operations/ROADMAP_DRIFT_RECONCILIATION.md`.
+Roadmap ownership/approval policy: `docs/operations/ROADMAP_OWNERSHIP_AND_APPROVALS.md`.
 
 ## JS -> Go syntax coverage roadmap (non-backend-first)
 

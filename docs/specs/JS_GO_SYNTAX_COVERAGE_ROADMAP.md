@@ -13,7 +13,7 @@ Build `tsgodown` into a production-grade JS/TS artifact -> Go compiler that cove
 ### M0 — Source of truth and policy lock
 - [x] Align issue/docs/gates to one roadmap source
 - [x] Reconcile stale completion claims and add drift log
-- [ ] Define canonical ownership for roadmap updates and approvals
+- [x] Define canonical ownership for roadmap updates and approvals
 - [ ] Add script that verifies issue checklist count/sync against docs mirror
 - [ ] Add mandatory PR template section for syntax-capability evidence
 - [ ] Define exception process for host-bound non-target syntax/API
@@ -161,5 +161,5 @@ All other language-level syntax/semantics are roadmap implementation targets.
 
 ## Checklist summary
 - Total checklist items: 116
-- Completed now: 3
-- Remaining: 113
+- Completed now: 4
+- Remaining: 112
