@@ -142,8 +142,10 @@ Framework-agnostic simple CLI workspace sample is available at:
 
 - `examples/generic-simple-cli/src/index.ts`
 
-Official-style Hono workspace sample is available at:
+Compatibility-track framework samples (optional references, non-default) are available at:
 
+- `examples/COMPAT_TRACK.md`
+- `examples/fastify-scaffold-real/src/app.ts`
 - `examples/hono-scaffold-real/src/index.ts`
 
 ## CLI behavior

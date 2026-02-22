@@ -47,14 +47,30 @@ function readScripts(projectDirRel) {
   return raw.scripts ?? {};
 }
 
+function isCompatExample(projectDirRel) {
+  const packageJsonPath = path.join(repoRoot, projectDirRel, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return false;
+  const raw = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  return raw.tsgodownExampleTrack === "compat";
+}
+
 function main() {
-  const examples = listTrackedExamples();
+  const includeCompat = process.env.TSGODOWN_INCLUDE_COMPAT_EXAMPLES === "1";
+  const examples = listTrackedExamples().filter(
+    (projectDirRel) => includeCompat || !isCompatExample(projectDirRel),
+  );
 
   if (examples.length === 0) {
     console.log(
-      "[install-first] SKIP (no tracked examples with tsgodown.config.ts)",
+      "[install-first] SKIP (no tracked non-compat examples with tsgodown.config.ts)",
     );
     return;
+  }
+
+  if (!includeCompat) {
+    console.log(
+      "[install-first] NOTE: compat-track examples are excluded by default (set TSGODOWN_INCLUDE_COMPAT_EXAMPLES=1 to include).",
+    );
   }
 
   if (!fs.existsSync(rustLauncher)) {

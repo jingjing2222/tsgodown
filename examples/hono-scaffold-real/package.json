@@ -1,6 +1,7 @@
 {
   "name": "hono-scaffold-real",
   "version": "1.0.0",
+  "tsgodownExampleTrack": "compat",
   "private": true,
   "type": "module",
   "scripts": {
