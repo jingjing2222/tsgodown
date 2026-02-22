@@ -134,6 +134,49 @@ export default {{
     }
 }
 
+fn build_with_tsdown_error(ts_source: &str) -> String {
+    let project_dir = create_temp_project_dir();
+    let src_dir = project_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("temp src dir must be creatable");
+    fs::write(src_dir.join("index.ts"), ts_source).expect("fixture ts source must be writable");
+    fs::write(
+        project_dir.join("tsdown.config.ts"),
+        format!(
+            r#"
+export default {{
+  entry: {{ index: "{}" }},
+  outDir: "{}",
+  sourcemap: true,
+  dts: true,
+  format: ["esm"],
+}};
+"#,
+            src_dir.join("index.ts").display(),
+            project_dir.join("dist").display()
+        ),
+    )
+    .expect("tsdown config must be writable");
+
+    let output = Command::new("pnpm")
+        .arg("--dir")
+        .arg(repo_root())
+        .arg("--filter")
+        .arg("@tsgodown/tsdown-driver")
+        .arg("exec")
+        .arg("tsdown")
+        .arg("--config")
+        .arg(project_dir.join("tsdown.config.ts"))
+        .output()
+        .expect("tsdown command must be runnable");
+
+    assert!(!output.status.success(), "tsdown build unexpectedly succeeded");
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let combined = format!("{stdout}\n{stderr}");
+    fs::remove_dir_all(&project_dir).expect("temp project cleanup must succeed");
+    combined
+}
+
 #[test]
 fn detects_computed_static_member_from_tsdown_bundled_output() {
     let bundled = build_with_tsdown(
@@ -375,4 +418,18 @@ export const marker = 1;
         .map(|diag| diag.code.as_str())
         .collect::<Vec<_>>();
     assert!(!codes.contains(&"ANALYZER_DUPLICATE_PRAGMA"));
+}
+
+#[test]
+fn reports_arguments_not_allowed_error_from_tsdown_parser() {
+    let output = build_with_tsdown_error(
+        r#"
+export class BadField {
+  value = arguments;
+}
+"#,
+    );
+
+    assert!(output.contains("arguments"));
+    assert!(output.contains("not allowed in class field initializer"));
 }
