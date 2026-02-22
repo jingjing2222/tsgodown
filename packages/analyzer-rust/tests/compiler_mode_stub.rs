@@ -154,3 +154,41 @@ export class ProfileController {
         "computed class field names are unsupported in compiler mode"
     );
 }
+
+#[test]
+fn supports_simple_static_class_members() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class Cache {
+  static VERSION = 1;
+  static reset() {}
+}
+"#,
+    );
+
+    assert_eq!(ir.modules[0].exports, vec!["Cache".to_string()]);
+    assert!(ir.diagnostics.is_empty());
+}
+
+#[test]
+fn emits_diagnostic_for_computed_static_class_members() {
+    let ir = analyze_compiler_entry(
+        "src/index.ts",
+        r#"
+export class Cache {
+  static [nameExpr] = 1;
+}
+"#,
+    );
+
+    assert_eq!(ir.diagnostics.len(), 1);
+    assert_eq!(
+        ir.diagnostics[0].code,
+        "ANALYZER_UNSUPPORTED_STATIC_CLASS_MEMBER"
+    );
+    assert_eq!(
+        ir.diagnostics[0].message,
+        "static class member name must be a simple identifier in compiler mode"
+    );
+}

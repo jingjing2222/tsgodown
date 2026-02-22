@@ -26,6 +26,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     collect_class_private_element_diagnostics(src, &mut diagnostics, file);
     collect_class_extends_diagnostics(src, &mut diagnostics, file);
     collect_class_public_field_diagnostics(src, &mut diagnostics, file);
+    collect_class_static_member_diagnostics(src, &mut diagnostics, file);
 
     let mut routes = Vec::new();
     let mut referenced_handlers = BTreeSet::new();
@@ -352,6 +353,54 @@ fn collect_class_public_field_diagnostics(
             class_depth = 0;
         }
     }
+}
+
+fn collect_class_static_member_diagnostics(
+    src: &str,
+    diagnostics: &mut Vec<DiagnosticIR>,
+    file: &str,
+) {
+    let mut class_depth: i32 = 0;
+
+    for line in src.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("class ") {
+            class_depth = (class_depth + brace_delta(line)).max(1);
+            continue;
+        }
+        if class_depth <= 0 {
+            continue;
+        }
+
+        if let Some(after_static) = trimmed.strip_prefix("static ") {
+            if !after_static.starts_with('{') && !is_supported_static_member(after_static) {
+                diagnostics.push(diag(
+                    "error",
+                    "ANALYZER_UNSUPPORTED_STATIC_CLASS_MEMBER",
+                    "static class member name must be a simple identifier in compiler mode",
+                    file,
+                ));
+                return;
+            }
+        }
+
+        class_depth += brace_delta(line);
+        if class_depth <= 0 {
+            class_depth = 0;
+        }
+    }
+}
+
+fn is_supported_static_member(member_src: &str) -> bool {
+    let src = member_src.trim_start();
+    let src = src
+        .strip_prefix("async ")
+        .map_or(src, |rest| rest.trim_start());
+    let Some(name) = take_identifier(src) else {
+        return false;
+    };
+    let tail = src[name.len()..].trim_start();
+    tail.starts_with('(') || tail.starts_with('=') || tail.starts_with(';')
 }
 
 fn has_route_invocation(line: &str) -> bool {
