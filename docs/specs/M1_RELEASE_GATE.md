@@ -2,7 +2,8 @@
 
 Milestone 1 is release-gated by a **single canonical verification path**:
 
-- Test name: `M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)` (current reference fixture name)
+- Canonical gate intent: `CLI build reference fixture -> dist-go/main.go -> go build (if available)`
+- Current test id: `M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)`
 - Location: `packages/cli/test/commands.e2e.test.ts`
 - Runner: `pnpm run gate:m1`
 - Script: `scripts/m1-release-gate.sh`
@@ -26,7 +27,7 @@ node --import tsx --test-name-pattern "^M1 release gate:" --test test/commands.e
 
 ## What this gate verifies
 
-1. A tracked reference fixture can be built through the CLI + Rust adapter path (currently `examples/fastify-scaffold-real`).
+1. A tracked reference fixture can be built through the CLI + Rust adapter path (current fixture: `examples/fastify-scaffold-real`).
 2. `dist-go/main.go` is emitted.
 3. Emitted Go scaffold shape is valid (`package main`, `func main`, health route scaffold).
 4. If the Go toolchain exists on the machine, `go build ./...` succeeds.
