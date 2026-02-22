@@ -5,6 +5,6 @@ modules:
 routes:
   - method=GET path=/health handler_ref=health
 handlers:
-  - id=health async=false params=0 semantics=mode=return req=<none> res=<none> status=false body=false headers=false json=false
+  - id=health async=false params=0 semantics=none
 diagnostics:
   - level=error code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH message=route path must be a string literal source=template-literal-paths.ts

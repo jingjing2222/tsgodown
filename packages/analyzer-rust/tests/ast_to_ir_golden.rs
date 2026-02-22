@@ -1,6 +1,8 @@
 use std::{fs, path::PathBuf};
 
 use analyzer_rust::{analyze_compiler_entry, ProgramIR};
+#[path = "support/tsdown_fixture.rs"]
+mod tsdown_fixture;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -93,8 +95,8 @@ fn render_ir(ir: &ProgramIR) -> String {
 }
 
 fn assert_fixture(fixture_name: &str, golden_name: &str) {
-    let source = fs::read_to_string(fixture_path(fixture_name)).unwrap();
-    let ir = analyze_compiler_entry(fixture_name, &source);
+    let bundled = tsdown_fixture::build_fixture_path(&fixture_path(fixture_name));
+    let ir = analyze_compiler_entry(fixture_name, &bundled);
     let actual = render_ir(&ir);
     let expected = fs::read_to_string(fixture_path(golden_name)).unwrap();
     assert_eq!(actual, expected, "golden drift for fixture={fixture_name}");

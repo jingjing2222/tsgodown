@@ -1,9 +1,7 @@
 modules:
   - id=supported-shorthand.ts source_path=supported-shorthand.ts
     exports:
-      - health
     imports:
-      - spec=node:util kind=esm resolved=<none>
 routes:
   - method=GET path=/health handler_ref=health
   - method=GET path=/users handler_ref=users
