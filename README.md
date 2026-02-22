@@ -36,6 +36,7 @@ Current fixed sequence:
 - `M5`: production readiness and release discipline
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
+Roadmap drift reconciliation log: `docs/operations/ROADMAP_DRIFT_RECONCILIATION.md`.
 
 ## Current route-extraction grammar (reference boundary)
 
