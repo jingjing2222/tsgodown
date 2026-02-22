@@ -266,6 +266,33 @@ export class ApiController extends BaseController {
 }
 
 #[test]
+fn supports_class_extends_member_path_from_tsdown_artifacts() {
+    let bundled = build_with_tsdown(
+        r#"
+class BaseController {}
+const Framework = { BaseController };
+export class ApiController extends Framework.BaseController {
+  constructor() {
+    super();
+  }
+}
+"#,
+    );
+
+    assert!(!bundled.dts_source.trim().is_empty());
+    assert!(!bundled.sourcemap_source.trim().is_empty());
+    let ir = analyze_compiler_entry("dist/index.mjs", &bundled.js_source);
+    assert!(
+        !ir.diagnostics
+            .iter()
+            .any(|diag| diag.code == "ANALYZER_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION"),
+        "unexpected extends diagnostics: {:?}\njs:\n{}",
+        ir.diagnostics,
+        bundled.js_source
+    );
+}
+
+#[test]
 fn supports_class_declaration_from_tsdown_js_dts_sourcemap_artifacts() {
     let bundled = build_with_tsdown(
         r#"

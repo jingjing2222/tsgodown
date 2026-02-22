@@ -317,11 +317,11 @@ fn collect_class_extends_diagnostics(src: &str, diagnostics: &mut Vec<Diagnostic
             continue;
         };
 
-        if parse_simple_extends_target(after_extends).is_none() {
+        if parse_supported_extends_target(after_extends).is_none() {
             diagnostics.push(diag(
                 "error",
                 "ANALYZER_UNSUPPORTED_CLASS_EXTENDS_EXPRESSION",
-                "class extends target must be a simple identifier in compiler mode",
+                "class extends target must be identifier/member path or null in compiler mode",
                 file,
             ));
             return;
@@ -329,17 +329,43 @@ fn collect_class_extends_diagnostics(src: &str, diagnostics: &mut Vec<Diagnostic
     }
 }
 
-fn parse_simple_extends_target(input: &str) -> Option<&str> {
+fn parse_supported_extends_target(input: &str) -> Option<&str> {
     let target = input.trim_start();
-    let id = take_identifier(target)?;
-    let tail = target[id.len()..].trim_start();
+    let mut consumed = 0usize;
+    let mut cursor = target;
+
+    if cursor.starts_with("null") {
+        consumed = "null".len();
+        cursor = &target[consumed..];
+    } else {
+        let first = take_identifier(cursor)?;
+        consumed += first.len();
+        cursor = &target[consumed..];
+
+        loop {
+            let with_dot = cursor.trim_start();
+            let ws = cursor.len() - with_dot.len();
+            if !with_dot.starts_with('.') {
+                consumed += ws;
+                cursor = with_dot;
+                break;
+            }
+
+            let after_dot = &with_dot[1..];
+            let member = take_identifier(after_dot)?;
+            consumed += ws + 1 + member.len();
+            cursor = &target[consumed..];
+        }
+    }
+
+    let tail = cursor.trim_start();
     if tail.is_empty()
         || tail.starts_with('{')
         || tail.starts_with("implements ")
         || tail.starts_with("/*")
         || tail.starts_with("//")
     {
-        Some(id)
+        Some(&target[..consumed])
     } else {
         None
     }
