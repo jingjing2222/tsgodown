@@ -245,6 +245,12 @@ function collectTypedExports(
       if (defaultExportMatch) {
         exportedNames.add("default");
       }
+      const defaultIdentifierExportMatch = trimmed.match(
+        /^export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/,
+      );
+      if (defaultIdentifierExportMatch?.[1]) {
+        exportedNames.add("default");
+      }
 
       const match = trimmed.match(
         /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)/,

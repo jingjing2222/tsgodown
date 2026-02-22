@@ -188,6 +188,69 @@ async function assertGoHealthRuntimeReady(goDir: string) {
   }
 }
 
+function buildTsdownArtifactsForConstructorFixture(cwd: string): {
+  bundleFile: string;
+  bundleMapFile: string;
+  dtsFile: string;
+} {
+  const workspaceRoot = path.resolve(process.cwd(), "..", "..");
+  const tsdownBin = path.join(workspaceRoot, "node_modules", ".bin", "tsdown");
+  fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, "src", "index.ts"),
+    [
+      "export default class HealthController {",
+      "  constructor(private readonly service: string) {",
+      "    void this.service;",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(cwd, "tsdown.config.ts"),
+    [
+      "export default {",
+      "  entry: { index: 'src/index.ts' },",
+      "  outDir: 'dist',",
+      "  format: ['esm'],",
+      "  dts: true,",
+      "  sourcemap: true,",
+      "  clean: true,",
+      "  fixedExtension: false,",
+      "  outExtensions: () => ({ js: '.mjs', dts: '.d.ts' }),",
+      "};",
+      "",
+    ].join("\n"),
+  );
+  const build = spawnSync(tsdownBin, ["--config", "tsdown.config.ts"], {
+    cwd,
+    encoding: "utf8",
+  });
+  assert.equal(build.status, 0, build.stderr || build.stdout);
+
+  const distDir = path.join(cwd, "dist");
+  const files = fs.readdirSync(distDir);
+  const bundleFile = files.find(
+    (file) => file.startsWith("index.") && (file.endsWith(".mjs") || file.endsWith(".js")),
+  );
+  assert.ok(bundleFile, `missing JS bundle in dist: ${files.join(", ")}`);
+  const bundleMapFile = `${bundleFile}.map`;
+  assert.equal(
+    fs.existsSync(path.join(distDir, bundleMapFile)),
+    true,
+    `missing sourcemap ${bundleMapFile} in dist`,
+  );
+  const dtsFile = files.find((file) => file === "index.d.ts");
+  assert.ok(dtsFile, `missing d.ts in dist: ${files.join(", ")}`);
+
+  return {
+    bundleFile: `dist/${bundleFile}`,
+    bundleMapFile: `dist/${bundleMapFile}`,
+    dtsFile: `dist/${dtsFile}`,
+  };
+}
+
 test("M1 regression [SUPPORTED]: runPipeline scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
   const cwd = setupProject();
   const logs: string[] = [];
@@ -252,6 +315,50 @@ test("M1 regression [SUPPORTED]: runPipeline scaffold TS -> dist-go/main.go -> g
       process.env.TSGODOWN_RUST_ENGINE_BIN = prevRustBin;
     }
   }
+});
+
+test("M4 regression [SUPPORTED]: tsdown constructor artifacts -> AST IR export(default) -> Go build/run", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-constructor-tsdown-"),
+  );
+  tempDirs.push(cwd);
+
+  const built = buildTsdownArtifactsForConstructorFixture(cwd);
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "constructor-ast-go-001",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: built.bundleFile,
+          map: built.bundleMapFile,
+          format: "esm",
+          exports: [],
+        },
+      ],
+      types: [built.dtsFile],
+      tsconfigPath: "tsconfig.json",
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.ok(ir.modules.length > 0);
+  assert.ok(
+    ir.modules[0]?.exports.includes("default"),
+    `missing default export in AST/d.ts merged IR exports: ${JSON.stringify(ir.modules[0]?.exports ?? [])}`,
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
 });
 
 test("M1 regression: real JS+d.ts+sourcemap artifact provenance (file:// sourceRoot) -> typed IR -> Go compile smoke", () => {
