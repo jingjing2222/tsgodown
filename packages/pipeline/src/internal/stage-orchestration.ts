@@ -1,5 +1,5 @@
-import http from "node:http";
 import { spawn, spawnSync } from "node:child_process";
+import http from "node:http";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -81,11 +81,11 @@ export async function orchestratePipelineStages({
 
       stage = "EMIT_GO";
       const goOutDir = path.join(cwd, "dist-go");
-      emitGoProject(sourceMappedIr.modules.length > 0 ? sourceMappedIr : ir, goOutDir);
-      emitStage(
-        "EMIT_GO",
-        `[EMIT_GO] wrote Go scaffold to ${goOutDir}`,
+      emitGoProject(
+        sourceMappedIr.modules.length > 0 ? sourceMappedIr : ir,
+        goOutDir,
       );
+      emitStage("EMIT_GO", `[EMIT_GO] wrote Go scaffold to ${goOutDir}`);
       if (verifyGoRunnable) {
         await verifyCompiledGoRuntime(goOutDir, emitStage);
       }
@@ -119,7 +119,8 @@ async function verifyCompiledGoRuntime(
     return;
   }
 
-  const binaryName = process.platform === "win32" ? "tsgodown-local.exe" : "tsgodown-local";
+  const binaryName =
+    process.platform === "win32" ? "tsgodown-local.exe" : "tsgodown-local";
   const binaryPath = path.join(goOutDir, binaryName);
 
   const build = spawnSync("go", ["build", "-o", binaryName, "."], {
@@ -145,7 +146,10 @@ async function verifyCompiledGoRuntime(
 
   try {
     await waitForHealthRuntime(port);
-    emitStage("EMIT_GO", `[EMIT_GO] go runtime health check passed on :${port}`);
+    emitStage(
+      "EMIT_GO",
+      `[EMIT_GO] go runtime health check passed on :${port}`,
+    );
   } finally {
     if (!runtime.killed) {
       runtime.kill("SIGTERM");
@@ -167,7 +171,10 @@ async function waitForHealthRuntime(port: string): Promise<void> {
   throw new Error("[pipeline] go runtime health check timed out");
 }
 
-function requestStatusCode(port: string, pathname: string): Promise<number | null> {
+function requestStatusCode(
+  port: string,
+  pathname: string,
+): Promise<number | null> {
   return new Promise((resolve) => {
     const req = http.get(
       {

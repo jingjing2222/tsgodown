@@ -199,10 +199,7 @@ function buildTsdownArtifactsForFixture(
   const workspaceRoot = path.resolve(process.cwd(), "..", "..");
   const tsdownBin = path.join(workspaceRoot, "node_modules", ".bin", "tsdown");
   fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
-  fs.writeFileSync(
-    path.join(cwd, "src", "index.ts"),
-    `${sourceCode.trim()}\n`,
-  );
+  fs.writeFileSync(path.join(cwd, "src", "index.ts"), `${sourceCode.trim()}\n`);
   fs.writeFileSync(
     path.join(cwd, "tsdown.config.ts"),
     [
@@ -228,7 +225,9 @@ function buildTsdownArtifactsForFixture(
   const distDir = path.join(cwd, "dist");
   const files = fs.readdirSync(distDir);
   const bundleFile = files.find(
-    (file) => file.startsWith("index.") && (file.endsWith(".mjs") || file.endsWith(".js")),
+    (file) =>
+      file.startsWith("index.") &&
+      (file.endsWith(".mjs") || file.endsWith(".js")),
   );
   assert.ok(bundleFile, `missing JS bundle in dist: ${files.join(", ")}`);
   const bundleMapFile = `${bundleFile}.map`;

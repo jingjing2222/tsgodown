@@ -83,7 +83,9 @@ test("buildProgramIrFromArtifacts ingests d.ts and sourcemap into deterministic 
 });
 
 test("buildProgramIrFromArtifacts derives exports from JS AST when types metadata is missing", () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-artifact-ir-ast-"));
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-artifact-ir-ast-"),
+  );
   fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
 
   fs.writeFileSync(
@@ -132,7 +134,9 @@ test("buildProgramIrFromArtifacts derives exports from JS AST when types metadat
 
   assert.deepEqual(ir.modules[0]?.exports, ["default", "health"]);
   assert.equal(
-    ir.diagnostics.some((diag) => diag.code === "PIPELINE_MISSING_TYPES_METADATA"),
+    ir.diagnostics.some(
+      (diag) => diag.code === "PIPELINE_MISSING_TYPES_METADATA",
+    ),
     false,
   );
 });

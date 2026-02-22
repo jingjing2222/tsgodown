@@ -36,7 +36,11 @@ export function buildProgramIrFromArtifacts(
   const moduleEntries =
     sourceMappedEntries.length > 0 ? sourceMappedEntries : manifestEntries;
 
-  const astExports = collectAstExportsFromBundles(buildResult, cwd, diagnostics);
+  const astExports = collectAstExportsFromBundles(
+    buildResult,
+    cwd,
+    diagnostics,
+  );
   const hasTypeMetadata = (buildResult.manifest.types ?? []).some((typePath) =>
     typePath?.trim(),
   );
@@ -194,7 +198,11 @@ function collectAstExportsFromBundles(
         if (statement.name?.text) {
           exportedNames.add(statement.name.text);
         }
-        if (statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) {
+        if (
+          statement.modifiers?.some(
+            (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
+          )
+        ) {
           exportedNames.add("default");
         }
         continue;
