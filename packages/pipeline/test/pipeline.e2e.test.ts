@@ -8,6 +8,7 @@ import { after, test } from "node:test";
 
 import { emitGoProject } from "@tsgodown/emitter-go";
 import type { RunBuildResult } from "@tsgodown/tsdown-driver";
+import ts from "typescript";
 
 import { runPipeline } from "../src/index.ts";
 import { buildProgramIrFromArtifacts } from "../src/internal/artifact-to-ir.ts";
@@ -244,6 +245,41 @@ function buildTsdownArtifactsForFixture(
     bundleMapFile: `dist/${bundleMapFile}`,
     dtsFile: `dist/${dtsFile}`,
   };
+}
+
+function assertBundleContainsDeprecatedEscapeCall(
+  cwd: string,
+  bundleFile: string,
+): void {
+  const bundlePath = path.join(cwd, bundleFile);
+  const sourceText = fs.readFileSync(bundlePath, "utf8");
+  const sourceFile = ts.createSourceFile(
+    bundlePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+
+  let found = false;
+  const walk = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "escape"
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(sourceFile);
+
+  assert.equal(
+    found,
+    true,
+    "expected deprecated escape() call to exist in built JS artifact AST",
+  );
 }
 
 test("M1 regression [SUPPORTED]: runPipeline scaffold TS -> dist-go/main.go -> go build (if available)", async () => {
@@ -677,6 +713,58 @@ export class StaticBlockController {
   assert.ok(
     ir.modules[0]?.exports.includes("StaticBlockController"),
     `missing static-blocks class export in AST/d.ts merged IR exports: ${JSON.stringify(ir.modules[0]?.exports ?? [])}`,
+  );
+
+  const goOutDir = path.join(cwd, "dist-go");
+  emitGoProject(ir, goOutDir);
+  const goMain = fs.readFileSync(path.join(goOutDir, "main.go"), "utf8");
+  assertGoMainScaffold(goMain);
+  assertGoBuildSuccessIfToolchainAvailable(goOutDir);
+  await assertGoHealthRuntimeReady(goOutDir);
+});
+
+test("M4 regression [SUPPORTED]: tsdown deprecated features artifacts -> JS AST witness -> Go build/run", async () => {
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tsgodown-pipeline-deprecated-tsdown-"),
+  );
+  tempDirs.push(cwd);
+
+  const built = buildTsdownArtifactsForFixture(
+    cwd,
+    `
+export function deprecatedFeature() {
+  return escape("a b");
+}
+`,
+  );
+
+  assertBundleContainsDeprecatedEscapeCall(cwd, built.bundleFile);
+
+  const buildResult: RunBuildResult = {
+    mode: "rust-engine-adapter",
+    manifestPath: "artifacts/manifests/manifest.json",
+    manifestIndexPath: "artifacts/manifests/index.json",
+    manifest: {
+      buildId: "deprecated-ast-go-001",
+      entries: ["src/index.ts"],
+      bundles: [
+        {
+          file: built.bundleFile,
+          map: built.bundleMapFile,
+          format: "esm",
+          exports: [],
+        },
+      ],
+      types: [built.dtsFile],
+      tsconfigPath: "tsconfig.json",
+    },
+    diagnostics: [],
+  };
+
+  const ir = buildProgramIrFromArtifacts(buildResult, "src/index.ts", { cwd });
+  assert.ok(
+    ir.modules[0]?.exports.includes("deprecatedFeature"),
+    `missing deprecated-feature export in AST/d.ts merged IR exports: ${JSON.stringify(ir.modules[0]?.exports ?? [])}`,
   );
 
   const goOutDir = path.join(cwd, "dist-go");
