@@ -124,7 +124,7 @@ export function buildProgramIrFromArtifacts(
 function collectAstExportsFromBundles(
   buildResult: RunBuildResult,
   cwd: string,
-  _diagnostics: DiagnosticIR[],
+  diagnostics: DiagnosticIR[],
 ): string[] {
   const exportedNames = new Set<string>();
 
