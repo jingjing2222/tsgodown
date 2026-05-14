@@ -361,6 +361,99 @@ test("renders probe-style top-level console JSON output", () => {
   });
 });
 
+test("renders imported function and namespace calls through Go helpers", () => {
+  const source = renderExecutableIrGoProgram(
+    {
+      stmts: [
+        {
+          kind: "var-decl",
+          name: "parsed",
+          init: {
+            kind: "call",
+            callee: { kind: "ident", name: "parser" },
+            args: [
+              {
+                kind: "array",
+                items: [
+                  { kind: "value", value: { kind: "string", value: "--name" } },
+                  { kind: "value", value: { kind: "string", value: "kim" } },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          kind: "var-decl",
+          name: "query",
+          init: {
+            kind: "call",
+            callee: {
+              kind: "member",
+              object: { kind: "ident", name: "qs" },
+              property: "parse",
+            },
+            args: [
+              {
+                kind: "value",
+                value: { kind: "string", value: "tag=a&tag=b" },
+              },
+            ],
+          },
+        },
+        {
+          kind: "return",
+          value: {
+            kind: "object",
+            props: [
+              {
+                key: "package",
+                value: {
+                  kind: "value",
+                  value: { kind: "string", value: "imports" },
+                },
+              },
+              {
+                key: "probes",
+                value: {
+                  kind: "object",
+                  props: [
+                    { key: "parsed", value: { kind: "ident", name: "parsed" } },
+                    { key: "query", value: { kind: "ident", name: "query" } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      externalFunctions: ["parser"],
+      externalNamespaces: { qs: ["parse"] },
+      helperSource: [
+        "func js_parser(argv any) any {",
+        '\treturn map[string]any{"name": "kim"}',
+        "}",
+        "",
+        "func js_qs_parse(raw any) any {",
+        '\treturn map[string]any{"tag": []any{"a", "b"}}',
+        "}",
+      ].join("\n"),
+    },
+  );
+
+  assert.doesNotMatch(source, /os\/exec|exec\.Command|node --/);
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), {
+    package: "imports",
+    probes: {
+      parsed: { name: "kim" },
+      query: { tag: ["a", "b"] },
+    },
+  });
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {

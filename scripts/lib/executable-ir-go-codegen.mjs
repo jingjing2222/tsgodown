@@ -29,13 +29,22 @@ const GO_KEYWORDS = new Set([
 export function renderExecutableIrGoProgram(ir, options = {}) {
   const packageName = options.packageName ?? "main";
   const stmts = Array.isArray(ir?.stmts) ? ir.stmts : [];
+  const externalFunctions = new Set(options.externalFunctions ?? []);
+  const externalNamespaces = normalizeExternalNamespaces(
+    options.externalNamespaces ?? {},
+  );
   const mainFn = stmts.find(
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
   const functionDecls = stmts.filter((stmt) => stmt?.kind === "function-decl");
   const ctx = {
     declared: new Set(),
-    functions: new Set(functionDecls.map((stmt) => stmt.name)),
+    functions: new Set([
+      ...functionDecls.map((stmt) => stmt.name),
+      ...externalFunctions,
+    ]),
+    externalFunctions,
+    externalNamespaces,
   };
   const body = renderStmtBlock(
     mainFn
@@ -78,6 +87,8 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "}",
     helperFunctions ? "" : null,
     helperFunctions,
+    options.helperSource ? "" : null,
+    options.helperSource ?? null,
     "",
     "func jsTemplate(quasis []string, exprs []any) string {",
     '\tout := ""',
@@ -149,6 +160,8 @@ function renderFunctionDecl(stmt, parentCtx) {
   const ctx = {
     declared: new Set(params),
     functions: parentCtx.functions,
+    externalFunctions: parentCtx.externalFunctions,
+    externalNamespaces: parentCtx.externalNamespaces,
   };
   const renderedParams = params.map((param) => `${param} any`).join(", ");
   return [
@@ -327,6 +340,15 @@ function renderBuiltinCall(expr, ctx) {
   if (
     expr.callee?.kind === "member" &&
     expr.callee.object?.kind === "ident" &&
+    ctx.externalNamespaces
+      .get(expr.callee.object.name)
+      ?.has(expr.callee.property)
+  ) {
+    return `js_${goIdent(expr.callee.object.name)}_${goIdent(expr.callee.property)}(${args})`;
+  }
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "ident" &&
     expr.callee.object.name === "console" &&
     expr.callee.property === "log"
   ) {
@@ -341,6 +363,15 @@ function renderBuiltinCall(expr, ctx) {
     return `jsJSONStringify(${args})`;
   }
   return null;
+}
+
+function normalizeExternalNamespaces(namespaces) {
+  return new Map(
+    Object.entries(namespaces).map(([name, members]) => [
+      name,
+      new Set(members),
+    ]),
+  );
 }
 
 function renderValue(value) {
