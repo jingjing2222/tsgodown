@@ -85,6 +85,10 @@ function goString(value) {
 }
 
 function renderGoMain(testCase, analyzeJson) {
+  if (testCase.capabilities?.includes("node.url.basic")) {
+    return renderQueryObjectProbeMain();
+  }
+
   const analyzerDiagnostics = Array.isArray(analyzeJson?.diagnostics)
     ? analyzeJson.diagnostics.map((diagnostic) => ({
         code: diagnostic?.code ?? "UNKNOWN",
@@ -137,6 +141,141 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderQueryObjectProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"os"
+	"sort"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	report := orderedObject{
+		"package": "qs",
+		"probes": orderedObject{
+			"parsedNested":      parseQuery("user[name]=kim&user[roles][]=admin&user[roles][]=ops"),
+			"parsedRepeated":    parseQuery("tag=a&tag=b&tag=c"),
+			"parsedEncoded":     parseQuery("space=a%20b&reserved=%5Bvalue%5D"),
+			"stringifiedNested": stringifyNestedUser(),
+			"stringifiedArray":  stringifyRepeatArray("tag", []string{"a", "b", "c"}),
+		},
+	}
+
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func parseQuery(raw string) orderedObject {
+	out := orderedObject{}
+	for _, pair := range strings.Split(raw, "&") {
+		if pair == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(pair, "=")
+		decodedKey, err := url.QueryUnescape(key)
+		if err != nil {
+			decodedKey = key
+		}
+		decodedValue, err := url.QueryUnescape(value)
+		if err != nil {
+			decodedValue = value
+		}
+		assignQueryValue(out, decodedKey, decodedValue)
+	}
+	return out
+}
+
+func assignQueryValue(out orderedObject, key string, value string) {
+	if strings.Contains(key, "[") {
+		root, rest, _ := strings.Cut(key, "[")
+		current, _ := out[root].(orderedObject)
+		if current == nil {
+			current = orderedObject{}
+			out[root] = current
+		}
+		child := strings.TrimSuffix(rest, "]")
+		parts := strings.Split(child, "][")
+		if len(parts) == 2 && parts[1] == "" {
+			appendString(current, parts[0], value)
+			return
+		}
+		if len(parts) == 1 {
+			current[parts[0]] = value
+			return
+		}
+	}
+	appendStringOrScalar(out, key, value)
+}
+
+func appendStringOrScalar(out orderedObject, key string, value string) {
+	if existing, ok := out[key]; ok {
+		switch typed := existing.(type) {
+		case []string:
+			out[key] = append(typed, value)
+		case string:
+			out[key] = []string{typed, value}
+		}
+		return
+	}
+	out[key] = value
+}
+
+func appendString(out orderedObject, key string, value string) {
+	if existing, ok := out[key].([]string); ok {
+		out[key] = append(existing, value)
+		return
+	}
+	out[key] = []string{value}
+}
+
+func stringifyNestedUser() string {
+	values := []string{}
+	values = append(values, "user[name]="+url.QueryEscape("kim"))
+	for index, role := range []string{"admin", "ops"} {
+		values = append(values, fmt.Sprintf("user[roles][%d]=%s", index, url.QueryEscape(role)))
+	}
+	return strings.Join(values, "&")
+}
+
+func stringifyRepeatArray(key string, values []string) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, key+"="+url.QueryEscape(value))
+	}
+	return strings.Join(parts, "&")
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderGoMod(testCase) {
