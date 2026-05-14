@@ -39,13 +39,16 @@ function fail(message, details) {
 }
 
 function ensureEngineCore() {
-  if (fs.existsSync(engineCoreBin)) {
+  if (process.env.TSGODOWN_ENGINE_CORE_BIN && fs.existsSync(engineCoreBin)) {
     return;
   }
 
   const build = run("cargo", ["build", "-p", "engine-core"]);
   if (build.status !== 0) {
     fail("failed to build engine-core", build.stderr || build.stdout);
+  }
+  if (!fs.existsSync(engineCoreBin)) {
+    fail(`engine-core binary was not produced at ${engineCoreBin}`);
   }
 }
 

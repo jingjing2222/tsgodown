@@ -127,7 +127,7 @@ fn collect_statements(src: &str) -> Vec<&str> {
 fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) {
     for line in src.lines() {
         let trimmed = line.trim();
-        if trimmed.contains("import(") {
+        if trimmed.contains("import(") && !has_supported_static_builtin_dynamic_import(trimmed) {
             diagnostics.push(diag(
                 "error",
                 "DYNAMIC_IMPORT_DETECTED",
@@ -136,6 +136,39 @@ fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, fi
             ));
         }
     }
+}
+
+fn has_supported_static_builtin_dynamic_import(line: &str) -> bool {
+    let Some(start) = line.find("import(") else {
+        return false;
+    };
+    let args = line[start + "import(".len()..].trim_start();
+    let Some(quote) = args.chars().next() else {
+        return false;
+    };
+    if quote != '"' && quote != '\'' {
+        return false;
+    }
+
+    let mut escaped = false;
+    let mut spec = String::new();
+    for ch in args.chars().skip(1) {
+        if escaped {
+            spec.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            return spec.starts_with("node:");
+        }
+        spec.push(ch);
+    }
+
+    false
 }
 
 fn collect_conditional_route_diagnostics(

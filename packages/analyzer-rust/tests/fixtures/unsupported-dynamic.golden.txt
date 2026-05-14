@@ -2,6 +2,7 @@ modules:
   - id=unsupported-dynamic.ts source_path=unsupported-dynamic.ts
     exports:
     imports:
+      - spec=./lazy kind=dynamic resolved=<none>
 routes:
 handlers:
 diagnostics:

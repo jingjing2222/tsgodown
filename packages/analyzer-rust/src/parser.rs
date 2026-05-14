@@ -244,6 +244,14 @@ fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
         });
         return;
     }
+    if let Some(spec) = dynamic_import_spec(expr) {
+        imports.push(ImportIR {
+            spec,
+            kind: "dynamic".to_string(),
+            resolved: None,
+        });
+        return;
+    }
 
     match expr {
         Expr::Object(object) => {
@@ -263,9 +271,15 @@ fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
             }
         }
         Expr::Call(call) => {
+            if let Callee::Expr(callee) = &call.callee {
+                collect_cjs_imports_from_expr(imports, callee);
+            }
             for arg in &call.args {
                 collect_cjs_imports_from_expr(imports, &arg.expr);
             }
+        }
+        Expr::Member(member) => {
+            collect_cjs_imports_from_expr(imports, &member.obj);
         }
         Expr::Assign(assign) => {
             collect_cjs_imports_from_expr(imports, &assign.right);
@@ -284,6 +298,20 @@ fn require_spec(expr: &Expr) -> Option<String> {
     if !callee.is_ident_ref_to("require") {
         return None;
     }
+    let first_arg = call.args.first()?;
+    let Expr::Lit(Lit::Str(spec)) = &*first_arg.expr else {
+        return None;
+    };
+    Some(spec.value.to_string_lossy().to_string())
+}
+
+fn dynamic_import_spec(expr: &Expr) -> Option<String> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let Callee::Import(_) = &call.callee else {
+        return None;
+    };
     let first_arg = call.args.first()?;
     let Expr::Lit(Lit::Str(spec)) = &*first_arg.expr else {
         return None;

@@ -17,7 +17,7 @@ fn vendored_node_corpus_relative_module_graphs_are_deterministic() {
             0,
         ),
         ("js-yaml", "packages/js-yaml/dist/js-yaml.mjs", 1, 0),
-        ("lru-cache", "packages/lru-cache/dist/esm/index.js", 3, 1),
+        ("lru-cache", "packages/lru-cache/dist/esm/index.js", 3, 0),
         ("uuid", "packages/uuid/dist-node/index.js", 21, 0),
         ("fs-extra", "packages/fs-extra/lib/index.js", 28, 0),
         ("execa", "packages/execa/index.js", 106, 0),

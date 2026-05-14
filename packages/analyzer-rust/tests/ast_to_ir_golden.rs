@@ -174,3 +174,21 @@ if (map.size > 1) {
         "Map.delete(string) must not be mistaken for DELETE route registration"
     );
 }
+
+#[test]
+fn static_builtin_dynamic_import_is_tracked_without_unsupported_diagnostic() {
+    let source = r#"
+import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {});
+"#;
+    let ir = analyze_compiler_entry("static-builtin-dynamic-import.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "DYNAMIC_IMPORT_DETECTED"),
+        "static node: builtin dynamic import should not block corpus graph analysis"
+    );
+    assert_eq!(ir.modules[0].imports.len(), 1);
+    assert_eq!(ir.modules[0].imports[0].spec, "node:diagnostics_channel");
+    assert_eq!(ir.modules[0].imports[0].kind, "dynamic");
+}
