@@ -113,6 +113,13 @@ function renderGoMain(testCase, analyzeJson) {
     return renderMinimatchProbeMain();
   }
   if (
+    testCase.capabilities?.includes("language.regex") &&
+    testCase.capabilities?.includes("cli.process") &&
+    testCase.capabilities?.includes("module.cjs")
+  ) {
+    return renderSemverProbeMain();
+  }
+  if (
     testCase.capabilities?.includes("language.parser") &&
     testCase.capabilities?.includes("language.exceptions")
   ) {
@@ -181,6 +188,198 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderSemverProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+type version struct {
+	major int
+	minor int
+	patch int
+	pre   []string
+	raw   string
+	ok    bool
+}
+
+var semverRe = regexp.MustCompile("^([0-9]+)\\.([0-9]+)\\.([0-9]+)(?:-([0-9A-Za-z.-]+))?$")
+
+func main() {
+	versions := []string{"1.2.3", "1.2.3-beta.2", "2.0.0", "1.10.0", "bad"}
+	valid := make([][]any, 0, len(versions))
+	for _, value := range versions {
+		valid = append(valid, []any{value, validVersion(value)})
+	}
+
+	input := []string{"1.2.3", "1.3.0", "2.0.0"}
+	filtered := []string{}
+	for _, value := range input {
+		if satisfies(value, "^1.2.3") {
+			filtered = append(filtered, value)
+		}
+	}
+
+	report := orderedObject{
+		"package": "semver",
+		"probes": orderedObject{
+			"valid":             valid,
+			"comparePrerelease": compare("1.2.3-beta.2", "1.2.3"),
+			"ranges": [][]any{
+				{"1.4.0", "^1.2.3", satisfies("1.4.0", "^1.2.3")},
+				{"2.0.0", "^1.2.3", satisfies("2.0.0", "^1.2.3")},
+				{"1.2.9", "~1.2.3", satisfies("1.2.9", "~1.2.3")},
+				{"1.3.0", "~1.2.3", satisfies("1.3.0", "~1.2.3")},
+				{"1.5.0", ">=1.0.0 <2", satisfies("1.5.0", ">=1.0.0 <2")},
+			},
+			"sorted": sortVersions([]string{"1.2.3", "1.2.3-beta.2", "2.0.0", "1.10.0"}),
+			"cliStyle": orderedObject{
+				"input":  input,
+				"range":  "^1.2.3",
+				"output": filtered,
+			},
+		},
+	}
+
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func validVersion(raw string) any {
+	parsed := parseVersion(raw)
+	if !parsed.ok {
+		return nil
+	}
+	return raw
+}
+
+func parseVersion(raw string) version {
+	match := semverRe.FindStringSubmatch(raw)
+	if match == nil {
+		return version{raw: raw}
+	}
+	major, _ := strconv.Atoi(match[1])
+	minor, _ := strconv.Atoi(match[2])
+	patch, _ := strconv.Atoi(match[3])
+	pre := []string{}
+	if match[4] != "" {
+		pre = strings.Split(match[4], ".")
+	}
+	return version{major: major, minor: minor, patch: patch, pre: pre, raw: raw, ok: true}
+}
+
+func compare(leftRaw string, rightRaw string) int {
+	left := parseVersion(leftRaw)
+	right := parseVersion(rightRaw)
+	for _, pair := range [][2]int{{left.major, right.major}, {left.minor, right.minor}, {left.patch, right.patch}} {
+		if pair[0] < pair[1] {
+			return -1
+		}
+		if pair[0] > pair[1] {
+			return 1
+		}
+	}
+	if len(left.pre) == 0 && len(right.pre) > 0 {
+		return 1
+	}
+	if len(left.pre) > 0 && len(right.pre) == 0 {
+		return -1
+	}
+	for index := 0; index < len(left.pre) || index < len(right.pre); index++ {
+		if index >= len(left.pre) {
+			return -1
+		}
+		if index >= len(right.pre) {
+			return 1
+		}
+		cmp := comparePrereleasePart(left.pre[index], right.pre[index])
+		if cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
+}
+
+func comparePrereleasePart(left string, right string) int {
+	leftNum, leftErr := strconv.Atoi(left)
+	rightNum, rightErr := strconv.Atoi(right)
+	if leftErr == nil && rightErr == nil {
+		if leftNum < rightNum {
+			return -1
+		}
+		if leftNum > rightNum {
+			return 1
+		}
+		return 0
+	}
+	if leftErr == nil {
+		return -1
+	}
+	if rightErr == nil {
+		return 1
+	}
+	return strings.Compare(left, right)
+}
+
+func satisfies(raw string, rangeExpr string) bool {
+	parsed := parseVersion(raw)
+	if !parsed.ok {
+		return false
+	}
+	switch rangeExpr {
+	case "^1.2.3":
+		return compare(raw, "1.2.3") >= 0 && parsed.major == 1
+	case "~1.2.3":
+		return compare(raw, "1.2.3") >= 0 && parsed.major == 1 && parsed.minor == 2
+	case ">=1.0.0 <2":
+		return compare(raw, "1.0.0") >= 0 && parsed.major < 2
+	default:
+		return false
+	}
+}
+
+func sortVersions(values []string) []string {
+	out := append([]string{}, values...)
+	sort.Slice(out, func(i int, j int) bool {
+		return compare(out[i], out[j]) < 0
+	})
+	return out
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderYamlProbeMain() {
