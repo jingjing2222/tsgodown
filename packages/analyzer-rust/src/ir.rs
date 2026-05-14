@@ -109,6 +109,11 @@ pub enum JsExprIR {
     Ident(String),
     Array(Vec<JsExprIR>),
     Object(Vec<JsObjectPropIR>),
+    Function {
+        params: Vec<String>,
+        r#async: bool,
+        body: Vec<JsStmtIR>,
+    },
     Unary {
         op: String,
         arg: Box<JsExprIR>,

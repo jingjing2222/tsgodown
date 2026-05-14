@@ -3,7 +3,7 @@ modules:
     exports:
     imports:
     executable:
-      - var createUser = <none>
+      - var createUser = function-expr async=false params=[request,reply] body=[expr call(member(ident(reply), status), [number(201)]); expr call(member(ident(reply), header), [string(x-request-id), member(ident(request), id)]); expr call(member(ident(reply), send), [object({ok: bool(true)})])]
       - expr call(member(ident(app), post), [string(/users), ident(createUser)])
 routes:
   - method=POST path=/users handler_ref=createUser

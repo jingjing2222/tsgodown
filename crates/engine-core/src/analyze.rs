@@ -131,6 +131,15 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
                 })
                 .collect(),
         },
+        analyzer_rust::JsExprIR::Function {
+            params,
+            r#async,
+            body,
+        } => JsExpr::Function {
+            params,
+            r#async,
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
         analyzer_rust::JsExprIR::Unary { op, arg } => JsExpr::Unary {
             op,
             arg: Box::new(map_js_expr(*arg)),

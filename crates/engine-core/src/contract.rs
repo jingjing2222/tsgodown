@@ -103,6 +103,12 @@ pub enum JsExpr {
     Array { items: Vec<JsExpr> },
     #[serde(rename = "object")]
     Object { props: Vec<JsObjectProp> },
+    #[serde(rename = "function")]
+    Function {
+        params: Vec<String>,
+        r#async: bool,
+        body: Vec<JsStmt>,
+    },
     #[serde(rename = "unary")]
     Unary { op: String, arg: Box<JsExpr> },
     #[serde(rename = "binary")]

@@ -26,6 +26,12 @@ export type JsExprIR =
   | { kind: "ident"; name: string }
   | { kind: "array"; items: JsExprIR[] }
   | { kind: "object"; props: JsObjectPropIR[] }
+  | {
+      kind: "function";
+      params: string[];
+      async: boolean;
+      body: JsStmtIR[];
+    }
   | { kind: "unary"; op: string; arg: JsExprIR }
   | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }

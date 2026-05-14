@@ -5,7 +5,10 @@ use swc_ecma_ast::{
     AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, Prop, PropName, PropOrSpread,
     SimpleAssignTarget, Stmt,
 };
-use swc_ecma_ast::{BlockStmt, Decl, ExportSpecifier, FnDecl, Module, ModuleDecl, ModuleItem, Pat};
+use swc_ecma_ast::{
+    BlockStmt, BlockStmtOrExpr, Decl, ExportSpecifier, FnDecl, Function, Module, ModuleDecl,
+    ModuleItem, Pat,
+};
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
 use crate::{
@@ -385,6 +388,12 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             }
             Some(JsExprIR::Object(props))
         }
+        Expr::Fn(function) => lower_function_expr(&function.function),
+        Expr::Arrow(arrow) => Some(JsExprIR::Function {
+            params: arrow.params.iter().filter_map(pat_name).collect(),
+            r#async: arrow.is_async,
+            body: lower_arrow_body(&arrow.body)?,
+        }),
         Expr::Unary(unary) => Some(JsExprIR::Unary {
             op: unary.op.to_string(),
             arg: Box::new(lower_js_expr(&unary.arg)?),
@@ -425,6 +434,25 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             })
         }
         _ => None,
+    }
+}
+
+fn lower_function_expr(function: &Function) -> Option<JsExprIR> {
+    Some(JsExprIR::Function {
+        params: function
+            .params
+            .iter()
+            .filter_map(|param| pat_name(&param.pat))
+            .collect(),
+        r#async: function.is_async,
+        body: lower_block_stmt(function.body.as_ref()?),
+    })
+}
+
+fn lower_arrow_body(body: &BlockStmtOrExpr) -> Option<Vec<JsStmtIR>> {
+    match body {
+        BlockStmtOrExpr::BlockStmt(block) => Some(lower_block_stmt(block)),
+        BlockStmtOrExpr::Expr(expr) => Some(vec![JsStmtIR::Return(Some(lower_js_expr(expr)?))]),
     }
 }
 

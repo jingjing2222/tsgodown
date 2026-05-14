@@ -18,6 +18,7 @@ function run(cmd, args, options = {}) {
   return spawnSync(cmd, args, {
     cwd: repoRoot,
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
     stdio:
       options.input === undefined
         ? ["ignore", "pipe", "pipe"]
@@ -1539,6 +1540,10 @@ function executableIrStats(analyzeJson) {
       return;
     }
     statements += 1;
+    visitExpr(stmt.expr);
+    visitExpr(stmt.value);
+    visitExpr(stmt.init);
+    visitExpr(stmt.test);
     if (stmt.kind === "function-decl") {
       functions += 1;
       for (const child of stmt.body ?? []) {
@@ -1554,6 +1559,33 @@ function executableIrStats(analyzeJson) {
         visitStmt(child);
       }
     }
+  }
+
+  function visitExpr(expr) {
+    if (!expr || typeof expr !== "object") {
+      return;
+    }
+    if (expr.kind === "function") {
+      functions += 1;
+      for (const child of expr.body ?? []) {
+        visitStmt(child);
+      }
+      return;
+    }
+    for (const child of expr.args ?? []) {
+      visitExpr(child);
+    }
+    for (const child of expr.items ?? []) {
+      visitExpr(child);
+    }
+    for (const prop of expr.props ?? []) {
+      visitExpr(prop?.value);
+    }
+    visitExpr(expr.arg);
+    visitExpr(expr.left);
+    visitExpr(expr.right);
+    visitExpr(expr.callee);
+    visitExpr(expr.object);
   }
 
   for (const module of modules) {

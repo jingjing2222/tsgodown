@@ -4,7 +4,7 @@ modules:
     imports:
     executable:
       - var health = <none>
-      - var users = <none>
+      - var users = function-expr async=false params=[] body=[return array([object({id: string(u1)})])]
       - expr call(member(ident(app), get), [ident(health)])
       - expr call(member(ident(app), get), [ident(users)])
 routes:

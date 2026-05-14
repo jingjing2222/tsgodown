@@ -167,6 +167,19 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        JsExprIR::Function {
+            params,
+            r#async,
+            body,
+        } => format!(
+            "function-expr async={} params=[{}] body=[{}]",
+            r#async,
+            params.join(","),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
         JsExprIR::Unary { op, arg } => format!("unary({}, {})", op, render_js_expr(arg)),
         JsExprIR::Binary { op, left, right } => format!(
             "binary({}, {}, {})",
