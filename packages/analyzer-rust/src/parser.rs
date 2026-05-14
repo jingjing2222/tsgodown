@@ -1,6 +1,10 @@
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use swc_common::{sync::Lrc, FileName, SourceMap};
+use swc_ecma_ast::{
+    AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, Prop, PropName, PropOrSpread,
+    SimpleAssignTarget, Stmt,
+};
 use swc_ecma_ast::{Decl, ExportSpecifier, Module, ModuleDecl, ModuleItem, Pat};
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
@@ -134,12 +138,18 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
             resolved: None,
         });
     }
+
+    for item in &module.body {
+        collect_cjs_imports_from_item(&mut imports, item);
+    }
+
     imports.sort_by(|a, b| a.spec.cmp(&b.spec).then_with(|| a.kind.cmp(&b.kind)));
     imports
 }
 
 fn collect_exports_from_ast(module: &Module) -> Vec<String> {
     let mut exports = Vec::new();
+    let object_defs = collect_top_level_object_defs(module);
     for item in &module.body {
         match item {
             ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export)) => {
@@ -161,6 +171,8 @@ fn collect_exports_from_ast(module: &Module) -> Vec<String> {
             }
             _ => {}
         }
+
+        collect_cjs_exports_from_item(&mut exports, &object_defs, item);
     }
     exports.sort();
     exports.dedup();
@@ -203,6 +215,218 @@ fn export_specifier_name(specifier: &ExportSpecifier) -> Option<String> {
 fn pat_name(pat: &Pat) -> Option<String> {
     match pat {
         Pat::Ident(binding) => Some(binding.id.sym.to_string()),
+        _ => None,
+    }
+}
+
+fn collect_cjs_imports_from_item(imports: &mut Vec<ImportIR>, item: &ModuleItem) {
+    match item {
+        ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
+            for decl in &var_decl.decls {
+                if let Some(init) = &decl.init {
+                    collect_cjs_imports_from_expr(imports, init);
+                }
+            }
+        }
+        ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
+            collect_cjs_imports_from_expr(imports, &expr_stmt.expr);
+        }
+        _ => {}
+    }
+}
+
+fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
+    if let Some(spec) = require_spec(expr) {
+        imports.push(ImportIR {
+            spec,
+            kind: "cjs".to_string(),
+            resolved: None,
+        });
+        return;
+    }
+
+    match expr {
+        Expr::Object(object) => {
+            for prop in &object.props {
+                if let PropOrSpread::Spread(spread) = prop {
+                    collect_cjs_imports_from_expr(imports, &spread.expr);
+                }
+                if let PropOrSpread::Prop(prop) = prop {
+                    match &**prop {
+                        Prop::KeyValue(kv) => collect_cjs_imports_from_expr(imports, &kv.value),
+                        Prop::Assign(assign) => {
+                            collect_cjs_imports_from_expr(imports, &assign.value)
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Expr::Call(call) => {
+            for arg in &call.args {
+                collect_cjs_imports_from_expr(imports, &arg.expr);
+            }
+        }
+        Expr::Assign(assign) => {
+            collect_cjs_imports_from_expr(imports, &assign.right);
+        }
+        _ => {}
+    }
+}
+
+fn require_spec(expr: &Expr) -> Option<String> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let Callee::Expr(callee) = &call.callee else {
+        return None;
+    };
+    if !callee.is_ident_ref_to("require") {
+        return None;
+    }
+    let first_arg = call.args.first()?;
+    let Expr::Lit(Lit::Str(spec)) = &*first_arg.expr else {
+        return None;
+    };
+    Some(spec.value.to_string_lossy().to_string())
+}
+
+fn collect_top_level_object_defs(module: &Module) -> BTreeMap<String, Vec<String>> {
+    let mut object_defs = BTreeMap::new();
+    for item in &module.body {
+        let ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) = item else {
+            continue;
+        };
+        for decl in &var_decl.decls {
+            let Some(name) = pat_name(&decl.name) else {
+                continue;
+            };
+            let Some(init) = &decl.init else {
+                continue;
+            };
+            let Expr::Object(object) = &**init else {
+                continue;
+            };
+            let names = object_export_names(object.props.iter());
+            if !names.is_empty() {
+                object_defs.insert(name, names);
+            }
+        }
+    }
+    object_defs
+}
+
+fn collect_cjs_exports_from_item(
+    exports: &mut Vec<String>,
+    object_defs: &BTreeMap<String, Vec<String>>,
+    item: &ModuleItem,
+) {
+    let ModuleItem::Stmt(Stmt::Expr(expr_stmt)) = item else {
+        return;
+    };
+    let Expr::Assign(assign) = &*expr_stmt.expr else {
+        return;
+    };
+
+    let Some(path) = assign_target_path(&assign.left) else {
+        return;
+    };
+
+    if path == ["module", "exports"] {
+        match &*assign.right {
+            Expr::Object(object) => exports.extend(object_export_names(object.props.iter())),
+            Expr::Ident(ident) => {
+                if let Some(names) = object_defs.get(ident.sym.as_ref()) {
+                    exports.extend(names.iter().cloned());
+                }
+            }
+            _ => exports.push("*".to_string()),
+        }
+        return;
+    }
+
+    if path.len() == 3 && path[0] == "module" && path[1] == "exports" {
+        exports.push(path[2].clone());
+        return;
+    }
+
+    if path.len() == 2 && path[0] == "exports" {
+        exports.push(path[1].clone());
+    }
+}
+
+fn object_export_names<'a>(props: impl Iterator<Item = &'a PropOrSpread>) -> Vec<String> {
+    let mut names = Vec::new();
+    for prop in props {
+        match prop {
+            PropOrSpread::Spread(_) => names.push("*".to_string()),
+            PropOrSpread::Prop(prop) => match &**prop {
+                Prop::Shorthand(ident) => names.push(ident.sym.to_string()),
+                Prop::KeyValue(kv) => {
+                    if let Some(name) = prop_name(&kv.key) {
+                        names.push(name);
+                    }
+                }
+                Prop::Assign(assign) => names.push(assign.key.sym.to_string()),
+                Prop::Getter(getter) => {
+                    if let Some(name) = prop_name(&getter.key) {
+                        names.push(name);
+                    }
+                }
+                Prop::Setter(setter) => {
+                    if let Some(name) = prop_name(&setter.key) {
+                        names.push(name);
+                    }
+                }
+                Prop::Method(method) => {
+                    if let Some(name) = prop_name(&method.key) {
+                        names.push(name);
+                    }
+                }
+            },
+        }
+    }
+    names
+}
+
+fn prop_name(prop: &PropName) -> Option<String> {
+    match prop {
+        PropName::Ident(ident) => Some(ident.sym.to_string()),
+        PropName::Str(str) => Some(str.value.to_string_lossy().to_string()),
+        PropName::Num(num) => Some(num.value.to_string()),
+        _ => None,
+    }
+}
+
+fn assign_target_path(target: &AssignTarget) -> Option<Vec<String>> {
+    match target {
+        AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
+            Some(vec![ident.id.sym.to_string()])
+        }
+        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => member_path(member),
+        _ => None,
+    }
+}
+
+fn member_path(member: &MemberExpr) -> Option<Vec<String>> {
+    let mut path = expr_path(&member.obj)?;
+    match &member.prop {
+        MemberProp::Ident(ident) => path.push(ident.sym.to_string()),
+        MemberProp::Computed(computed) => {
+            let Expr::Lit(Lit::Str(str)) = &*computed.expr else {
+                return None;
+            };
+            path.push(str.value.to_string_lossy().to_string());
+        }
+        MemberProp::PrivateName(_) => return None,
+    }
+    Some(path)
+}
+
+fn expr_path(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::Ident(ident) => Some(vec![ident.sym.to_string()]),
+        Expr::Member(member) => member_path(member),
         _ => None,
     }
 }
