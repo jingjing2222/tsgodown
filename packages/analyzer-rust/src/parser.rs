@@ -13,7 +13,7 @@ use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyn
 
 use crate::{
     DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsExprIR, JsObjectPropIR,
-    JsStmtIR, JsValueIR,
+    JsStmtIR, JsSwitchCaseIR, JsValueIR,
 };
 
 #[derive(Debug)]
@@ -333,6 +333,59 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
                 });
             }
         }
+        Stmt::Switch(switch_stmt) => {
+            if let Some(discriminant) = lower_js_expr(&switch_stmt.discriminant) {
+                let cases = switch_stmt
+                    .cases
+                    .iter()
+                    .map(|case| JsSwitchCaseIR {
+                        test: case.test.as_deref().and_then(lower_js_expr),
+                        consequent: case
+                            .cons
+                            .iter()
+                            .flat_map(|stmt| lower_stmt_as_block(stmt).into_iter())
+                            .collect(),
+                    })
+                    .collect();
+                stmts.push(JsStmtIR::Switch {
+                    discriminant,
+                    cases,
+                });
+            }
+        }
+        Stmt::Try(try_stmt) => {
+            stmts.push(JsStmtIR::Try {
+                body: lower_block_stmt(&try_stmt.block),
+                catch_param: try_stmt
+                    .handler
+                    .as_ref()
+                    .and_then(|handler| handler.param.as_ref())
+                    .and_then(pat_name),
+                catch_body: try_stmt
+                    .handler
+                    .as_ref()
+                    .map(|handler| lower_block_stmt(&handler.body))
+                    .unwrap_or_default(),
+                finally_body: try_stmt
+                    .finalizer
+                    .as_ref()
+                    .map(lower_block_stmt)
+                    .unwrap_or_default(),
+            });
+        }
+        Stmt::Break(break_stmt) => {
+            stmts.push(JsStmtIR::Break(
+                break_stmt.label.as_ref().map(|label| label.sym.to_string()),
+            ));
+        }
+        Stmt::Continue(continue_stmt) => {
+            stmts.push(JsStmtIR::Continue(
+                continue_stmt
+                    .label
+                    .as_ref()
+                    .map(|label| label.sym.to_string()),
+            ));
+        }
         Stmt::Return(return_stmt) => {
             stmts.push(JsStmtIR::Return(
                 return_stmt.arg.as_deref().and_then(lower_js_expr),
@@ -465,6 +518,11 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             op: assign.op.to_string(),
             left: Box::new(lower_assign_target_expr(&assign.left)?),
             right: Box::new(lower_js_expr(&assign.right)?),
+        }),
+        Expr::Update(update) => Some(JsExprIR::Update {
+            op: update.op.to_string(),
+            arg: Box::new(lower_js_expr(&update.arg)?),
+            prefix: update.prefix,
         }),
         Expr::Call(call) => {
             let callee = match &call.callee {

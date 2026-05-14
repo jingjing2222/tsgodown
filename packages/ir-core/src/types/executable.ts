@@ -26,9 +26,24 @@ export type JsStmtIR =
     }
   | { kind: "for-of"; left: string; right: JsExprIR; body: JsStmtIR[] }
   | { kind: "while"; test: JsExprIR; body: JsStmtIR[] }
+  | { kind: "switch"; discriminant: JsExprIR; cases: JsSwitchCaseIR[] }
+  | {
+      kind: "try";
+      body: JsStmtIR[];
+      catchParam?: string;
+      catchBody: JsStmtIR[];
+      finallyBody: JsStmtIR[];
+    }
+  | { kind: "break"; label?: string }
+  | { kind: "continue"; label?: string }
   | { kind: "return"; value?: JsExprIR }
   | { kind: "throw"; value: JsExprIR }
   | { kind: "var-decl"; name: string; init?: JsExprIR };
+
+export interface JsSwitchCaseIR {
+  test?: JsExprIR;
+  consequent: JsStmtIR[];
+}
 
 export type JsExprIR =
   | { kind: "value"; value: JsValueIR }
@@ -44,6 +59,7 @@ export type JsExprIR =
   | { kind: "unary"; op: string; arg: JsExprIR }
   | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "assign"; op: string; left: JsExprIR; right: JsExprIR }
+  | { kind: "update"; op: string; arg: JsExprIR; prefix: boolean }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }
   | { kind: "member"; object: JsExprIR; property: string };
 

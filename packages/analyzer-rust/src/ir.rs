@@ -110,12 +110,30 @@ pub enum JsStmtIR {
         test: JsExprIR,
         body: Vec<JsStmtIR>,
     },
+    Switch {
+        discriminant: JsExprIR,
+        cases: Vec<JsSwitchCaseIR>,
+    },
+    Try {
+        body: Vec<JsStmtIR>,
+        catch_param: Option<String>,
+        catch_body: Vec<JsStmtIR>,
+        finally_body: Vec<JsStmtIR>,
+    },
+    Break(Option<String>),
+    Continue(Option<String>),
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
     VarDecl {
         name: String,
         init: Option<JsExprIR>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsSwitchCaseIR {
+    pub test: Option<JsExprIR>,
+    pub consequent: Vec<JsStmtIR>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +160,11 @@ pub enum JsExprIR {
         op: String,
         left: Box<JsExprIR>,
         right: Box<JsExprIR>,
+    },
+    Update {
+        op: String,
+        arg: Box<JsExprIR>,
+        prefix: bool,
     },
     Call {
         callee: Box<JsExprIR>,

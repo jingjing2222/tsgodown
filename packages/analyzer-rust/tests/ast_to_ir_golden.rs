@@ -174,6 +174,54 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::Switch {
+            discriminant,
+            cases,
+        } => format!(
+            "switch {} cases=[{}]",
+            render_js_expr(discriminant),
+            cases
+                .iter()
+                .map(|case| format!(
+                    "{} => [{}]",
+                    case.test
+                        .as_ref()
+                        .map(render_js_expr)
+                        .unwrap_or_else(|| "default".to_string()),
+                    case.consequent
+                        .iter()
+                        .map(render_js_stmt)
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::Try {
+            body,
+            catch_param,
+            catch_body,
+            finally_body,
+        } => format!(
+            "try body=[{}] catch={} body=[{}] finally=[{}]",
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            catch_param.as_deref().unwrap_or("<none>"),
+            catch_body
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            finally_body
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::Break(label) => format!("break {}", label.as_deref().unwrap_or("<none>")),
+        JsStmtIR::Continue(label) => format!("continue {}", label.as_deref().unwrap_or("<none>")),
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
@@ -233,6 +281,9 @@ fn render_js_expr(expr: &JsExprIR) -> String {
             render_js_expr(left),
             render_js_expr(right)
         ),
+        JsExprIR::Update { op, arg, prefix } => {
+            format!("update({}, {}, {})", op, render_js_expr(arg), prefix)
+        }
         JsExprIR::Call { callee, args } => format!(
             "call({}, [{}])",
             render_js_expr(callee),
@@ -338,6 +389,41 @@ if (map.size > 1) {
             .all(|diag| diag.code != "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE"),
         "Map.delete(string) must not be mistaken for DELETE route registration"
     );
+}
+
+#[test]
+fn executable_control_flow_is_lowered_deterministically() {
+    let source = r#"
+function scan(items) {
+  let total = 0;
+  for (let i = 0; i < 3; i++) {
+    switch (i) {
+      case 0:
+        continue;
+      case 1:
+        break;
+      default:
+        total += i;
+    }
+  }
+  try {
+    return total;
+  } catch (err) {
+    throw err;
+  } finally {
+    total++;
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("control-flow.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("for init=[var i = number(0)]"));
+    assert!(rendered.contains("switch ident(i)"));
+    assert!(rendered.contains("continue <none>"));
+    assert!(rendered.contains("break <none>"));
+    assert!(rendered.contains("try body=[return ident(total)] catch=err"));
+    assert!(rendered.contains("update(++, ident(total), false)"));
 }
 
 #[test]

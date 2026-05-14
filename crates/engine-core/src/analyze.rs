@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::contract::{
     AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource, Import,
-    IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue, Module, Route,
+    IrDocument, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue, Module, Route,
 };
 
 pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
@@ -120,6 +120,32 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             test: map_js_expr(test),
             body: body.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsStmtIR::Switch {
+            discriminant,
+            cases,
+        } => JsStmt::Switch {
+            discriminant: map_js_expr(discriminant),
+            cases: cases
+                .into_iter()
+                .map(|case| JsSwitchCase {
+                    test: case.test.map(map_js_expr),
+                    consequent: case.consequent.into_iter().map(map_js_stmt).collect(),
+                })
+                .collect(),
+        },
+        analyzer_rust::JsStmtIR::Try {
+            body,
+            catch_param,
+            catch_body,
+            finally_body,
+        } => JsStmt::Try {
+            body: body.into_iter().map(map_js_stmt).collect(),
+            catch_param,
+            catch_body: catch_body.into_iter().map(map_js_stmt).collect(),
+            finally_body: finally_body.into_iter().map(map_js_stmt).collect(),
+        },
+        analyzer_rust::JsStmtIR::Break(label) => JsStmt::Break { label },
+        analyzer_rust::JsStmtIR::Continue(label) => JsStmt::Continue { label },
         analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
             value: value.map(map_js_expr),
         },
@@ -173,6 +199,11 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             op,
             left: Box::new(map_js_expr(*left)),
             right: Box::new(map_js_expr(*right)),
+        },
+        analyzer_rust::JsExprIR::Update { op, arg, prefix } => JsExpr::Update {
+            op,
+            arg: Box::new(map_js_expr(*arg)),
+            prefix,
         },
         analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
             callee: Box::new(map_js_expr(*callee)),

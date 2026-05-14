@@ -94,6 +94,31 @@ pub enum JsStmt {
     },
     #[serde(rename = "while")]
     While { test: JsExpr, body: Vec<JsStmt> },
+    #[serde(rename = "switch")]
+    Switch {
+        discriminant: JsExpr,
+        cases: Vec<JsSwitchCase>,
+    },
+    #[serde(rename = "try")]
+    Try {
+        body: Vec<JsStmt>,
+        #[serde(skip_serializing_if = "Option::is_none", rename = "catchParam")]
+        catch_param: Option<String>,
+        #[serde(rename = "catchBody")]
+        catch_body: Vec<JsStmt>,
+        #[serde(rename = "finallyBody")]
+        finally_body: Vec<JsStmt>,
+    },
+    #[serde(rename = "break")]
+    Break {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+    },
+    #[serde(rename = "continue")]
+    Continue {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+    },
     #[serde(rename = "return")]
     Return {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,6 +132,14 @@ pub enum JsStmt {
         #[serde(skip_serializing_if = "Option::is_none")]
         init: Option<JsExpr>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JsSwitchCase {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test: Option<JsExpr>,
+    pub consequent: Vec<JsStmt>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,6 +172,12 @@ pub enum JsExpr {
         op: String,
         left: Box<JsExpr>,
         right: Box<JsExpr>,
+    },
+    #[serde(rename = "update")]
+    Update {
+        op: String,
+        arg: Box<JsExpr>,
+        prefix: bool,
     },
     #[serde(rename = "call")]
     Call {
