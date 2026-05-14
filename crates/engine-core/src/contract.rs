@@ -71,6 +71,12 @@ pub enum JsStmt {
         r#async: bool,
         body: Vec<JsStmt>,
     },
+    #[serde(rename = "if")]
+    If {
+        test: JsExpr,
+        consequent: Vec<JsStmt>,
+        alternate: Vec<JsStmt>,
+    },
     #[serde(rename = "return")]
     Return {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,6 +103,14 @@ pub enum JsExpr {
     Array { items: Vec<JsExpr> },
     #[serde(rename = "object")]
     Object { props: Vec<JsObjectProp> },
+    #[serde(rename = "unary")]
+    Unary { op: String, arg: Box<JsExpr> },
+    #[serde(rename = "binary")]
+    Binary {
+        op: String,
+        left: Box<JsExpr>,
+        right: Box<JsExpr>,
+    },
     #[serde(rename = "call")]
     Call {
         callee: Box<JsExpr>,

@@ -116,6 +116,24 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::If {
+            test,
+            consequent,
+            alternate,
+        } => format!(
+            "if {} then=[{}] else=[{}]",
+            render_js_expr(test),
+            consequent
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            alternate
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
@@ -148,6 +166,13 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .map(|prop| format!("{}: {}", prop.key, render_js_expr(&prop.value)))
                 .collect::<Vec<_>>()
                 .join(", ")
+        ),
+        JsExprIR::Unary { op, arg } => format!("unary({}, {})", op, render_js_expr(arg)),
+        JsExprIR::Binary { op, left, right } => format!(
+            "binary({}, {}, {})",
+            op,
+            render_js_expr(left),
+            render_js_expr(right)
         ),
         JsExprIR::Call { callee, args } => format!(
             "call({}, [{}])",

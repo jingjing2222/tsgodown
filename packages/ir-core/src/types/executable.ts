@@ -11,6 +11,12 @@ export type JsStmtIR =
       async: boolean;
       body: JsStmtIR[];
     }
+  | {
+      kind: "if";
+      test: JsExprIR;
+      consequent: JsStmtIR[];
+      alternate: JsStmtIR[];
+    }
   | { kind: "return"; value?: JsExprIR }
   | { kind: "throw"; value: JsExprIR }
   | { kind: "var-decl"; name: string; init?: JsExprIR };
@@ -20,6 +26,8 @@ export type JsExprIR =
   | { kind: "ident"; name: string }
   | { kind: "array"; items: JsExprIR[] }
   | { kind: "object"; props: JsObjectPropIR[] }
+  | { kind: "unary"; op: string; arg: JsExprIR }
+  | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }
   | { kind: "member"; object: JsExprIR; property: string };
 

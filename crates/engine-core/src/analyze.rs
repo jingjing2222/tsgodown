@@ -91,6 +91,15 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             r#async,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsStmtIR::If {
+            test,
+            consequent,
+            alternate,
+        } => JsStmt::If {
+            test: map_js_expr(test),
+            consequent: consequent.into_iter().map(map_js_stmt).collect(),
+            alternate: alternate.into_iter().map(map_js_stmt).collect(),
+        },
         analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
             value: value.map(map_js_expr),
         },
@@ -121,6 +130,15 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
                     value: map_js_expr(prop.value),
                 })
                 .collect(),
+        },
+        analyzer_rust::JsExprIR::Unary { op, arg } => JsExpr::Unary {
+            op,
+            arg: Box::new(map_js_expr(*arg)),
+        },
+        analyzer_rust::JsExprIR::Binary { op, left, right } => JsExpr::Binary {
+            op,
+            left: Box::new(map_js_expr(*left)),
+            right: Box::new(map_js_expr(*right)),
         },
         analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
             callee: Box::new(map_js_expr(*callee)),

@@ -90,6 +90,11 @@ pub enum JsStmtIR {
         r#async: bool,
         body: Vec<JsStmtIR>,
     },
+    If {
+        test: JsExprIR,
+        consequent: Vec<JsStmtIR>,
+        alternate: Vec<JsStmtIR>,
+    },
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
     VarDecl {
@@ -104,6 +109,15 @@ pub enum JsExprIR {
     Ident(String),
     Array(Vec<JsExprIR>),
     Object(Vec<JsObjectPropIR>),
+    Unary {
+        op: String,
+        arg: Box<JsExprIR>,
+    },
+    Binary {
+        op: String,
+        left: Box<JsExprIR>,
+        right: Box<JsExprIR>,
+    },
     Call {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,

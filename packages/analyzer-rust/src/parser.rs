@@ -272,6 +272,7 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
                 stmts.push(JsStmtIR::Throw(expr));
             }
         }
+        ModuleItem::Stmt(stmt) => collect_executable_from_stmt(stmts, stmt),
         _ => {}
     }
 }
@@ -283,6 +284,19 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
         Stmt::Expr(expr_stmt) => {
             if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
+            }
+        }
+        Stmt::If(if_stmt) => {
+            if let Some(test) = lower_js_expr(&if_stmt.test) {
+                stmts.push(JsStmtIR::If {
+                    test,
+                    consequent: lower_stmt_as_block(&if_stmt.cons),
+                    alternate: if_stmt
+                        .alt
+                        .as_deref()
+                        .map(lower_stmt_as_block)
+                        .unwrap_or_default(),
+                });
             }
         }
         Stmt::Return(return_stmt) => {
@@ -324,6 +338,17 @@ fn lower_block_stmt(block: &BlockStmt) -> Vec<JsStmtIR> {
     stmts
 }
 
+fn lower_stmt_as_block(stmt: &Stmt) -> Vec<JsStmtIR> {
+    match stmt {
+        Stmt::Block(block) => lower_block_stmt(block),
+        stmt => {
+            let mut stmts = Vec::new();
+            collect_executable_from_stmt(&mut stmts, stmt);
+            stmts
+        }
+    }
+}
+
 fn lower_var_decl_stmts(stmts: &mut Vec<JsStmtIR>, var_decl: &swc_ecma_ast::VarDecl) {
     for decl in &var_decl.decls {
         let Some(name) = pat_name(&decl.name) else {
@@ -360,6 +385,15 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             }
             Some(JsExprIR::Object(props))
         }
+        Expr::Unary(unary) => Some(JsExprIR::Unary {
+            op: unary.op.to_string(),
+            arg: Box::new(lower_js_expr(&unary.arg)?),
+        }),
+        Expr::Bin(binary) => Some(JsExprIR::Binary {
+            op: binary.op.to_string(),
+            left: Box::new(lower_js_expr(&binary.left)?),
+            right: Box::new(lower_js_expr(&binary.right)?),
+        }),
         Expr::Call(call) => {
             let callee = match &call.callee {
                 Callee::Expr(callee) => lower_js_expr(callee)?,

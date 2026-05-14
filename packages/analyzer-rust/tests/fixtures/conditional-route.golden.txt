@@ -6,6 +6,7 @@ modules:
     executable:
       - var app = call(ident(Fastify), [])
       - function expHandler async=false params=[] body=[return object({ok: bool(true)})]
+      - if binary(===, member(member(ident(process), env), EXPERIMENTAL), string(1)) then=[expr call(member(ident(app), get), [string(/exp), ident(expHandler)])] else=[]
 routes:
 handlers:
 diagnostics:
