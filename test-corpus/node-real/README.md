@@ -9,7 +9,8 @@ compare observable behavior.
 
 ## Gate shape
 
-- Future command: `pnpm run gate:node-corpus-parity`
+- Full gate command: `pnpm run gate:node-corpus-parity`
+- Node source health-check command: `pnpm run gate:node-corpus-parity:node`
 - Manifest path: `test-corpus/node-real/manifest.json`
 - Corpus npm workspace path: `test-corpus/node-real/package.json`
 - Vendored package source path: `test-corpus/node-real/packages/<case-id>`
@@ -17,6 +18,12 @@ compare observable behavior.
 - Go probe: run generated Go binary/project with the same inputs.
 - Report: JSON diff grouped by package and capability.
 - Required final mode: `allowWip=false`.
+
+Current expected state:
+
+- Node health-check: Green, all 10 vendored package probes execute and emit JSON.
+- Full gate: Red until generated Go projects exist under
+  `test-corpus/node-real/generated-go/<case-id>`.
 
 ## Probe paths
 
