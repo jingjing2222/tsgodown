@@ -1492,6 +1492,79 @@ function renderGoMod(testCase) {
   ].join("\n");
 }
 
+function renderSourceIrGo(analyzeJson) {
+  const ir = analyzeJson?.ir ?? {};
+  const sourceIr = {
+    version: ir.version ?? "unknown",
+    entry: ir.entry ?? "",
+    modules: Array.isArray(ir.modules)
+      ? ir.modules.map((module) => ({
+          id: module?.id ?? "",
+          sourcePath: module?.sourcePath ?? "",
+          imports: Array.isArray(module?.imports) ? module.imports : [],
+          exports: Array.isArray(module?.exports) ? module.exports : [],
+          executable: module?.executable ?? { stmts: [] },
+        }))
+      : [],
+    diagnostics: Array.isArray(analyzeJson?.diagnostics)
+      ? analyzeJson.diagnostics
+      : [],
+  };
+  const json = JSON.stringify(sourceIr, null, 2);
+
+  return [
+    "package main",
+    "",
+    "// sourceIRJSON is the analyzer-lowered executable JS IR for this corpus case.",
+    "// It is emitted into generated Go projects so codegen can be driven by source semantics.",
+    `const sourceIRJSON = ${goRawString(json)}`,
+    "",
+  ].join("\n");
+}
+
+function goRawString(value) {
+  return `\`${String(value).replaceAll("`", '` + "`" + `')}\``;
+}
+
+function executableIrStats(analyzeJson) {
+  const modules = Array.isArray(analyzeJson?.ir?.modules)
+    ? analyzeJson.ir.modules
+    : [];
+  let statements = 0;
+  let functions = 0;
+  let conditionals = 0;
+
+  function visitStmt(stmt) {
+    if (!stmt || typeof stmt !== "object") {
+      return;
+    }
+    statements += 1;
+    if (stmt.kind === "function-decl") {
+      functions += 1;
+      for (const child of stmt.body ?? []) {
+        visitStmt(child);
+      }
+    }
+    if (stmt.kind === "if") {
+      conditionals += 1;
+      for (const child of stmt.consequent ?? []) {
+        visitStmt(child);
+      }
+      for (const child of stmt.alternate ?? []) {
+        visitStmt(child);
+      }
+    }
+  }
+
+  for (const module of modules) {
+    for (const stmt of module?.executable?.stmts ?? []) {
+      visitStmt(stmt);
+    }
+  }
+
+  return { statements, functions, conditionals };
+}
+
 function generateCase(testCase) {
   if (!testCase.entry) {
     fail(`manifest case ${testCase.id} is missing entry`);
@@ -1506,12 +1579,18 @@ function generateCase(testCase) {
     renderGoMain(testCase, analyzeJson),
     "utf8",
   );
+  fs.writeFileSync(
+    path.join(outDir, "source_ir.go"),
+    renderSourceIrGo(analyzeJson),
+    "utf8",
+  );
 
   return {
     id: testCase.id,
     path: path.relative(repoRoot, outDir),
     modules: analyzeJson?.ir?.modules?.length ?? 0,
     diagnostics: analyzeJson?.diagnostics?.length ?? 0,
+    executableIr: executableIrStats(analyzeJson),
   };
 }
 
