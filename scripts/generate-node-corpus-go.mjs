@@ -103,12 +103,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return renderFsExtraProbeMain();
   }
   if (
-    testCase.capabilities?.includes("language.class") &&
-    testCase.capabilities?.includes("runtime.event_loop")
-  ) {
-    return renderLruCacheProbeMain();
-  }
-  if (
     testCase.capabilities?.includes("node.child_process.basic") &&
     testCase.capabilities?.includes("node.stream.basic")
   ) {
@@ -191,7 +185,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   if (testCase.id !== "qs") {
     if (testCase.id !== "yargs-parser") {
       if (testCase.id !== "uuid") {
-        return null;
+        if (testCase.id !== "lru-cache") {
+          return null;
+        }
       }
     }
   }
@@ -217,6 +213,13 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
       },
       extraImports: ["crypto/rand", "crypto/sha1", "encoding/hex"],
       helperSource: renderUuidIrHelpers(),
+    });
+  }
+  if (testCase.id === "lru-cache") {
+    return renderExecutableIrGoProgram(executable, {
+      externalConstructors: ["LRUCache"],
+      extraImports: ["time"],
+      helperSource: renderLruCacheIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -714,85 +717,60 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderLruCacheProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strings"
-	"time"
-)
-
-type orderedObject map[string]any
-
-type entry struct {
+function renderLruCacheIrHelpers() {
+  return String.raw`type jsLRUEntry struct {
 	key       string
 	value     any
 	expiresAt time.Time
 }
 
-type lruCache struct {
+type jsLRUCache struct {
 	max     int
 	ttl     time.Duration
-	entries []entry
+	entries []jsLRUEntry
 }
 
-func main() {
-	cache := newLRU(2, 0)
-	cache.set("a", 1)
-	cache.set("b", 2)
-	beforeGet := cache.entryPairs()
-	getA := cache.get("a")
-	cache.set("c", 3)
-	afterEvict := cache.entryPairs()
-
-	ttlCache := newLRU(2, 50*time.Millisecond)
-	ttlCache.set("short", "alive")
-	ttlImmediate := ttlCache.get("short")
-	time.Sleep(80 * time.Millisecond)
-	ttlExpired := ttlCache.get("short")
-
-	report := orderedObject{
-		"package": "lru-cache",
-		"probes": orderedObject{
-			"beforeGet":   beforeGet,
-			"getA":        getA,
-			"afterEvict":  afterEvict,
-			"hasA":        cache.has("a"),
-			"hasB":        cache.has("b"),
-			"hasC":        cache.has("c"),
-			"ttlImmediate": ttlImmediate,
-			"ttlExpired":  nilIfMissing(ttlExpired),
-		},
+func js_new_LRUCache(options any) any {
+	object, _ := options.(map[string]any)
+	cache := &jsLRUCache{max: jsLRUNumber(object["max"]), entries: []jsLRUEntry{}}
+	if cache.max <= 0 {
+		cache.max = 1
 	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if ttl := jsLRUNumber(object["ttl"]); ttl > 0 {
+		cache.ttl = time.Duration(ttl) * time.Millisecond
 	}
-	fmt.Println(string(bytes))
+	return cache
 }
 
-func newLRU(max int, ttl time.Duration) *lruCache {
-	return &lruCache{max: max, ttl: ttl, entries: []entry{}}
+func (cache *jsLRUCache) jsCallMember(property string, args ...any) any {
+	switch property {
+	case "set":
+		cache.set(fmt.Sprint(args[0]), args[1])
+		return cache
+	case "get":
+		return cache.get(fmt.Sprint(args[0]))
+	case "has":
+		return cache.has(fmt.Sprint(args[0]))
+	case "entries":
+		return cache.entryPairs()
+	default:
+		panic(fmt.Sprintf("unsupported LRUCache member %s", property))
+	}
 }
 
-func (cache *lruCache) set(key string, value any) {
+func (cache *jsLRUCache) set(key string, value any) {
 	cache.delete(key)
-	item := entry{key: key, value: value}
+	item := jsLRUEntry{key: key, value: value}
 	if cache.ttl > 0 {
 		item.expiresAt = time.Now().Add(cache.ttl)
 	}
-	cache.entries = append([]entry{item}, cache.entries...)
+	cache.entries = append([]jsLRUEntry{item}, cache.entries...)
 	if len(cache.entries) > cache.max {
 		cache.entries = cache.entries[:cache.max]
 	}
 }
 
-func (cache *lruCache) get(key string) any {
+func (cache *jsLRUCache) get(key string) any {
 	for index, item := range cache.entries {
 		if item.key != key {
 			continue
@@ -802,13 +780,13 @@ func (cache *lruCache) get(key string) any {
 			return nil
 		}
 		cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
-		cache.entries = append([]entry{item}, cache.entries...)
+		cache.entries = append([]jsLRUEntry{item}, cache.entries...)
 		return item.value
 	}
 	return nil
 }
 
-func (cache *lruCache) has(key string) bool {
+func (cache *jsLRUCache) has(key string) bool {
 	for index, item := range cache.entries {
 		if item.key != key {
 			continue
@@ -822,7 +800,7 @@ func (cache *lruCache) has(key string) bool {
 	return false
 }
 
-func (cache *lruCache) delete(key string) {
+func (cache *jsLRUCache) delete(key string) {
 	for index, item := range cache.entries {
 		if item.key == key {
 			cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
@@ -831,38 +809,34 @@ func (cache *lruCache) delete(key string) {
 	}
 }
 
-func (cache *lruCache) entryPairs() [][]any {
-	pairs := make([][]any, 0, len(cache.entries))
+func (cache *jsLRUCache) entryPairs() []any {
+	pairs := make([]any, 0, len(cache.entries))
 	for _, item := range cache.entries {
 		pairs = append(pairs, []any{item.key, item.value})
 	}
 	return pairs
 }
 
-func nilIfMissing(value any) any {
-	if value == nil {
-		return nil
-	}
-	return value
+func jsSleepPromise(delay any) any {
+	time.Sleep(time.Duration(jsLRUNumber(delay)) * time.Millisecond)
+	return nil
 }
 
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
+func jsLRUNumber(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case string:
+		var out int
+		fmt.Sscanf(typed, "%d", &out)
+		return out
+	default:
+		return 0
 	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }

@@ -454,6 +454,157 @@ test("renders imported function and namespace calls through Go helpers", () => {
   });
 });
 
+test("renders constructors, member calls, array spread, nullish, and timer await", () => {
+  const source = renderExecutableIrGoProgram(
+    {
+      stmts: [
+        {
+          kind: "var-decl",
+          name: "box",
+          init: {
+            kind: "new",
+            callee: { kind: "ident", name: "Box" },
+            args: [{ kind: "value", value: { kind: "number", value: "2" } }],
+          },
+        },
+        {
+          kind: "expr",
+          expr: {
+            kind: "call",
+            callee: {
+              kind: "member",
+              object: { kind: "ident", name: "box" },
+              property: "push",
+            },
+            args: [{ kind: "value", value: { kind: "number", value: "3" } }],
+          },
+        },
+        {
+          kind: "expr",
+          expr: {
+            kind: "await",
+            arg: {
+              kind: "new",
+              callee: { kind: "ident", name: "Promise" },
+              args: [
+                {
+                  kind: "function",
+                  params: ["resolve"],
+                  async: false,
+                  body: [
+                    {
+                      kind: "return",
+                      value: {
+                        kind: "call",
+                        callee: { kind: "ident", name: "setTimeout" },
+                        args: [
+                          { kind: "ident", name: "resolve" },
+                          {
+                            kind: "value",
+                            value: { kind: "number", value: "1" },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          kind: "return",
+          value: {
+            kind: "object",
+            props: [
+              {
+                key: "items",
+                value: {
+                  kind: "array-spread",
+                  items: [
+                    {
+                      spread: true,
+                      value: {
+                        kind: "call",
+                        callee: {
+                          kind: "member",
+                          object: { kind: "ident", name: "box" },
+                          property: "items",
+                        },
+                        args: [],
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                key: "missing",
+                value: {
+                  kind: "binary",
+                  op: "??",
+                  left: {
+                    kind: "call",
+                    callee: {
+                      kind: "member",
+                      object: { kind: "ident", name: "box" },
+                      property: "missing",
+                    },
+                    args: [],
+                  },
+                  right: {
+                    kind: "value",
+                    value: { kind: "string", value: "fallback" },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      externalConstructors: ["Box"],
+      extraImports: ["time"],
+      helperSource: [
+        "type jsBox struct {",
+        "\titems []any",
+        "}",
+        "",
+        "func js_new_Box(value any) any {",
+        "\treturn &jsBox{items: []any{value}}",
+        "}",
+        "",
+        "func (box *jsBox) jsCallMember(property string, args ...any) any {",
+        "\tswitch property {",
+        '\tcase "push":',
+        "\t\tbox.items = append(box.items, args[0])",
+        "\t\treturn box",
+        '\tcase "items":',
+        "\t\treturn box.items",
+        '\tcase "missing":',
+        "\t\treturn nil",
+        "\tdefault:",
+        '\t\tpanic("unsupported box member")',
+        "\t}",
+        "}",
+        "",
+        "func jsSleepPromise(delay any) any {",
+        "\ttime.Sleep(time.Duration(delay.(int)) * time.Millisecond)",
+        "\treturn nil",
+        "}",
+      ].join("\n"),
+    },
+  );
+
+  assert.doesNotMatch(source, /os\/exec|exec\.Command|node --/);
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), {
+    items: [2, 3],
+    missing: "fallback",
+  });
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {

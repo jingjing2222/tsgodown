@@ -36,6 +36,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const externalMembers = new Map(
     Object.entries(options.externalMembers ?? {}),
   );
+  const externalConstructors = new Set(options.externalConstructors ?? []);
   const mainFn = stmts.find(
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
@@ -49,6 +50,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     externalFunctions,
     externalNamespaces,
     externalMembers,
+    externalConstructors,
   };
   const body = renderStmtBlock(
     mainFn
@@ -116,6 +118,17 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn alternate",
     "}",
     "",
+    "func jsNullish(value any, fallback any) any {",
+    "\tif value == nil {",
+    "\t\treturn fallback",
+    "\t}",
+    "\treturn value",
+    "}",
+    "",
+    "func jsAwait(value any) any {",
+    "\treturn value",
+    "}",
+    "",
     "func jsConsoleLog(args ...any) any {",
     "\tfor index, arg := range args {",
     "\t\tif index > 0 {",
@@ -158,6 +171,17 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn nil",
     "}",
     "",
+    "type jsMemberCallable interface {",
+    "\tjsCallMember(property string, args ...any) any",
+    "}",
+    "",
+    "func jsCallMember(value any, property string, args ...any) any {",
+    "\tif target, ok := value.(jsMemberCallable); ok {",
+    "\t\treturn target.jsCallMember(property, args...)",
+    "\t}",
+    '\tpanic(fmt.Sprintf("unsupported member call %T.%s", value, property))',
+    "}",
+    "",
     "func jsRegExpTest(pattern string, flags string, value any) bool {",
     "\tcompiled := regexp.MustCompile(pattern)",
     "\treturn compiled.MatchString(fmt.Sprint(value))",
@@ -195,6 +219,7 @@ function renderFunctionDecl(stmt, parentCtx) {
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,
     externalMembers: parentCtx.externalMembers,
+    externalConstructors: parentCtx.externalConstructors,
   };
   const renderedParams = params.map((param) => `${param} any`).join(", ");
   return [
@@ -337,7 +362,20 @@ function renderExpr(expr, ctx) {
         .map((child) => renderExpr(child, ctx))
         .join(", ")}})`;
     case "binary":
+      if (expr.op === "??") {
+        return `jsNullish(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
       return `(${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(expr.right, ctx)})`;
+    case "await": {
+      const timerPromise = renderTimerPromise(expr.arg, ctx);
+      if (timerPromise) {
+        return timerPromise;
+      }
+      return `jsAwait(${renderExpr(expr.arg, ctx)})`;
+    }
     case "conditional":
       return `jsTernary(${renderExpr(expr.test, ctx)}, ${renderExpr(
         expr.consequent,
@@ -347,6 +385,15 @@ function renderExpr(expr, ctx) {
       const builtinCall = renderBuiltinCall(expr, ctx);
       if (builtinCall) {
         return builtinCall;
+      }
+      if (expr.callee?.kind === "member") {
+        const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx));
+        return `jsCallMember(${renderExpr(
+          expr.callee.object,
+          ctx,
+        )}, ${JSON.stringify(expr.callee.property)}${
+          args.length ? `, ${args.join(", ")}` : ""
+        })`;
       }
       if (
         expr.callee?.kind !== "ident" ||
@@ -358,6 +405,18 @@ function renderExpr(expr, ctx) {
         .map((arg) => renderExpr(arg, ctx))
         .join(", ")})`;
     }
+    case "new":
+      if (
+        expr.callee?.kind === "ident" &&
+        ctx.externalConstructors.has(expr.callee.name)
+      ) {
+        return `js_new_${goIdent(expr.callee.name)}(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      throw new Error(
+        `EXECUTABLE_IR_UNSUPPORTED_NEW:${expr.callee?.name ?? "unknown"}`,
+      );
     case "assign":
       return `${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(
         expr.right,
@@ -382,6 +441,29 @@ function renderExpr(expr, ctx) {
         `EXECUTABLE_IR_UNSUPPORTED_EXPR:${expr?.kind ?? "unknown"}`,
       );
   }
+}
+
+function renderTimerPromise(expr, ctx) {
+  if (
+    expr?.kind !== "new" ||
+    expr.callee?.kind !== "ident" ||
+    expr.callee.name !== "Promise" ||
+    expr.args?.length !== 1
+  ) {
+    return null;
+  }
+  const executor = expr.args[0];
+  const returned = executor?.body?.find((stmt) => stmt?.kind === "return");
+  const call = returned?.value;
+  if (
+    call?.kind !== "call" ||
+    call.callee?.kind !== "ident" ||
+    call.callee.name !== "setTimeout" ||
+    call.args?.length < 2
+  ) {
+    return null;
+  }
+  return `jsSleepPromise(${renderExpr(call.args[1], ctx)})`;
 }
 
 function renderBuiltinCall(expr, ctx) {
