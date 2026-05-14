@@ -51,6 +51,17 @@ pub struct Import {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<ImportBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportBinding {
+    pub local: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imported: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

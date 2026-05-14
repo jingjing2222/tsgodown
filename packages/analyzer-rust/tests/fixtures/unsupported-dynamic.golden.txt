@@ -2,7 +2,7 @@ modules:
   - id=unsupported-dynamic.ts source_path=unsupported-dynamic.ts
     exports:
     imports:
-      - spec=./lazy kind=dynamic resolved=<none>
+      - spec=./lazy kind=dynamic resolved=<none> bindings=[]
     executable:
       - var handler = function-expr async=false params=[] body=[return object({ok: bool(true)})]
       - var dynamicPath = string(/users/:id)

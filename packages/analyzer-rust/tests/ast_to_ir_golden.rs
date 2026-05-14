@@ -24,11 +24,30 @@ fn render_ir(ir: &ProgramIR) -> String {
         }
         out.push_str("    imports:\n");
         for import in &module.imports {
+            let bindings = if import.bindings.is_empty() {
+                "[]".to_string()
+            } else {
+                format!(
+                    "[{}]",
+                    import
+                        .bindings
+                        .iter()
+                        .map(|binding| format!(
+                            "{}:{}:{}",
+                            binding.local,
+                            binding.imported.as_deref().unwrap_or("<none>"),
+                            binding.kind
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            };
             out.push_str(&format!(
-                "      - spec={} kind={} resolved={}\n",
+                "      - spec={} kind={} resolved={} bindings={}\n",
                 import.spec,
                 import.kind,
                 import.resolved.as_deref().unwrap_or("<none>"),
+                bindings,
             ));
         }
         out.push_str("    executable:\n");
@@ -579,4 +598,50 @@ import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {})
     assert_eq!(ir.modules[0].imports.len(), 1);
     assert_eq!(ir.modules[0].imports[0].spec, "node:diagnostics_channel");
     assert_eq!(ir.modules[0].imports[0].kind, "dynamic");
+}
+
+#[test]
+fn import_bindings_are_lowered_for_executable_codegen() {
+    let source = r#"
+import parser from "yargs-parser";
+import * as qs from "qs";
+import { parse as parseYaml, dump } from "js-yaml";
+const fs = require("fs-extra");
+const { execa } = require("execa");
+"#;
+    let ir = analyze_compiler_entry("imports.js", source);
+    let imports = &ir.modules[0].imports;
+
+    assert!(imports.iter().any(|import| import.spec == "yargs-parser"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "parser"
+                && binding.imported.as_deref() == Some("default")
+                && binding.kind == "default")));
+    assert!(imports.iter().any(|import| import.spec == "qs"
+        && import.bindings.iter().any(|binding| binding.local == "qs"
+            && binding.imported.as_deref() == Some("*")
+            && binding.kind == "namespace")));
+    assert!(imports.iter().any(|import| import.spec == "js-yaml"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "parseYaml"
+                && binding.imported.as_deref() == Some("parse")
+                && binding.kind == "named")
+        && import.bindings.iter().any(|binding| binding.local == "dump"
+            && binding.imported.as_deref() == Some("dump")
+            && binding.kind == "named")));
+    assert!(imports.iter().any(|import| import.spec == "fs-extra"
+        && import.bindings.iter().any(|binding| binding.local == "fs"
+            && binding.imported.is_none()
+            && binding.kind == "require")));
+    assert!(imports.iter().any(|import| import.spec == "execa"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "execa"
+                && binding.imported.as_deref() == Some("execa")
+                && binding.kind == "destructure")));
 }

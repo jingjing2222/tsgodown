@@ -11,7 +11,12 @@ impl ProgramIR {
         for module in &mut self.modules {
             module.exports.sort();
             module.imports.sort_by(|a, b| {
-                (&a.spec, &a.kind, &a.resolved).cmp(&(&b.spec, &b.kind, &b.resolved))
+                (&a.spec, &a.kind, &a.resolved, &a.bindings).cmp(&(
+                    &b.spec,
+                    &b.kind,
+                    &b.resolved,
+                    &b.bindings,
+                ))
             });
         }
 
@@ -74,6 +79,14 @@ pub struct ImportIR {
     pub spec: String,
     pub kind: String,
     pub resolved: Option<String>,
+    pub bindings: Vec<ImportBindingIR>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ImportBindingIR {
+    pub local: String,
+    pub imported: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

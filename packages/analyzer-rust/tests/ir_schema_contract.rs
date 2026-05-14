@@ -16,11 +16,13 @@ fn program_ir_normalize_applies_v1_deterministic_ordering_contract() {
                         spec: "zod".to_string(),
                         kind: "esm".to_string(),
                         resolved: None,
+                        bindings: vec![],
                     },
                     ImportIR {
                         spec: "@scope/a".to_string(),
                         kind: "cjs".to_string(),
                         resolved: Some("/abs/a".to_string()),
+                        bindings: vec![],
                     },
                 ],
                 executable: Some(ExecutableModuleIR {

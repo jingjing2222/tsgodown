@@ -3,7 +3,7 @@ modules:
     exports:
       - health
     imports:
-      - spec=node:util kind=esm resolved=<none>
+      - spec=node:util kind=esm resolved=<none> bindings=[util:default:default]
     executable:
       - var health = function-expr async=false params=[] body=[return object({ok: bool(true)})]
       - var users = function-expr async=false params=[] body=[return array([object({id: string(u1)})])]

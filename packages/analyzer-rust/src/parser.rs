@@ -7,13 +7,13 @@ use swc_ecma_ast::{
 };
 use swc_ecma_ast::{
     BlockStmt, BlockStmtOrExpr, Class, ClassMember, Decl, ExportSpecifier, FnDecl, Function,
-    MethodKind, Module, ModuleDecl, ModuleItem, ParamOrTsParamProp, Pat,
+    ImportSpecifier, MethodKind, Module, ModuleDecl, ModuleItem, ParamOrTsParamProp, Pat,
 };
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
 use crate::{
-    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsClassMethodIR, JsExprIR,
-    JsObjectPropIR, JsStmtIR, JsSwitchCaseIR, JsValueIR,
+    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportBindingIR, ImportIR,
+    JsClassMethodIR, JsExprIR, JsObjectPropIR, JsStmtIR, JsSwitchCaseIR, JsValueIR,
 };
 
 #[derive(Debug)]
@@ -129,6 +129,7 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
                         spec: src.value.to_string_lossy().to_string(),
                         kind: "esm".to_string(),
                         resolved: None,
+                        bindings: Vec::new(),
                     });
                 }
             }
@@ -137,6 +138,7 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
                     spec: export_all.src.value.to_string_lossy().to_string(),
                     kind: "esm".to_string(),
                     resolved: None,
+                    bindings: Vec::new(),
                 });
             }
             continue;
@@ -145,6 +147,11 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
             spec: import.src.value.to_string_lossy().to_string(),
             kind: "esm".to_string(),
             resolved: None,
+            bindings: import
+                .specifiers
+                .iter()
+                .filter_map(import_binding)
+                .collect(),
         });
     }
 
@@ -152,8 +159,51 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
         collect_cjs_imports_from_item(&mut imports, item);
     }
 
-    imports.sort_by(|a, b| a.spec.cmp(&b.spec).then_with(|| a.kind.cmp(&b.kind)));
+    for import in &mut imports {
+        import.bindings.sort_by(|a, b| {
+            (&a.local, &a.imported, &a.kind).cmp(&(&b.local, &b.imported, &b.kind))
+        });
+    }
+    imports.sort_by(|a, b| {
+        a.spec
+            .cmp(&b.spec)
+            .then_with(|| a.kind.cmp(&b.kind))
+            .then_with(|| a.bindings.cmp(&b.bindings))
+    });
     imports
+}
+
+fn import_binding(specifier: &ImportSpecifier) -> Option<ImportBindingIR> {
+    match specifier {
+        ImportSpecifier::Default(default) => Some(ImportBindingIR {
+            local: default.local.sym.to_string(),
+            imported: Some("default".to_string()),
+            kind: "default".to_string(),
+        }),
+        ImportSpecifier::Namespace(namespace) => Some(ImportBindingIR {
+            local: namespace.local.sym.to_string(),
+            imported: Some("*".to_string()),
+            kind: "namespace".to_string(),
+        }),
+        ImportSpecifier::Named(named) => Some(ImportBindingIR {
+            local: named.local.sym.to_string(),
+            imported: Some(
+                named
+                    .imported
+                    .as_ref()
+                    .map(module_export_name)
+                    .unwrap_or_else(|| named.local.sym.to_string()),
+            ),
+            kind: "named".to_string(),
+        }),
+    }
+}
+
+fn module_export_name(name: &swc_ecma_ast::ModuleExportName) -> String {
+    match name {
+        swc_ecma_ast::ModuleExportName::Ident(ident) => ident.sym.to_string(),
+        swc_ecma_ast::ModuleExportName::Str(str) => str.value.to_string_lossy().to_string(),
+    }
 }
 
 fn collect_exports_from_ast(module: &Module) -> Vec<String> {
@@ -794,6 +844,15 @@ fn collect_cjs_imports_from_item(imports: &mut Vec<ImportIR>, item: &ModuleItem)
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
             for decl in &var_decl.decls {
                 if let Some(init) = &decl.init {
+                    if let Some(spec) = require_spec(init) {
+                        imports.push(ImportIR {
+                            spec,
+                            kind: "cjs".to_string(),
+                            resolved: None,
+                            bindings: cjs_require_bindings(&decl.name),
+                        });
+                        continue;
+                    }
                     collect_cjs_imports_from_expr(imports, init);
                 }
             }
@@ -805,12 +864,41 @@ fn collect_cjs_imports_from_item(imports: &mut Vec<ImportIR>, item: &ModuleItem)
     }
 }
 
+fn cjs_require_bindings(pat: &Pat) -> Vec<ImportBindingIR> {
+    match pat {
+        Pat::Ident(ident) => vec![ImportBindingIR {
+            local: ident.id.sym.to_string(),
+            imported: None,
+            kind: "require".to_string(),
+        }],
+        Pat::Object(object) => object
+            .props
+            .iter()
+            .filter_map(|prop| match prop {
+                swc_ecma_ast::ObjectPatProp::KeyValue(kv) => Some(ImportBindingIR {
+                    local: pat_name(&kv.value)?,
+                    imported: Some(prop_name(&kv.key)?),
+                    kind: "destructure".to_string(),
+                }),
+                swc_ecma_ast::ObjectPatProp::Assign(assign) => Some(ImportBindingIR {
+                    local: assign.key.sym.to_string(),
+                    imported: Some(assign.key.sym.to_string()),
+                    kind: "destructure".to_string(),
+                }),
+                swc_ecma_ast::ObjectPatProp::Rest(_) => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
     if let Some(spec) = require_spec(expr) {
         imports.push(ImportIR {
             spec,
             kind: "cjs".to_string(),
             resolved: None,
+            bindings: Vec::new(),
         });
         return;
     }
@@ -819,6 +907,7 @@ fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
             spec,
             kind: "dynamic".to_string(),
             resolved: None,
+            bindings: Vec::new(),
         });
         return;
     }

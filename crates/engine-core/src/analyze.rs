@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use crate::contract::{
     AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource, Import,
-    IrDocument, JsClassMethod, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue, Module, Route,
+    ImportBinding, IrDocument, JsClassMethod, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue,
+    Module, Route,
 };
 
 pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
@@ -31,6 +32,15 @@ pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
                             spec: import.spec,
                             kind: import.kind,
                             resolved: import.resolved,
+                            bindings: import
+                                .bindings
+                                .into_iter()
+                                .map(|binding| ImportBinding {
+                                    local: binding.local,
+                                    imported: binding.imported,
+                                    kind: binding.kind,
+                                })
+                                .collect(),
                         })
                         .collect(),
                     executable: module.executable.map(map_executable_module),
