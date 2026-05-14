@@ -2,8 +2,10 @@ node_modules/
 dist/
 target/
 artifacts/
+.tmp/
 examples/**/dist-go/
 examples/**/artifacts/
+test-corpus/node-real/generated-go/
 .DS_Store
 *.log
 target/

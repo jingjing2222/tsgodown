@@ -17,6 +17,7 @@
       "node_modules/**",
       "artifacts/**",
       "target/**",
+      "test-corpus/node-real/generated-go/**",
       "test-corpus/node-real/packages/**"
     ]
   }

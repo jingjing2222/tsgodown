@@ -14,6 +14,7 @@ compare observable behavior.
 - Manifest path: `test-corpus/node-real/manifest.json`
 - Corpus npm workspace path: `test-corpus/node-real/package.json`
 - Vendored package source path: `test-corpus/node-real/packages/<case-id>`
+- Compiler entry path: `entry` in `test-corpus/node-real/manifest.json`
 - Node probe: run original package code with fixed inputs.
 - Go probe: run generated Go binary/project with the same inputs.
 - Report: JSON diff grouped by package and capability.
@@ -22,8 +23,10 @@ compare observable behavior.
 Current expected state:
 
 - Node health-check: Green, all 10 vendored package probes execute and emit JSON.
-- Full gate: Red until generated Go projects exist under
-  `test-corpus/node-real/generated-go/<case-id>`.
+- Full gate: Red until generated Go projects build, run, and match Node parity.
+  The full gate generates fail-closed Go projects under
+  `test-corpus/node-real/generated-go/<case-id>` while executable JS semantics
+  are still incomplete.
 
 ## Probe paths
 

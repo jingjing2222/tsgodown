@@ -10,6 +10,7 @@
       "source": "https://github.com/npm/node-semver",
       "license": "ISC",
       "packagePath": "packages/semver",
+      "entry": "packages/semver/index.js",
       "probe": "cases/semver/probe.mjs",
       "type": ["library", "cli"],
       "capabilities": ["module.cjs", "language.regex", "cli.process"]
@@ -21,6 +22,7 @@
       "source": "https://github.com/isaacs/minimatch",
       "license": "BlueOak-1.0.0",
       "packagePath": "packages/minimatch",
+      "entry": "packages/minimatch/dist/esm/index.js",
       "probe": "cases/minimatch/probe.mjs",
       "type": ["library"],
       "capabilities": ["module.esm", "language.regex", "node.path.basic"]
@@ -32,6 +34,7 @@
       "source": "https://github.com/ljharb/qs",
       "license": "BSD-3-Clause",
       "packagePath": "packages/qs",
+      "entry": "packages/qs/lib/index.js",
       "probe": "cases/qs/probe.mjs",
       "type": ["library"],
       "capabilities": ["module.cjs", "language.object", "node.url.basic"]
@@ -43,6 +46,7 @@
       "source": "https://github.com/motdotla/dotenv",
       "license": "BSD-2-Clause",
       "packagePath": "packages/dotenv",
+      "entry": "packages/dotenv/lib/main.js",
       "probe": "cases/dotenv/probe.mjs",
       "type": ["library", "app"],
       "capabilities": ["module.cjs", "node.fs.basic", "node.process.env"]
@@ -54,6 +58,7 @@
       "source": "https://github.com/yargs/yargs-parser",
       "license": "ISC",
       "packagePath": "packages/yargs-parser",
+      "entry": "packages/yargs-parser/build/lib/index.js",
       "probe": "cases/yargs-parser/probe.mjs",
       "type": ["library", "cli"],
       "capabilities": ["module.esm", "cli.process", "language.object"]
@@ -65,6 +70,7 @@
       "source": "https://github.com/nodeca/js-yaml",
       "license": "MIT",
       "packagePath": "packages/js-yaml",
+      "entry": "packages/js-yaml/dist/js-yaml.mjs",
       "probe": "cases/js-yaml/probe.mjs",
       "type": ["library"],
       "capabilities": ["module.cjs", "language.exceptions", "language.parser"]
@@ -76,6 +82,7 @@
       "source": "https://github.com/isaacs/node-lru-cache",
       "license": "BlueOak-1.0.0",
       "packagePath": "packages/lru-cache",
+      "entry": "packages/lru-cache/dist/esm/index.js",
       "probe": "cases/lru-cache/probe.mjs",
       "type": ["library"],
       "capabilities": ["module.esm", "language.class", "runtime.event_loop"]
@@ -87,6 +94,7 @@
       "source": "https://github.com/uuidjs/uuid",
       "license": "MIT",
       "packagePath": "packages/uuid",
+      "entry": "packages/uuid/dist-node/index.js",
       "probe": "cases/uuid/probe.mjs",
       "type": ["library"],
       "capabilities": ["module.esm", "node.buffer.basic", "node.crypto.basic"]
@@ -98,6 +106,7 @@
       "source": "https://github.com/jprichardson/node-fs-extra",
       "license": "MIT",
       "packagePath": "packages/fs-extra",
+      "entry": "packages/fs-extra/lib/index.js",
       "probe": "cases/fs-extra/probe.mjs",
       "type": ["library", "app"],
       "capabilities": ["module.cjs", "node.fs.basic", "runtime.event_loop"]
@@ -109,6 +118,7 @@
       "source": "https://github.com/sindresorhus/execa",
       "license": "MIT",
       "packagePath": "packages/execa",
+      "entry": "packages/execa/index.js",
       "probe": "cases/execa/probe.mjs",
       "type": ["app"],
       "capabilities": [

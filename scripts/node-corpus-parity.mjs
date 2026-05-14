@@ -64,6 +64,45 @@ function ensureCorpusInstall() {
   };
 }
 
+function generateGoProjects({ nodeOnly }) {
+  if (nodeOnly) {
+    return {
+      command: null,
+      status: "skipped",
+      reason: "node-only mode",
+    };
+  }
+  if (hasFlag("--skip-generate")) {
+    return {
+      command: null,
+      status: "skipped",
+      reason: "--skip-generate",
+    };
+  }
+
+  const result = run("node", ["scripts/generate-node-corpus-go.mjs"]);
+  const report = {
+    command: "node scripts/generate-node-corpus-go.mjs",
+    status: result.status === 0 ? "passed" : "failed",
+    exitCode: result.status,
+    stderr: result.stderr,
+  };
+
+  try {
+    return {
+      ...report,
+      json: result.stdout.trim() ? JSON.parse(result.stdout) : null,
+    };
+  } catch (error) {
+    return {
+      ...report,
+      status: "failed",
+      stdout: result.stdout,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function runNodeProbe(testCase) {
   const result = run("npm", ["run", "--silent", `probe:${testCase.id}`], {
     cwd: corpusRoot,
@@ -257,6 +296,34 @@ function main() {
       mode: nodeOnly ? "node-only" : "full",
       manifestVersion: manifest.version,
       install,
+      generation: {
+        command: null,
+        status: "skipped",
+        reason: "install failed",
+      },
+      summary: {
+        total: manifest.cases.length,
+        nodePassed: 0,
+        goBuildPassed: nodeOnly ? null : 0,
+        goRunPassed: nodeOnly ? null : 0,
+        parityPassed: nodeOnly ? null : 0,
+        pass: false,
+      },
+      cases: [],
+    };
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    process.exit(1);
+  }
+
+  const generation = generateGoProjects({ nodeOnly });
+
+  if (generation.status === "failed") {
+    const report = {
+      version: REPORT_VERSION,
+      mode: nodeOnly ? "node-only" : "full",
+      manifestVersion: manifest.version,
+      install,
+      generation,
       summary: {
         total: manifest.cases.length,
         nodePassed: 0,
@@ -303,6 +370,7 @@ function main() {
     allowWip: manifest.allowWip,
     generatedRoot: path.relative(repoRoot, generatedRoot),
     install,
+    generation,
     summary,
     cases,
   };
