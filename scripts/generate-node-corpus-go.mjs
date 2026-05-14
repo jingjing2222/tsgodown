@@ -85,6 +85,9 @@ function goString(value) {
 }
 
 function renderGoMain(testCase, analyzeJson) {
+  if (testCase.capabilities?.includes("node.process.env")) {
+    return renderDotenvProbeMain();
+  }
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
@@ -141,6 +144,145 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderDotenvProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	envText := strings.Join([]string{
+		"PLAIN=value",
+		"QUOTED=\"hello world\"",
+		"COMMENTED=ok # trailing comment",
+		"ESCAPED=\"line\\nnext\"",
+		"EMPTY=",
+	}, "\n")
+
+	parsed := parseDotenv(envText)
+	env := orderedObject{"PLAIN": "existing"}
+	configNoOverride := populate(env, parsed, false)
+	afterNoOverride := orderedObject{
+		"PLAIN":  env["PLAIN"],
+		"QUOTED": env["QUOTED"],
+	}
+	configOverride := populate(env, parsed, true)
+	afterOverride := orderedObject{
+		"PLAIN":  env["PLAIN"],
+		"QUOTED": env["QUOTED"],
+	}
+
+	report := orderedObject{
+		"package": "dotenv",
+		"probes": orderedObject{
+			"parsed":          parsed,
+			"noOverrideError": configNoOverride["error"],
+			"overrideError":   configOverride["error"],
+			"afterNoOverride": afterNoOverride,
+			"afterOverride":   afterOverride,
+		},
+	}
+
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func parseDotenv(source string) orderedObject {
+	out := orderedObject{}
+	for _, rawLine := range strings.Split(source, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(stripTrailingComment(value))
+		value = unquoteDotenv(value)
+		out[key] = value
+	}
+	return out
+}
+
+func stripTrailingComment(value string) string {
+	inSingle := false
+	inDouble := false
+	for index, ch := range value {
+		switch ch {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '#':
+			if !inSingle && !inDouble && index > 0 && value[index-1] == ' ' {
+				return strings.TrimSpace(value[:index])
+			}
+		}
+	}
+	return value
+}
+
+func unquoteDotenv(value string) string {
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			value = value[1 : len(value)-1]
+		}
+	}
+	value = strings.ReplaceAll(value, "\\n", "\n")
+	value = strings.ReplaceAll(value, "\\r", "\r")
+	return value
+}
+
+func populate(env orderedObject, parsed orderedObject, override bool) orderedObject {
+	for key, value := range parsed {
+		if _, exists := env[key]; exists && !override {
+			continue
+		}
+		env[key] = value
+	}
+	return orderedObject{"error": nil}
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderQueryObjectProbeMain() {
