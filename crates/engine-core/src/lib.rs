@@ -4,7 +4,8 @@ mod contract;
 pub use analyze::analyze;
 pub use contract::{
     AnalyzeConfig, AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource,
-    Import, InputManifest, IrDocument, Module, Route,
+    ExecutableModule, Import, InputManifest, IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue,
+    Module, Route,
 };
 
 #[cfg(test)]
@@ -37,7 +38,22 @@ mod tests {
             ir: IrDocument {
                 version: "0.1".to_string(),
                 entry: "src/server.ts".to_string(),
-                modules: vec![],
+                modules: vec![Module {
+                    id: "src/server.ts".to_string(),
+                    source_path: "src/server.ts".to_string(),
+                    exports: vec![],
+                    imports: vec![],
+                    executable: Some(ExecutableModule {
+                        stmts: vec![JsStmt::VarDecl {
+                            name: "answer".to_string(),
+                            init: Some(JsExpr::Value {
+                                value: JsValue::Number {
+                                    value: "42".to_string(),
+                                },
+                            }),
+                        }],
+                    }),
+                }],
                 routes: vec![Route {
                     method: "GET".to_string(),
                     path: "/health".to_string(),
@@ -85,7 +101,7 @@ import { value } from "./value.js";
 export { value };
 "#,
         );
-        write(&root, "src/value.js", "export const value = 1;");
+        write(&root, "src/value.js", "const value = 1; export { value };");
 
         let response = analyze(AnalyzeRequest {
             manifest: InputManifest {
@@ -109,6 +125,21 @@ export { value };
         assert_eq!(
             response.ir.modules[0].imports[0].resolved.as_deref(),
             Some("src/value.js")
+        );
+        assert_eq!(
+            response.ir.modules[1]
+                .executable
+                .as_ref()
+                .expect("executable module")
+                .stmts,
+            vec![JsStmt::VarDecl {
+                name: "value".to_string(),
+                init: Some(JsExpr::Value {
+                    value: JsValue::Number {
+                        value: "1".to_string(),
+                    },
+                }),
+            }]
         );
     }
 

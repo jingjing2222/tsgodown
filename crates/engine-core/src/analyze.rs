@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::contract::{
     AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource, Import,
-    IrDocument, Module, Route,
+    IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue, Module, Route,
 };
 
 pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
@@ -33,6 +33,7 @@ pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
                             resolved: import.resolved,
                         })
                         .collect(),
+                    executable: module.executable.map(map_executable_module),
                 })
                 .collect(),
             routes: compiler_ir
@@ -63,5 +64,70 @@ pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
                 }),
             })
             .collect(),
+    }
+}
+
+fn map_executable_module(
+    executable: analyzer_rust::ExecutableModuleIR,
+) -> crate::contract::ExecutableModule {
+    crate::contract::ExecutableModule {
+        stmts: executable.stmts.into_iter().map(map_js_stmt).collect(),
+    }
+}
+
+fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
+    match stmt {
+        analyzer_rust::JsStmtIR::Expr(expr) => JsStmt::Expr {
+            expr: map_js_expr(expr),
+        },
+        analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
+            value: value.map(map_js_expr),
+        },
+        analyzer_rust::JsStmtIR::Throw(value) => JsStmt::Throw {
+            value: map_js_expr(value),
+        },
+        analyzer_rust::JsStmtIR::VarDecl { name, init } => JsStmt::VarDecl {
+            name,
+            init: init.map(map_js_expr),
+        },
+    }
+}
+
+fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
+    match expr {
+        analyzer_rust::JsExprIR::Value(value) => JsExpr::Value {
+            value: map_js_value(value),
+        },
+        analyzer_rust::JsExprIR::Ident(name) => JsExpr::Ident { name },
+        analyzer_rust::JsExprIR::Array(items) => JsExpr::Array {
+            items: items.into_iter().map(map_js_expr).collect(),
+        },
+        analyzer_rust::JsExprIR::Object(props) => JsExpr::Object {
+            props: props
+                .into_iter()
+                .map(|prop| JsObjectProp {
+                    key: prop.key,
+                    value: map_js_expr(prop.value),
+                })
+                .collect(),
+        },
+        analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
+            callee: Box::new(map_js_expr(*callee)),
+            args: args.into_iter().map(map_js_expr).collect(),
+        },
+        analyzer_rust::JsExprIR::Member { object, property } => JsExpr::Member {
+            object: Box::new(map_js_expr(*object)),
+            property,
+        },
+    }
+}
+
+fn map_js_value(value: analyzer_rust::JsValueIR) -> JsValue {
+    match value {
+        analyzer_rust::JsValueIR::Undefined => JsValue::Undefined,
+        analyzer_rust::JsValueIR::Null => JsValue::Null,
+        analyzer_rust::JsValueIR::Bool(value) => JsValue::Bool { value },
+        analyzer_rust::JsValueIR::Number(value) => JsValue::Number { value },
+        analyzer_rust::JsValueIR::String(value) => JsValue::String { value },
     }
 }

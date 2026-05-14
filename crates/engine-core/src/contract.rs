@@ -41,6 +41,8 @@ pub struct Module {
     pub exports: Vec<String>,
     #[serde(default)]
     pub imports: Vec<Import>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable: Option<ExecutableModule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -49,6 +51,76 @@ pub struct Import {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExecutableModule {
+    #[serde(default)]
+    pub stmts: Vec<JsStmt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum JsStmt {
+    #[serde(rename = "expr")]
+    Expr { expr: JsExpr },
+    #[serde(rename = "return")]
+    Return {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<JsExpr>,
+    },
+    #[serde(rename = "throw")]
+    Throw { value: JsExpr },
+    #[serde(rename = "var-decl")]
+    VarDecl {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        init: Option<JsExpr>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum JsExpr {
+    #[serde(rename = "value")]
+    Value { value: JsValue },
+    #[serde(rename = "ident")]
+    Ident { name: String },
+    #[serde(rename = "array")]
+    Array { items: Vec<JsExpr> },
+    #[serde(rename = "object")]
+    Object { props: Vec<JsObjectProp> },
+    #[serde(rename = "call")]
+    Call {
+        callee: Box<JsExpr>,
+        args: Vec<JsExpr>,
+    },
+    #[serde(rename = "member")]
+    Member {
+        object: Box<JsExpr>,
+        property: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct JsObjectProp {
+    pub key: String,
+    pub value: JsExpr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum JsValue {
+    #[serde(rename = "undefined")]
+    Undefined,
+    #[serde(rename = "null")]
+    Null,
+    #[serde(rename = "bool")]
+    Bool { value: bool },
+    #[serde(rename = "number")]
+    Number { value: String },
+    #[serde(rename = "string")]
+    String { value: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
