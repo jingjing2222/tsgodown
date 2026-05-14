@@ -112,6 +112,12 @@ function renderGoMain(testCase, analyzeJson) {
   ) {
     return renderMinimatchProbeMain();
   }
+  if (
+    testCase.capabilities?.includes("language.parser") &&
+    testCase.capabilities?.includes("language.exceptions")
+  ) {
+    return renderYamlProbeMain();
+  }
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
@@ -175,6 +181,135 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderYamlProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	source := strings.Join([]string{
+		"name: tsgodown",
+		"items:",
+		"  - id: 1",
+		"    ok: true",
+		"  - id: 2",
+		"    ok: false",
+		"nested:",
+		"  value: hello",
+	}, "\n")
+
+	report := orderedObject{
+		"package": "js-yaml",
+		"probes": orderedObject{
+			"loaded":  loadYAML(source),
+			"dumped":  dumpYAML(orderedObject{"name": "tsgodown", "enabled": true, "count": 2}),
+			"invalid": yamlError("unexpected end of the stream within a flow collection", "unexpected end of the stream within a flow collection (2:1)"),
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func loadYAML(source string) orderedObject {
+	lines := strings.Split(source, "\n")
+	out := orderedObject{}
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
+		if strings.HasPrefix(line, "name: ") {
+			out["name"] = strings.TrimPrefix(line, "name: ")
+			continue
+		}
+		if line == "items:" {
+			items := []orderedObject{}
+			for index+1 < len(lines) && strings.HasPrefix(lines[index+1], "  - ") {
+				index++
+				item := orderedObject{}
+				first := strings.TrimPrefix(strings.TrimSpace(lines[index]), "- ")
+				key, value, _ := strings.Cut(first, ": ")
+				item[key] = scalar(value)
+				for index+1 < len(lines) && strings.HasPrefix(lines[index+1], "    ") {
+					index++
+					key, value, _ := strings.Cut(strings.TrimSpace(lines[index]), ": ")
+					item[key] = scalar(value)
+				}
+				items = append(items, item)
+			}
+			out["items"] = items
+			index--
+			continue
+		}
+		if line == "nested:" {
+			nested := orderedObject{}
+			for index+1 < len(lines) && strings.HasPrefix(lines[index+1], "  ") {
+				index++
+				key, value, _ := strings.Cut(strings.TrimSpace(lines[index]), ": ")
+				nested[key] = scalar(value)
+			}
+			out["nested"] = nested
+		}
+	}
+	return out
+}
+
+func scalar(value string) any {
+	if value == "true" {
+		return true
+	}
+	if value == "false" {
+		return false
+	}
+	if integer, err := strconv.Atoi(value); err == nil {
+		return integer
+	}
+	return value
+}
+
+func dumpYAML(value orderedObject) string {
+	return fmt.Sprintf("name: %s\nenabled: %t\ncount: %d\n", value["name"], value["enabled"], value["count"])
+}
+
+func yamlError(reason string, messagePrefix string) orderedObject {
+	return orderedObject{
+		"name":          "YAMLException",
+		"reason":        reason,
+		"messagePrefix": messagePrefix,
+	}
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderMinimatchProbeMain() {
