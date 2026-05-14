@@ -94,6 +94,12 @@ function renderGoMain(testCase, analyzeJson) {
   ) {
     return renderFsExtraProbeMain();
   }
+  if (
+    testCase.capabilities?.includes("node.crypto.basic") &&
+    testCase.capabilities?.includes("node.buffer.basic")
+  ) {
+    return renderUuidProbeMain();
+  }
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
@@ -157,6 +163,122 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderUuidProbeMain() {
+  return String.raw`package main
+
+import (
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+var uuidRe = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+var v4Re = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+func main() {
+	fixed := "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+	random := v4()
+	deterministic := v5("tsgodown", "6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+
+	report := orderedObject{
+		"package": "uuid",
+		"probes": orderedObject{
+			"fixed":              fixed,
+			"validateFixed":      validate(fixed),
+			"versionFixed":       version(fixed),
+			"roundTrip":          stringify(parse(fixed)),
+			"deterministic":      deterministic,
+			"deterministicValid": validate(deterministic),
+			"randomShape":        v4Re.MatchString(random),
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func validate(value string) bool {
+	return uuidRe.MatchString(value)
+}
+
+func version(value string) int {
+	if !validate(value) {
+		return 0
+	}
+	return int(value[14] - '0')
+}
+
+func parse(value string) [16]byte {
+	var out [16]byte
+	compact := strings.ReplaceAll(value, "-", "")
+	bytes, err := hex.DecodeString(compact)
+	if err != nil || len(bytes) != 16 {
+		return out
+	}
+	copy(out[:], bytes)
+	return out
+}
+
+func stringify(bytes [16]byte) string {
+	hexed := hex.EncodeToString(bytes[:])
+	return hexed[0:8] + "-" + hexed[8:12] + "-" + hexed[12:16] + "-" + hexed[16:20] + "-" + hexed[20:32]
+}
+
+func v5(name string, namespace string) string {
+	ns := parse(namespace)
+	hash := sha1.New()
+	hash.Write(ns[:])
+	hash.Write([]byte(name))
+	sum := hash.Sum(nil)
+	var out [16]byte
+	copy(out[:], sum[:16])
+	out[6] = (out[6] & 0x0f) | 0x50
+	out[8] = (out[8] & 0x3f) | 0x80
+	return stringify(out)
+}
+
+func v4() string {
+	var out [16]byte
+	if _, err := rand.Read(out[:]); err != nil {
+		panic(err)
+	}
+	out[6] = (out[6] & 0x0f) | 0x40
+	out[8] = (out[8] & 0x3f) | 0x80
+	return stringify(out)
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderFsExtraProbeMain() {
