@@ -12,6 +12,12 @@ export type JsStmtIR =
       body: JsStmtIR[];
     }
   | {
+      kind: "class-decl";
+      name: string;
+      superClass?: JsExprIR;
+      methods: JsClassMethodIR[];
+    }
+  | {
       kind: "if";
       test: JsExprIR;
       consequent: JsStmtIR[];
@@ -45,6 +51,15 @@ export interface JsSwitchCaseIR {
   consequent: JsStmtIR[];
 }
 
+export interface JsClassMethodIR {
+  name: string;
+  kind: string;
+  isStatic: boolean;
+  params: string[];
+  async: boolean;
+  body: JsStmtIR[];
+}
+
 export type JsExprIR =
   | { kind: "value"; value: JsValueIR }
   | { kind: "ident"; name: string }
@@ -56,11 +71,17 @@ export type JsExprIR =
       async: boolean;
       body: JsStmtIR[];
     }
+  | {
+      kind: "class";
+      superClass?: JsExprIR;
+      methods: JsClassMethodIR[];
+    }
   | { kind: "unary"; op: string; arg: JsExprIR }
   | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "assign"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "update"; op: string; arg: JsExprIR; prefix: boolean }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }
+  | { kind: "new"; callee: JsExprIR; args: JsExprIR[] }
   | { kind: "member"; object: JsExprIR; property: string };
 
 export interface JsObjectPropIR {

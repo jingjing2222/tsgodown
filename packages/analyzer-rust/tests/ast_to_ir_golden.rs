@@ -116,6 +116,19 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::ClassDecl {
+            name,
+            super_class,
+            methods,
+        } => format!(
+            "class {} extends={} methods=[{}]",
+            name,
+            super_class
+                .as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            render_class_methods(methods)
+        ),
         JsStmtIR::If {
             test,
             consequent,
@@ -268,6 +281,17 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsExprIR::Class {
+            super_class,
+            methods,
+        } => format!(
+            "class-expr extends={} methods=[{}]",
+            super_class
+                .as_ref()
+                .map(|expr| render_js_expr(expr))
+                .unwrap_or_else(|| "<none>".to_string()),
+            render_class_methods(methods)
+        ),
         JsExprIR::Unary { op, arg } => format!("unary({}, {})", op, render_js_expr(arg)),
         JsExprIR::Binary { op, left, right } => format!(
             "binary({}, {}, {})",
@@ -292,10 +316,41 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        JsExprIR::New { callee, args } => format!(
+            "new({}, [{}])",
+            render_js_expr(callee),
+            args.iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         JsExprIR::Member { object, property } => {
             format!("member({}, {})", render_js_expr(object), property)
         }
     }
+}
+
+fn render_class_methods(methods: &[analyzer_rust::JsClassMethodIR]) -> String {
+    methods
+        .iter()
+        .map(|method| {
+            format!(
+                "{} kind={} static={} async={} params=[{}] body=[{}]",
+                method.name,
+                method.kind,
+                method.is_static,
+                method.r#async,
+                method.params.join(","),
+                method
+                    .body
+                    .iter()
+                    .map(render_js_stmt)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn render_js_value(value: &JsValueIR) -> String {
@@ -424,6 +479,32 @@ function scan(items) {
     assert!(rendered.contains("break <none>"));
     assert!(rendered.contains("try body=[return ident(total)] catch=err"));
     assert!(rendered.contains("update(++, ident(total), false)"));
+}
+
+#[test]
+fn executable_classes_and_new_expressions_are_lowered_deterministically() {
+    let source = r#"
+class Cache extends BaseCache {
+  constructor(limit) {
+    this.limit = limit;
+  }
+  get(key) {
+    return this.store.get(key);
+  }
+  static create(limit) {
+    return new Cache(limit);
+  }
+}
+const cache = new Cache(2);
+"#;
+    let ir = analyze_compiler_entry("classes.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("class Cache extends=ident(BaseCache)"));
+    assert!(rendered.contains("constructor kind=constructor"));
+    assert!(rendered.contains("get kind=method"));
+    assert!(rendered.contains("create kind=method static=true"));
+    assert!(rendered.contains("new(ident(Cache), [number(2)])"));
 }
 
 #[test]

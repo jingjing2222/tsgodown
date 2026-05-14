@@ -6,14 +6,14 @@ use swc_ecma_ast::{
     SimpleAssignTarget, Stmt, VarDeclOrExpr,
 };
 use swc_ecma_ast::{
-    BlockStmt, BlockStmtOrExpr, Decl, ExportSpecifier, FnDecl, Function, Module, ModuleDecl,
-    ModuleItem, Pat,
+    BlockStmt, BlockStmtOrExpr, Class, ClassMember, Decl, ExportSpecifier, FnDecl, Function,
+    MethodKind, Module, ModuleDecl, ModuleItem, ParamOrTsParamProp, Pat,
 };
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
 use crate::{
-    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsExprIR, JsObjectPropIR,
-    JsStmtIR, JsSwitchCaseIR, JsValueIR,
+    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsClassMethodIR, JsExprIR,
+    JsObjectPropIR, JsStmtIR, JsSwitchCaseIR, JsValueIR,
 };
 
 #[derive(Debug)]
@@ -254,11 +254,22 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
             };
             lower_var_decl_stmts(stmts, var_decl);
         }
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export))
+            if matches!(export.decl, Decl::Class(_)) =>
+        {
+            let Decl::Class(class_decl) = &export.decl else {
+                unreachable!("matches! guarded class decl")
+            };
+            lower_class_decl_stmt(stmts, class_decl);
+        }
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
             lower_var_decl_stmts(stmts, var_decl);
         }
         ModuleItem::Stmt(Stmt::Decl(Decl::Fn(function))) => {
             lower_fn_decl_stmt(stmts, function);
+        }
+        ModuleItem::Stmt(Stmt::Decl(Decl::Class(class_decl))) => {
+            lower_class_decl_stmt(stmts, class_decl);
         }
         ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
             if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
@@ -284,6 +295,7 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
     match stmt {
         Stmt::Decl(Decl::Var(var_decl)) => lower_var_decl_stmts(stmts, var_decl),
         Stmt::Decl(Decl::Fn(function)) => lower_fn_decl_stmt(stmts, function),
+        Stmt::Decl(Decl::Class(class_decl)) => lower_class_decl_stmt(stmts, class_decl),
         Stmt::Expr(expr_stmt) => {
             if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
@@ -444,6 +456,18 @@ fn lower_fn_decl_stmt(stmts: &mut Vec<JsStmtIR>, function: &FnDecl) {
     });
 }
 
+fn lower_class_decl_stmt(stmts: &mut Vec<JsStmtIR>, class_decl: &swc_ecma_ast::ClassDecl) {
+    stmts.push(JsStmtIR::ClassDecl {
+        name: class_decl.ident.sym.to_string(),
+        super_class: class_decl
+            .class
+            .super_class
+            .as_deref()
+            .and_then(lower_js_expr),
+        methods: lower_class_methods(&class_decl.class),
+    });
+}
+
 fn lower_block_stmt(block: &BlockStmt) -> Vec<JsStmtIR> {
     let mut stmts = Vec::new();
     for stmt in &block.stmts {
@@ -500,6 +524,15 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             Some(JsExprIR::Object(props))
         }
         Expr::Fn(function) => lower_function_expr(&function.function),
+        Expr::Class(class) => Some(JsExprIR::Class {
+            super_class: class
+                .class
+                .super_class
+                .as_deref()
+                .and_then(lower_js_expr)
+                .map(Box::new),
+            methods: lower_class_methods(&class.class),
+        }),
         Expr::Arrow(arrow) => Some(JsExprIR::Function {
             params: arrow.params.iter().filter_map(pat_name).collect(),
             r#async: arrow.is_async,
@@ -540,6 +573,21 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 args,
             })
         }
+        Expr::New(new_expr) => {
+            let args = new_expr
+                .args
+                .as_ref()
+                .map(|args| {
+                    args.iter()
+                        .filter_map(|arg| lower_js_expr(&arg.expr))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Some(JsExprIR::New {
+                callee: Box::new(lower_js_expr(&new_expr.callee)?),
+                args,
+            })
+        }
         Expr::Member(member) => {
             let property = match &member.prop {
                 MemberProp::Ident(ident) => ident.sym.to_string(),
@@ -555,6 +603,65 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             })
         }
         _ => None,
+    }
+}
+
+fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
+    class
+        .body
+        .iter()
+        .filter_map(|member| match member {
+            ClassMember::Constructor(constructor) => Some(JsClassMethodIR {
+                name: "constructor".to_string(),
+                kind: "constructor".to_string(),
+                is_static: false,
+                params: constructor
+                    .params
+                    .iter()
+                    .filter_map(class_constructor_param_name)
+                    .collect(),
+                r#async: false,
+                body: constructor
+                    .body
+                    .as_ref()
+                    .map(lower_block_stmt)
+                    .unwrap_or_default(),
+            }),
+            ClassMember::Method(method) => Some(JsClassMethodIR {
+                name: prop_name(&method.key)?,
+                kind: method_kind_name(&method.kind).to_string(),
+                is_static: method.is_static,
+                params: method
+                    .function
+                    .params
+                    .iter()
+                    .filter_map(|param| pat_name(&param.pat))
+                    .collect(),
+                r#async: method.function.is_async,
+                body: method
+                    .function
+                    .body
+                    .as_ref()
+                    .map(lower_block_stmt)
+                    .unwrap_or_default(),
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+fn method_kind_name(kind: &MethodKind) -> &'static str {
+    match kind {
+        MethodKind::Method => "method",
+        MethodKind::Getter => "getter",
+        MethodKind::Setter => "setter",
+    }
+}
+
+fn class_constructor_param_name(param: &ParamOrTsParamProp) -> Option<String> {
+    match param {
+        ParamOrTsParamProp::Param(param) => pat_name(&param.pat),
+        ParamOrTsParamProp::TsParamProp(_) => None,
     }
 }
 

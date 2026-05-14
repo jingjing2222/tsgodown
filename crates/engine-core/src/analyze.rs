@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::contract::{
     AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource, Import,
-    IrDocument, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue, Module, Route,
+    IrDocument, JsClassMethod, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue, Module, Route,
 };
 
 pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
@@ -90,6 +90,15 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             params,
             r#async,
             body: body.into_iter().map(map_js_stmt).collect(),
+        },
+        analyzer_rust::JsStmtIR::ClassDecl {
+            name,
+            super_class,
+            methods,
+        } => JsStmt::ClassDecl {
+            name,
+            super_class: super_class.map(map_js_expr),
+            methods: methods.into_iter().map(map_js_class_method).collect(),
         },
         analyzer_rust::JsStmtIR::If {
             test,
@@ -186,6 +195,13 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             r#async,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsExprIR::Class {
+            super_class,
+            methods,
+        } => JsExpr::Class {
+            super_class: super_class.map(|expr| Box::new(map_js_expr(*expr))),
+            methods: methods.into_iter().map(map_js_class_method).collect(),
+        },
         analyzer_rust::JsExprIR::Unary { op, arg } => JsExpr::Unary {
             op,
             arg: Box::new(map_js_expr(*arg)),
@@ -209,10 +225,25 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             callee: Box::new(map_js_expr(*callee)),
             args: args.into_iter().map(map_js_expr).collect(),
         },
+        analyzer_rust::JsExprIR::New { callee, args } => JsExpr::New {
+            callee: Box::new(map_js_expr(*callee)),
+            args: args.into_iter().map(map_js_expr).collect(),
+        },
         analyzer_rust::JsExprIR::Member { object, property } => JsExpr::Member {
             object: Box::new(map_js_expr(*object)),
             property,
         },
+    }
+}
+
+fn map_js_class_method(method: analyzer_rust::JsClassMethodIR) -> JsClassMethod {
+    JsClassMethod {
+        name: method.name,
+        kind: method.kind,
+        is_static: method.is_static,
+        params: method.params,
+        r#async: method.r#async,
+        body: method.body.into_iter().map(map_js_stmt).collect(),
     }
 }
 

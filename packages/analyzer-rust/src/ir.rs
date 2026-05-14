@@ -90,6 +90,11 @@ pub enum JsStmtIR {
         r#async: bool,
         body: Vec<JsStmtIR>,
     },
+    ClassDecl {
+        name: String,
+        super_class: Option<JsExprIR>,
+        methods: Vec<JsClassMethodIR>,
+    },
     If {
         test: JsExprIR,
         consequent: Vec<JsStmtIR>,
@@ -137,6 +142,16 @@ pub struct JsSwitchCaseIR {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsClassMethodIR {
+    pub name: String,
+    pub kind: String,
+    pub is_static: bool,
+    pub params: Vec<String>,
+    pub r#async: bool,
+    pub body: Vec<JsStmtIR>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JsExprIR {
     Value(JsValueIR),
     Ident(String),
@@ -146,6 +161,10 @@ pub enum JsExprIR {
         params: Vec<String>,
         r#async: bool,
         body: Vec<JsStmtIR>,
+    },
+    Class {
+        super_class: Option<Box<JsExprIR>>,
+        methods: Vec<JsClassMethodIR>,
     },
     Unary {
         op: String,
@@ -167,6 +186,10 @@ pub enum JsExprIR {
         prefix: bool,
     },
     Call {
+        callee: Box<JsExprIR>,
+        args: Vec<JsExprIR>,
+    },
+    New {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,
     },

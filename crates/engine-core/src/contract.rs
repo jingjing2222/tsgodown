@@ -71,6 +71,13 @@ pub enum JsStmt {
         r#async: bool,
         body: Vec<JsStmt>,
     },
+    #[serde(rename = "class-decl")]
+    ClassDecl {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none", rename = "superClass")]
+        super_class: Option<JsExpr>,
+        methods: Vec<JsClassMethod>,
+    },
     #[serde(rename = "if")]
     If {
         test: JsExpr,
@@ -143,6 +150,17 @@ pub struct JsSwitchCase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JsClassMethod {
+    pub name: String,
+    pub kind: String,
+    pub is_static: bool,
+    pub params: Vec<String>,
+    pub r#async: bool,
+    pub body: Vec<JsStmt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum JsExpr {
     #[serde(rename = "value")]
@@ -158,6 +176,12 @@ pub enum JsExpr {
         params: Vec<String>,
         r#async: bool,
         body: Vec<JsStmt>,
+    },
+    #[serde(rename = "class")]
+    Class {
+        #[serde(skip_serializing_if = "Option::is_none", rename = "superClass")]
+        super_class: Option<Box<JsExpr>>,
+        methods: Vec<JsClassMethod>,
     },
     #[serde(rename = "unary")]
     Unary { op: String, arg: Box<JsExpr> },
@@ -181,6 +205,11 @@ pub enum JsExpr {
     },
     #[serde(rename = "call")]
     Call {
+        callee: Box<JsExpr>,
+        args: Vec<JsExpr>,
+    },
+    #[serde(rename = "new")]
+    New {
         callee: Box<JsExpr>,
         args: Vec<JsExpr>,
     },
