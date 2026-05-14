@@ -29,6 +29,18 @@ const GO_KEYWORDS = new Set([
 export function renderExecutableIrGoProgram(ir, options = {}) {
   const packageName = options.packageName ?? "main";
   const stmts = Array.isArray(ir?.stmts) ? ir.stmts : [];
+  const importPaths = [
+    ...new Set([
+      "encoding/json",
+      "fmt",
+      "os",
+      "regexp",
+      "reflect",
+      "strconv",
+      "strings",
+      ...(options.extraImports ?? []),
+    ]),
+  ];
   const externalFunctions = new Set(options.externalFunctions ?? []);
   const externalNamespaces = normalizeExternalNamespaces(
     options.externalNamespaces ?? {},
@@ -68,15 +80,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     `package ${packageName}`,
     "",
     "import (",
-    '\t"encoding/json"',
-    '\t"fmt"',
-    '\t"os"',
-    '\t"regexp"',
-    '\t"reflect"',
-    '\t"strings"',
-    ...(options.extraImports ?? []).map(
-      (importPath) => `\t${JSON.stringify(importPath)}`,
-    ),
+    ...importPaths.map((importPath) => `\t${JSON.stringify(importPath)}`),
     ")",
     "",
     "func main() {",
@@ -173,7 +177,30 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\tif object, ok := value.(map[string]any); ok {",
     "\t\treturn object[property]",
     "\t}",
+    "\tif items, ok := value.([]any); ok {",
+    "\t\tindex, err := strconv.Atoi(property)",
+    "\t\tif err == nil && index >= 0 && index < len(items) {",
+    "\t\t\treturn items[index]",
+    "\t\t}",
+    "\t}",
     "\treturn nil",
+    "}",
+    "",
+    "func jsString(value any) string {",
+    "\treturn fmt.Sprint(value)",
+    "}",
+    "",
+    "func jsStringSplit(value any, separator any) []any {",
+    "\tparts := strings.Split(fmt.Sprint(value), fmt.Sprint(separator))",
+    "\tout := make([]any, 0, len(parts))",
+    "\tfor _, part := range parts {",
+    "\t\tout = append(out, part)",
+    "\t}",
+    "\treturn out",
+    "}",
+    "",
+    "func jsRecoverValue(value any) any {",
+    "\treturn value",
     "}",
     "",
     "func jsSetMember(value any, property string, next any) any {",
@@ -298,6 +325,9 @@ function renderStmt(stmt, ctx, indentLevel) {
         return `${indent}${name} = ${init}`;
       }
       ctx.declared.add(name);
+      if (init === "nil") {
+        return `${indent}var ${name} any = nil`;
+      }
       return `${indent}${name} := ${init}`;
     }
     case "return":
@@ -352,6 +382,38 @@ function renderStmt(stmt, ctx, indentLevel) {
       return `${indent}break`;
     case "continue":
       return `${indent}continue`;
+    case "throw":
+      return `${indent}panic(${renderExpr(stmt.value, ctx)})`;
+    case "try": {
+      const catchParam = goIdent(stmt.catchParam ?? "error");
+      const catchCtx = {
+        ...ctx,
+        declared: new Set([...ctx.declared, catchParam]),
+      };
+      const catchBody = renderStmtBlock(
+        stmt.catchBody ?? [],
+        catchCtx,
+        indentLevel + 2,
+      );
+      const finallyBody = renderStmtBlock(
+        stmt.finallyBody ?? [],
+        ctx,
+        indentLevel,
+      );
+      const lines = [
+        `${indent}func() {`,
+        `${indent}\tdefer func() {`,
+        `${indent}\t\tif recovered := recover(); recovered != nil {`,
+        `${indent}\t\t\t${catchParam} := jsRecoverValue(recovered)`,
+        catchBody,
+        `${indent}\t\t}`,
+        `${indent}\t}()`,
+        renderStmtBlock(stmt.body ?? [], ctx, indentLevel + 1),
+        `${indent}}()`,
+        finallyBody,
+      ];
+      return lines.filter(Boolean).join("\n");
+    }
     default:
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_STMT:${stmt?.kind ?? "unknown"}`,
@@ -368,6 +430,9 @@ function renderSimpleStmt(stmt, ctx) {
         return `${name} = ${init}`;
       }
       ctx.declared.add(name);
+      if (init === "nil") {
+        return `var ${name} any = nil`;
+      }
       return `${name} := ${init}`;
     }
     case "expr":
@@ -561,7 +626,20 @@ function renderBuiltinCall(expr, ctx) {
       ctx,
     )})`;
   }
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.property === "split" &&
+    expr.args?.length === 1
+  ) {
+    return `jsStringSplit(${renderExpr(expr.callee.object, ctx)}, ${renderExpr(
+      expr.args[0],
+      ctx,
+    )})`;
+  }
   const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (expr.callee?.kind === "ident" && expr.callee.name === "String") {
+    return `jsString(${args})`;
+  }
   if (
     expr.callee?.kind === "member" &&
     expr.callee.object?.kind === "ident" &&

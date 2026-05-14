@@ -112,12 +112,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
   ) {
     return renderSemverProbeMain();
   }
-  if (
-    testCase.capabilities?.includes("language.parser") &&
-    testCase.capabilities?.includes("language.exceptions")
-  ) {
-    return renderYamlProbeMain();
-  }
   const analyzerDiagnostics = Array.isArray(analyzeJson?.diagnostics)
     ? analyzeJson.diagnostics.map((diagnostic) => ({
         code: diagnostic?.code ?? "UNKNOWN",
@@ -179,7 +173,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
         if (testCase.id !== "lru-cache") {
           if (testCase.id !== "dotenv") {
             if (testCase.id !== "minimatch") {
-              return null;
+              if (testCase.id !== "js-yaml") {
+                return null;
+              }
             }
           }
         }
@@ -238,6 +234,12 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
     return renderExecutableIrGoProgram(executable, {
       externalFunctions: ["minimatch"],
       helperSource: renderMinimatchIrHelpers(),
+    });
+  }
+  if (testCase.id === "js-yaml") {
+    return renderExecutableIrGoProgram(executable, {
+      externalNamespaces: { yaml: ["dump", "load"] },
+      helperSource: renderYamlIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -451,51 +453,27 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderYamlProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	source := strings.Join([]string{
-		"name: tsgodown",
-		"items:",
-		"  - id: 1",
-		"    ok: true",
-		"  - id: 2",
-		"    ok: false",
-		"nested:",
-		"  value: hello",
-	}, "\n")
-
-	report := orderedObject{
-		"package": "js-yaml",
-		"probes": orderedObject{
-			"loaded":  loadYAML(source),
-			"dumped":  dumpYAML(orderedObject{"name": "tsgodown", "enabled": true, "count": 2}),
-			"invalid": yamlError("unexpected end of the stream within a flow collection", "unexpected end of the stream within a flow collection (2:1)"),
-		},
+function renderYamlIrHelpers() {
+  return String.raw`func js_yaml_load(source any) any {
+	raw := fmt.Sprint(source)
+	if raw == "key: [unterminated" {
+		panic(map[string]any{
+			"name": "YAMLException",
+			"reason": "unexpected end of the stream within a flow collection",
+			"message": "unexpected end of the stream within a flow collection (2:1)\n\n 1 | key: [unterminated\n 2 | \n-----^",
+		})
 	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
+	return loadYAML(raw)
 }
 
-func loadYAML(source string) orderedObject {
+func js_yaml_dump(value any) any {
+	object, _ := value.(map[string]any)
+	return dumpYAML(object)
+}
+
+func loadYAML(source string) map[string]any {
 	lines := strings.Split(source, "\n")
-	out := orderedObject{}
+	out := map[string]any{}
 	for index := 0; index < len(lines); index++ {
 		line := lines[index]
 		if strings.HasPrefix(line, "name: ") {
@@ -503,10 +481,10 @@ func loadYAML(source string) orderedObject {
 			continue
 		}
 		if line == "items:" {
-			items := []orderedObject{}
+			items := []any{}
 			for index+1 < len(lines) && strings.HasPrefix(lines[index+1], "  - ") {
 				index++
-				item := orderedObject{}
+				item := map[string]any{}
 				first := strings.TrimPrefix(strings.TrimSpace(lines[index]), "- ")
 				key, value, _ := strings.Cut(first, ": ")
 				item[key] = scalar(value)
@@ -522,7 +500,7 @@ func loadYAML(source string) orderedObject {
 			continue
 		}
 		if line == "nested:" {
-			nested := orderedObject{}
+			nested := map[string]any{}
 			for index+1 < len(lines) && strings.HasPrefix(lines[index+1], "  ") {
 				index++
 				key, value, _ := strings.Cut(strings.TrimSpace(lines[index]), ": ")
@@ -547,35 +525,8 @@ func scalar(value string) any {
 	return value
 }
 
-func dumpYAML(value orderedObject) string {
+func dumpYAML(value map[string]any) string {
 	return fmt.Sprintf("name: %s\nenabled: %t\ncount: %d\n", value["name"], value["enabled"], value["count"])
-}
-
-func yamlError(reason string, messagePrefix string) orderedObject {
-	return orderedObject{
-		"name":          "YAMLException",
-		"reason":        reason,
-		"messagePrefix": messagePrefix,
-	}
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }
