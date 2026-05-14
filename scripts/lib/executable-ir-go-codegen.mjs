@@ -32,16 +32,18 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const mainFn = stmts.find(
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
-  if (!mainFn) {
-    throw new Error("EXECUTABLE_IR_MAIN_FUNCTION_REQUIRED");
-  }
-
   const functionDecls = stmts.filter((stmt) => stmt?.kind === "function-decl");
   const ctx = {
     declared: new Set(),
     functions: new Set(functionDecls.map((stmt) => stmt.name)),
   };
-  const body = renderStmtBlock(mainFn.body ?? [], ctx, 1);
+  const body = renderStmtBlock(
+    mainFn
+      ? (mainFn.body ?? [])
+      : stmts.filter((stmt) => stmt?.kind !== "function-decl"),
+    ctx,
+    1,
+  );
   const helperFunctions = functionDecls
     .filter((stmt) => stmt.name !== "main")
     .map((stmt) => renderFunctionDecl(stmt, ctx))
@@ -54,10 +56,14 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     '\t"encoding/json"',
     '\t"fmt"',
     '\t"os"',
+    '\t"strings"',
     ")",
     "",
     "func main() {",
     "\tresult := js_main()",
+    "\tif result == nil {",
+    "\t\treturn",
+    "\t}",
     "\tbytes, err := json.Marshal(result)",
     "\tif err != nil {",
     "\t\tfmt.Fprintln(os.Stderr, err)",
@@ -89,6 +95,48 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn consequent",
     "\t}",
     "\treturn alternate",
+    "}",
+    "",
+    "func jsConsoleLog(args ...any) any {",
+    "\tfor index, arg := range args {",
+    "\t\tif index > 0 {",
+    '\t\t\tfmt.Print(" ")',
+    "\t\t}",
+    "\t\tfmt.Print(arg)",
+    "\t}",
+    '\tfmt.Print("\\n")',
+    "\treturn nil",
+    "}",
+    "",
+    "func jsJSONStringify(value any, args ...any) string {",
+    "\tif len(args) >= 2 && args[1] != nil {",
+    '\t\tbytes, _ := json.MarshalIndent(value, "", jsJSONIndent(args[1]))',
+    "\t\treturn string(bytes)",
+    "\t}",
+    "\tbytes, _ := json.Marshal(value)",
+    "\treturn string(bytes)",
+    "}",
+    "",
+    "func jsJSONIndent(value any) string {",
+    "\tswitch typed := value.(type) {",
+    "\tcase int:",
+    '\t\treturn strings.Repeat(" ", typed)',
+    "\tcase int64:",
+    '\t\treturn strings.Repeat(" ", int(typed))',
+    "\tcase float64:",
+    '\t\treturn strings.Repeat(" ", int(typed))',
+    "\tcase string:",
+    "\t\treturn typed",
+    "\tdefault:",
+    "\t\treturn fmt.Sprint(value)",
+    "\t}",
+    "}",
+    "",
+    "func jsGet(value any, property string) any {",
+    "\tif object, ok := value.(map[string]any); ok {",
+    "\t\treturn object[property]",
+    "\t}",
+    "\treturn nil",
     "}",
     "",
   ]
@@ -240,6 +288,10 @@ function renderExpr(expr, ctx) {
         ctx,
       )}, ${renderExpr(expr.alternate, ctx)})`;
     case "call": {
+      const builtinCall = renderBuiltinCall(expr, ctx);
+      if (builtinCall) {
+        return builtinCall;
+      }
       if (
         expr.callee?.kind !== "ident" ||
         !ctx.functions.has(expr.callee.name)
@@ -259,11 +311,36 @@ function renderExpr(expr, ctx) {
       const arg = renderExpr(expr.arg, ctx);
       return expr.prefix ? `${expr.op}${arg}` : `${arg}${expr.op}`;
     }
+    case "member":
+      return `jsGet(${renderExpr(expr.object, ctx)}, ${JSON.stringify(
+        expr.property,
+      )})`;
     default:
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_EXPR:${expr?.kind ?? "unknown"}`,
       );
   }
+}
+
+function renderBuiltinCall(expr, ctx) {
+  const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "ident" &&
+    expr.callee.object.name === "console" &&
+    expr.callee.property === "log"
+  ) {
+    return `jsConsoleLog(${args})`;
+  }
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "ident" &&
+    expr.callee.object.name === "JSON" &&
+    expr.callee.property === "stringify"
+  ) {
+    return `jsJSONStringify(${args})`;
+  }
+  return null;
 }
 
 function renderValue(value) {

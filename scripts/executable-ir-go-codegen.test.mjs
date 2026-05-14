@@ -287,6 +287,80 @@ test("renders helper function declarations and calls", () => {
   });
 });
 
+test("renders probe-style top-level console JSON output", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "var-decl",
+        name: "report",
+        init: {
+          kind: "object",
+          props: [
+            {
+              key: "package",
+              value: {
+                kind: "value",
+                value: { kind: "string", value: "probe-style" },
+              },
+            },
+            {
+              key: "probes",
+              value: {
+                kind: "object",
+                props: [
+                  {
+                    key: "ok",
+                    value: {
+                      kind: "value",
+                      value: { kind: "bool", value: true },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        kind: "expr",
+        expr: {
+          kind: "call",
+          callee: {
+            kind: "member",
+            object: { kind: "ident", name: "console" },
+            property: "log",
+          },
+          args: [
+            {
+              kind: "call",
+              callee: {
+                kind: "member",
+                object: { kind: "ident", name: "JSON" },
+                property: "stringify",
+              },
+              args: [
+                { kind: "ident", name: "report" },
+                { kind: "value", value: { kind: "null" } },
+                { kind: "value", value: { kind: "number", value: "2" } },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.doesNotMatch(source, /os\/exec|exec\.Command|node --/);
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), {
+    package: "probe-style",
+    probes: {
+      ok: true,
+    },
+  });
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
