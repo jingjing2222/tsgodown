@@ -235,16 +235,16 @@ fn collect_executable_from_ast(module: &Module) -> ExecutableModuleIR {
 
 fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
     match item {
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export))
+            if matches!(export.decl, Decl::Var(_)) =>
+        {
+            let Decl::Var(var_decl) = &export.decl else {
+                unreachable!("matches! guarded var decl")
+            };
+            lower_var_decl_stmts(stmts, var_decl);
+        }
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
-            for decl in &var_decl.decls {
-                let Some(name) = pat_name(&decl.name) else {
-                    continue;
-                };
-                stmts.push(JsStmtIR::VarDecl {
-                    name,
-                    init: decl.init.as_deref().and_then(lower_js_expr),
-                });
-            }
+            lower_var_decl_stmts(stmts, var_decl);
         }
         ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
             if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
@@ -262,6 +262,18 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
             }
         }
         _ => {}
+    }
+}
+
+fn lower_var_decl_stmts(stmts: &mut Vec<JsStmtIR>, var_decl: &swc_ecma_ast::VarDecl) {
+    for decl in &var_decl.decls {
+        let Some(name) = pat_name(&decl.name) else {
+            continue;
+        };
+        stmts.push(JsStmtIR::VarDecl {
+            name,
+            init: decl.init.as_deref().and_then(lower_js_expr),
+        });
     }
 }
 

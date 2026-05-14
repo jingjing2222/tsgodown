@@ -5,6 +5,7 @@ modules:
     imports:
       - spec=node:util kind=esm resolved=<none>
     executable:
+      - var health = <none>
       - var users = <none>
       - expr call(member(ident(app), get), [string(/users), ident(users)])
       - expr call(member(ident(app), get), [string(/health), ident(health)])

@@ -101,7 +101,7 @@ import { value } from "./value.js";
 export { value };
 "#,
         );
-        write(&root, "src/value.js", "const value = 1; export { value };");
+        write(&root, "src/value.js", "export const value = 1;");
 
         let response = analyze(AnalyzeRequest {
             manifest: InputManifest {
