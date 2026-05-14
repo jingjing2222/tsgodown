@@ -4,7 +4,7 @@ modules:
     imports:
     executable:
       - var health = <none>
-      - var routeDef = <none>
+      - var routeDef = object({method: string(GET), url: string(/health), handler: ident(health)})
       - expr call(member(ident(app), route), [ident(routeDef)])
 routes:
   - method=GET path=/health handler_ref=health

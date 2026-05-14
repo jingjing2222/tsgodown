@@ -5,7 +5,8 @@ mod parser;
 
 pub use ir::{
     DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, HandlerIR, HandlerParamIR,
-    HandlerSemanticsIR, ImportIR, JsExprIR, JsStmtIR, JsValueIR, ModuleIR, ProgramIR, RouteIR,
+    HandlerSemanticsIR, ImportIR, JsExprIR, JsObjectPropIR, JsStmtIR, JsValueIR, ModuleIR,
+    ProgramIR, RouteIR,
 };
 
 pub fn analyze_compiler_entry(file: &str, src: &str) -> ProgramIR {

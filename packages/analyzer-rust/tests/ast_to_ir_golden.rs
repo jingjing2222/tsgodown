@@ -118,6 +118,22 @@ fn render_js_expr(expr: &JsExprIR) -> String {
     match expr {
         JsExprIR::Value(value) => render_js_value(value),
         JsExprIR::Ident(name) => format!("ident({name})"),
+        JsExprIR::Array(items) => format!(
+            "array([{}])",
+            items
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Object(props) => format!(
+            "object({{{}}})",
+            props
+                .iter()
+                .map(|prop| format!("{}: {}", prop.key, render_js_expr(&prop.value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         JsExprIR::Call { callee, args } => format!(
             "call({}, [{}])",
             render_js_expr(callee),

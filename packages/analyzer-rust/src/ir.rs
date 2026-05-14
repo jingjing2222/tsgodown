@@ -96,6 +96,8 @@ pub enum JsStmtIR {
 pub enum JsExprIR {
     Value(JsValueIR),
     Ident(String),
+    Array(Vec<JsExprIR>),
+    Object(Vec<JsObjectPropIR>),
     Call {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,
@@ -104,6 +106,12 @@ pub enum JsExprIR {
         object: Box<JsExprIR>,
         property: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsObjectPropIR {
+    pub key: String,
+    pub value: JsExprIR,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

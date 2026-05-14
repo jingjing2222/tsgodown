@@ -4,8 +4,8 @@ modules:
     imports:
     executable:
       - var app = <none>
-      - expr call(member(ident(app), register), [call(ident(factoryPlugin), [])])
-      - expr call(member(ident(app), register), [ident(missingPlugin)])
+      - expr call(member(ident(app), register), [call(ident(factoryPlugin), []), object({prefix: string(/v1)})])
+      - expr call(member(ident(app), register), [ident(missingPlugin), object({prefix: string(/v2)})])
 routes:
 handlers:
 diagnostics:

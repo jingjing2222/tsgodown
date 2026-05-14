@@ -9,7 +9,8 @@ use swc_ecma_ast::{Decl, ExportSpecifier, Module, ModuleDecl, ModuleItem, Pat};
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
 use crate::{
-    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsExprIR, JsStmtIR, JsValueIR,
+    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsExprIR, JsObjectPropIR,
+    JsStmtIR, JsValueIR,
 };
 
 #[derive(Debug)]
@@ -268,6 +269,26 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
     match expr {
         Expr::Lit(lit) => lower_js_lit(lit).map(JsExprIR::Value),
         Expr::Ident(ident) => Some(JsExprIR::Ident(ident.sym.to_string())),
+        Expr::Array(array) => {
+            let mut items = Vec::new();
+            for elem in &array.elems {
+                let Some(elem) = elem else {
+                    return None;
+                };
+                if elem.spread.is_some() {
+                    return None;
+                }
+                items.push(lower_js_expr(&elem.expr)?);
+            }
+            Some(JsExprIR::Array(items))
+        }
+        Expr::Object(object) => {
+            let mut props = Vec::new();
+            for prop in &object.props {
+                props.push(lower_js_object_prop(prop)?);
+            }
+            Some(JsExprIR::Object(props))
+        }
         Expr::Call(call) => {
             let callee = match &call.callee {
                 Callee::Expr(callee) => lower_js_expr(callee)?,
@@ -299,6 +320,28 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             })
         }
         _ => None,
+    }
+}
+
+fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
+    let PropOrSpread::Prop(prop) = prop else {
+        return None;
+    };
+
+    match &**prop {
+        Prop::Shorthand(ident) => Some(JsObjectPropIR {
+            key: ident.sym.to_string(),
+            value: JsExprIR::Ident(ident.sym.to_string()),
+        }),
+        Prop::KeyValue(kv) => Some(JsObjectPropIR {
+            key: prop_name(&kv.key)?,
+            value: lower_js_expr(&kv.value)?,
+        }),
+        Prop::Assign(assign) => Some(JsObjectPropIR {
+            key: assign.key.sym.to_string(),
+            value: lower_js_expr(&assign.value)?,
+        }),
+        Prop::Getter(_) | Prop::Setter(_) | Prop::Method(_) => None,
     }
 }
 
