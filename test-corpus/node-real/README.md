@@ -11,6 +11,8 @@ compare observable behavior.
 
 - Full gate command: `pnpm run gate:node-corpus-parity`
 - Node source health-check command: `pnpm run gate:node-corpus-parity:node`
+- Compiler-completion audit command:
+  `pnpm run gate:node-corpus-compiler-audit`
 - Manifest path: `test-corpus/node-real/manifest.json`
 - Corpus npm workspace path: `test-corpus/node-real/package.json`
 - Vendored package source path: `test-corpus/node-real/packages/<case-id>`
@@ -27,6 +29,8 @@ Current expected state:
   The full gate generates fail-closed Go projects under
   `test-corpus/node-real/generated-go/<case-id>` while executable JS semantics
   are still incomplete.
+- Compiler-completion audit: Red until generated Go is driven by source-lowered
+  executable JS IR instead of corpus capability renderers.
 
 ## Probe paths
 
