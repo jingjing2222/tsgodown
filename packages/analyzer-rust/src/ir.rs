@@ -66,6 +66,7 @@ pub struct ModuleIR {
     pub source_path: String,
     pub exports: Vec<String>,
     pub imports: Vec<ImportIR>,
+    pub executable: Option<ExecutableModuleIR>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +74,45 @@ pub struct ImportIR {
     pub spec: String,
     pub kind: String,
     pub resolved: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutableModuleIR {
+    pub stmts: Vec<JsStmtIR>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsStmtIR {
+    Expr(JsExprIR),
+    Return(Option<JsExprIR>),
+    Throw(JsExprIR),
+    VarDecl {
+        name: String,
+        init: Option<JsExprIR>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsExprIR {
+    Value(JsValueIR),
+    Ident(String),
+    Call {
+        callee: Box<JsExprIR>,
+        args: Vec<JsExprIR>,
+    },
+    Member {
+        object: Box<JsExprIR>,
+        property: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsValueIR {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(String),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

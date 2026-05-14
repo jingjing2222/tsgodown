@@ -80,6 +80,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
             source_path: file.to_string(),
             exports,
             imports,
+            executable: Some(crate::ExecutableModuleIR { stmts: vec![] }),
         }],
         routes,
         handlers,
