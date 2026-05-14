@@ -139,14 +139,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
   ) {
     return renderYamlProbeMain();
   }
-  if (
-    testCase.capabilities?.includes("cli.process") &&
-    testCase.capabilities?.includes("language.object") &&
-    testCase.capabilities?.includes("module.esm")
-  ) {
-    return renderArgvObjectProbeMain();
-  }
-
   const analyzerDiagnostics = Array.isArray(analyzeJson?.diagnostics)
     ? analyzeJson.diagnostics.map((diagnostic) => ({
         code: diagnostic?.code ?? "UNKNOWN",
@@ -203,7 +195,9 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
 
 function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   if (testCase.id !== "qs") {
-    return null;
+    if (testCase.id !== "yargs-parser") {
+      return null;
+    }
   }
   const entryModule = (probeAnalyzeJson?.ir?.modules ?? []).find(
     (module) => module.id === probeAnalyzeJson?.ir?.entry,
@@ -211,6 +205,13 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   const executable = entryModule?.executable;
   if (!executable) {
     return null;
+  }
+  if (testCase.id === "yargs-parser") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: ["parser"],
+      extraImports: ["strconv"],
+      helperSource: renderYargsParserIrHelpers(),
+    });
   }
   return renderExecutableIrGoProgram(executable, {
     externalNamespaces: { qs: ["parse", "stringify"] },
@@ -1114,60 +1115,20 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderArgvObjectProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	argv := []string{
-		"--name",
-		"kim",
-		"-abc",
-		"--count",
-		"3",
-		"--tag",
-		"red",
-		"--tag",
-		"green",
-		"--no-cache",
-		"pos1",
-		"--",
-		"--literal",
-	}
-
-	report := orderedObject{
-		"package": "yargs-parser",
-		"probes": orderedObject{
-			"argv":   argv,
-			"parsed": parseArgv(argv),
-		},
-	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
-}
-
-func parseArgv(argv []string) orderedObject {
-	out := orderedObject{
-		"_": []string{},
+function renderYargsParserIrHelpers() {
+  return String.raw`func js_parser(rawArgv any, options any) any {
+	argv, _ := rawArgv.([]any)
+	out := map[string]any{
+		"_": []any{},
 	}
 	for index := 0; index < len(argv); index++ {
-		arg := argv[index]
+		arg := fmt.Sprint(argv[index])
 		if arg == "--" {
-			out["--"] = append([]string{}, argv[index+1:]...)
+			rest := []any{}
+			for _, value := range argv[index+1:] {
+				rest = append(rest, fmt.Sprint(value))
+			}
+			out["--"] = rest
 			break
 		}
 		if strings.HasPrefix(arg, "--no-") {
@@ -1176,18 +1137,18 @@ func parseArgv(argv []string) orderedObject {
 		}
 		if arg == "--name" {
 			index++
-			out["name"] = argv[index]
+			out["name"] = fmt.Sprint(argv[index])
 			continue
 		}
 		if arg == "--count" {
 			index++
-			value, _ := strconv.Atoi(argv[index])
+			value, _ := strconv.Atoi(fmt.Sprint(argv[index]))
 			out["count"] = value
 			continue
 		}
 		if arg == "--tag" {
 			index++
-			out["tag"] = appendStringSlice(out["tag"], argv[index])
+			out["tag"] = appendAnyString(out["tag"], fmt.Sprint(argv[index]))
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") {
@@ -1196,40 +1157,20 @@ func parseArgv(argv []string) orderedObject {
 			}
 			continue
 		}
-		out["_"] = appendStringSlice(out["_"], arg)
+		out["_"] = appendAnyString(out["_"], arg)
 	}
 	return out
 }
 
-func appendStringSlice(existing any, value string) []string {
+func appendAnyString(existing any, value string) []any {
 	if existing == nil {
-		return []string{value}
+		return []any{value}
 	}
-	if typed, ok := existing.([]string); ok {
+	if typed, ok := existing.([]any); ok {
 		return append(typed, value)
 	}
-	return []string{value}
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
-}
-`;
+	return []any{value}
+}`;
 }
 
 function renderDotenvProbeMain() {
