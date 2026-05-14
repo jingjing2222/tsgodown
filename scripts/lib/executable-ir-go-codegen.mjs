@@ -72,6 +72,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     '\t"fmt"',
     '\t"os"',
     '\t"regexp"',
+    '\t"reflect"',
     '\t"strings"',
     ...(options.extraImports ?? []).map(
       (importPath) => `\t${JSON.stringify(importPath)}`,
@@ -125,6 +126,10 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn value",
     "}",
     "",
+    "func jsStrictEqual(left any, right any) bool {",
+    "\treturn reflect.DeepEqual(left, right)",
+    "}",
+    "",
     "func jsAwait(value any) any {",
     "\treturn value",
     "}",
@@ -169,6 +174,34 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn object[property]",
     "\t}",
     "\treturn nil",
+    "}",
+    "",
+    "func jsSetMember(value any, property string, next any) any {",
+    "\tif object, ok := value.(map[string]any); ok {",
+    "\t\tobject[property] = next",
+    "\t\treturn next",
+    "\t}",
+    '\tpanic(fmt.Sprintf("unsupported member assignment %T.%s", value, property))',
+    "}",
+    "",
+    "func jsReflectDeleteProperty(value any, property any) any {",
+    "\tif object, ok := value.(map[string]any); ok {",
+    "\t\tdelete(object, fmt.Sprint(property))",
+    "\t\treturn true",
+    "\t}",
+    "\treturn false",
+    "}",
+    "",
+    "func jsArrayJoin(value any, separator any) string {",
+    "\titems, ok := value.([]any)",
+    "\tif !ok {",
+    "\t\treturn fmt.Sprint(value)",
+    "\t}",
+    "\tparts := make([]string, 0, len(items))",
+    "\tfor _, item := range items {",
+    "\t\tparts = append(parts, fmt.Sprint(item))",
+    "\t}",
+    "\treturn strings.Join(parts, fmt.Sprint(separator))",
     "}",
     "",
     "type jsMemberCallable interface {",
@@ -335,6 +368,9 @@ function renderExpr(expr, ctx) {
     case "value":
       return renderValue(expr.value);
     case "ident":
+      if (expr.name === "undefined") {
+        return "nil";
+      }
       return goIdent(expr.name);
     case "array":
       return `[]any{${(expr.items ?? []).map((item) => renderExpr(item, ctx)).join(", ")}}`;
@@ -367,6 +403,18 @@ function renderExpr(expr, ctx) {
           expr.right,
           ctx,
         )})`;
+      }
+      if (expr.op === "===") {
+        return `jsStrictEqual(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
+      if (expr.op === "!==") {
+        return `(!jsStrictEqual(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )}))`;
       }
       return `(${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(expr.right, ctx)})`;
     case "await": {
@@ -418,6 +466,15 @@ function renderExpr(expr, ctx) {
         `EXECUTABLE_IR_UNSUPPORTED_NEW:${expr.callee?.name ?? "unknown"}`,
       );
     case "assign":
+      if (expr.op === "=" && expr.left?.kind === "member") {
+        return `jsSetMember(${renderExpr(
+          expr.left.object,
+          ctx,
+        )}, ${JSON.stringify(expr.left.property)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
       return `${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(
         expr.right,
         ctx,
@@ -468,6 +525,24 @@ function renderTimerPromise(expr, ctx) {
 
 function renderBuiltinCall(expr, ctx) {
   const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.property === "join" &&
+    expr.args?.length === 1
+  ) {
+    return `jsArrayJoin(${renderExpr(expr.callee.object, ctx)}, ${renderExpr(
+      expr.args[0],
+      ctx,
+    )})`;
+  }
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "ident" &&
+    expr.callee.object.name === "Reflect" &&
+    expr.callee.property === "deleteProperty"
+  ) {
+    return `jsReflectDeleteProperty(${args})`;
+  }
   if (
     expr.callee?.kind === "member" &&
     expr.callee.object?.kind === "value" &&

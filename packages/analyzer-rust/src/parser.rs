@@ -2,8 +2,8 @@ use std::{collections::BTreeMap, path::Path};
 
 use swc_common::{sync::Lrc, FileName, SourceMap};
 use swc_ecma_ast::{
-    AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, Prop, PropName, PropOrSpread,
-    SimpleAssignTarget, Stmt, VarDeclOrExpr,
+    AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, OptChainBase, Prop, PropName,
+    PropOrSpread, SimpleAssignTarget, Stmt, VarDeclOrExpr,
 };
 use swc_ecma_ast::{
     BlockStmt, BlockStmtOrExpr, Class, ClassMember, Decl, ExportSpecifier, FnDecl, Function,
@@ -658,20 +658,18 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 args,
             })
         }
-        Expr::Member(member) => {
-            let property = match &member.prop {
-                MemberProp::Ident(ident) => ident.sym.to_string(),
-                MemberProp::Computed(computed) => match &*computed.expr {
-                    Expr::Lit(Lit::Str(str)) => str.value.to_string_lossy().to_string(),
-                    _ => return None,
-                },
-                MemberProp::PrivateName(_) => return None,
-            };
-            Some(JsExprIR::Member {
-                object: Box::new(lower_js_expr(&member.obj)?),
-                property,
-            })
-        }
+        Expr::Member(member) => lower_member_expr(member),
+        Expr::OptChain(chain) => match &*chain.base {
+            OptChainBase::Member(member) => lower_member_expr(member),
+            OptChainBase::Call(call) => Some(JsExprIR::Call {
+                callee: Box::new(lower_js_expr(&call.callee)?),
+                args: call
+                    .args
+                    .iter()
+                    .filter_map(|arg| lower_js_expr(&arg.expr))
+                    .collect(),
+            }),
+        },
         Expr::Tpl(template) => Some(JsExprIR::Template {
             quasis: template
                 .quasis
@@ -694,6 +692,21 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
         Expr::Paren(paren) => lower_js_expr(&paren.expr),
         _ => None,
     }
+}
+
+fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
+    let property = match &member.prop {
+        MemberProp::Ident(ident) => ident.sym.to_string(),
+        MemberProp::Computed(computed) => match &*computed.expr {
+            Expr::Lit(Lit::Str(str)) => str.value.to_string_lossy().to_string(),
+            _ => return None,
+        },
+        MemberProp::PrivateName(_) => return None,
+    };
+    Some(JsExprIR::Member {
+        object: Box::new(lower_js_expr(&member.obj)?),
+        property,
+    })
 }
 
 fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {

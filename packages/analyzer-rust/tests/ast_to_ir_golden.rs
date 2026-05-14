@@ -608,6 +608,21 @@ function copy(items) {
 }
 
 #[test]
+fn executable_optional_member_is_lowered_deterministically() {
+    let source = r#"
+function errorName(result) {
+  return result.error?.name ?? null;
+}
+"#;
+    let ir = analyze_compiler_entry("optional-member.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(
+        rendered.contains("return binary(??, member(member(ident(result), error), name), null)")
+    );
+}
+
+#[test]
 fn static_builtin_dynamic_import_is_tracked_without_unsupported_diagnostic() {
     let source = r#"
 import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {});

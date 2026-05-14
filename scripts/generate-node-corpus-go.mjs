@@ -93,9 +93,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return irDrivenProbe;
   }
 
-  if (testCase.capabilities?.includes("node.process.env")) {
-    return renderDotenvProbeMain();
-  }
   if (
     testCase.capabilities?.includes("node.fs.basic") &&
     testCase.capabilities?.includes("runtime.event_loop")
@@ -186,7 +183,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
     if (testCase.id !== "yargs-parser") {
       if (testCase.id !== "uuid") {
         if (testCase.id !== "lru-cache") {
-          return null;
+          if (testCase.id !== "dotenv") {
+            return null;
+          }
         }
       }
     }
@@ -220,6 +219,23 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
       externalConstructors: ["LRUCache"],
       extraImports: ["time"],
       helperSource: renderLruCacheIrHelpers(),
+    });
+  }
+  if (testCase.id === "dotenv") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: [
+        "join",
+        "mkdtempSync",
+        "rmSync",
+        "tmpdir",
+        "writeFileSync",
+      ],
+      externalMembers: {
+        "process.env": "jsProcessEnv",
+      },
+      externalNamespaces: { dotenv: ["config", "parse"] },
+      extraImports: ["path/filepath"],
+      helperSource: renderDotenvIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -1128,62 +1144,62 @@ func appendAnyString(existing any, value string) []any {
 }`;
 }
 
-function renderDotenvProbeMain() {
-  return String.raw`package main
+function renderDotenvIrHelpers() {
+  return String.raw`var jsProcessEnv = map[string]any{}
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	envText := strings.Join([]string{
-		"PLAIN=value",
-		"QUOTED=\"hello world\"",
-		"COMMENTED=ok # trailing comment",
-		"ESCAPED=\"line\\nnext\"",
-		"EMPTY=",
-	}, "\n")
-
-	parsed := parseDotenv(envText)
-	env := orderedObject{"PLAIN": "existing"}
-	configNoOverride := populate(env, parsed, false)
-	afterNoOverride := orderedObject{
-		"PLAIN":  env["PLAIN"],
-		"QUOTED": env["QUOTED"],
-	}
-	configOverride := populate(env, parsed, true)
-	afterOverride := orderedObject{
-		"PLAIN":  env["PLAIN"],
-		"QUOTED": env["QUOTED"],
-	}
-
-	report := orderedObject{
-		"package": "dotenv",
-		"probes": orderedObject{
-			"parsed":          parsed,
-			"noOverrideError": configNoOverride["error"],
-			"overrideError":   configOverride["error"],
-			"afterNoOverride": afterNoOverride,
-			"afterOverride":   afterOverride,
-		},
-	}
-
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
+func js_dotenv_parse(source any) any {
+	return parseDotenv(fmt.Sprint(source))
 }
 
-func parseDotenv(source string) orderedObject {
-	out := orderedObject{}
+func js_dotenv_config(options any) any {
+	object, _ := options.(map[string]any)
+	path := fmt.Sprint(object["path"])
+	override, _ := object["override"].(bool)
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]any{"error": map[string]any{"name": "Error"}}
+	}
+	parsed := parseDotenv(string(bytes))
+	populateDotenv(jsProcessEnv, parsed, override)
+	return map[string]any{}
+}
+
+func js_join(parts ...any) any {
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, fmt.Sprint(part))
+	}
+	return filepath.Join(values...)
+}
+
+func js_tmpdir() any {
+	return os.TempDir()
+}
+
+func js_mkdtempSync(prefix any) any {
+	dir, err := os.MkdirTemp("", filepath.Base(fmt.Sprint(prefix)))
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
+
+func js_writeFileSync(path any, contents any) any {
+	if err := os.WriteFile(fmt.Sprint(path), []byte(fmt.Sprint(contents)), 0o600); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func js_rmSync(path any, options any) any {
+	if err := os.RemoveAll(fmt.Sprint(path)); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func parseDotenv(source string) map[string]any {
+	out := map[string]any{}
 	for _, rawLine := range strings.Split(source, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -1236,33 +1252,13 @@ func unquoteDotenv(value string) string {
 	return value
 }
 
-func populate(env orderedObject, parsed orderedObject, override bool) orderedObject {
+func populateDotenv(env map[string]any, parsed map[string]any, override bool) {
 	for key, value := range parsed {
 		if _, exists := env[key]; exists && !override {
 			continue
 		}
 		env[key] = value
 	}
-	return orderedObject{"error": nil}
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }
