@@ -199,6 +199,7 @@ const analyzeRequest = {
   manifest: {
     entry: "src/index.ts",
   },
+  cwd: request.cwd,
   config: {},
 };
 
