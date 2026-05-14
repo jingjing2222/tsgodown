@@ -66,6 +66,9 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     '\t"fmt"',
     '\t"os"',
     '\t"strings"',
+    ...(options.extraImports ?? []).map(
+      (importPath) => `\t${JSON.stringify(importPath)}`,
+    ),
     ")",
     "",
     "func main() {",

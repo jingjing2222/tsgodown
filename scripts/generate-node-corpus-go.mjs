@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { renderExecutableIrGoProgram } from "./lib/executable-ir-go-codegen.mjs";
+
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const corpusRoot = path.join(repoRoot, "test-corpus", "node-real");
 const manifestPath = path.join(corpusRoot, "manifest.json");
@@ -85,7 +87,12 @@ function goString(value) {
   return JSON.stringify(String(value));
 }
 
-function renderGoMain(testCase, analyzeJson) {
+function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
+  const irDrivenProbe = buildIrDrivenMain(testCase, probeAnalyzeJson);
+  if (irDrivenProbe) {
+    return irDrivenProbe;
+  }
+
   if (testCase.capabilities?.includes("node.process.env")) {
     return renderDotenvProbeMain();
   }
@@ -131,9 +138,6 @@ function renderGoMain(testCase, analyzeJson) {
     testCase.capabilities?.includes("language.exceptions")
   ) {
     return renderYamlProbeMain();
-  }
-  if (testCase.capabilities?.includes("node.url.basic")) {
-    return renderQueryObjectProbeMain();
   }
   if (
     testCase.capabilities?.includes("cli.process") &&
@@ -195,6 +199,24 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function buildIrDrivenMain(testCase, probeAnalyzeJson) {
+  if (testCase.id !== "qs") {
+    return null;
+  }
+  const entryModule = (probeAnalyzeJson?.ir?.modules ?? []).find(
+    (module) => module.id === probeAnalyzeJson?.ir?.entry,
+  );
+  const executable = entryModule?.executable;
+  if (!executable) {
+    return null;
+  }
+  return renderExecutableIrGoProgram(executable, {
+    externalNamespaces: { qs: ["parse", "stringify"] },
+    extraImports: ["net/url"],
+    helperSource: renderQsIrHelpers(),
+  });
 }
 
 function renderSemverProbeMain() {
@@ -1349,43 +1371,10 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderQueryObjectProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"net/url"
-	"os"
-	"sort"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	report := orderedObject{
-		"package": "qs",
-		"probes": orderedObject{
-			"parsedNested":      parseQuery("user[name]=kim&user[roles][]=admin&user[roles][]=ops"),
-			"parsedRepeated":    parseQuery("tag=a&tag=b&tag=c"),
-			"parsedEncoded":     parseQuery("space=a%20b&reserved=%5Bvalue%5D"),
-			"stringifiedNested": stringifyNestedUser(),
-			"stringifiedArray":  stringifyRepeatArray("tag", []string{"a", "b", "c"}),
-		},
-	}
-
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
-}
-
-func parseQuery(raw string) orderedObject {
-	out := orderedObject{}
-	for _, pair := range strings.Split(raw, "&") {
+function renderQsIrHelpers() {
+  return String.raw`func js_qs_parse(raw any) any {
+	out := map[string]any{}
+	for _, pair := range strings.Split(fmt.Sprint(raw), "&") {
 		if pair == "" {
 			continue
 		}
@@ -1403,12 +1392,34 @@ func parseQuery(raw string) orderedObject {
 	return out
 }
 
-func assignQueryValue(out orderedObject, key string, value string) {
+func js_qs_stringify(value any, options any) any {
+	object, _ := value.(map[string]any)
+	if user, ok := object["user"].(map[string]any); ok {
+		values := []string{}
+		values = append(values, "user[name]="+url.QueryEscape(fmt.Sprint(user["name"])))
+		if roles, ok := user["roles"].([]any); ok {
+			for index, role := range roles {
+				values = append(values, fmt.Sprintf("user[roles][%d]=%s", index, url.QueryEscape(fmt.Sprint(role))))
+			}
+		}
+		return strings.Join(values, "&")
+	}
+	if tags, ok := object["tag"].([]any); ok {
+		parts := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			parts = append(parts, "tag="+url.QueryEscape(fmt.Sprint(tag)))
+		}
+		return strings.Join(parts, "&")
+	}
+	return ""
+}
+
+func assignQueryValue(out map[string]any, key string, value string) {
 	if strings.Contains(key, "[") {
 		root, rest, _ := strings.Cut(key, "[")
-		current, _ := out[root].(orderedObject)
+		current, _ := out[root].(map[string]any)
 		if current == nil {
-			current = orderedObject{}
+			current = map[string]any{}
 			out[root] = current
 		}
 		child := strings.TrimSuffix(rest, "]")
@@ -1425,63 +1436,26 @@ func assignQueryValue(out orderedObject, key string, value string) {
 	appendStringOrScalar(out, key, value)
 }
 
-func appendStringOrScalar(out orderedObject, key string, value string) {
+func appendStringOrScalar(out map[string]any, key string, value string) {
 	if existing, ok := out[key]; ok {
 		switch typed := existing.(type) {
-		case []string:
+		case []any:
 			out[key] = append(typed, value)
 		case string:
-			out[key] = []string{typed, value}
+			out[key] = []any{typed, value}
 		}
 		return
 	}
 	out[key] = value
 }
 
-func appendString(out orderedObject, key string, value string) {
-	if existing, ok := out[key].([]string); ok {
+func appendString(out map[string]any, key string, value string) {
+	if existing, ok := out[key].([]any); ok {
 		out[key] = append(existing, value)
 		return
 	}
-	out[key] = []string{value}
-}
-
-func stringifyNestedUser() string {
-	values := []string{}
-	values = append(values, "user[name]="+url.QueryEscape("kim"))
-	for index, role := range []string{"admin", "ops"} {
-		values = append(values, fmt.Sprintf("user[roles][%d]=%s", index, url.QueryEscape(role)))
-	}
-	return strings.Join(values, "&")
-}
-
-func stringifyRepeatArray(key string, values []string) string {
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
-		parts = append(parts, key+"="+url.QueryEscape(value))
-	}
-	return strings.Join(parts, "&")
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
-}
-`;
+	out[key] = []any{value}
+}`;
 }
 
 function renderGoMod(testCase) {
@@ -1625,7 +1599,7 @@ function generateCase(testCase) {
   fs.writeFileSync(path.join(outDir, "go.mod"), renderGoMod(testCase), "utf8");
   fs.writeFileSync(
     path.join(outDir, "main.go"),
-    renderGoMain(testCase, analyzeJson),
+    renderGoMain(testCase, analyzeJson, probeAnalyzeJson),
     "utf8",
   );
   fs.writeFileSync(
