@@ -3,7 +3,7 @@ modules:
     exports:
     imports:
     executable:
-      - var health = <none>
+      - var health = function-expr async=false params=[] body=[return object({ok: bool(true)})]
       - var routeDef = object({method: string(GET), url: string(/health), handler: ident(health)})
       - expr call(member(ident(app), route), [ident(routeDef)])
 routes:

@@ -252,6 +252,7 @@ fn render_js_expr(expr: &JsExprIR) -> String {
     match expr {
         JsExprIR::Value(value) => render_js_value(value),
         JsExprIR::Ident(name) => format!("ident({name})"),
+        JsExprIR::This => "this".to_string(),
         JsExprIR::Array(items) => format!(
             "array([{}])",
             items
@@ -293,11 +294,22 @@ fn render_js_expr(expr: &JsExprIR) -> String {
             render_class_methods(methods)
         ),
         JsExprIR::Unary { op, arg } => format!("unary({}, {})", op, render_js_expr(arg)),
+        JsExprIR::Await { arg } => format!("await({})", render_js_expr(arg)),
         JsExprIR::Binary { op, left, right } => format!(
             "binary({}, {}, {})",
             op,
             render_js_expr(left),
             render_js_expr(right)
+        ),
+        JsExprIR::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => format!(
+            "conditional({}, {}, {})",
+            render_js_expr(test),
+            render_js_expr(consequent),
+            render_js_expr(alternate)
         ),
         JsExprIR::Assign { op, left, right } => format!(
             "assign({}, {}, {})",
@@ -327,6 +339,23 @@ fn render_js_expr(expr: &JsExprIR) -> String {
         JsExprIR::Member { object, property } => {
             format!("member({}, {})", render_js_expr(object), property)
         }
+        JsExprIR::Template { quasis, exprs } => format!(
+            "template([{}], [{}])",
+            quasis.join(","),
+            exprs
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Sequence(exprs) => format!(
+            "sequence([{}])",
+            exprs
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -360,6 +389,8 @@ fn render_js_value(value: &JsValueIR) -> String {
         JsValueIR::Bool(value) => format!("bool({value})"),
         JsValueIR::Number(value) => format!("number({value})"),
         JsValueIR::String(value) => format!("string({value})"),
+        JsValueIR::BigInt(value) => format!("bigint({value})"),
+        JsValueIR::RegExp { pattern, flags } => format!("regexp({pattern}/{flags})"),
     }
 }
 
@@ -505,6 +536,31 @@ const cache = new Cache(2);
     assert!(rendered.contains("get kind=method"));
     assert!(rendered.contains("create kind=method static=true"));
     assert!(rendered.contains("new(ident(Cache), [number(2)])"));
+}
+
+#[test]
+fn executable_expression_forms_are_lowered_deterministically() {
+    let source = r#"
+async function render(name, count) {
+  const pattern = /node/gi;
+  const big = 10n;
+  const label = `hello ${name}`;
+  const value = count > 0 ? count : 0;
+  const result = await load(label);
+  return (result, this.done(value));
+}
+"#;
+    let ir = analyze_compiler_entry("expressions.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("regexp(node/gi)"));
+    assert!(rendered.contains("bigint(10n)"));
+    assert!(rendered.contains("template([hello ,], [ident(name)])"));
+    assert!(rendered.contains("conditional(binary(>, ident(count), number(0))"));
+    assert!(rendered.contains("await(call(ident(load), [ident(label)]))"));
+    assert!(
+        rendered.contains("sequence([ident(result), call(member(this, done), [ident(value)])])")
+    );
 }
 
 #[test]

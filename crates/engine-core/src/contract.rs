@@ -167,6 +167,8 @@ pub enum JsExpr {
     Value { value: JsValue },
     #[serde(rename = "ident")]
     Ident { name: String },
+    #[serde(rename = "this")]
+    This,
     #[serde(rename = "array")]
     Array { items: Vec<JsExpr> },
     #[serde(rename = "object")]
@@ -185,11 +187,19 @@ pub enum JsExpr {
     },
     #[serde(rename = "unary")]
     Unary { op: String, arg: Box<JsExpr> },
+    #[serde(rename = "await")]
+    Await { arg: Box<JsExpr> },
     #[serde(rename = "binary")]
     Binary {
         op: String,
         left: Box<JsExpr>,
         right: Box<JsExpr>,
+    },
+    #[serde(rename = "conditional")]
+    Conditional {
+        test: Box<JsExpr>,
+        consequent: Box<JsExpr>,
+        alternate: Box<JsExpr>,
     },
     #[serde(rename = "assign")]
     Assign {
@@ -218,6 +228,13 @@ pub enum JsExpr {
         object: Box<JsExpr>,
         property: String,
     },
+    #[serde(rename = "template")]
+    Template {
+        quasis: Vec<String>,
+        exprs: Vec<JsExpr>,
+    },
+    #[serde(rename = "sequence")]
+    Sequence { exprs: Vec<JsExpr> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -239,6 +256,10 @@ pub enum JsValue {
     Number { value: String },
     #[serde(rename = "string")]
     String { value: String },
+    #[serde(rename = "bigint")]
+    BigInt { value: String },
+    #[serde(rename = "regexp")]
+    RegExp { pattern: String, flags: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

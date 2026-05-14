@@ -174,6 +174,7 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             value: map_js_value(value),
         },
         analyzer_rust::JsExprIR::Ident(name) => JsExpr::Ident { name },
+        analyzer_rust::JsExprIR::This => JsExpr::This,
         analyzer_rust::JsExprIR::Array(items) => JsExpr::Array {
             items: items.into_iter().map(map_js_expr).collect(),
         },
@@ -206,10 +207,22 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             op,
             arg: Box::new(map_js_expr(*arg)),
         },
+        analyzer_rust::JsExprIR::Await { arg } => JsExpr::Await {
+            arg: Box::new(map_js_expr(*arg)),
+        },
         analyzer_rust::JsExprIR::Binary { op, left, right } => JsExpr::Binary {
             op,
             left: Box::new(map_js_expr(*left)),
             right: Box::new(map_js_expr(*right)),
+        },
+        analyzer_rust::JsExprIR::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => JsExpr::Conditional {
+            test: Box::new(map_js_expr(*test)),
+            consequent: Box::new(map_js_expr(*consequent)),
+            alternate: Box::new(map_js_expr(*alternate)),
         },
         analyzer_rust::JsExprIR::Assign { op, left, right } => JsExpr::Assign {
             op,
@@ -233,6 +246,13 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             object: Box::new(map_js_expr(*object)),
             property,
         },
+        analyzer_rust::JsExprIR::Template { quasis, exprs } => JsExpr::Template {
+            quasis,
+            exprs: exprs.into_iter().map(map_js_expr).collect(),
+        },
+        analyzer_rust::JsExprIR::Sequence(exprs) => JsExpr::Sequence {
+            exprs: exprs.into_iter().map(map_js_expr).collect(),
+        },
     }
 }
 
@@ -254,5 +274,7 @@ fn map_js_value(value: analyzer_rust::JsValueIR) -> JsValue {
         analyzer_rust::JsValueIR::Bool(value) => JsValue::Bool { value },
         analyzer_rust::JsValueIR::Number(value) => JsValue::Number { value },
         analyzer_rust::JsValueIR::String(value) => JsValue::String { value },
+        analyzer_rust::JsValueIR::BigInt(value) => JsValue::BigInt { value },
+        analyzer_rust::JsValueIR::RegExp { pattern, flags } => JsValue::RegExp { pattern, flags },
     }
 }

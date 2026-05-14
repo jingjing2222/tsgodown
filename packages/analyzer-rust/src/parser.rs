@@ -503,6 +503,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
     match expr {
         Expr::Lit(lit) => lower_js_lit(lit).map(JsExprIR::Value),
         Expr::Ident(ident) => Some(JsExprIR::Ident(ident.sym.to_string())),
+        Expr::This(_) => Some(JsExprIR::This),
         Expr::Array(array) => {
             let mut items = Vec::new();
             for elem in &array.elems {
@@ -542,10 +543,18 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             op: unary.op.to_string(),
             arg: Box::new(lower_js_expr(&unary.arg)?),
         }),
+        Expr::Await(await_expr) => Some(JsExprIR::Await {
+            arg: Box::new(lower_js_expr(&await_expr.arg)?),
+        }),
         Expr::Bin(binary) => Some(JsExprIR::Binary {
             op: binary.op.to_string(),
             left: Box::new(lower_js_expr(&binary.left)?),
             right: Box::new(lower_js_expr(&binary.right)?),
+        }),
+        Expr::Cond(cond) => Some(JsExprIR::Conditional {
+            test: Box::new(lower_js_expr(&cond.test)?),
+            consequent: Box::new(lower_js_expr(&cond.cons)?),
+            alternate: Box::new(lower_js_expr(&cond.alt)?),
         }),
         Expr::Assign(assign) => Some(JsExprIR::Assign {
             op: assign.op.to_string(),
@@ -602,6 +611,26 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 property,
             })
         }
+        Expr::Tpl(template) => Some(JsExprIR::Template {
+            quasis: template
+                .quasis
+                .iter()
+                .map(|quasi| quasi.raw.to_string())
+                .collect(),
+            exprs: template
+                .exprs
+                .iter()
+                .filter_map(|expr| lower_js_expr(expr))
+                .collect(),
+        }),
+        Expr::Seq(sequence) => Some(JsExprIR::Sequence(
+            sequence
+                .exprs
+                .iter()
+                .filter_map(|expr| lower_js_expr(expr))
+                .collect(),
+        )),
+        Expr::Paren(paren) => lower_js_expr(&paren.expr),
         _ => None,
     }
 }
@@ -745,6 +774,17 @@ fn lower_js_lit(lit: &Lit) -> Option<JsValueIR> {
                 .map(ToString::to_string)
                 .unwrap_or_else(|| num.value.to_string()),
         )),
+        Lit::BigInt(bigint) => Some(JsValueIR::BigInt(
+            bigint
+                .raw
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| bigint.value.to_string()),
+        )),
+        Lit::Regex(regex) => Some(JsValueIR::RegExp {
+            pattern: regex.exp.to_string(),
+            flags: regex.flags.to_string(),
+        }),
         _ => None,
     }
 }

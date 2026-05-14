@@ -155,6 +155,7 @@ pub struct JsClassMethodIR {
 pub enum JsExprIR {
     Value(JsValueIR),
     Ident(String),
+    This,
     Array(Vec<JsExprIR>),
     Object(Vec<JsObjectPropIR>),
     Function {
@@ -170,10 +171,18 @@ pub enum JsExprIR {
         op: String,
         arg: Box<JsExprIR>,
     },
+    Await {
+        arg: Box<JsExprIR>,
+    },
     Binary {
         op: String,
         left: Box<JsExprIR>,
         right: Box<JsExprIR>,
+    },
+    Conditional {
+        test: Box<JsExprIR>,
+        consequent: Box<JsExprIR>,
+        alternate: Box<JsExprIR>,
     },
     Assign {
         op: String,
@@ -197,6 +206,11 @@ pub enum JsExprIR {
         object: Box<JsExprIR>,
         property: String,
     },
+    Template {
+        quasis: Vec<String>,
+        exprs: Vec<JsExprIR>,
+    },
+    Sequence(Vec<JsExprIR>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,6 +226,8 @@ pub enum JsValueIR {
     Bool(bool),
     Number(String),
     String(String),
+    BigInt(String),
+    RegExp { pattern: String, flags: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

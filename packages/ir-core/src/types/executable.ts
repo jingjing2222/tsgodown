@@ -63,6 +63,7 @@ export interface JsClassMethodIR {
 export type JsExprIR =
   | { kind: "value"; value: JsValueIR }
   | { kind: "ident"; name: string }
+  | { kind: "this" }
   | { kind: "array"; items: JsExprIR[] }
   | { kind: "object"; props: JsObjectPropIR[] }
   | {
@@ -77,12 +78,21 @@ export type JsExprIR =
       methods: JsClassMethodIR[];
     }
   | { kind: "unary"; op: string; arg: JsExprIR }
+  | { kind: "await"; arg: JsExprIR }
   | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
+  | {
+      kind: "conditional";
+      test: JsExprIR;
+      consequent: JsExprIR;
+      alternate: JsExprIR;
+    }
   | { kind: "assign"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "update"; op: string; arg: JsExprIR; prefix: boolean }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }
   | { kind: "new"; callee: JsExprIR; args: JsExprIR[] }
-  | { kind: "member"; object: JsExprIR; property: string };
+  | { kind: "member"; object: JsExprIR; property: string }
+  | { kind: "template"; quasis: string[]; exprs: JsExprIR[] }
+  | { kind: "sequence"; exprs: JsExprIR[] };
 
 export interface JsObjectPropIR {
   key: string;
@@ -94,4 +104,6 @@ export type JsValueIR =
   | { kind: "null" }
   | { kind: "bool"; value: boolean }
   | { kind: "number"; value: string }
-  | { kind: "string"; value: string };
+  | { kind: "string"; value: string }
+  | { kind: "bigint"; value: string }
+  | { kind: "regexp"; pattern: string; flags: string };
