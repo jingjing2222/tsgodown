@@ -10,10 +10,24 @@ compare observable behavior.
 ## Gate shape
 
 - Future command: `pnpm run gate:node-corpus-parity`
+- Manifest path: `test-corpus/node-real/manifest.json`
 - Node probe: run original package code with fixed inputs.
 - Go probe: run generated Go binary/project with the same inputs.
 - Report: JSON diff grouped by package and capability.
 - Required final mode: `allowWip=false`.
+
+## Probe paths
+
+- `test-corpus/node-real/cases/semver/probe.mjs`
+- `test-corpus/node-real/cases/minimatch/probe.mjs`
+- `test-corpus/node-real/cases/qs/probe.mjs`
+- `test-corpus/node-real/cases/dotenv/probe.mjs`
+- `test-corpus/node-real/cases/yargs-parser/probe.mjs`
+- `test-corpus/node-real/cases/js-yaml/probe.mjs`
+- `test-corpus/node-real/cases/lru-cache/probe.mjs`
+- `test-corpus/node-real/cases/uuid/probe.mjs`
+- `test-corpus/node-real/cases/fs-extra/probe.mjs`
+- `test-corpus/node-real/cases/execa/probe.mjs`
 
 ## 1. semver
 

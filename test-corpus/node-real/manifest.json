@@ -1,0 +1,112 @@
+{
+  "version": "node-real-corpus.v1",
+  "gate": "pnpm run gate:node-corpus-parity",
+  "allowWip": false,
+  "cases": [
+    {
+      "id": "semver",
+      "package": "semver",
+      "version": "7.8.0",
+      "source": "https://github.com/npm/node-semver",
+      "license": "ISC",
+      "probe": "cases/semver/probe.mjs",
+      "type": ["library", "cli"],
+      "capabilities": ["module.cjs", "language.regex", "cli.process"]
+    },
+    {
+      "id": "minimatch",
+      "package": "minimatch",
+      "version": "10.2.5",
+      "source": "https://github.com/isaacs/minimatch",
+      "license": "BlueOak-1.0.0",
+      "probe": "cases/minimatch/probe.mjs",
+      "type": ["library"],
+      "capabilities": ["module.esm", "language.regex", "node.path.basic"]
+    },
+    {
+      "id": "qs",
+      "package": "qs",
+      "version": "6.15.1",
+      "source": "https://github.com/ljharb/qs",
+      "license": "BSD-3-Clause",
+      "probe": "cases/qs/probe.mjs",
+      "type": ["library"],
+      "capabilities": ["module.cjs", "language.object", "node.url.basic"]
+    },
+    {
+      "id": "dotenv",
+      "package": "dotenv",
+      "version": "17.4.2",
+      "source": "https://github.com/motdotla/dotenv",
+      "license": "BSD-2-Clause",
+      "probe": "cases/dotenv/probe.mjs",
+      "type": ["library", "app"],
+      "capabilities": ["module.cjs", "node.fs.basic", "node.process.env"]
+    },
+    {
+      "id": "yargs-parser",
+      "package": "yargs-parser",
+      "version": "22.0.0",
+      "source": "https://github.com/yargs/yargs-parser",
+      "license": "ISC",
+      "probe": "cases/yargs-parser/probe.mjs",
+      "type": ["library", "cli"],
+      "capabilities": ["module.esm", "cli.process", "language.object"]
+    },
+    {
+      "id": "js-yaml",
+      "package": "js-yaml",
+      "version": "4.1.1",
+      "source": "https://github.com/nodeca/js-yaml",
+      "license": "MIT",
+      "probe": "cases/js-yaml/probe.mjs",
+      "type": ["library"],
+      "capabilities": ["module.cjs", "language.exceptions", "language.parser"]
+    },
+    {
+      "id": "lru-cache",
+      "package": "lru-cache",
+      "version": "11.3.6",
+      "source": "https://github.com/isaacs/node-lru-cache",
+      "license": "BlueOak-1.0.0",
+      "probe": "cases/lru-cache/probe.mjs",
+      "type": ["library"],
+      "capabilities": ["module.esm", "language.class", "runtime.event_loop"]
+    },
+    {
+      "id": "uuid",
+      "package": "uuid",
+      "version": "13.0.2",
+      "source": "https://github.com/uuidjs/uuid",
+      "license": "MIT",
+      "probe": "cases/uuid/probe.mjs",
+      "type": ["library"],
+      "capabilities": ["module.esm", "node.buffer.basic", "node.crypto.basic"]
+    },
+    {
+      "id": "fs-extra",
+      "package": "fs-extra",
+      "version": "11.3.5",
+      "source": "https://github.com/jprichardson/node-fs-extra",
+      "license": "MIT",
+      "probe": "cases/fs-extra/probe.mjs",
+      "type": ["library", "app"],
+      "capabilities": ["module.cjs", "node.fs.basic", "runtime.event_loop"]
+    },
+    {
+      "id": "execa",
+      "package": "execa",
+      "version": "9.6.1",
+      "source": "https://github.com/sindresorhus/execa",
+      "license": "MIT",
+      "probe": "cases/execa/probe.mjs",
+      "type": ["app"],
+      "capabilities": [
+        "module.esm",
+        "node.child_process.basic",
+        "node.stream.basic",
+        "runtime.event_loop"
+      ]
+    }
+  ]
+}
