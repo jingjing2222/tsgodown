@@ -53,11 +53,11 @@ function ensureEngineCore() {
   }
 }
 
-function analyzeCase(testCase) {
+function analyzeEntry(testCase, entry) {
   const analyze = run(engineCoreBin, ["analyze"], {
     input: JSON.stringify({
       manifest: {
-        entry: testCase.entry,
+        entry,
       },
       cwd: corpusRoot,
       config: {},
@@ -1494,6 +1494,22 @@ function renderGoMod(testCase) {
 }
 
 function renderSourceIrGo(analyzeJson) {
+  return renderIrGoConst(
+    analyzeJson,
+    "sourceIRJSON",
+    "sourceIRJSON is the analyzer-lowered executable JS IR for this corpus package entry.",
+  );
+}
+
+function renderProbeIrGo(analyzeJson) {
+  return renderIrGoConst(
+    analyzeJson,
+    "probeIRJSON",
+    "probeIRJSON is the analyzer-lowered executable JS IR for this corpus probe app.",
+  );
+}
+
+function renderIrGoConst(analyzeJson, constName, comment) {
   const ir = analyzeJson?.ir ?? {};
   const sourceIr = {
     version: ir.version ?? "unknown",
@@ -1516,9 +1532,9 @@ function renderSourceIrGo(analyzeJson) {
   return [
     "package main",
     "",
-    "// sourceIRJSON is the analyzer-lowered executable JS IR for this corpus case.",
+    `// ${comment}`,
     "// It is emitted into generated Go projects so codegen can be driven by source semantics.",
-    `const sourceIRJSON = ${goRawString(json)}`,
+    `const ${constName} = ${goRawString(json)}`,
     "",
   ].join("\n");
 }
@@ -1602,7 +1618,8 @@ function generateCase(testCase) {
     fail(`manifest case ${testCase.id} is missing entry`);
   }
 
-  const analyzeJson = analyzeCase(testCase);
+  const analyzeJson = analyzeEntry(testCase, testCase.entry);
+  const probeAnalyzeJson = analyzeEntry(testCase, testCase.probe);
   const outDir = path.join(generatedRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, "go.mod"), renderGoMod(testCase), "utf8");
@@ -1616,6 +1633,11 @@ function generateCase(testCase) {
     renderSourceIrGo(analyzeJson),
     "utf8",
   );
+  fs.writeFileSync(
+    path.join(outDir, "probe_ir.go"),
+    renderProbeIrGo(probeAnalyzeJson),
+    "utf8",
+  );
 
   return {
     id: testCase.id,
@@ -1623,6 +1645,7 @@ function generateCase(testCase) {
     modules: analyzeJson?.ir?.modules?.length ?? 0,
     diagnostics: analyzeJson?.diagnostics?.length ?? 0,
     executableIr: executableIrStats(analyzeJson),
+    probeExecutableIr: executableIrStats(probeAnalyzeJson),
   };
 }
 
