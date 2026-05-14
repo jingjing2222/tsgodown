@@ -210,6 +210,83 @@ test("renders executable control flow without Node fallback", () => {
   });
 });
 
+test("renders helper function declarations and calls", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "function-decl",
+        name: "makeProbe",
+        params: ["name"],
+        async: false,
+        body: [
+          {
+            kind: "return",
+            value: {
+              kind: "object",
+              props: [
+                {
+                  key: "label",
+                  value: {
+                    kind: "template",
+                    quasis: ["probe:", ""],
+                    exprs: [{ kind: "ident", name: "name" }],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        kind: "function-decl",
+        name: "main",
+        params: [],
+        async: false,
+        body: [
+          {
+            kind: "return",
+            value: {
+              kind: "object",
+              props: [
+                {
+                  key: "package",
+                  value: {
+                    kind: "value",
+                    value: { kind: "string", value: "functions" },
+                  },
+                },
+                {
+                  key: "probes",
+                  value: {
+                    kind: "call",
+                    callee: { kind: "ident", name: "makeProbe" },
+                    args: [
+                      {
+                        kind: "value",
+                        value: { kind: "string", value: "alpha" },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotMatch(source, /os\/exec|exec\.Command|node --/);
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), {
+    package: "functions",
+    probes: {
+      label: "probe:alpha",
+    },
+  });
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {

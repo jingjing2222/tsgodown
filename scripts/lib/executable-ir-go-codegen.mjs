@@ -36,11 +36,16 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     throw new Error("EXECUTABLE_IR_MAIN_FUNCTION_REQUIRED");
   }
 
+  const functionDecls = stmts.filter((stmt) => stmt?.kind === "function-decl");
   const ctx = {
     declared: new Set(),
-    functions: new Set(["main"]),
+    functions: new Set(functionDecls.map((stmt) => stmt.name)),
   };
   const body = renderStmtBlock(mainFn.body ?? [], ctx, 1);
+  const helperFunctions = functionDecls
+    .filter((stmt) => stmt.name !== "main")
+    .map((stmt) => renderFunctionDecl(stmt, ctx))
+    .join("\n\n");
 
   return [
     `package ${packageName}`,
@@ -65,6 +70,8 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     body,
     "\treturn nil",
     "}",
+    helperFunctions ? "" : null,
+    helperFunctions,
     "",
     "func jsTemplate(quasis []string, exprs []any) string {",
     '\tout := ""',
@@ -84,7 +91,26 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn alternate",
     "}",
     "",
-  ].join("\n");
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+function renderFunctionDecl(stmt, parentCtx) {
+  const params = (stmt.params ?? []).map(goIdent);
+  const ctx = {
+    declared: new Set(params),
+    functions: parentCtx.functions,
+  };
+  const renderedParams = params.map((param) => `${param} any`).join(", ");
+  return [
+    `func js_${goIdent(stmt.name)}(${renderedParams}) any {`,
+    renderStmtBlock(stmt.body ?? [], ctx, 1),
+    "\treturn nil",
+    "}",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function renderStmtBlock(stmts, ctx, indentLevel) {
@@ -213,6 +239,17 @@ function renderExpr(expr, ctx) {
         expr.consequent,
         ctx,
       )}, ${renderExpr(expr.alternate, ctx)})`;
+    case "call": {
+      if (
+        expr.callee?.kind !== "ident" ||
+        !ctx.functions.has(expr.callee.name)
+      ) {
+        throw new Error("EXECUTABLE_IR_UNSUPPORTED_CALL");
+      }
+      return `js_${goIdent(expr.callee.name)}(${(expr.args ?? [])
+        .map((arg) => renderExpr(arg, ctx))
+        .join(", ")})`;
+    }
     case "assign":
       return `${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(
         expr.right,
