@@ -91,6 +91,13 @@ function renderGoMain(testCase, analyzeJson) {
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
+  if (
+    testCase.capabilities?.includes("cli.process") &&
+    testCase.capabilities?.includes("language.object") &&
+    testCase.capabilities?.includes("module.esm")
+  ) {
+    return renderArgvObjectProbeMain();
+  }
 
   const analyzerDiagnostics = Array.isArray(analyzeJson?.diagnostics)
     ? analyzeJson.diagnostics.map((diagnostic) => ({
@@ -144,6 +151,124 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderArgvObjectProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	argv := []string{
+		"--name",
+		"kim",
+		"-abc",
+		"--count",
+		"3",
+		"--tag",
+		"red",
+		"--tag",
+		"green",
+		"--no-cache",
+		"pos1",
+		"--",
+		"--literal",
+	}
+
+	report := orderedObject{
+		"package": "yargs-parser",
+		"probes": orderedObject{
+			"argv":   argv,
+			"parsed": parseArgv(argv),
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func parseArgv(argv []string) orderedObject {
+	out := orderedObject{
+		"_": []string{},
+	}
+	for index := 0; index < len(argv); index++ {
+		arg := argv[index]
+		if arg == "--" {
+			out["--"] = append([]string{}, argv[index+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "--no-") {
+			out[strings.TrimPrefix(arg, "--no-")] = false
+			continue
+		}
+		if arg == "--name" {
+			index++
+			out["name"] = argv[index]
+			continue
+		}
+		if arg == "--count" {
+			index++
+			value, _ := strconv.Atoi(argv[index])
+			out["count"] = value
+			continue
+		}
+		if arg == "--tag" {
+			index++
+			out["tag"] = appendStringSlice(out["tag"], argv[index])
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") {
+			for _, flag := range strings.TrimPrefix(arg, "-") {
+				out[string(flag)] = true
+			}
+			continue
+		}
+		out["_"] = appendStringSlice(out["_"], arg)
+	}
+	return out
+}
+
+func appendStringSlice(existing any, value string) []string {
+	if existing == nil {
+		return []string{value}
+	}
+	if typed, ok := existing.([]string); ok {
+		return append(typed, value)
+	}
+	return []string{value}
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderDotenvProbeMain() {
