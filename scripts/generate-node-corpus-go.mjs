@@ -94,12 +94,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
   }
 
   if (
-    testCase.capabilities?.includes("node.fs.basic") &&
-    testCase.capabilities?.includes("runtime.event_loop")
-  ) {
-    return renderFsExtraProbeMain();
-  }
-  if (
     testCase.capabilities?.includes("language.regex") &&
     testCase.capabilities?.includes("cli.process") &&
     testCase.capabilities?.includes("module.cjs")
@@ -169,7 +163,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
             if (testCase.id !== "minimatch") {
               if (testCase.id !== "js-yaml") {
                 if (testCase.id !== "execa") {
-                  return null;
+                  if (testCase.id !== "fs-extra") {
+                    return null;
+                  }
                 }
               }
             }
@@ -245,6 +241,23 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
         "process.execPath": goString(process.execPath),
       },
       helperSource: renderExecaIrHelpers(),
+    });
+  }
+  if (testCase.id === "fs-extra") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: ["join", "mkdtempSync", "rmSync", "tmpdir"],
+      externalNamespaces: {
+        fsExtra: [
+          "copy",
+          "ensureDir",
+          "pathExists",
+          "readJson",
+          "remove",
+          "writeJson",
+        ],
+      },
+      extraImports: ["io", "path/filepath"],
+      helperSource: renderFsExtraIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -793,68 +806,72 @@ func v4() string {
 `;
 }
 
-function renderFsExtraProbeMain() {
-  return String.raw`package main
+function renderFsExtraIrHelpers() {
+  return String.raw`func js_join(parts ...any) any {
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, fmt.Sprint(part))
+	}
+	return filepath.Join(values...)
+}
 
-import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
-)
+func js_tmpdir() any {
+	return os.TempDir()
+}
 
-type orderedObject map[string]any
-
-func main() {
-	root, err := os.MkdirTemp("", "tsgodown-fs-extra-")
+func js_mkdtempSync(prefix any) any {
+	dir, err := os.MkdirTemp("", filepath.Base(fmt.Sprint(prefix)))
 	if err != nil {
-		fail(err)
+		panic(err)
 	}
-	defer os.RemoveAll(root)
+	return dir
+}
 
-	sourceDir := filepath.Join(root, "source")
-	targetDir := filepath.Join(root, "target")
-	sourceJSON := filepath.Join(sourceDir, "data.json")
-	copiedJSON := filepath.Join(targetDir, "data.json")
+func js_rmSync(path any, options any) any {
+	if err := os.RemoveAll(fmt.Sprint(path)); err != nil {
+		panic(err)
+	}
+	return nil
+}
 
-	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
-		fail(err)
+func js_fsExtra_ensureDir(path any) any {
+	if err := os.MkdirAll(fmt.Sprint(path), 0o755); err != nil {
+		panic(err)
 	}
-	if err := writeJSON(sourceJSON, orderedObject{"name": "tsgodown", "count": 2}); err != nil {
-		fail(err)
-	}
-	readBack, err := readJSON(sourceJSON)
-	if err != nil {
-		fail(err)
-	}
-	if err := copyDir(sourceDir, targetDir); err != nil {
-		fail(err)
-	}
-	copied, err := readJSON(copiedJSON)
-	if err != nil {
-		fail(err)
-	}
-	if err := os.RemoveAll(sourceDir); err != nil {
-		fail(err)
-	}
+	return nil
+}
 
-	report := orderedObject{
-		"package": "fs-extra",
-		"probes": orderedObject{
-			"readBack":                readBack,
-			"copied":                  copied,
-			"sourceExistsAfterRemove": pathExists(sourceDir),
-			"targetExists":            pathExists(copiedJSON),
-		},
+func js_fsExtra_writeJson(file any, value any) any {
+	if err := writeJSON(fmt.Sprint(file), value); err != nil {
+		panic(err)
 	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
+	return nil
+}
+
+func js_fsExtra_readJson(file any) any {
+	value, err := readJSON(fmt.Sprint(file))
 	if err != nil {
-		fail(err)
+		panic(err)
 	}
-	fmt.Println(string(bytes))
+	return value
+}
+
+func js_fsExtra_copy(source any, target any) any {
+	if err := copyDir(fmt.Sprint(source), fmt.Sprint(target)); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func js_fsExtra_remove(path any) any {
+	if err := os.RemoveAll(fmt.Sprint(path)); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func js_fsExtra_pathExists(path any) any {
+	return pathExists(fmt.Sprint(path))
 }
 
 func writeJSON(file string, value any) error {
@@ -865,12 +882,12 @@ func writeJSON(file string, value any) error {
 	return os.WriteFile(file, append(bytes, '\n'), 0o644)
 }
 
-func readJSON(file string) (orderedObject, error) {
+func readJSON(file string) (map[string]any, error) {
 	bytes, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	var out orderedObject
+	var out map[string]any
 	if err := json.Unmarshal(bytes, &out); err != nil {
 		return nil, err
 	}
@@ -915,30 +932,6 @@ func copyFile(source string, target string) error {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }
