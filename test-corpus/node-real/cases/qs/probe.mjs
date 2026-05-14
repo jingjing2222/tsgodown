@@ -1,4 +1,4 @@
-import qs from "qs";
+import qs from "../../packages/qs/lib/index.js";
 
 const parsedNested = qs.parse(
   "user[name]=kim&user[roles][]=admin&user[roles][]=ops",

@@ -1,4 +1,4 @@
-import semver from "semver";
+import semver from "../../packages/semver/index.js";
 
 const versions = ["1.2.3", "1.2.3-beta.2", "2.0.0", "1.10.0", "bad"];
 

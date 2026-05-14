@@ -1,4 +1,4 @@
-import { minimatch } from "minimatch";
+import { minimatch } from "../../packages/minimatch/dist/esm/index.js";
 
 const matrix = [
   ["index.js", "*.js", {}],

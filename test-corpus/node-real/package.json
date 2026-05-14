@@ -1,0 +1,29 @@
+{
+  "name": "tsgodown-node-real-corpus",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "probe:semver": "node cases/semver/probe.mjs",
+    "probe:minimatch": "node cases/minimatch/probe.mjs",
+    "probe:qs": "node cases/qs/probe.mjs",
+    "probe:dotenv": "node cases/dotenv/probe.mjs",
+    "probe:yargs-parser": "node cases/yargs-parser/probe.mjs",
+    "probe:js-yaml": "node cases/js-yaml/probe.mjs",
+    "probe:lru-cache": "node cases/lru-cache/probe.mjs",
+    "probe:uuid": "node cases/uuid/probe.mjs",
+    "probe:fs-extra": "node cases/fs-extra/probe.mjs",
+    "probe:execa": "node cases/execa/probe.mjs"
+  },
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "execa": "9.6.1",
+    "fs-extra": "11.3.5",
+    "js-yaml": "4.1.1",
+    "lru-cache": "11.3.6",
+    "minimatch": "10.2.5",
+    "qs": "6.15.1",
+    "semver": "7.8.0",
+    "uuid": "13.0.2",
+    "yargs-parser": "22.0.0"
+  }
+}

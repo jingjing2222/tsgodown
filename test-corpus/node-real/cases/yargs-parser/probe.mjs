@@ -1,4 +1,4 @@
-import parser from "yargs-parser";
+import parser from "../../packages/yargs-parser/build/lib/index.js";
 
 const argv = [
   "--name",

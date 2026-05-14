@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import yaml from "../../packages/js-yaml/dist/js-yaml.mjs";
 
 const source = [
   "name: tsgodown",

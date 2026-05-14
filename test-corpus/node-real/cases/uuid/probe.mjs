@@ -1,4 +1,11 @@
-import { parse, stringify, v4, v5, validate, version } from "uuid";
+import {
+  parse,
+  stringify,
+  v4,
+  v5,
+  validate,
+  version,
+} from "../../packages/uuid/dist-node/index.js";
 
 const fixed = "6fa459ea-ee8a-3ca4-894e-db77e160355e";
 const random = v4();

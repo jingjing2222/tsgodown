@@ -1,4 +1,4 @@
-import { execa } from "execa";
+import { execa } from "../../packages/execa/index.js";
 
 const ok = await execa(
   process.execPath,

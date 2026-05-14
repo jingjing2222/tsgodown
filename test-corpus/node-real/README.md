@@ -11,6 +11,8 @@ compare observable behavior.
 
 - Future command: `pnpm run gate:node-corpus-parity`
 - Manifest path: `test-corpus/node-real/manifest.json`
+- Corpus npm workspace path: `test-corpus/node-real/package.json`
+- Vendored package source path: `test-corpus/node-real/packages/<case-id>`
 - Node probe: run original package code with fixed inputs.
 - Go probe: run generated Go binary/project with the same inputs.
 - Report: JSON diff grouped by package and capability.
@@ -28,6 +30,19 @@ compare observable behavior.
 - `test-corpus/node-real/cases/uuid/probe.mjs`
 - `test-corpus/node-real/cases/fs-extra/probe.mjs`
 - `test-corpus/node-real/cases/execa/probe.mjs`
+
+## Vendored package source paths
+
+- `test-corpus/node-real/packages/semver`
+- `test-corpus/node-real/packages/minimatch`
+- `test-corpus/node-real/packages/qs`
+- `test-corpus/node-real/packages/dotenv`
+- `test-corpus/node-real/packages/yargs-parser`
+- `test-corpus/node-real/packages/js-yaml`
+- `test-corpus/node-real/packages/lru-cache`
+- `test-corpus/node-real/packages/uuid`
+- `test-corpus/node-real/packages/fs-extra`
+- `test-corpus/node-real/packages/execa`
 
 ## 1. semver
 

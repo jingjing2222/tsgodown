@@ -1,4 +1,4 @@
-import { LRUCache } from "lru-cache";
+import { LRUCache } from "../../packages/lru-cache/dist/esm/index.js";
 
 const cache = new LRUCache({ max: 2 });
 cache.set("a", 1);
