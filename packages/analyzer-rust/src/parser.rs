@@ -403,6 +403,11 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             left: Box::new(lower_js_expr(&binary.left)?),
             right: Box::new(lower_js_expr(&binary.right)?),
         }),
+        Expr::Assign(assign) => Some(JsExprIR::Assign {
+            op: assign.op.to_string(),
+            left: Box::new(lower_assign_target_expr(&assign.left)?),
+            right: Box::new(lower_js_expr(&assign.right)?),
+        }),
         Expr::Call(call) => {
             let callee = match &call.callee {
                 Callee::Expr(callee) => lower_js_expr(callee)?,
@@ -430,6 +435,34 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             };
             Some(JsExprIR::Member {
                 object: Box::new(lower_js_expr(&member.obj)?),
+                property,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn lower_assign_target_expr(target: &AssignTarget) -> Option<JsExprIR> {
+    match target {
+        AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
+            Some(JsExprIR::Ident(ident.id.sym.to_string()))
+        }
+        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
+            let mut parts = member_path(member)?;
+            let property = parts.pop()?;
+            let object = parts
+                .into_iter()
+                .fold(None, |object: Option<JsExprIR>, part| {
+                    Some(match object {
+                        Some(object) => JsExprIR::Member {
+                            object: Box::new(object),
+                            property: part,
+                        },
+                        None => JsExprIR::Ident(part),
+                    })
+                })?;
+            Some(JsExprIR::Member {
+                object: Box::new(object),
                 property,
             })
         }

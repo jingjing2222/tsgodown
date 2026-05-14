@@ -117,6 +117,12 @@ pub enum JsExpr {
         left: Box<JsExpr>,
         right: Box<JsExpr>,
     },
+    #[serde(rename = "assign")]
+    Assign {
+        op: String,
+        left: Box<JsExpr>,
+        right: Box<JsExpr>,
+    },
     #[serde(rename = "call")]
     Call {
         callee: Box<JsExpr>,

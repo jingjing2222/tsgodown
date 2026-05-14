@@ -187,6 +187,12 @@ fn render_js_expr(expr: &JsExprIR) -> String {
             render_js_expr(left),
             render_js_expr(right)
         ),
+        JsExprIR::Assign { op, left, right } => format!(
+            "assign({}, {}, {})",
+            op,
+            render_js_expr(left),
+            render_js_expr(right)
+        ),
         JsExprIR::Call { callee, args } => format!(
             "call({}, [{}])",
             render_js_expr(callee),

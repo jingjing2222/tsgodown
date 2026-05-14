@@ -123,6 +123,11 @@ pub enum JsExprIR {
         left: Box<JsExprIR>,
         right: Box<JsExprIR>,
     },
+    Assign {
+        op: String,
+        left: Box<JsExprIR>,
+        right: Box<JsExprIR>,
+    },
     Call {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,

@@ -34,6 +34,7 @@ export type JsExprIR =
     }
   | { kind: "unary"; op: string; arg: JsExprIR }
   | { kind: "binary"; op: string; left: JsExprIR; right: JsExprIR }
+  | { kind: "assign"; op: string; left: JsExprIR; right: JsExprIR }
   | { kind: "call"; callee: JsExprIR; args: JsExprIR[] }
   | { kind: "member"; object: JsExprIR; property: string };
 

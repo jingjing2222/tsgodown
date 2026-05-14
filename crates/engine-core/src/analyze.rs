@@ -149,6 +149,11 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             left: Box::new(map_js_expr(*left)),
             right: Box::new(map_js_expr(*right)),
         },
+        analyzer_rust::JsExprIR::Assign { op, left, right } => JsExpr::Assign {
+            op,
+            left: Box::new(map_js_expr(*left)),
+            right: Box::new(map_js_expr(*right)),
+        },
         analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
             callee: Box::new(map_js_expr(*callee)),
             args: args.into_iter().map(map_js_expr).collect(),
