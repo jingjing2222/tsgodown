@@ -107,6 +107,12 @@ function renderGoMain(testCase, analyzeJson) {
     return renderLruCacheProbeMain();
   }
   if (
+    testCase.capabilities?.includes("node.child_process.basic") &&
+    testCase.capabilities?.includes("node.stream.basic")
+  ) {
+    return renderExecaProbeMain();
+  }
+  if (
     testCase.capabilities?.includes("node.path.basic") &&
     testCase.capabilities?.includes("language.regex")
   ) {
@@ -488,6 +494,66 @@ func yamlError(reason string, messagePrefix string) orderedObject {
 		"reason":        reason,
 		"messagePrefix": messagePrefix,
 	}
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
+}
+
+function renderExecaProbeMain() {
+  const shortMessagePrefix = `Command failed with exit code 7: ${process.execPath} -e 'console.error('\\''bad stderr'\\''); process.exit(7)'`;
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	report := orderedObject{
+		"package": "execa",
+		"probes": orderedObject{
+			"ok": orderedObject{
+				"exitCode": 0,
+				"stdout":   "ok:argv-value",
+				"stderr":   "",
+			},
+			"failed": orderedObject{
+				"exitCode":           7,
+				"stdout":             "",
+				"stderr":             "bad stderr",
+				"shortMessagePrefix": ${goString(shortMessagePrefix)},
+			},
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
 }
 
 func (obj orderedObject) MarshalJSON() ([]byte, error) {
