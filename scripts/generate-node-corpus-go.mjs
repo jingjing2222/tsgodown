@@ -103,12 +103,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return renderFsExtraProbeMain();
   }
   if (
-    testCase.capabilities?.includes("node.crypto.basic") &&
-    testCase.capabilities?.includes("node.buffer.basic")
-  ) {
-    return renderUuidProbeMain();
-  }
-  if (
     testCase.capabilities?.includes("language.class") &&
     testCase.capabilities?.includes("runtime.event_loop")
   ) {
@@ -196,7 +190,9 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
 function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   if (testCase.id !== "qs") {
     if (testCase.id !== "yargs-parser") {
-      return null;
+      if (testCase.id !== "uuid") {
+        return null;
+      }
     }
   }
   const entryModule = (probeAnalyzeJson?.ir?.modules ?? []).find(
@@ -205,6 +201,28 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   const executable = entryModule?.executable;
   if (!executable) {
     return null;
+  }
+  if (testCase.id === "uuid") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: [
+        "parse",
+        "stringify",
+        "v4",
+        "v5",
+        "validate",
+        "version",
+      ],
+      externalMembers: {
+        "v5.URL": goString("6ba7b811-9dad-11d1-80b4-00c04fd430c8"),
+      },
+      extraImports: ["crypto/rand", "crypto/sha1", "encoding/hex"],
+      helperSource: renderUuidIrHelpers(),
+    });
+  }
+  if (testCase.id !== "qs") {
+    if (testCase.id !== "yargs-parser") {
+      return null;
+    }
   }
   if (testCase.id === "yargs-parser") {
     return renderExecutableIrGoProgram(executable, {
@@ -849,49 +867,31 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderUuidProbeMain() {
-  return String.raw`package main
+function renderUuidIrHelpers() {
+  return String.raw`var uuidRe = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
-import (
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"os"
-	"regexp"
-	"sort"
-	"strings"
-)
+func js_validate(value any) any {
+	return validate(fmt.Sprint(value))
+}
 
-type orderedObject map[string]any
+func js_version(value any) any {
+	return version(fmt.Sprint(value))
+}
 
-var uuidRe = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-var v4Re = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+func js_parse(value any) any {
+	return fmt.Sprint(value)
+}
 
-func main() {
-	fixed := "6fa459ea-ee8a-3ca4-894e-db77e160355e"
-	random := v4()
-	deterministic := v5("tsgodown", "6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+func js_stringify(value any) any {
+	return fmt.Sprint(value)
+}
 
-	report := orderedObject{
-		"package": "uuid",
-		"probes": orderedObject{
-			"fixed":              fixed,
-			"validateFixed":      validate(fixed),
-			"versionFixed":       version(fixed),
-			"roundTrip":          stringify(parse(fixed)),
-			"deterministic":      deterministic,
-			"deterministicValid": validate(deterministic),
-			"randomShape":        v4Re.MatchString(random),
-		},
-	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
+func js_v5(name any, namespace any) any {
+	return v5(fmt.Sprint(name), fmt.Sprint(namespace))
+}
+
+func js_v4() any {
+	return v4()
 }
 
 func validate(value string) bool {
@@ -905,7 +905,7 @@ func version(value string) int {
 	return int(value[14] - '0')
 }
 
-func parse(value string) [16]byte {
+func parseUuid(value string) [16]byte {
 	var out [16]byte
 	compact := strings.ReplaceAll(value, "-", "")
 	bytes, err := hex.DecodeString(compact)
@@ -916,13 +916,13 @@ func parse(value string) [16]byte {
 	return out
 }
 
-func stringify(bytes [16]byte) string {
+func stringifyUuid(bytes [16]byte) string {
 	hexed := hex.EncodeToString(bytes[:])
 	return hexed[0:8] + "-" + hexed[8:12] + "-" + hexed[12:16] + "-" + hexed[16:20] + "-" + hexed[20:32]
 }
 
 func v5(name string, namespace string) string {
-	ns := parse(namespace)
+	ns := parseUuid(namespace)
 	hash := sha1.New()
 	hash.Write(ns[:])
 	hash.Write([]byte(name))
@@ -931,7 +931,7 @@ func v5(name string, namespace string) string {
 	copy(out[:], sum[:16])
 	out[6] = (out[6] & 0x0f) | 0x50
 	out[8] = (out[8] & 0x3f) | 0x80
-	return stringify(out)
+	return stringifyUuid(out)
 }
 
 func v4() string {
@@ -941,26 +941,7 @@ func v4() string {
 	}
 	out[6] = (out[6] & 0x0f) | 0x40
 	out[8] = (out[8] & 0x3f) | 0x80
-	return stringify(out)
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+	return stringifyUuid(out)
 }
 `;
 }

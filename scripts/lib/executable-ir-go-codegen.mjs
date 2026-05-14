@@ -33,6 +33,9 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const externalNamespaces = normalizeExternalNamespaces(
     options.externalNamespaces ?? {},
   );
+  const externalMembers = new Map(
+    Object.entries(options.externalMembers ?? {}),
+  );
   const mainFn = stmts.find(
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
@@ -45,6 +48,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     ]),
     externalFunctions,
     externalNamespaces,
+    externalMembers,
   };
   const body = renderStmtBlock(
     mainFn
@@ -65,6 +69,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     '\t"encoding/json"',
     '\t"fmt"',
     '\t"os"',
+    '\t"regexp"',
     '\t"strings"',
     ...(options.extraImports ?? []).map(
       (importPath) => `\t${JSON.stringify(importPath)}`,
@@ -153,6 +158,11 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn nil",
     "}",
     "",
+    "func jsRegExpTest(pattern string, flags string, value any) bool {",
+    "\tcompiled := regexp.MustCompile(pattern)",
+    "\treturn compiled.MatchString(fmt.Sprint(value))",
+    "}",
+    "",
   ]
     .filter((line) => line !== null)
     .join("\n");
@@ -165,6 +175,7 @@ function renderFunctionDecl(stmt, parentCtx) {
     functions: parentCtx.functions,
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,
+    externalMembers: parentCtx.externalMembers,
   };
   const renderedParams = params.map((param) => `${param} any`).join(", ");
   return [
@@ -328,6 +339,12 @@ function renderExpr(expr, ctx) {
       return expr.prefix ? `${expr.op}${arg}` : `${arg}${expr.op}`;
     }
     case "member":
+      if (expr.object?.kind === "ident") {
+        const key = `${expr.object.name}.${expr.property}`;
+        if (ctx.externalMembers.has(key)) {
+          return ctx.externalMembers.get(key);
+        }
+      }
       return `jsGet(${renderExpr(expr.object, ctx)}, ${JSON.stringify(
         expr.property,
       )})`;
@@ -340,6 +357,16 @@ function renderExpr(expr, ctx) {
 
 function renderBuiltinCall(expr, ctx) {
   const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "value" &&
+    expr.callee.object.value?.kind === "regexp" &&
+    expr.callee.property === "test"
+  ) {
+    return `jsRegExpTest(${JSON.stringify(
+      expr.callee.object.value.pattern,
+    )}, ${JSON.stringify(expr.callee.object.value.flags ?? "")}, ${args})`;
+  }
   if (
     expr.callee?.kind === "member" &&
     expr.callee.object?.kind === "ident" &&
