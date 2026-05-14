@@ -106,12 +106,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return renderExecaProbeMain();
   }
   if (
-    testCase.capabilities?.includes("node.path.basic") &&
-    testCase.capabilities?.includes("language.regex")
-  ) {
-    return renderMinimatchProbeMain();
-  }
-  if (
     testCase.capabilities?.includes("language.regex") &&
     testCase.capabilities?.includes("cli.process") &&
     testCase.capabilities?.includes("module.cjs")
@@ -184,7 +178,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
       if (testCase.id !== "uuid") {
         if (testCase.id !== "lru-cache") {
           if (testCase.id !== "dotenv") {
-            return null;
+            if (testCase.id !== "minimatch") {
+              return null;
+            }
           }
         }
       }
@@ -236,6 +232,12 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
       externalNamespaces: { dotenv: ["config", "parse"] },
       extraImports: ["path/filepath"],
       helperSource: renderDotenvIrHelpers(),
+    });
+  }
+  if (testCase.id === "minimatch") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: ["minimatch"],
+      helperSource: renderMinimatchIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -638,59 +640,13 @@ func (obj orderedObject) MarshalJSON() ([]byte, error) {
 `;
 }
 
-function renderMinimatchProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	matrix := []struct {
-		path    string
-		pattern string
-		options orderedObject
-	}{
-		{"index.js", "*.js", orderedObject{}},
-		{"index.ts", "*.js", orderedObject{}},
-		{"src/a/b/index.ts", "src/**/*.ts", orderedObject{}},
-		{".env", "*", orderedObject{}},
-		{".env", "*", orderedObject{"dot": true}},
-		{"src/app.test.ts", "src/**/*.{test,spec}.ts", orderedObject{}},
-		{"src/app.ts", "!(dist)/**/*.ts", orderedObject{}},
-		{"dist/app.ts", "!(dist)/**/*.ts", orderedObject{}},
-		{"src\\app.ts", "src/**/*.ts", orderedObject{"windowsPathsNoEscape": true}},
-	}
-
-	probes := make([]orderedObject, 0, len(matrix))
-	for _, item := range matrix {
-		probes = append(probes, orderedObject{
-			"path":    item.path,
-			"pattern": item.pattern,
-			"options": item.options,
-			"match":   matchGlob(item.path, item.pattern, item.options),
-		})
-	}
-
-	report := orderedObject{
-		"package": "minimatch",
-		"probes":  probes,
-	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
+function renderMinimatchIrHelpers() {
+  return String.raw`func js_minimatch(path any, pattern any, options any) any {
+	optionObject, _ := options.(map[string]any)
+	return matchGlob(fmt.Sprint(path), fmt.Sprint(pattern), optionObject)
 }
 
-func matchGlob(path string, pattern string, options orderedObject) bool {
+func matchGlob(path string, pattern string, options map[string]any) bool {
 	if pattern == "*" {
 		if strings.HasPrefix(path, ".") && options["dot"] != true {
 			return false
@@ -710,25 +666,6 @@ func matchGlob(path string, pattern string, options orderedObject) bool {
 		return strings.Contains(path, "/") && strings.HasSuffix(path, ".ts")
 	}
 	return false
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }

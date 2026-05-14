@@ -279,6 +279,14 @@ fn pat_name(pat: &Pat) -> Option<String> {
     }
 }
 
+fn pat_names(pat: &Pat) -> Vec<String> {
+    match pat {
+        Pat::Ident(binding) => vec![binding.id.sym.to_string()],
+        Pat::Array(array) => array.elems.iter().flatten().filter_map(pat_name).collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn collect_executable_from_ast(module: &Module) -> ExecutableModuleIR {
     let mut stmts = Vec::new();
     for item in &module.body {
@@ -596,7 +604,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             methods: lower_class_methods(&class.class),
         }),
         Expr::Arrow(arrow) => Some(JsExprIR::Function {
-            params: arrow.params.iter().filter_map(pat_name).collect(),
+            params: arrow.params.iter().flat_map(pat_names).collect(),
             r#async: arrow.is_async,
             body: lower_arrow_body(&arrow.body)?,
         }),

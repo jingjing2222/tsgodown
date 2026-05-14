@@ -623,6 +623,17 @@ function errorName(result) {
 }
 
 #[test]
+fn executable_array_destructuring_arrow_params_are_lowered() {
+    let source = r#"
+const out = rows.map(([path, pattern, options]) => ({ path, pattern, options }));
+"#;
+    let ir = analyze_compiler_entry("array-destructure-arrow.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("function-expr async=false params=[path,pattern,options]"));
+}
+
+#[test]
 fn static_builtin_dynamic_import_is_tracked_without_unsupported_diagnostic() {
     let source = r#"
 import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {});

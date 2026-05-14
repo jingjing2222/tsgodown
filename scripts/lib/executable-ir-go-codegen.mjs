@@ -204,6 +204,22 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn strings.Join(parts, fmt.Sprint(separator))",
     "}",
     "",
+    "func jsArrayMap(value any, mapper func(...any) any) []any {",
+    "\titems, ok := value.([]any)",
+    "\tif !ok {",
+    "\t\treturn []any{}",
+    "\t}",
+    "\tout := make([]any, 0, len(items))",
+    "\tfor _, item := range items {",
+    "\t\tif tuple, ok := item.([]any); ok {",
+    "\t\t\tout = append(out, mapper(tuple...))",
+    "\t\t\tcontinue",
+    "\t\t}",
+    "\t\tout = append(out, mapper(item))",
+    "\t}",
+    "\treturn out",
+    "}",
+    "",
     "type jsMemberCallable interface {",
     "\tjsCallMember(property string, args ...any) any",
     "}",
@@ -524,7 +540,17 @@ function renderTimerPromise(expr, ctx) {
 }
 
 function renderBuiltinCall(expr, ctx) {
-  const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.property === "map" &&
+    expr.args?.length === 1 &&
+    expr.args[0]?.kind === "function"
+  ) {
+    return `jsArrayMap(${renderExpr(expr.callee.object, ctx)}, ${renderMapperFunction(
+      expr.args[0],
+      ctx,
+    )})`;
+  }
   if (
     expr.callee?.kind === "member" &&
     expr.callee.property === "join" &&
@@ -535,6 +561,7 @@ function renderBuiltinCall(expr, ctx) {
       ctx,
     )})`;
   }
+  const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
   if (
     expr.callee?.kind === "member" &&
     expr.callee.object?.kind === "ident" &&
@@ -579,6 +606,30 @@ function renderBuiltinCall(expr, ctx) {
     return `jsJSONStringify(${args})`;
   }
   return null;
+}
+
+function renderMapperFunction(expr, parentCtx) {
+  const params = expr.params ?? [];
+  const ctx = {
+    declared: new Set(params.map(goIdent)),
+    functions: parentCtx.functions,
+    externalFunctions: parentCtx.externalFunctions,
+    externalNamespaces: parentCtx.externalNamespaces,
+    externalMembers: parentCtx.externalMembers,
+    externalConstructors: parentCtx.externalConstructors,
+  };
+  const paramDecls = params
+    .map((param, index) => `\t${goIdent(param)} := jsArgs[${index}]`)
+    .join("\n");
+  return [
+    "func(jsArgs ...any) any {",
+    paramDecls,
+    renderStmtBlock(expr.body ?? [], ctx, 1),
+    "\treturn nil",
+    "}",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function normalizeExternalNamespaces(namespaces) {
