@@ -2,6 +2,9 @@ modules:
   - id=semantic-patterns.ts source_path=semantic-patterns.ts
     exports:
     imports:
+    executable:
+      - var createUser = <none>
+      - expr call(member(ident(app), post), [string(/users), ident(createUser)])
 routes:
   - method=POST path=/users handler_ref=createUser
 handlers:

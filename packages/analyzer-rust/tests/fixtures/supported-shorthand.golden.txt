@@ -4,6 +4,10 @@ modules:
       - health
     imports:
       - spec=node:util kind=esm resolved=<none>
+    executable:
+      - var users = <none>
+      - expr call(member(ident(app), get), [string(/users), ident(users)])
+      - expr call(member(ident(app), get), [string(/health), ident(health)])
 routes:
   - method=GET path=/health handler_ref=health
   - method=GET path=/users handler_ref=users

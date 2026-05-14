@@ -3,6 +3,13 @@ modules:
     exports:
     imports:
       - spec=./lazy kind=dynamic resolved=<none>
+    executable:
+      - var handler = <none>
+      - var dynamicPath = string(/users/:id)
+      - expr call(ident(import), [string(./lazy)])
+      - expr call(member(ident(app), get), [ident(dynamicPath), ident(handler)])
+      - expr call(member(ident(app), post), [string(/inline)])
+      - expr call(member(ident(app), route), [])
 routes:
 handlers:
 diagnostics:

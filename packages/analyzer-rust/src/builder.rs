@@ -21,6 +21,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
     collect_import_diagnostics(src, &mut diagnostics, file);
     let imports = parsed.imports;
     let exports = parsed.exports;
+    let executable = parsed.executable;
     let handler_defs = collect_handler_defs(src);
     let plugin_defs = collect_plugin_defs(src);
     let route_object_defs = collect_route_object_defs(src);
@@ -80,7 +81,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
             source_path: file.to_string(),
             exports,
             imports,
-            executable: Some(crate::ExecutableModuleIR { stmts: vec![] }),
+            executable: Some(executable),
         }],
         routes,
         handlers,

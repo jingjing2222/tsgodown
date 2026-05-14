@@ -3,6 +3,8 @@ modules:
     exports:
     imports:
       - spec=fastify kind=esm resolved=<none>
+    executable:
+      - var app = call(ident(Fastify), [])
 routes:
 handlers:
 diagnostics:

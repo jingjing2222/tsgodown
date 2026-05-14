@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use analyzer_rust::{analyze_compiler_entry, ProgramIR};
+use analyzer_rust::{analyze_compiler_entry, JsExprIR, JsStmtIR, JsValueIR, ProgramIR};
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -30,6 +30,12 @@ fn render_ir(ir: &ProgramIR) -> String {
                 import.kind,
                 import.resolved.as_deref().unwrap_or("<none>"),
             ));
+        }
+        out.push_str("    executable:\n");
+        if let Some(executable) = &module.executable {
+            for stmt in &executable.stmts {
+                out.push_str(&format!("      - {}\n", render_js_stmt(stmt)));
+            }
         }
     }
 
@@ -90,6 +96,50 @@ fn render_ir(ir: &ProgramIR) -> String {
     }
 
     out
+}
+
+fn render_js_stmt(stmt: &JsStmtIR) -> String {
+    match stmt {
+        JsStmtIR::Expr(expr) => format!("expr {}", render_js_expr(expr)),
+        JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
+        JsStmtIR::Return(None) => "return".to_string(),
+        JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
+        JsStmtIR::VarDecl { name, init } => format!(
+            "var {} = {}",
+            name,
+            init.as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string())
+        ),
+    }
+}
+
+fn render_js_expr(expr: &JsExprIR) -> String {
+    match expr {
+        JsExprIR::Value(value) => render_js_value(value),
+        JsExprIR::Ident(name) => format!("ident({name})"),
+        JsExprIR::Call { callee, args } => format!(
+            "call({}, [{}])",
+            render_js_expr(callee),
+            args.iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Member { object, property } => {
+            format!("member({}, {})", render_js_expr(object), property)
+        }
+    }
+}
+
+fn render_js_value(value: &JsValueIR) -> String {
+    match value {
+        JsValueIR::Undefined => "undefined".to_string(),
+        JsValueIR::Null => "null".to_string(),
+        JsValueIR::Bool(value) => format!("bool({value})"),
+        JsValueIR::Number(value) => format!("number({value})"),
+        JsValueIR::String(value) => format!("string({value})"),
+    }
 }
 
 fn assert_fixture(fixture_name: &str, golden_name: &str) {

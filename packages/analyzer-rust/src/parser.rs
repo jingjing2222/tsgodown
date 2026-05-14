@@ -8,12 +8,15 @@ use swc_ecma_ast::{
 use swc_ecma_ast::{Decl, ExportSpecifier, Module, ModuleDecl, ModuleItem, Pat};
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
-use crate::{DiagnosticIR, DiagnosticSourceIR, ImportIR};
+use crate::{
+    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR, JsExprIR, JsStmtIR, JsValueIR,
+};
 
 #[derive(Debug)]
 pub struct ParsedModule {
     pub imports: Vec<ImportIR>,
     pub exports: Vec<String>,
+    pub executable: ExecutableModuleIR,
     pub diagnostics: Vec<DiagnosticIR>,
 }
 
@@ -44,6 +47,7 @@ pub fn parse_js_module(file: &str, src: &str) -> ParsedModule {
             ParsedModule {
                 imports: collect_imports_from_ast(&module),
                 exports: collect_exports_from_ast(&module),
+                executable: collect_executable_from_ast(&module),
                 diagnostics,
             }
         }
@@ -55,6 +59,7 @@ pub fn parse_js_module(file: &str, src: &str) -> ParsedModule {
             ParsedModule {
                 imports: vec![],
                 exports: vec![],
+                executable: ExecutableModuleIR { stmts: vec![] },
                 diagnostics,
             }
         }
@@ -215,6 +220,99 @@ fn export_specifier_name(specifier: &ExportSpecifier) -> Option<String> {
 fn pat_name(pat: &Pat) -> Option<String> {
     match pat {
         Pat::Ident(binding) => Some(binding.id.sym.to_string()),
+        _ => None,
+    }
+}
+
+fn collect_executable_from_ast(module: &Module) -> ExecutableModuleIR {
+    let mut stmts = Vec::new();
+    for item in &module.body {
+        collect_executable_from_item(&mut stmts, item);
+    }
+    ExecutableModuleIR { stmts }
+}
+
+fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
+    match item {
+        ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
+            for decl in &var_decl.decls {
+                let Some(name) = pat_name(&decl.name) else {
+                    continue;
+                };
+                stmts.push(JsStmtIR::VarDecl {
+                    name,
+                    init: decl.init.as_deref().and_then(lower_js_expr),
+                });
+            }
+        }
+        ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
+            if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
+                stmts.push(JsStmtIR::Expr(expr));
+            }
+        }
+        ModuleItem::Stmt(Stmt::Return(return_stmt)) => {
+            stmts.push(JsStmtIR::Return(
+                return_stmt.arg.as_deref().and_then(lower_js_expr),
+            ));
+        }
+        ModuleItem::Stmt(Stmt::Throw(throw_stmt)) => {
+            if let Some(expr) = lower_js_expr(&throw_stmt.arg) {
+                stmts.push(JsStmtIR::Throw(expr));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
+    match expr {
+        Expr::Lit(lit) => lower_js_lit(lit).map(JsExprIR::Value),
+        Expr::Ident(ident) => Some(JsExprIR::Ident(ident.sym.to_string())),
+        Expr::Call(call) => {
+            let callee = match &call.callee {
+                Callee::Expr(callee) => lower_js_expr(callee)?,
+                Callee::Import(_) => JsExprIR::Ident("import".to_string()),
+                Callee::Super(_) => return None,
+            };
+            let args = call
+                .args
+                .iter()
+                .filter_map(|arg| lower_js_expr(&arg.expr))
+                .collect();
+            Some(JsExprIR::Call {
+                callee: Box::new(callee),
+                args,
+            })
+        }
+        Expr::Member(member) => {
+            let property = match &member.prop {
+                MemberProp::Ident(ident) => ident.sym.to_string(),
+                MemberProp::Computed(computed) => match &*computed.expr {
+                    Expr::Lit(Lit::Str(str)) => str.value.to_string_lossy().to_string(),
+                    _ => return None,
+                },
+                MemberProp::PrivateName(_) => return None,
+            };
+            Some(JsExprIR::Member {
+                object: Box::new(lower_js_expr(&member.obj)?),
+                property,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn lower_js_lit(lit: &Lit) -> Option<JsValueIR> {
+    match lit {
+        Lit::Str(str) => Some(JsValueIR::String(str.value.to_string_lossy().to_string())),
+        Lit::Bool(bool) => Some(JsValueIR::Bool(bool.value)),
+        Lit::Null(_) => Some(JsValueIR::Null),
+        Lit::Num(num) => Some(JsValueIR::Number(
+            num.raw
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| num.value.to_string()),
+        )),
         _ => None,
     }
 }

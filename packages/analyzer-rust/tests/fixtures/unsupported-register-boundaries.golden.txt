@@ -2,6 +2,10 @@ modules:
   - id=unsupported-register-boundaries.ts source_path=unsupported-register-boundaries.ts
     exports:
     imports:
+    executable:
+      - var app = <none>
+      - expr call(member(ident(app), register), [call(ident(factoryPlugin), [])])
+      - expr call(member(ident(app), register), [ident(missingPlugin)])
 routes:
 handlers:
 diagnostics:

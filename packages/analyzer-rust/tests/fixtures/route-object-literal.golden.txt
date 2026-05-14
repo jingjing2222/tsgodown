@@ -2,6 +2,9 @@ modules:
   - id=route-object-literal.ts source_path=route-object-literal.ts
     exports:
     imports:
+    executable:
+      - var health = <none>
+      - expr call(member(ident(app), route), [])
 routes:
   - method=GET path=/health handler_ref=health
 handlers:
