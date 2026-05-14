@@ -13,7 +13,8 @@ use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyn
 
 use crate::{
     DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportBindingIR, ImportIR,
-    JsClassMethodIR, JsExprIR, JsObjectPropIR, JsStmtIR, JsSwitchCaseIR, JsValueIR,
+    JsArrayElementIR, JsClassMethodIR, JsExprIR, JsObjectPropIR, JsStmtIR, JsSwitchCaseIR,
+    JsValueIR,
 };
 
 #[derive(Debug)]
@@ -556,14 +557,24 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
         Expr::This(_) => Some(JsExprIR::This),
         Expr::Array(array) => {
             let mut items = Vec::new();
+            let mut spread_items = Vec::new();
+            let mut has_spread = false;
             for elem in &array.elems {
                 let Some(elem) = elem else {
                     return None;
                 };
+                let value = lower_js_expr(&elem.expr)?;
                 if elem.spread.is_some() {
-                    return None;
+                    has_spread = true;
                 }
-                items.push(lower_js_expr(&elem.expr)?);
+                spread_items.push(JsArrayElementIR {
+                    spread: elem.spread.is_some(),
+                    value: value.clone(),
+                });
+                items.push(value);
+            }
+            if has_spread {
+                return Some(JsExprIR::ArraySpread(spread_items));
             }
             Some(JsExprIR::Array(items))
         }

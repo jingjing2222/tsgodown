@@ -280,6 +280,18 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        JsExprIR::ArraySpread(items) => format!(
+            "array-spread([{}])",
+            items
+                .iter()
+                .map(|item| format!(
+                    "{}{}",
+                    if item.spread { "..." } else { "" },
+                    render_js_expr(&item.value)
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         JsExprIR::Object(props) => format!(
             "object({{{}}})",
             props
@@ -580,6 +592,19 @@ async function render(name, count) {
     assert!(
         rendered.contains("sequence([ident(result), call(member(this, done), [ident(value)])])")
     );
+}
+
+#[test]
+fn executable_array_spread_is_lowered_deterministically() {
+    let source = r#"
+function copy(items) {
+  return [0, ...items, 9];
+}
+"#;
+    let ir = analyze_compiler_entry("array-spread.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("array-spread([number(0), ...ident(items), number(9)])"));
 }
 
 #[test]

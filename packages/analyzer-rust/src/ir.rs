@@ -170,6 +170,7 @@ pub enum JsExprIR {
     Ident(String),
     This,
     Array(Vec<JsExprIR>),
+    ArraySpread(Vec<JsArrayElementIR>),
     Object(Vec<JsObjectPropIR>),
     Function {
         params: Vec<String>,
@@ -224,6 +225,12 @@ pub enum JsExprIR {
         exprs: Vec<JsExprIR>,
     },
     Sequence(Vec<JsExprIR>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsArrayElementIR {
+    pub spread: bool,
+    pub value: JsExprIR,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

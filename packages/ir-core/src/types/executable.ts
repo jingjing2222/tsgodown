@@ -65,6 +65,7 @@ export type JsExprIR =
   | { kind: "ident"; name: string }
   | { kind: "this" }
   | { kind: "array"; items: JsExprIR[] }
+  | { kind: "array-spread"; items: JsArrayElementIR[] }
   | { kind: "object"; props: JsObjectPropIR[] }
   | {
       kind: "function";
@@ -96,6 +97,11 @@ export type JsExprIR =
 
 export interface JsObjectPropIR {
   key: string;
+  value: JsExprIR;
+}
+
+export interface JsArrayElementIR {
+  spread: boolean;
   value: JsExprIR;
 }
 

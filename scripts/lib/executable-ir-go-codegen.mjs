@@ -163,6 +163,25 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn compiled.MatchString(fmt.Sprint(value))",
     "}",
     "",
+    "type jsArrayItem struct {",
+    "\tspread bool",
+    "\tvalue any",
+    "}",
+    "",
+    "func jsArraySpread(items ...jsArrayItem) []any {",
+    "\tout := []any{}",
+    "\tfor _, item := range items {",
+    "\t\tif item.spread {",
+    "\t\t\tif values, ok := item.value.([]any); ok {",
+    "\t\t\t\tout = append(out, values...)",
+    "\t\t\t}",
+    "\t\t\tcontinue",
+    "\t\t}",
+    "\t\tout = append(out, item.value)",
+    "\t}",
+    "\treturn out",
+    "}",
+    "",
   ]
     .filter((line) => line !== null)
     .join("\n");
@@ -294,6 +313,16 @@ function renderExpr(expr, ctx) {
       return goIdent(expr.name);
     case "array":
       return `[]any{${(expr.items ?? []).map((item) => renderExpr(item, ctx)).join(", ")}}`;
+    case "array-spread":
+      return `jsArraySpread(${(expr.items ?? [])
+        .map(
+          (item) =>
+            `jsArrayItem{spread: ${item.spread ? "true" : "false"}, value: ${renderExpr(
+              item.value,
+              ctx,
+            )}}`,
+        )
+        .join(", ")})`;
     case "object":
       return `map[string]any{${(expr.props ?? [])
         .map(

@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use crate::contract::{
     AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource, Import,
-    ImportBinding, IrDocument, JsClassMethod, JsExpr, JsObjectProp, JsStmt, JsSwitchCase, JsValue,
-    Module, Route,
+    ImportBinding, IrDocument, JsArrayElement, JsClassMethod, JsExpr, JsObjectProp, JsStmt,
+    JsSwitchCase, JsValue, Module, Route,
 };
 
 pub fn analyze(request: AnalyzeRequest) -> AnalyzeResponse {
@@ -187,6 +187,15 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
         analyzer_rust::JsExprIR::This => JsExpr::This,
         analyzer_rust::JsExprIR::Array(items) => JsExpr::Array {
             items: items.into_iter().map(map_js_expr).collect(),
+        },
+        analyzer_rust::JsExprIR::ArraySpread(items) => JsExpr::ArraySpread {
+            items: items
+                .into_iter()
+                .map(|item| JsArrayElement {
+                    spread: item.spread,
+                    value: map_js_expr(item.value),
+                })
+                .collect(),
         },
         analyzer_rust::JsExprIR::Object(props) => JsExpr::Object {
             props: props

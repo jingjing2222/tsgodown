@@ -182,6 +182,8 @@ pub enum JsExpr {
     This,
     #[serde(rename = "array")]
     Array { items: Vec<JsExpr> },
+    #[serde(rename = "array-spread")]
+    ArraySpread { items: Vec<JsArrayElement> },
     #[serde(rename = "object")]
     Object { props: Vec<JsObjectProp> },
     #[serde(rename = "function")]
@@ -251,6 +253,12 @@ pub enum JsExpr {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JsObjectProp {
     pub key: String,
+    pub value: JsExpr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct JsArrayElement {
+    pub spread: bool,
     pub value: JsExpr,
 }
 
