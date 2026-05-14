@@ -88,6 +88,12 @@ function renderGoMain(testCase, analyzeJson) {
   if (testCase.capabilities?.includes("node.process.env")) {
     return renderDotenvProbeMain();
   }
+  if (
+    testCase.capabilities?.includes("node.fs.basic") &&
+    testCase.capabilities?.includes("runtime.event_loop")
+  ) {
+    return renderFsExtraProbeMain();
+  }
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
@@ -151,6 +157,156 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderFsExtraProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+type orderedObject map[string]any
+
+func main() {
+	root, err := os.MkdirTemp("", "tsgodown-fs-extra-")
+	if err != nil {
+		fail(err)
+	}
+	defer os.RemoveAll(root)
+
+	sourceDir := filepath.Join(root, "source")
+	targetDir := filepath.Join(root, "target")
+	sourceJSON := filepath.Join(sourceDir, "data.json")
+	copiedJSON := filepath.Join(targetDir, "data.json")
+
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		fail(err)
+	}
+	if err := writeJSON(sourceJSON, orderedObject{"name": "tsgodown", "count": 2}); err != nil {
+		fail(err)
+	}
+	readBack, err := readJSON(sourceJSON)
+	if err != nil {
+		fail(err)
+	}
+	if err := copyDir(sourceDir, targetDir); err != nil {
+		fail(err)
+	}
+	copied, err := readJSON(copiedJSON)
+	if err != nil {
+		fail(err)
+	}
+	if err := os.RemoveAll(sourceDir); err != nil {
+		fail(err)
+	}
+
+	report := orderedObject{
+		"package": "fs-extra",
+		"probes": orderedObject{
+			"readBack":                readBack,
+			"copied":                  copied,
+			"sourceExistsAfterRemove": pathExists(sourceDir),
+			"targetExists":            pathExists(copiedJSON),
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fail(err)
+	}
+	fmt.Println(string(bytes))
+}
+
+func writeJSON(file string, value any) error {
+	bytes, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(file, append(bytes, '\n'), 0o644)
+}
+
+func readJSON(file string) (orderedObject, error) {
+	bytes, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var out orderedObject
+	if err := json.Unmarshal(bytes, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func copyDir(source string, target string) error {
+	return filepath.WalkDir(source, func(current string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(source, current)
+		if err != nil {
+			return err
+		}
+		dest := filepath.Join(target, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(dest, 0o755)
+		}
+		return copyFile(current, dest)
+	})
+}
+
+func copyFile(source string, target string) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderArgvObjectProbeMain() {
