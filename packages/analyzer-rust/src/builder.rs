@@ -190,8 +190,34 @@ fn has_route_invocation(line: &str) -> bool {
         };
         let after_open = &line[start + call.len()..];
         let first_arg = after_open.trim_start();
-        first_arg.starts_with('"') || first_arg.starts_with('\'') || first_arg.starts_with('`')
+        has_static_path_and_second_arg(first_arg)
     })
+}
+
+fn has_static_path_and_second_arg(args: &str) -> bool {
+    let Some(quote) = args.chars().next() else {
+        return false;
+    };
+    if quote != '"' && quote != '\'' && quote != '`' {
+        return false;
+    }
+
+    let mut escaped = false;
+    for (idx, ch) in args.char_indices().skip(1) {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            return args[idx + ch.len_utf8()..].trim_start().starts_with(',');
+        }
+    }
+
+    false
 }
 
 fn brace_delta(raw: &str) -> i32 {

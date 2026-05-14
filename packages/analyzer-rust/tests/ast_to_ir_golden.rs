@@ -156,3 +156,21 @@ fn single_line_conditional_routes_emit_unsupported_diagnostic() {
         "conditional-route-single-line.golden.txt",
     );
 }
+
+#[test]
+fn conditional_map_delete_does_not_emit_route_diagnostic() {
+    let source = r#"
+const map = new Map();
+if (map.size > 1) {
+  map.delete("");
+}
+"#;
+    let ir = analyze_compiler_entry("not-a-route.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE"),
+        "Map.delete(string) must not be mistaken for DELETE route registration"
+    );
+}
