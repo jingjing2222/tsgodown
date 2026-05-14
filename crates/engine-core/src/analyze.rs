@@ -100,6 +100,26 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             consequent: consequent.into_iter().map(map_js_stmt).collect(),
             alternate: alternate.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsStmtIR::For {
+            init,
+            test,
+            update,
+            body,
+        } => JsStmt::For {
+            init: init.into_iter().map(map_js_stmt).collect(),
+            test: test.map(map_js_expr),
+            update: update.map(map_js_expr),
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
+        analyzer_rust::JsStmtIR::ForOf { left, right, body } => JsStmt::ForOf {
+            left,
+            right: map_js_expr(right),
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
+        analyzer_rust::JsStmtIR::While { test, body } => JsStmt::While {
+            test: map_js_expr(test),
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
         analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
             value: value.map(map_js_expr),
         },

@@ -134,6 +134,46 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::For {
+            init,
+            test,
+            update,
+            body,
+        } => format!(
+            "for init=[{}] test={} update={} body=[{}]",
+            init.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            test.as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            update
+                .as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::ForOf { left, right, body } => format!(
+            "for-of {} in {} body=[{}]",
+            left,
+            render_js_expr(right),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::While { test, body } => format!(
+            "while {} body=[{}]",
+            render_js_expr(test),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),

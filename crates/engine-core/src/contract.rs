@@ -77,6 +77,23 @@ pub enum JsStmt {
         consequent: Vec<JsStmt>,
         alternate: Vec<JsStmt>,
     },
+    #[serde(rename = "for")]
+    For {
+        init: Vec<JsStmt>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        test: Option<JsExpr>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        update: Option<JsExpr>,
+        body: Vec<JsStmt>,
+    },
+    #[serde(rename = "for-of")]
+    ForOf {
+        left: String,
+        right: JsExpr,
+        body: Vec<JsStmt>,
+    },
+    #[serde(rename = "while")]
+    While { test: JsExpr, body: Vec<JsStmt> },
     #[serde(rename = "return")]
     Return {
         #[serde(skip_serializing_if = "Option::is_none")]

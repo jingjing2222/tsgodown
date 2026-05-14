@@ -95,6 +95,21 @@ pub enum JsStmtIR {
         consequent: Vec<JsStmtIR>,
         alternate: Vec<JsStmtIR>,
     },
+    For {
+        init: Vec<JsStmtIR>,
+        test: Option<JsExprIR>,
+        update: Option<JsExprIR>,
+        body: Vec<JsStmtIR>,
+    },
+    ForOf {
+        left: String,
+        right: JsExprIR,
+        body: Vec<JsStmtIR>,
+    },
+    While {
+        test: JsExprIR,
+        body: Vec<JsStmtIR>,
+    },
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
     VarDecl {

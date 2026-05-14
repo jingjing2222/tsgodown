@@ -17,6 +17,15 @@ export type JsStmtIR =
       consequent: JsStmtIR[];
       alternate: JsStmtIR[];
     }
+  | {
+      kind: "for";
+      init: JsStmtIR[];
+      test?: JsExprIR;
+      update?: JsExprIR;
+      body: JsStmtIR[];
+    }
+  | { kind: "for-of"; left: string; right: JsExprIR; body: JsStmtIR[] }
+  | { kind: "while"; test: JsExprIR; body: JsStmtIR[] }
   | { kind: "return"; value?: JsExprIR }
   | { kind: "throw"; value: JsExprIR }
   | { kind: "var-decl"; name: string; init?: JsExprIR };

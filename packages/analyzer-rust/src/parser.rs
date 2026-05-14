@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::Path};
 use swc_common::{sync::Lrc, FileName, SourceMap};
 use swc_ecma_ast::{
     AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, Prop, PropName, PropOrSpread,
-    SimpleAssignTarget, Stmt,
+    SimpleAssignTarget, Stmt, VarDeclOrExpr,
 };
 use swc_ecma_ast::{
     BlockStmt, BlockStmtOrExpr, Decl, ExportSpecifier, FnDecl, Function, Module, ModuleDecl,
@@ -302,6 +302,37 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
                 });
             }
         }
+        Stmt::For(for_stmt) => {
+            stmts.push(JsStmtIR::For {
+                init: for_stmt
+                    .init
+                    .as_ref()
+                    .map(lower_for_init)
+                    .unwrap_or_default(),
+                test: for_stmt.test.as_deref().and_then(lower_js_expr),
+                update: for_stmt.update.as_deref().and_then(lower_js_expr),
+                body: lower_stmt_as_block(&for_stmt.body),
+            });
+        }
+        Stmt::ForOf(for_of) => {
+            if let Some(left) = for_head_name(&for_of.left) {
+                if let Some(right) = lower_js_expr(&for_of.right) {
+                    stmts.push(JsStmtIR::ForOf {
+                        left,
+                        right,
+                        body: lower_stmt_as_block(&for_of.body),
+                    });
+                }
+            }
+        }
+        Stmt::While(while_stmt) => {
+            if let Some(test) = lower_js_expr(&while_stmt.test) {
+                stmts.push(JsStmtIR::While {
+                    test,
+                    body: lower_stmt_as_block(&while_stmt.body),
+                });
+            }
+        }
         Stmt::Return(return_stmt) => {
             stmts.push(JsStmtIR::Return(
                 return_stmt.arg.as_deref().and_then(lower_js_expr),
@@ -313,6 +344,33 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
             }
         }
         _ => {}
+    }
+}
+
+fn lower_for_init(init: &VarDeclOrExpr) -> Vec<JsStmtIR> {
+    match init {
+        VarDeclOrExpr::VarDecl(var_decl) => {
+            let mut stmts = Vec::new();
+            lower_var_decl_stmts(&mut stmts, var_decl);
+            stmts
+        }
+        VarDeclOrExpr::Expr(expr) => lower_js_expr(expr)
+            .map(JsStmtIR::Expr)
+            .into_iter()
+            .collect(),
+    }
+}
+
+fn for_head_name(head: &swc_ecma_ast::ForHead) -> Option<String> {
+    match head {
+        swc_ecma_ast::ForHead::VarDecl(var_decl) => var_decl
+            .decls
+            .first()?
+            .name
+            .as_ident()
+            .map(|ident| ident.id.sym.to_string()),
+        swc_ecma_ast::ForHead::Pat(pat) => pat_name(pat),
+        swc_ecma_ast::ForHead::UsingDecl(_) => None,
     }
 }
 
