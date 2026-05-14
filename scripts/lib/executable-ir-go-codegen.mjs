@@ -247,6 +247,24 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn out",
     "}",
     "",
+    "func jsArrayFilter(value any, predicate func(...any) any) []any {",
+    "\titems, ok := value.([]any)",
+    "\tif !ok {",
+    "\t\treturn []any{}",
+    "\t}",
+    "\tout := make([]any, 0, len(items))",
+    "\tfor _, item := range items {",
+    "\t\targs := []any{item}",
+    "\t\tif tuple, ok := item.([]any); ok {",
+    "\t\t\targs = tuple",
+    "\t\t}",
+    "\t\tif keep, ok := predicate(args...).(bool); ok && keep {",
+    "\t\t\tout = append(out, item)",
+    "\t\t}",
+    "\t}",
+    "\treturn out",
+    "}",
+    "",
     "type jsMemberCallable interface {",
     "\tjsCallMember(property string, args ...any) any",
     "}",
@@ -612,6 +630,17 @@ function renderBuiltinCall(expr, ctx) {
     expr.args[0]?.kind === "function"
   ) {
     return `jsArrayMap(${renderExpr(expr.callee.object, ctx)}, ${renderMapperFunction(
+      expr.args[0],
+      ctx,
+    )})`;
+  }
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.property === "filter" &&
+    expr.args?.length === 1 &&
+    expr.args[0]?.kind === "function"
+  ) {
+    return `jsArrayFilter(${renderExpr(expr.callee.object, ctx)}, ${renderMapperFunction(
       expr.args[0],
       ctx,
     )})`;

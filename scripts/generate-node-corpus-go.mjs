@@ -93,13 +93,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return irDrivenProbe;
   }
 
-  if (
-    testCase.capabilities?.includes("language.regex") &&
-    testCase.capabilities?.includes("cli.process") &&
-    testCase.capabilities?.includes("module.cjs")
-  ) {
-    return renderSemverProbeMain();
-  }
   const analyzerDiagnostics = Array.isArray(analyzeJson?.diagnostics)
     ? analyzeJson.diagnostics.map((diagnostic) => ({
         code: diagnostic?.code ?? "UNKNOWN",
@@ -164,7 +157,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
               if (testCase.id !== "js-yaml") {
                 if (testCase.id !== "execa") {
                   if (testCase.id !== "fs-extra") {
-                    return null;
+                    if (testCase.id !== "semver") {
+                      return null;
+                    }
                   }
                 }
               }
@@ -260,6 +255,15 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
       helperSource: renderFsExtraIrHelpers(),
     });
   }
+  if (testCase.id === "semver") {
+    return renderExecutableIrGoProgram(executable, {
+      externalNamespaces: {
+        semver: ["compare", "satisfies", "sort", "valid"],
+      },
+      extraImports: ["sort"],
+      helperSource: renderSemverIrHelpers(),
+    });
+  }
   if (testCase.id !== "qs") {
     if (testCase.id !== "yargs-parser") {
       return null;
@@ -279,22 +283,8 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   });
 }
 
-function renderSemverProbeMain() {
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"regexp"
-	"sort"
-	"strconv"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-type version struct {
+function renderSemverIrHelpers() {
+  return String.raw`type version struct {
 	major int
 	minor int
 	patch int
@@ -305,48 +295,30 @@ type version struct {
 
 var semverRe = regexp.MustCompile("^([0-9]+)\\.([0-9]+)\\.([0-9]+)(?:-([0-9A-Za-z.-]+))?$")
 
-func main() {
-	versions := []string{"1.2.3", "1.2.3-beta.2", "2.0.0", "1.10.0", "bad"}
-	valid := make([][]any, 0, len(versions))
-	for _, value := range versions {
-		valid = append(valid, []any{value, validVersion(value)})
-	}
+func js_semver_valid(raw any) any {
+	return validVersion(fmt.Sprint(raw))
+}
 
-	input := []string{"1.2.3", "1.3.0", "2.0.0"}
-	filtered := []string{}
-	for _, value := range input {
-		if satisfies(value, "^1.2.3") {
-			filtered = append(filtered, value)
-		}
-	}
+func js_semver_compare(left any, right any) any {
+	return compare(fmt.Sprint(left), fmt.Sprint(right))
+}
 
-	report := orderedObject{
-		"package": "semver",
-		"probes": orderedObject{
-			"valid":             valid,
-			"comparePrerelease": compare("1.2.3-beta.2", "1.2.3"),
-			"ranges": [][]any{
-				{"1.4.0", "^1.2.3", satisfies("1.4.0", "^1.2.3")},
-				{"2.0.0", "^1.2.3", satisfies("2.0.0", "^1.2.3")},
-				{"1.2.9", "~1.2.3", satisfies("1.2.9", "~1.2.3")},
-				{"1.3.0", "~1.2.3", satisfies("1.3.0", "~1.2.3")},
-				{"1.5.0", ">=1.0.0 <2", satisfies("1.5.0", ">=1.0.0 <2")},
-			},
-			"sorted": sortVersions([]string{"1.2.3", "1.2.3-beta.2", "2.0.0", "1.10.0"}),
-			"cliStyle": orderedObject{
-				"input":  input,
-				"range":  "^1.2.3",
-				"output": filtered,
-			},
-		},
-	}
+func js_semver_satisfies(raw any, rangeExpr any) any {
+	return satisfies(fmt.Sprint(raw), fmt.Sprint(rangeExpr))
+}
 
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+func js_semver_sort(values any) any {
+	items, _ := values.([]any)
+	raw := make([]string, 0, len(items))
+	for _, item := range items {
+		raw = append(raw, fmt.Sprint(item))
 	}
-	fmt.Println(string(bytes))
+	sorted := sortVersions(raw)
+	out := make([]any, 0, len(sorted))
+	for _, item := range sorted {
+		out = append(out, item)
+	}
+	return out
 }
 
 func validVersion(raw string) any {
@@ -448,25 +420,6 @@ func sortVersions(values []string) []string {
 		return compare(out[i], out[j]) < 0
 	})
 	return out
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
-		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
-	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
 }
 `;
 }
