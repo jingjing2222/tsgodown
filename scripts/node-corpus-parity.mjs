@@ -153,6 +153,22 @@ function runGoProbe(testCase) {
     };
   }
 
+  const fallbackCheck = checkNoNodeFallback(goDir);
+  if (fallbackCheck.status !== "passed") {
+    return {
+      build: {
+        status: "failed",
+        reason: "node-fallback-detected",
+        path: path.relative(repoRoot, goDir),
+        fallbackCheck,
+      },
+      run: {
+        status: "skipped",
+        reason: "node fallback detected before go build",
+      },
+    };
+  }
+
   const outDir = path.join(buildRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
   const binaryPath = path.join(outDir, "probe");
@@ -214,6 +230,36 @@ function runGoProbe(testCase) {
       },
     };
   }
+}
+
+function checkNoNodeFallback(goDir) {
+  const findings = [];
+  const files = fs
+    .readdirSync(goDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".go"))
+    .map((entry) => path.join(entry.parentPath ?? goDir, entry.name));
+
+  for (const filePath of files) {
+    const source = fs.readFileSync(filePath, "utf8");
+    for (const forbidden of [
+      '"os/exec"',
+      "exec.Command",
+      "syscall.Exec",
+      "node --",
+    ]) {
+      if (source.includes(forbidden)) {
+        findings.push({
+          file: path.relative(repoRoot, filePath),
+          forbidden,
+        });
+      }
+    }
+  }
+
+  return {
+    status: findings.length === 0 ? "passed" : "failed",
+    findings,
+  };
 }
 
 function compareReports(nodeReport, goReport) {
