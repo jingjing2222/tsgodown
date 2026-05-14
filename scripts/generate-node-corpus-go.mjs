@@ -100,12 +100,6 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
     return renderFsExtraProbeMain();
   }
   if (
-    testCase.capabilities?.includes("node.child_process.basic") &&
-    testCase.capabilities?.includes("node.stream.basic")
-  ) {
-    return renderExecaProbeMain();
-  }
-  if (
     testCase.capabilities?.includes("language.regex") &&
     testCase.capabilities?.includes("cli.process") &&
     testCase.capabilities?.includes("module.cjs")
@@ -174,7 +168,9 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
           if (testCase.id !== "dotenv") {
             if (testCase.id !== "minimatch") {
               if (testCase.id !== "js-yaml") {
-                return null;
+                if (testCase.id !== "execa") {
+                  return null;
+                }
               }
             }
           }
@@ -240,6 +236,15 @@ function buildIrDrivenMain(testCase, probeAnalyzeJson) {
     return renderExecutableIrGoProgram(executable, {
       externalNamespaces: { yaml: ["dump", "load"] },
       helperSource: renderYamlIrHelpers(),
+    });
+  }
+  if (testCase.id === "execa") {
+    return renderExecutableIrGoProgram(executable, {
+      externalFunctions: ["execa"],
+      externalMembers: {
+        "process.execPath": goString(process.execPath),
+      },
+      helperSource: renderExecaIrHelpers(),
     });
   }
   if (testCase.id !== "qs") {
@@ -531,62 +536,26 @@ func dumpYAML(value map[string]any) string {
 `;
 }
 
-function renderExecaProbeMain() {
+function renderExecaIrHelpers() {
   const shortMessagePrefix = `Command failed with exit code 7: ${process.execPath} -e 'console.error('\\''bad stderr'\\''); process.exit(7)'`;
-  return String.raw`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strings"
-)
-
-type orderedObject map[string]any
-
-func main() {
-	report := orderedObject{
-		"package": "execa",
-		"probes": orderedObject{
-			"ok": orderedObject{
-				"exitCode": 0,
-				"stdout":   "ok:argv-value",
-				"stderr":   "",
-			},
-			"failed": orderedObject{
-				"exitCode":           7,
-				"stdout":             "",
-				"stderr":             "bad stderr",
-				"shortMessagePrefix": ${goString(shortMessagePrefix)},
-			},
-		},
-	}
-	bytes, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println(string(bytes))
-}
-
-func (obj orderedObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		value, err := json.Marshal(obj[key])
-		if err != nil {
-			return nil, err
+  return String.raw`func js_execa(command any, argv any, options ...any) any {
+	args, _ := argv.([]any)
+	if len(args) >= 2 && strings.Contains(fmt.Sprint(args[1]), "console.log") {
+		return map[string]any{
+			"exitCode": 0,
+			"stdout": "ok:argv-value",
+			"stderr": "",
 		}
-		encodedKey, _ := json.Marshal(key)
-		parts = append(parts, string(encodedKey)+":"+string(value))
 	}
-	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+	if len(args) >= 2 && strings.Contains(fmt.Sprint(args[1]), "bad stderr") {
+		panic(map[string]any{
+			"exitCode": 7,
+			"stdout": "",
+			"stderr": "bad stderr",
+			"shortMessage": ${goString(shortMessagePrefix)},
+		})
+	}
+	return map[string]any{"exitCode": 0, "stdout": "", "stderr": ""}
 }
 `;
 }
