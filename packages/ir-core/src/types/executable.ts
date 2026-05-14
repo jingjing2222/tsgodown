@@ -4,6 +4,13 @@ export interface ExecutableModuleIR {
 
 export type JsStmtIR =
   | { kind: "expr"; expr: JsExprIR }
+  | {
+      kind: "function-decl";
+      name: string;
+      params: string[];
+      async: boolean;
+      body: JsStmtIR[];
+    }
   | { kind: "return"; value?: JsExprIR }
   | { kind: "throw"; value: JsExprIR }
   | { kind: "var-decl"; name: string; init?: JsExprIR };

@@ -5,7 +5,7 @@ use swc_ecma_ast::{
     AssignTarget, Callee, Expr, Lit, MemberExpr, MemberProp, Prop, PropName, PropOrSpread,
     SimpleAssignTarget, Stmt,
 };
-use swc_ecma_ast::{Decl, ExportSpecifier, Module, ModuleDecl, ModuleItem, Pat};
+use swc_ecma_ast::{BlockStmt, Decl, ExportSpecifier, FnDecl, Module, ModuleDecl, ModuleItem, Pat};
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 
 use crate::{
@@ -236,6 +236,14 @@ fn collect_executable_from_ast(module: &Module) -> ExecutableModuleIR {
 fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
     match item {
         ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export))
+            if matches!(export.decl, Decl::Fn(_)) =>
+        {
+            let Decl::Fn(function) = &export.decl else {
+                unreachable!("matches! guarded function decl")
+            };
+            lower_fn_decl_stmt(stmts, function);
+        }
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export))
             if matches!(export.decl, Decl::Var(_)) =>
         {
             let Decl::Var(var_decl) = &export.decl else {
@@ -245,6 +253,9 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
         }
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
             lower_var_decl_stmts(stmts, var_decl);
+        }
+        ModuleItem::Stmt(Stmt::Decl(Decl::Fn(function))) => {
+            lower_fn_decl_stmt(stmts, function);
         }
         ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
             if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
@@ -263,6 +274,54 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
         }
         _ => {}
     }
+}
+
+fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
+    match stmt {
+        Stmt::Decl(Decl::Var(var_decl)) => lower_var_decl_stmts(stmts, var_decl),
+        Stmt::Decl(Decl::Fn(function)) => lower_fn_decl_stmt(stmts, function),
+        Stmt::Expr(expr_stmt) => {
+            if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
+                stmts.push(JsStmtIR::Expr(expr));
+            }
+        }
+        Stmt::Return(return_stmt) => {
+            stmts.push(JsStmtIR::Return(
+                return_stmt.arg.as_deref().and_then(lower_js_expr),
+            ));
+        }
+        Stmt::Throw(throw_stmt) => {
+            if let Some(expr) = lower_js_expr(&throw_stmt.arg) {
+                stmts.push(JsStmtIR::Throw(expr));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn lower_fn_decl_stmt(stmts: &mut Vec<JsStmtIR>, function: &FnDecl) {
+    let Some(body) = &function.function.body else {
+        return;
+    };
+    stmts.push(JsStmtIR::FunctionDecl {
+        name: function.ident.sym.to_string(),
+        params: function
+            .function
+            .params
+            .iter()
+            .filter_map(|param| pat_name(&param.pat))
+            .collect(),
+        r#async: function.function.is_async,
+        body: lower_block_stmt(body),
+    });
+}
+
+fn lower_block_stmt(block: &BlockStmt) -> Vec<JsStmtIR> {
+    let mut stmts = Vec::new();
+    for stmt in &block.stmts {
+        collect_executable_from_stmt(&mut stmts, stmt);
+    }
+    stmts
 }
 
 fn lower_var_decl_stmts(stmts: &mut Vec<JsStmtIR>, var_decl: &swc_ecma_ast::VarDecl) {

@@ -44,14 +44,28 @@ mod tests {
                     exports: vec![],
                     imports: vec![],
                     executable: Some(ExecutableModule {
-                        stmts: vec![JsStmt::VarDecl {
-                            name: "answer".to_string(),
-                            init: Some(JsExpr::Value {
-                                value: JsValue::Number {
-                                    value: "42".to_string(),
-                                },
-                            }),
-                        }],
+                        stmts: vec![
+                            JsStmt::VarDecl {
+                                name: "answer".to_string(),
+                                init: Some(JsExpr::Value {
+                                    value: JsValue::Number {
+                                        value: "42".to_string(),
+                                    },
+                                }),
+                            },
+                            JsStmt::FunctionDecl {
+                                name: "health".to_string(),
+                                params: vec!["request".to_string()],
+                                r#async: false,
+                                body: vec![JsStmt::Return {
+                                    value: Some(JsExpr::Value {
+                                        value: JsValue::String {
+                                            value: "ok".to_string(),
+                                        },
+                                    }),
+                                }],
+                            },
+                        ],
                     }),
                 }],
                 routes: vec![Route {
@@ -98,6 +112,7 @@ mod tests {
             "src/index.js",
             r#"
 import { value } from "./value.js";
+"use value import";
 export { value };
 "#,
         );
@@ -125,6 +140,20 @@ export { value };
         assert_eq!(
             response.ir.modules[0].imports[0].resolved.as_deref(),
             Some("src/value.js")
+        );
+        assert_eq!(
+            response.ir.modules[0]
+                .executable
+                .as_ref()
+                .expect("entry executable")
+                .stmts,
+            vec![JsStmt::Expr {
+                expr: JsExpr::Value {
+                    value: JsValue::String {
+                        value: "use value import".to_string(),
+                    },
+                },
+            }]
         );
         assert_eq!(
             response.ir.modules[1]

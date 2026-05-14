@@ -5,6 +5,7 @@ modules:
       - spec=fastify kind=esm resolved=<none>
     executable:
       - var app = call(ident(Fastify), [])
+      - function expHandler async=false params=[] body=[return object({ok: bool(true)})]
 routes:
 handlers:
 diagnostics:

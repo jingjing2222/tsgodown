@@ -101,6 +101,21 @@ fn render_ir(ir: &ProgramIR) -> String {
 fn render_js_stmt(stmt: &JsStmtIR) -> String {
     match stmt {
         JsStmtIR::Expr(expr) => format!("expr {}", render_js_expr(expr)),
+        JsStmtIR::FunctionDecl {
+            name,
+            params,
+            r#async,
+            body,
+        } => format!(
+            "function {} async={} params=[{}] body=[{}]",
+            name,
+            r#async,
+            params.join(","),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),

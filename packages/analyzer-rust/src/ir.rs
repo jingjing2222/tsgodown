@@ -84,6 +84,12 @@ pub struct ExecutableModuleIR {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JsStmtIR {
     Expr(JsExprIR),
+    FunctionDecl {
+        name: String,
+        params: Vec<String>,
+        r#async: bool,
+        body: Vec<JsStmtIR>,
+    },
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
     VarDecl {

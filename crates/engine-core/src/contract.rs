@@ -64,6 +64,13 @@ pub struct ExecutableModule {
 pub enum JsStmt {
     #[serde(rename = "expr")]
     Expr { expr: JsExpr },
+    #[serde(rename = "function-decl")]
+    FunctionDecl {
+        name: String,
+        params: Vec<String>,
+        r#async: bool,
+        body: Vec<JsStmt>,
+    },
     #[serde(rename = "return")]
     Return {
         #[serde(skip_serializing_if = "Option::is_none")]

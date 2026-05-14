@@ -80,6 +80,17 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
         analyzer_rust::JsStmtIR::Expr(expr) => JsStmt::Expr {
             expr: map_js_expr(expr),
         },
+        analyzer_rust::JsStmtIR::FunctionDecl {
+            name,
+            params,
+            r#async,
+            body,
+        } => JsStmt::FunctionDecl {
+            name,
+            params,
+            r#async,
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
         analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
             value: value.map(map_js_expr),
         },
