@@ -1,5 +1,6 @@
 mod builder;
 mod ir;
+mod parser;
 
 pub use ir::{
     DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR, HandlerSemanticsIR, ImportIR,

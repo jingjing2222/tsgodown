@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR, HandlerSemanticsIR, ImportIR,
-    ModuleIR, ProgramIR, RouteIR,
+    parser::parse_js_module, DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR,
+    HandlerSemanticsIR, ModuleIR, ProgramIR, RouteIR,
 };
 
 const ALLOWED_METHODS: [&str; 5] = ["GET", "POST", "PUT", "DELETE", "PATCH"];
@@ -15,10 +15,12 @@ struct HandlerDef {
 }
 
 pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
-    let mut diagnostics = Vec::new();
+    let parsed = parse_js_module(file, src);
+    let mut diagnostics = parsed.diagnostics;
 
-    let imports = collect_imports(src, &mut diagnostics, file);
-    let exports = collect_exports(src);
+    collect_import_diagnostics(src, &mut diagnostics, file);
+    let imports = parsed.imports;
+    let exports = parsed.exports;
     let handler_defs = collect_handler_defs(src);
     let plugin_defs = collect_plugin_defs(src);
     let route_object_defs = collect_route_object_defs(src);
@@ -122,28 +124,7 @@ fn collect_statements(src: &str) -> Vec<&str> {
     out
 }
 
-fn collect_exports(src: &str) -> Vec<String> {
-    let mut exports = BTreeSet::new();
-    for line in src.lines() {
-        let trimmed = line.trim();
-        for prefix in [
-            "export const ",
-            "export function ",
-            "export async function ",
-        ] {
-            if let Some(rest) = trimmed.strip_prefix(prefix) {
-                if let Some(name) = take_identifier(rest) {
-                    exports.insert(name.to_string());
-                }
-            }
-        }
-    }
-    exports.into_iter().collect()
-}
-
-fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -> Vec<ImportIR> {
-    let mut imports = Vec::new();
-
+fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) {
     for line in src.lines() {
         let trimmed = line.trim();
         if trimmed.contains("import(") {
@@ -154,22 +135,7 @@ fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -
                 file,
             ));
         }
-
-        if !trimmed.starts_with("import ") {
-            continue;
-        }
-
-        if let Some(spec) = extract_quoted(trimmed) {
-            imports.push(ImportIR {
-                spec: spec.to_string(),
-                kind: "esm".to_string(),
-                resolved: None,
-            });
-        }
     }
-
-    imports.sort_by(|a, b| a.spec.cmp(&b.spec).then_with(|| a.kind.cmp(&b.kind)));
-    imports
 }
 
 fn collect_conditional_route_diagnostics(
@@ -213,11 +179,19 @@ fn collect_conditional_route_diagnostics(
 }
 
 fn has_route_invocation(line: &str) -> bool {
-    ALLOWED_METHODS
-        .iter()
-        .map(|method| method.to_ascii_lowercase())
-        .any(|method| line.contains(format!(".{method}(").as_str()))
-        || line.contains(".route(")
+    if line.contains(".route(") {
+        return true;
+    }
+
+    ALLOWED_METHODS.iter().any(|method| {
+        let call = format!(".{}(", method.to_ascii_lowercase());
+        let Some(start) = line.find(call.as_str()) else {
+            return false;
+        };
+        let after_open = &line[start + call.len()..];
+        let first_arg = after_open.trim_start();
+        first_arg.starts_with('"') || first_arg.starts_with('\'') || first_arg.starts_with('`')
+    })
 }
 
 fn brace_delta(raw: &str) -> i32 {
