@@ -110,9 +110,77 @@ function renderStmt(stmt, ctx, indentLevel) {
       return `${indent}return ${stmt.value ? renderExpr(stmt.value, ctx) : "nil"}`;
     case "expr":
       return `${indent}${renderExpr(stmt.expr, ctx)}`;
+    case "if": {
+      const consequent = renderStmtBlock(
+        stmt.consequent ?? [],
+        ctx,
+        indentLevel + 1,
+      );
+      const alternate = renderStmtBlock(
+        stmt.alternate ?? [],
+        ctx,
+        indentLevel + 1,
+      );
+      const lines = [
+        `${indent}if ${renderExpr(stmt.test, ctx)} {`,
+        consequent,
+        `${indent}}`,
+      ];
+      if (alternate) {
+        lines[2] = `${indent}} else {`;
+        lines.push(alternate, `${indent}}`);
+      }
+      return lines.filter(Boolean).join("\n");
+    }
+    case "for": {
+      const init = (stmt.init ?? [])
+        .map((child) => renderSimpleStmt(child, ctx))
+        .join(", ");
+      const test = stmt.test ? renderExpr(stmt.test, ctx) : "";
+      const update = stmt.update ? renderExpr(stmt.update, ctx) : "";
+      return [
+        `${indent}for ${init}; ${test}; ${update} {`,
+        renderStmtBlock(stmt.body ?? [], ctx, indentLevel + 1),
+        `${indent}}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+    case "while":
+      return [
+        `${indent}for ${renderExpr(stmt.test, ctx)} {`,
+        renderStmtBlock(stmt.body ?? [], ctx, indentLevel + 1),
+        `${indent}}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    case "break":
+      return `${indent}break`;
+    case "continue":
+      return `${indent}continue`;
     default:
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_STMT:${stmt?.kind ?? "unknown"}`,
+      );
+  }
+}
+
+function renderSimpleStmt(stmt, ctx) {
+  switch (stmt?.kind) {
+    case "var-decl": {
+      const name = goIdent(stmt.name);
+      const init = stmt.init ? renderExpr(stmt.init, ctx) : "nil";
+      if (ctx.declared.has(name)) {
+        return `${name} = ${init}`;
+      }
+      ctx.declared.add(name);
+      return `${name} := ${init}`;
+    }
+    case "expr":
+      return renderExpr(stmt.expr, ctx);
+    default:
+      throw new Error(
+        `EXECUTABLE_IR_UNSUPPORTED_SIMPLE_STMT:${stmt?.kind ?? "unknown"}`,
       );
   }
 }
@@ -145,6 +213,15 @@ function renderExpr(expr, ctx) {
         expr.consequent,
         ctx,
       )}, ${renderExpr(expr.alternate, ctx)})`;
+    case "assign":
+      return `${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(
+        expr.right,
+        ctx,
+      )}`;
+    case "update": {
+      const arg = renderExpr(expr.arg, ctx);
+      return expr.prefix ? `${expr.op}${arg}` : `${arg}${expr.op}`;
+    }
     default:
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_EXPR:${expr?.kind ?? "unknown"}`,
