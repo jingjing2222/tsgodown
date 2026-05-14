@@ -100,6 +100,12 @@ function renderGoMain(testCase, analyzeJson) {
   ) {
     return renderUuidProbeMain();
   }
+  if (
+    testCase.capabilities?.includes("language.class") &&
+    testCase.capabilities?.includes("runtime.event_loop")
+  ) {
+    return renderLruCacheProbeMain();
+  }
   if (testCase.capabilities?.includes("node.url.basic")) {
     return renderQueryObjectProbeMain();
   }
@@ -163,6 +169,159 @@ function renderGoMain(testCase, analyzeJson) {
     "}",
     "",
   ].join("\n");
+}
+
+function renderLruCacheProbeMain() {
+  return String.raw`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"time"
+)
+
+type orderedObject map[string]any
+
+type entry struct {
+	key       string
+	value     any
+	expiresAt time.Time
+}
+
+type lruCache struct {
+	max     int
+	ttl     time.Duration
+	entries []entry
+}
+
+func main() {
+	cache := newLRU(2, 0)
+	cache.set("a", 1)
+	cache.set("b", 2)
+	beforeGet := cache.entryPairs()
+	getA := cache.get("a")
+	cache.set("c", 3)
+	afterEvict := cache.entryPairs()
+
+	ttlCache := newLRU(2, 50*time.Millisecond)
+	ttlCache.set("short", "alive")
+	ttlImmediate := ttlCache.get("short")
+	time.Sleep(80 * time.Millisecond)
+	ttlExpired := ttlCache.get("short")
+
+	report := orderedObject{
+		"package": "lru-cache",
+		"probes": orderedObject{
+			"beforeGet":   beforeGet,
+			"getA":        getA,
+			"afterEvict":  afterEvict,
+			"hasA":        cache.has("a"),
+			"hasB":        cache.has("b"),
+			"hasC":        cache.has("c"),
+			"ttlImmediate": ttlImmediate,
+			"ttlExpired":  nilIfMissing(ttlExpired),
+		},
+	}
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(string(bytes))
+}
+
+func newLRU(max int, ttl time.Duration) *lruCache {
+	return &lruCache{max: max, ttl: ttl, entries: []entry{}}
+}
+
+func (cache *lruCache) set(key string, value any) {
+	cache.delete(key)
+	item := entry{key: key, value: value}
+	if cache.ttl > 0 {
+		item.expiresAt = time.Now().Add(cache.ttl)
+	}
+	cache.entries = append([]entry{item}, cache.entries...)
+	if len(cache.entries) > cache.max {
+		cache.entries = cache.entries[:cache.max]
+	}
+}
+
+func (cache *lruCache) get(key string) any {
+	for index, item := range cache.entries {
+		if item.key != key {
+			continue
+		}
+		if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt) {
+			cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
+			return nil
+		}
+		cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
+		cache.entries = append([]entry{item}, cache.entries...)
+		return item.value
+	}
+	return nil
+}
+
+func (cache *lruCache) has(key string) bool {
+	for index, item := range cache.entries {
+		if item.key != key {
+			continue
+		}
+		if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt) {
+			cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func (cache *lruCache) delete(key string) {
+	for index, item := range cache.entries {
+		if item.key == key {
+			cache.entries = append(cache.entries[:index], cache.entries[index+1:]...)
+			return
+		}
+	}
+}
+
+func (cache *lruCache) entryPairs() [][]any {
+	pairs := make([][]any, 0, len(cache.entries))
+	for _, item := range cache.entries {
+		pairs = append(pairs, []any{item.key, item.value})
+	}
+	return pairs
+}
+
+func nilIfMissing(value any) any {
+	if value == nil {
+		return nil
+	}
+	return value
+}
+
+func (obj orderedObject) MarshalJSON() ([]byte, error) {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := json.Marshal(obj[key])
+		if err != nil {
+			return nil, err
+		}
+		encodedKey, _ := json.Marshal(key)
+		parts = append(parts, string(encodedKey)+":"+string(value))
+	}
+	return []byte("{" + strings.Join(parts, ",") + "}"), nil
+}
+`;
 }
 
 function renderUuidProbeMain() {
