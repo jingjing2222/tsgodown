@@ -536,6 +536,12 @@ fn module_aot_state(
                     .insert(binding.local.clone(), function.clone());
                 continue;
             }
+            if let Some(class) =
+                module_classes.get(&(imported_module.id.clone(), imported.to_string()))
+            {
+                state.classes.insert(binding.local.clone(), class.clone());
+                continue;
+            }
             let slot = module_slots.get(&(imported_module.id.clone(), imported.to_string()))?;
             state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
         }
