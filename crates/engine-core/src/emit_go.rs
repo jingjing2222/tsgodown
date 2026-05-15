@@ -347,7 +347,8 @@ type BoundFunctionValue struct {
 }
 
 type NativeFunctionValue struct {
-	Call func(args []any) (any, error)
+	Call         func(args []any) (any, error)
+	CallWithThis func(thisValue any, args []any) (any, error)
 }
 
 type RegExpValue struct {
@@ -372,7 +373,7 @@ type completion struct {
 }
 
 type moduleState struct {
-	exports   map[string]any
+	exports   any
 	evaluated bool
 	evaluating bool
 }
@@ -399,7 +400,7 @@ func RunProgram(programJSON string) error {
 	return err
 }
 
-func executeModule(module Module, program Program, cache map[string]*moduleState) (map[string]any, error) {
+func executeModule(module Module, program Program, cache map[string]*moduleState) (any, error) {
 	if state, ok := cache[module.SourcePath]; ok {
 		if state.evaluated || state.evaluating {
 			return state.exports, nil
@@ -417,6 +418,18 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			return toNumber(args[0]), nil
 		}),
+		"String": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			return jsString(args[0]), nil
+		}),
+		"Boolean": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			return isTruthy(args[0]), nil
+		}),
 		"RegExp": nativeFunction(func(args []any) (any, error) {
 			pattern := ""
 			flags := ""
@@ -430,6 +443,39 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 				flags = jsString(args[1])
 			}
 			return newRegExp(pattern, flags)
+		}),
+		"Array":  arrayGlobal(),
+		"Object": objectGlobal(),
+		"Math":   mathGlobal(),
+		"parseInt": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			base := 10
+			if len(args) > 1 && !isNullish(args[1]) {
+				base = int(toNumber(args[1]))
+				if base == 0 {
+					base = 10
+				}
+			}
+			parsed, err := strconv.ParseInt(strings.TrimSpace(jsString(args[0])), base, 64)
+			if err != nil {
+				return math.NaN(), nil
+			}
+			return float64(parsed), nil
+		}),
+		"parseFloat": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			number, _ := parseJSNumberLiteral(jsString(args[0]))
+			return number, nil
+		}),
+		"isNaN": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return true, nil
+			}
+			return math.IsNaN(toNumber(args[0])), nil
 		}),
 		"process": processObject(),
 		"module": map[string]any{
@@ -461,18 +507,19 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	}}
 	for _, importDecl := range module.Imports {
 		importedExports, ok := builtinModuleExports(importDecl.Spec)
+		var importedValue any = importedExports
 		if !ok {
 			importedModule, moduleOk := moduleByID(program, importDecl.Resolved)
 			if !moduleOk {
 				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
 			}
 			var err error
-			importedExports, err = executeModule(importedModule, program, cache)
+			importedValue, err = executeModule(importedModule, program, cache)
 			if err != nil {
 				return nil, err
 			}
 		}
-		bindImport(env, importDecl, importedExports)
+		bindImport(env, importDecl, importedValue)
 	}
 	for _, stmt := range module.Executable.Stmts {
 		if result, err := evalStmt(stmt, env); err != nil {
@@ -483,20 +530,21 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			return nil, errors.New("break/continue outside loop")
 		}
 	}
+	exported := any(exports)
 	if moduleObject, ok := env["module"].(map[string]any); ok {
-		if moduleExports, ok := moduleObject["exports"].(map[string]any); ok {
-			exports = moduleExports
-			state.exports = exports
+		exported = moduleObject["exports"]
+	}
+	if exportedMap, ok := exported.(map[string]any); ok {
+		for _, name := range module.Exports {
+			if value, ok := env[name]; ok {
+				exportedMap[name] = value
+			}
 		}
 	}
-	for _, name := range module.Exports {
-		if value, ok := env[name]; ok {
-			exports[name] = value
-		}
-	}
+	state.exports = exported
 	state.evaluating = false
 	state.evaluated = true
-	return exports, nil
+	return exported, nil
 }
 
 func entryModule(program Program) (Module, bool) {
@@ -556,7 +604,197 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 }
 
 func nativeFunction(call func(args []any) (any, error)) NativeFunctionValue {
-	return NativeFunctionValue{Call: call}
+	return NativeFunctionValue{
+		Call: call,
+		CallWithThis: func(thisValue any, args []any) (any, error) {
+			return call(args)
+		},
+	}
+}
+
+func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunctionValue {
+	return NativeFunctionValue{
+		Call: func(args []any) (any, error) {
+			return call(jsUndefined, args)
+		},
+		CallWithThis: call,
+	}
+}
+
+func arrayGlobal() map[string]any {
+	prototype := map[string]any{
+		"push": nativeMethod(func(thisValue any, args []any) (any, error) {
+			array, ok := thisValue.([]any)
+			if !ok {
+				return nil, errors.New("push receiver is not array")
+			}
+			array = append(array, args...)
+			return float64(len(array)), nil
+		}),
+	}
+	return map[string]any{
+		"isArray": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			_, ok := args[0].([]any)
+			return ok, nil
+		}),
+		"prototype": prototype,
+	}
+}
+
+func objectGlobal() map[string]any {
+	prototype := map[string]any{}
+	prototype["hasOwnProperty"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		object, ok := thisValue.(map[string]any)
+		if !ok {
+			return false, nil
+		}
+		_, exists := object[jsPropertyKey(args[0])]
+		return exists, nil
+	})
+	prototype["toString"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return objectTag(thisValue), nil
+	})
+	assign := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 || isNullish(args[0]) {
+			return map[string]any{}, nil
+		}
+		target, ok := args[0].(map[string]any)
+		if !ok {
+			target = map[string]any{}
+		}
+		for _, source := range args[1:] {
+			if sourceMap, ok := source.(map[string]any); ok {
+				for key, value := range sourceMap {
+					if strings.HasPrefix(key, "__") {
+						continue
+					}
+					target[key] = value
+				}
+			}
+		}
+		return target, nil
+	})
+	return map[string]any{
+		"assign": assign,
+		"create": nativeFunction(func(args []any) (any, error) {
+			return map[string]any{}, nil
+		}),
+		"defineProperty": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 3 {
+				return jsUndefined, nil
+			}
+			object, ok := args[0].(map[string]any)
+			if !ok {
+				return args[0], nil
+			}
+			descriptor, ok := args[2].(map[string]any)
+			if ok {
+				object[jsPropertyKey(args[1])] = descriptor["value"]
+			}
+			return object, nil
+		}),
+		"entries": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return []any{}, nil
+			}
+			object, ok := args[0].(map[string]any)
+			if !ok {
+				return []any{}, nil
+			}
+			keys := objectKeys(object)
+			result := []any{}
+			for _, key := range keys {
+				result = append(result, []any{key, object[key]})
+			}
+			return result, nil
+		}),
+		"freeze": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			return args[0], nil
+		}),
+		"keys": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return []any{}, nil
+			}
+			object, ok := args[0].(map[string]any)
+			if !ok {
+				return []any{}, nil
+			}
+			keys := objectKeys(object)
+			result := []any{}
+			for _, key := range keys {
+				result = append(result, key)
+			}
+			return result, nil
+		}),
+		"prototype": prototype,
+	}
+}
+
+func mathGlobal() map[string]any {
+	return map[string]any{
+		"floor": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			return math.Floor(toNumber(args[0])), nil
+		}),
+		"max": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.Inf(-1), nil
+			}
+			value := toNumber(args[0])
+			for _, arg := range args[1:] {
+				value = math.Max(value, toNumber(arg))
+			}
+			return value, nil
+		}),
+		"min": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.Inf(1), nil
+			}
+			value := toNumber(args[0])
+			for _, arg := range args[1:] {
+				value = math.Min(value, toNumber(arg))
+			}
+			return value, nil
+		}),
+	}
+}
+
+func objectKeys(object map[string]any) []string {
+	keys := []string{}
+	for key := range object {
+		if strings.HasPrefix(key, "__") {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func objectTag(value any) string {
+	switch value.(type) {
+	case []any:
+		return "[object Array]"
+	case *RegExpValue:
+		return "[object RegExp]"
+	case NullValue:
+		return "[object Null]"
+	case UndefinedValue:
+		return "[object Undefined]"
+	default:
+		return "[object Object]"
+	}
 }
 
 func newRegExp(pattern string, flags string) (*RegExpValue, error) {
@@ -789,13 +1027,14 @@ func dynamicImportThenable() map[string]any {
 	return thenable
 }
 
-func bindImport(env Env, importDecl Import, importedExports map[string]any) {
+func bindImport(env Env, importDecl Import, importedExports any) {
+	importedMap, _ := importedExports.(map[string]any)
 	for _, binding := range importDecl.Bindings {
 		switch binding.Kind {
 		case "named":
-			env[binding.Local] = importedExports[binding.Imported]
+			env[binding.Local] = importedMap[binding.Imported]
 		case "default":
-			if value, ok := importedExports["default"]; ok {
+			if value, ok := importedMap["default"]; ok {
 				env[binding.Local] = value
 			} else {
 				env[binding.Local] = importedExports
@@ -805,7 +1044,7 @@ func bindImport(env Env, importDecl Import, importedExports map[string]any) {
 		case "require":
 			env[binding.Local] = importedExports
 		case "destructure":
-			env[binding.Local] = importedExports[binding.Imported]
+			env[binding.Local] = importedMap[binding.Imported]
 		}
 	}
 }
@@ -1235,6 +1474,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return BoundFunctionValue{Function: method, This: classValue}, nil
 			}
 		}
+		if function, ok := object.(NativeFunctionValue); ok {
+			if member, ok := nativeFunctionMember(function, property); ok {
+				return member, nil
+			}
+		}
 		if stringValue, ok := object.(string); ok {
 			if member, ok := stringMember(stringValue, property, env); ok {
 				return member, nil
@@ -1443,6 +1687,41 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 		return nil, err
 	}
 	return float64(len(array)), nil
+}
+
+func nativeFunctionMember(function NativeFunctionValue, property string) (any, bool) {
+	switch property {
+	case "call":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			if len(args) > 0 {
+				thisValue = args[0]
+				args = args[1:]
+			}
+			if function.CallWithThis != nil {
+				return function.CallWithThis(thisValue, args)
+			}
+			return function.Call(args)
+		}), true
+	case "apply":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			callArgs := []any{}
+			if len(args) > 0 {
+				thisValue = args[0]
+			}
+			if len(args) > 1 {
+				if arrayArgs, ok := args[1].([]any); ok {
+					callArgs = arrayArgs
+				}
+			}
+			if function.CallWithThis != nil {
+				return function.CallWithThis(thisValue, callArgs)
+			}
+			return function.Call(callArgs)
+		}), true
+	}
+	return nil, false
 }
 
 func stringMember(value string, property string, env Env) (any, bool) {
@@ -1745,10 +2024,32 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	classValue, ok := raw.(*ClassValue)
 	if !ok {
+		if function, functionOk := raw.(FunctionValue); functionOk {
+			instance := map[string]any{}
+			result, err := callFunctionWithThis(function, rawArgs, callerEnv, instance)
+			if err != nil {
+				return nil, err
+			}
+			if resultMap, ok := result.(map[string]any); ok {
+				return resultMap, nil
+			}
+			return instance, nil
+		}
+		if bound, boundOk := raw.(BoundFunctionValue); boundOk {
+			instance := map[string]any{}
+			result, err := callFunctionWithThis(bound.Function, rawArgs, callerEnv, instance)
+			if err != nil {
+				return nil, err
+			}
+			if resultMap, ok := result.(map[string]any); ok {
+				return resultMap, nil
+			}
+			return instance, nil
+		}
 		if _, nativeOk := raw.(NativeFunctionValue); nativeOk {
 			return callFunction(raw, rawArgs, callerEnv)
 		}
-		return nil, errors.New("constructor is not callable")
+		return nil, fmt.Errorf("constructor is not callable: %T %s", raw, jsInspect(raw))
 	}
 	instance := map[string]any{"__class": classValue}
 	if classValue.Constructor != nil {
@@ -1780,7 +2081,7 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 		return function.Call(args)
 	default:
-		return nil, errors.New("callee is not callable")
+		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	}
 }
 
@@ -1793,7 +2094,7 @@ func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (
 	case NativeFunctionValue:
 		return function.Call(args)
 	default:
-		return nil, errors.New("callee is not callable")
+		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	}
 }
 
