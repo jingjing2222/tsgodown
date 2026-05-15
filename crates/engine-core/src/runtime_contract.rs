@@ -79,7 +79,21 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_stmt_list(consequent, false, unsupported);
             collect_unsupported_stmt_list(alternate, false, unsupported);
         }
-        JsStmt::For { .. } => unsupported.push("for statements".to_string()),
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            collect_unsupported_stmt_list(init, false, unsupported);
+            if let Some(test) = test {
+                collect_unsupported_expr(test, unsupported);
+            }
+            if let Some(update) = update {
+                collect_unsupported_expr(update, unsupported);
+            }
+            collect_unsupported_stmt_list(body, false, unsupported);
+        }
         JsStmt::ForOf { right, body, .. } => {
             collect_unsupported_expr(right, unsupported);
             collect_unsupported_stmt_list(body, false, unsupported);
@@ -125,6 +139,21 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
         }
         JsStmt::ForOf { right, body, .. } => {
             collect_unsupported_expr(right, unsupported);
+            collect_unsupported_stmt_list(body, true, unsupported);
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            collect_unsupported_stmt_list(init, true, unsupported);
+            if let Some(test) = test {
+                collect_unsupported_expr(test, unsupported);
+            }
+            if let Some(update) = update {
+                collect_unsupported_expr(update, unsupported);
+            }
             collect_unsupported_stmt_list(body, true, unsupported);
         }
         JsStmt::While { test, body } => {

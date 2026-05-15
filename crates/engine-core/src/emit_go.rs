@@ -504,6 +504,47 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			}
 		}
 		return completion{}, nil
+	case "for":
+		for _, init := range asStmtSlice(stmt["init"]) {
+			result, err := evalStmt(init, env)
+			if err != nil {
+				return completion{}, err
+			}
+			if result.returned || result.broke || result.continued {
+				return completion{}, errors.New("invalid for initializer completion")
+			}
+		}
+		for {
+			if rawTest, ok := stmt["test"]; ok {
+				test, err := evalExpr(asMap(rawTest), env)
+				if err != nil {
+					return completion{}, err
+				}
+				if !isTruthy(test) {
+					return completion{}, nil
+				}
+			}
+			for _, child := range asStmtSlice(stmt["body"]) {
+				result, err := evalStmt(child, env)
+				if err != nil {
+					return completion{}, err
+				}
+				if result.returned {
+					return result, nil
+				}
+				if result.broke {
+					return completion{}, nil
+				}
+				if result.continued {
+					break
+				}
+			}
+			if rawUpdate, ok := stmt["update"]; ok {
+				if _, err := evalExpr(asMap(rawUpdate), env); err != nil {
+					return completion{}, err
+				}
+			}
+		}
 	case "while":
 		for {
 			test, err := evalExpr(asMap(stmt["test"]), env)
