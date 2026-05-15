@@ -877,6 +877,55 @@ import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {})
 }
 
 #[test]
+fn static_package_dynamic_import_is_tracked_without_unsupported_diagnostic() {
+    let source = r#"
+const mod = await import('@scope/pkg');
+console.log(mod.value);
+"#;
+    let ir = analyze_compiler_entry("static-package-dynamic-import.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "DYNAMIC_IMPORT_DETECTED"),
+        "static package dynamic import should be resolved by the module graph"
+    );
+    assert_eq!(ir.modules[0].imports.len(), 1);
+    assert_eq!(ir.modules[0].imports[0].spec, "@scope/pkg");
+    assert_eq!(ir.modules[0].imports[0].kind, "dynamic");
+}
+
+#[test]
+fn expression_dynamic_import_stays_fail_closed_before_codegen() {
+    let source = r#"
+const spec = './dep.js';
+const mod = await import(spec);
+const alsoNotStatic = await import('./dep-' + spec);
+"#;
+    let ir = analyze_compiler_entry("expression-dynamic-import.js", source);
+
+    assert!(ir
+        .diagnostics
+        .iter()
+        .any(|diag| diag.code == "DYNAMIC_IMPORT_DETECTED"));
+}
+
+#[test]
+fn dynamic_import_call_inside_function_is_collected_for_graph() {
+    let source = r#"
+async function load() {
+  return import("./lazy.js");
+}
+"#;
+    let ir = analyze_compiler_entry("nested-dynamic-import.js", source);
+    let imports = &ir.modules[0].imports;
+
+    assert!(imports
+        .iter()
+        .any(|import| import.spec == "./lazy.js" && import.kind == "dynamic"));
+}
+
+#[test]
 fn import_bindings_are_lowered_for_executable_codegen() {
     let source = r#"
 import parser from "yargs-parser";

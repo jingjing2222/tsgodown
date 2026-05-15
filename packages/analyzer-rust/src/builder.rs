@@ -137,7 +137,7 @@ fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, fi
         {
             continue;
         }
-        if trimmed.contains("import(") && !has_supported_static_builtin_dynamic_import(trimmed) {
+        if trimmed.contains("import(") && !all_dynamic_imports_have_static_spec(trimmed) {
             diagnostics.push(diag(
                 "error",
                 "DYNAMIC_IMPORT_DETECTED",
@@ -148,21 +148,30 @@ fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, fi
     }
 }
 
-fn has_supported_static_builtin_dynamic_import(line: &str) -> bool {
-    let Some(start) = line.find("import(") else {
-        return false;
-    };
-    let args = line[start + "import(".len()..].trim_start();
-    let Some(quote) = args.chars().next() else {
-        return false;
-    };
+fn all_dynamic_imports_have_static_spec(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(start) = rest.find("import(") {
+        let args = &rest[start + "import(".len()..];
+        let Some(closing_offset) = static_dynamic_import_arg_end(args) else {
+            return false;
+        };
+        rest = &args[closing_offset..];
+    }
+    true
+}
+
+fn static_dynamic_import_arg_end(args: &str) -> Option<usize> {
+    let leading_ws_len = args.len() - args.trim_start().len();
+    let args = args.trim_start();
+    let quote = args.chars().next()?;
     if quote != '"' && quote != '\'' {
-        return false;
+        return None;
     }
 
     let mut escaped = false;
     let mut spec = String::new();
-    for ch in args.chars().skip(1) {
+    let mut offset_after_quote = None;
+    for (offset, ch) in args.char_indices().skip(1) {
         if escaped {
             spec.push(ch);
             escaped = false;
@@ -173,12 +182,29 @@ fn has_supported_static_builtin_dynamic_import(line: &str) -> bool {
             continue;
         }
         if ch == quote {
-            return spec.starts_with("node:");
+            offset_after_quote = Some(offset + ch.len_utf8());
+            break;
         }
         spec.push(ch);
     }
 
-    false
+    if spec.is_empty() {
+        return None;
+    }
+
+    let offset_after_quote = offset_after_quote?;
+    let tail = args[offset_after_quote..].trim_start();
+    let next = tail.chars().next()?;
+    if next == ')' || next == ',' {
+        Some(
+            leading_ws_len
+                + offset_after_quote
+                + tail.find(next).unwrap_or_default()
+                + next.len_utf8(),
+        )
+    } else {
+        None
+    }
 }
 
 fn collect_conditional_route_diagnostics(

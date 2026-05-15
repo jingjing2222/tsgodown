@@ -3417,7 +3417,88 @@ console.log("dynamic-import", value)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "dynamic-import initial\n"
+            "dynamic-import loaded\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_static_package_dynamic_import_subset() {
+        let root = temp_project("engine-core-package-dynamic-import");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+async function main() {
+  const mod = await import("pkg-dyn")
+  console.log("dynamic-package", mod.value)
+}
+main()
+"#,
+        );
+        write(
+            &root,
+            "node_modules/pkg-dyn/package.json",
+            r#"{ "name": "pkg-dyn", "main": "index.js" }"#,
+        );
+        write(
+            &root,
+            "node_modules/pkg-dyn/index.js",
+            r#"
+export const value = "ok"
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/package-dynamic-import".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "DYNAMIC_IMPORT_DETECTED"));
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "dynamic-package ok\n"
         );
     }
 

@@ -687,7 +687,42 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		return nil, fmt.Errorf("module import %s is not resolved", spec)
 	}}
 	env["import"] = NativeFunctionValue{Call: func(args []any) (any, error) {
-		return dynamicImportThenable(), nil
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_MODULE_NOT_FOUND", "dynamic import specifier is required")), nil
+		}
+		spec := jsString(args[0])
+		if exports, ok := builtinModuleExports(spec); ok {
+			return promiseFulfilled(exports), nil
+		}
+		for _, importDecl := range module.Imports {
+			if importDecl.Spec != spec {
+				continue
+			}
+			importedModule, ok := moduleByID(program, importDecl.Resolved)
+			if !ok {
+				return promiseRejected(nodeError("ERR_MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))), nil
+			}
+			importedValue, err := executeModule(importedModule, program, cache)
+			if err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(importedValue), nil
+		}
+		if importedModule, ok := resolveRelativeModuleAtRuntime(program, module.SourcePath, spec); ok {
+			importedValue, err := executeModule(importedModule, program, cache)
+			if err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(importedValue), nil
+		}
+		if importedModule, ok := resolveBareModule(program, spec); ok {
+			importedValue, err := executeModule(importedModule, program, cache)
+			if err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(importedValue), nil
+		}
+		return promiseRejected(nodeError("ERR_MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))), nil
 	}}
 	for _, importDecl := range module.Imports {
 		if importDecl.Kind == "cjs" {
