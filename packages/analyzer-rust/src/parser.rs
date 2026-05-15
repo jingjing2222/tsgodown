@@ -1350,6 +1350,12 @@ fn collect_cjs_imports_from_stmt(imports: &mut Vec<ImportIR>, stmt: &Stmt) {
                 }
             }
         }
+        Stmt::Decl(Decl::Fn(fn_decl)) => {
+            collect_cjs_imports_from_function(imports, &fn_decl.function);
+        }
+        Stmt::Decl(Decl::Class(class_decl)) => {
+            collect_cjs_imports_from_class(imports, &class_decl.class);
+        }
         Stmt::Expr(expr_stmt) => {
             collect_cjs_imports_from_expr(imports, &expr_stmt.expr);
         }
@@ -1476,7 +1482,82 @@ fn collect_cjs_imports_from_expr(imports: &mut Vec<ImportIR>, expr: &Expr) {
         Expr::Assign(assign) => {
             collect_cjs_imports_from_expr(imports, &assign.right);
         }
+        Expr::Fn(function) => {
+            collect_cjs_imports_from_function(imports, &function.function);
+        }
+        Expr::Arrow(arrow) => match &*arrow.body {
+            BlockStmtOrExpr::BlockStmt(block) => collect_cjs_imports_from_block(imports, block),
+            BlockStmtOrExpr::Expr(expr) => collect_cjs_imports_from_expr(imports, expr),
+        },
+        Expr::Class(class) => {
+            collect_cjs_imports_from_class(imports, &class.class);
+        }
+        Expr::Cond(cond) => {
+            collect_cjs_imports_from_expr(imports, &cond.test);
+            collect_cjs_imports_from_expr(imports, &cond.cons);
+            collect_cjs_imports_from_expr(imports, &cond.alt);
+        }
+        Expr::Await(await_expr) => {
+            collect_cjs_imports_from_expr(imports, &await_expr.arg);
+        }
+        Expr::Unary(unary) => {
+            collect_cjs_imports_from_expr(imports, &unary.arg);
+        }
+        Expr::Bin(binary) => {
+            collect_cjs_imports_from_expr(imports, &binary.left);
+            collect_cjs_imports_from_expr(imports, &binary.right);
+        }
+        Expr::Tpl(template) => {
+            for expr in &template.exprs {
+                collect_cjs_imports_from_expr(imports, expr);
+            }
+        }
         _ => {}
+    }
+}
+
+fn collect_cjs_imports_from_function(imports: &mut Vec<ImportIR>, function: &Function) {
+    if let Some(body) = &function.body {
+        collect_cjs_imports_from_block(imports, body);
+    }
+}
+
+fn collect_cjs_imports_from_class(imports: &mut Vec<ImportIR>, class: &Class) {
+    if let Some(super_class) = &class.super_class {
+        collect_cjs_imports_from_expr(imports, super_class);
+    }
+    for member in &class.body {
+        match member {
+            ClassMember::Constructor(constructor) => {
+                if let Some(body) = &constructor.body {
+                    collect_cjs_imports_from_block(imports, body);
+                }
+            }
+            ClassMember::Method(method) => {
+                collect_cjs_imports_from_function(imports, &method.function)
+            }
+            ClassMember::PrivateMethod(method) => {
+                collect_cjs_imports_from_function(imports, &method.function)
+            }
+            ClassMember::ClassProp(prop) => {
+                if let Some(value) = &prop.value {
+                    collect_cjs_imports_from_expr(imports, value);
+                }
+            }
+            ClassMember::PrivateProp(prop) => {
+                if let Some(value) = &prop.value {
+                    collect_cjs_imports_from_expr(imports, value);
+                }
+            }
+            ClassMember::StaticBlock(block) => collect_cjs_imports_from_block(imports, &block.body),
+            _ => {}
+        }
+    }
+}
+
+fn collect_cjs_imports_from_block(imports: &mut Vec<ImportIR>, block: &BlockStmt) {
+    for stmt in &block.stmts {
+        collect_cjs_imports_from_stmt(imports, stmt);
     }
 }
 

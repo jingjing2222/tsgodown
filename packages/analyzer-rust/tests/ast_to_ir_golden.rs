@@ -923,6 +923,32 @@ const { execa } = require("execa");
 }
 
 #[test]
+fn nested_requires_are_collected_for_executable_module_graph() {
+    let source = r#"
+function loadOne() {
+  return require("./one.js");
+}
+const loadTwo = () => require("./two.js");
+class Loader {
+  load() {
+    return require("./three.js");
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("nested-require.js", source);
+    let imports = &ir.modules[0].imports;
+
+    for spec in ["./one.js", "./two.js", "./three.js"] {
+        assert!(
+            imports
+                .iter()
+                .any(|import| import.spec == spec && import.kind == "cjs"),
+            "missing nested require import {spec}"
+        );
+    }
+}
+
+#[test]
 fn executable_export_default_and_named_aliases_are_bound() {
     let source = r#"
 const callable = () => "ok";

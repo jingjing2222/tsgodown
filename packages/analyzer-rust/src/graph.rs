@@ -178,6 +178,12 @@ fn collect_exports_entry(value: Option<&serde_json::Value>, out: &mut Vec<PathBu
 }
 
 fn resolve_file_or_directory(root: &Path, base: &Path) -> Option<String> {
+    if root.join(base).is_dir() {
+        if let Some(resolved) = resolve_package_entry(root, base) {
+            return Some(resolved);
+        }
+    }
+
     let base_path = base.to_path_buf();
     let candidates = [
         base_path.clone(),

@@ -69,6 +69,48 @@ module.exports = {
 }
 
 #[test]
+fn resolves_relative_directory_package_json_entry() {
+    let root = temp_project("module-graph-relative-package-json");
+    write(
+        &root,
+        "src/index.js",
+        r#"
+const tool = require("../packages/tool");
+export { tool };
+"#,
+    );
+    write(
+        &root,
+        "packages/tool/package.json",
+        r#"{ "name": "tool", "main": "tool.js" }"#,
+    );
+    write(
+        &root,
+        "packages/tool/tool.js",
+        r#"
+module.exports = { value: 1 };
+"#,
+    );
+
+    let ir = analyze_compiler_project(&root, "src/index.js");
+
+    assert_eq!(ir.diagnostics, vec![]);
+    assert!(ir
+        .modules
+        .iter()
+        .any(|module| module.source_path == "packages/tool/tool.js"));
+    let entry = ir
+        .modules
+        .iter()
+        .find(|module| module.source_path == "src/index.js")
+        .expect("entry module");
+    assert_eq!(
+        entry.imports[0].resolved.as_deref(),
+        Some("packages/tool/tool.js")
+    );
+}
+
+#[test]
 fn reports_unresolved_relative_import_without_silent_compile() {
     let root = temp_project("module-graph-unresolved");
     write(
