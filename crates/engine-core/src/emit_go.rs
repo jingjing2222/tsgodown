@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyze;
-use crate::contract::{AnalyzeRequest, Diagnostic, DiagnosticLevel};
+use crate::contract::{AnalyzeRequest, Diagnostic};
+use crate::runtime_contract::{
+    fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +26,15 @@ pub enum EmitGoOutputKind {
     VectorSuite,
 }
 
+impl EmitGoOutputKind {
+    fn purpose(self) -> ProgramPurpose {
+        match self {
+            Self::Main => ProgramPurpose::Main,
+            Self::VectorSuite => ProgramPurpose::VectorSuite,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EmitGoResponse {
@@ -41,12 +53,7 @@ pub struct GeneratedFile {
 pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     let analyzed = analyze(request.analyze);
     let mut diagnostics = analyzed.diagnostics;
-    diagnostics.push(Diagnostic {
-        level: DiagnosticLevel::Error,
-        code: "GO_CODEGEN_NOT_IMPLEMENTED".to_string(),
-        message: "engine-core owns Go codegen, but executable JS lowering to Go is not implemented yet; failing closed.".to_string(),
-        source: None,
-    });
+    diagnostics.push(unsupported_codegen_diagnostic());
 
     EmitGoResponse {
         version: "engine-core.emit-go.v1".to_string(),
@@ -67,7 +74,7 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
                             .unwrap_or("example.com/tsgodown-generated"),
                     ),
                     &diagnostics,
-                    request.output_kind,
+                    request.output_kind.purpose(),
                 ),
             },
             GeneratedFile {
@@ -108,31 +115,26 @@ fn render_fail_closed_program(
     package_name: &str,
     module_path: &str,
     diagnostics: &[Diagnostic],
-    output_kind: EmitGoOutputKind,
+    purpose: ProgramPurpose,
 ) -> String {
     let diagnostics_json =
         serde_json::to_string(diagnostics).expect("diagnostics should serialize");
-    let (version, extra_report_fields) = match output_kind {
-        EmitGoOutputKind::Main => ("engine-core.emit-go.fail-closed.v1", ""),
-        EmitGoOutputKind::VectorSuite => (
-            "engine-core.emit-go.vector-suite.fail-closed.v1",
+    let (extra_report_fields, argv_setup) = match purpose {
+        ProgramPurpose::Main => ("", ""),
+        ProgramPurpose::VectorSuite => (
             r#"
 		"corpus": corpus,
 		"total": 0,
 		"results": []any{},"#,
-        ),
-    };
-    let argv_setup = match output_kind {
-        EmitGoOutputKind::Main => "",
-        EmitGoOutputKind::VectorSuite => {
             r#"
 	corpus := ""
 	if len(os.Args) > 1 {
 		corpus = os.Args[1]
 	}
-"#
-        }
+"#,
+        ),
     };
+    let version = fail_closed_report_version(purpose);
     format!(
         r#"package {package_name}
 

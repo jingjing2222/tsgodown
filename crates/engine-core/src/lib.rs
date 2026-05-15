@@ -1,6 +1,7 @@
 mod analyze;
 mod contract;
 mod emit_go;
+mod runtime_contract;
 
 pub use analyze::analyze;
 pub use contract::{
@@ -9,6 +10,9 @@ pub use contract::{
     Module, Route,
 };
 pub use emit_go::{emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile};
+pub use runtime_contract::{
+    fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
+};
 
 #[cfg(test)]
 mod tests {
@@ -202,13 +206,13 @@ export { value };
             .contains("\"example.com/custom-module/tsgodownrt\""));
         assert!(response.files[0]
             .contents
-            .contains("engine-core.emit-go.fail-closed.v1"));
+            .contains(fail_closed_report_version(ProgramPurpose::Main)));
         assert_eq!(response.files[1].path, "tsgodownrt/runtime.go");
         assert!(response.files[1].contents.contains("package tsgodownrt"));
         assert!(response
             .diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code == "GO_CODEGEN_NOT_IMPLEMENTED"));
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
         assert!(!response.files[0].contents.contains("node --"));
         assert!(!response.files[0].contents.contains("exec.Command"));
     }
@@ -233,7 +237,7 @@ export { value };
         assert_eq!(response.files[0].path, "vector_suite.go");
         assert!(response.files[0]
             .contents
-            .contains("engine-core.emit-go.vector-suite.fail-closed.v1"));
+            .contains(fail_closed_report_version(ProgramPurpose::VectorSuite)));
         assert!(response.files[0].contents.contains("\"results\": []any{}"));
         assert!(response.files[0].contents.contains("corpus := \"\""));
     }
