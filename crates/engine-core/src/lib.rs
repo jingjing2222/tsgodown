@@ -967,6 +967,79 @@ export function score(left, right) {
     }
 
     #[test]
+    fn emit_go_runs_aot_named_esm_value_import_subset() {
+        let root = temp_project("engine-core-aot-esm-value-import");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { value, label, enabled } from "./config.js"
+console.log("aot-esm-value", value + 2, label + "-next", enabled)
+"#,
+        );
+        write(
+            &root,
+            "src/config.js",
+            r#"
+export const value = 40
+export const label = "config"
+export const enabled = true
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-esm-value-import".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("src_config_js_value"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "aot-esm-value 42 config-next true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_top_level_numeric_if_subset() {
         let root = temp_project("engine-core-aot-top-level-if");
         write(

@@ -12,8 +12,9 @@ pub(crate) fn render_aot_executable_program(
         return None;
     }
     let module_functions = collect_module_functions(&analyzed.ir);
-    let declarations = render_module_function_decls(&analyzed.ir, &module_functions)?;
-    let mut state = module_aot_state(module, &analyzed.ir, &module_functions)?;
+    let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
+    let declarations = render_module_decls(&analyzed.ir, &module_functions, &module_slots)?;
+    let mut state = module_aot_state(module, &analyzed.ir, &module_functions, &module_slots)?;
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
         if let JsStmt::FunctionDecl { .. } = stmt {
@@ -79,13 +80,63 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
     functions
 }
 
-fn render_module_function_decls(
+fn collect_module_slots(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+) -> BTreeMap<(String, String), AotModuleSlot> {
+    let mut slots = BTreeMap::new();
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        let Some(state) = module_aot_state(module, ir, module_functions, &BTreeMap::new()) else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            let JsStmt::VarDecl {
+                name,
+                init: Some(init),
+            } = stmt
+            else {
+                continue;
+            };
+            let Some((kind, rendered, go_type)) = render_typed_slot_expr(init, &state) else {
+                continue;
+            };
+            slots.insert(
+                (module.id.clone(), name.clone()),
+                AotModuleSlot {
+                    kind,
+                    go_name: module_member_go_name(module, name),
+                    go_type,
+                    rendered,
+                },
+            );
+        }
+    }
+    slots
+}
+
+fn render_module_decls(
+    ir: &IrDocument,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<Vec<String>> {
     let mut declarations = Vec::new();
     for module in &ir.modules {
-        let state = module_aot_state(module, ir, module_functions)?;
+        let state = module_aot_state(module, ir, module_functions, module_slots)?;
+        for stmt in &module.executable.as_ref()?.stmts {
+            if let JsStmt::VarDecl { name, .. } = stmt {
+                if !is_exported_name(module, name) {
+                    continue;
+                }
+                let slot = module_slots.get(&(module.id.clone(), name.clone()))?;
+                declarations.push(format!(
+                    "var {} {} = {}",
+                    slot.go_name, slot.go_type, slot.rendered
+                ));
+            }
+        }
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::FunctionDecl { name, .. } = stmt {
                 let function = module_functions.get(&(module.id.clone(), name.clone()))?;
@@ -100,12 +151,18 @@ fn module_aot_state(
     module: &Module,
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<AotState> {
     let mut state = AotState::default();
     for stmt in &module.executable.as_ref()?.stmts {
         if let JsStmt::FunctionDecl { name, .. } = stmt {
             let function = module_functions.get(&(module.id.clone(), name.clone()))?;
             state.functions.insert(name.clone(), function.clone());
+        }
+        if let JsStmt::VarDecl { name, .. } = stmt {
+            if let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) {
+                state.bind_slot(name, slot.go_name.clone(), slot.kind);
+            }
         }
     }
     for import in &module.imports {
@@ -116,14 +173,23 @@ fn module_aot_state(
             .find(|candidate| &candidate.id == resolved)?;
         for binding in &import.bindings {
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
-            let function =
-                module_functions.get(&(imported_module.id.clone(), imported.to_string()))?;
-            state
-                .functions
-                .insert(binding.local.clone(), function.clone());
+            if let Some(function) =
+                module_functions.get(&(imported_module.id.clone(), imported.to_string()))
+            {
+                state
+                    .functions
+                    .insert(binding.local.clone(), function.clone());
+                continue;
+            }
+            let slot = module_slots.get(&(imported_module.id.clone(), imported.to_string()))?;
+            state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
         }
     }
     Some(state)
+}
+
+fn is_exported_name(module: &Module, name: &str) -> bool {
+    module.exports.iter().any(|exported| exported == name)
 }
 
 fn module_go_prefix(module: &Module) -> String {
@@ -140,9 +206,18 @@ fn module_go_prefix(module: &Module) -> String {
     }
 }
 
+fn module_member_go_name(module: &Module, name: &str) -> String {
+    format!(
+        "{}_{}",
+        module_go_prefix(module),
+        sanitize_go_identifier(name)
+    )
+}
+
 #[derive(Default)]
 struct AotState {
     bindings: BTreeSet<String>,
+    binding_refs: BTreeMap<String, String>,
     numeric_bindings: BTreeSet<String>,
     string_bindings: BTreeSet<String>,
     bool_bindings: BTreeSet<String>,
@@ -150,10 +225,36 @@ struct AotState {
     functions: BTreeMap<String, AotFunction>,
 }
 
+impl AotState {
+    fn bind_slot(&mut self, name: &str, go_ref: String, kind: AotSlotKind) {
+        self.bindings.insert(name.to_string());
+        self.binding_refs.insert(name.to_string(), go_ref);
+        match kind {
+            AotSlotKind::Bool => {
+                self.bool_bindings.insert(name.to_string());
+            }
+            AotSlotKind::Number => {
+                self.numeric_bindings.insert(name.to_string());
+            }
+            AotSlotKind::String => {
+                self.string_bindings.insert(name.to_string());
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
     go_name: String,
+}
+
+#[derive(Clone)]
+struct AotModuleSlot {
+    kind: AotSlotKind,
+    go_name: String,
+    go_type: &'static str,
+    rendered: String,
 }
 
 #[derive(Clone)]
@@ -181,30 +282,30 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             let ident = sanitize_go_identifier(name);
             if let Some(expr) = init {
                 if let Some(value) = render_numeric_expr(expr, state) {
-                    state.bindings.insert(name.clone());
-                    state.numeric_bindings.insert(name.clone());
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Number);
                     return Some(format!("var {ident} float64 = {value}"));
                 }
                 if let Some(value) = render_string_expr(expr, state) {
-                    state.bindings.insert(name.clone());
-                    state.string_bindings.insert(name.clone());
+                    state.bind_slot(name, ident.clone(), AotSlotKind::String);
                     return Some(format!("var {ident} string = {value}"));
                 }
                 if let Some(value) = render_bool_expr(expr, state) {
-                    state.bindings.insert(name.clone());
-                    state.bool_bindings.insert(name.clone());
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Bool);
                     return Some(format!("var {ident} bool = {value}"));
                 }
                 if let Some((value, object)) = render_object_literal(expr, state) {
                     state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
                     state.object_bindings.insert(name.clone(), object);
                     return Some(format!("var {ident} = {value}"));
                 }
                 let value = render_expr(expr, state)?;
                 state.bindings.insert(name.clone());
+                state.binding_refs.insert(name.clone(), ident.clone());
                 return Some(format!("var {ident} any = {value}"));
             }
             state.bindings.insert(name.clone());
+            state.binding_refs.insert(name.clone(), ident.clone());
             Some(format!("var {ident} any = nil"))
         }
         JsStmt::Expr { expr } => render_expr_stmt(expr, state),
@@ -245,6 +346,7 @@ fn render_for_stmt(
     }
     let mut loop_state = AotState {
         bindings: state.bindings.clone(),
+        binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
@@ -275,6 +377,9 @@ fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
     };
     let value = render_numeric_expr(init, state)?;
     state.bindings.insert(name.clone());
+    state
+        .binding_refs
+        .insert(name.clone(), sanitize_go_identifier(name));
     state.numeric_bindings.insert(name.clone());
     Some(format!(
         "{} := float64({value})",
@@ -310,6 +415,7 @@ fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
 fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let block_state = AotState {
         bindings: state.bindings.clone(),
+        binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
@@ -322,6 +428,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
 fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let mut block_state = AotState {
         bindings: state.bindings.clone(),
+        binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
@@ -407,7 +514,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Bool { value },
         } => Some(value.to_string()),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
-            Some(sanitize_go_identifier(name))
+            Some(go_binding_ref(name, state))
         }
         JsExpr::Member {
             object,
@@ -498,14 +605,21 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
         JsExpr::Ident { name } if state.bindings.contains(name) => {
-            Some(sanitize_go_identifier(name))
+            Some(go_binding_ref(name, state))
         }
+        JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state).or_else(|| {
+            let JsExpr::Binary { left, right, .. } = expr else {
+                return None;
+            };
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            Some(format!("({left} + {right})"))
+        }),
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
-        JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Member {
             object,
@@ -526,7 +640,7 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Number { value },
         } => number_literal(value),
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
-            Some(sanitize_go_identifier(name))
+            Some(go_binding_ref(name, state))
         }
         JsExpr::Member {
             object,
@@ -551,7 +665,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::String { value },
         } => Some(go_string_literal(value)),
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
-            Some(sanitize_go_identifier(name))
+            Some(go_binding_ref(name, state))
         }
         JsExpr::Member {
             object,
@@ -663,6 +777,14 @@ fn render_value(value: &JsValue) -> Option<String> {
         JsValue::Null | JsValue::Undefined => Some("nil".to_string()),
         JsValue::BigInt { .. } | JsValue::RegExp { .. } => None,
     }
+}
+
+fn go_binding_ref(name: &str, state: &AotState) -> String {
+    state
+        .binding_refs
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| sanitize_go_identifier(name))
 }
 
 fn number_literal(value: &str) -> Option<String> {
