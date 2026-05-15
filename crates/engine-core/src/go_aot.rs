@@ -1810,6 +1810,11 @@ fn infer_expr_param_kinds(
             }
         }
         JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            if let JsExpr::Template { exprs, .. } = expr {
+                for item in exprs {
+                    mark_ident_param_kind(item, param_index, kinds, AotSlotKind::String);
+                }
+            }
             for expr in exprs {
                 infer_expr_param_kinds(expr, param_index, kinds);
             }
@@ -2089,7 +2094,8 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_boolean_cast_call(callee, args) => {
             render_js_to_bool_expr(args.first()?, state)
         }
-        JsExpr::Call { callee, args, .. } => render_string_bool_method_call(callee, args, state)
+        JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
+            .or_else(|| render_string_bool_method_call(callee, args, state))
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
     }
@@ -2261,9 +2267,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } => render_bool_expr(expr, state)
             .or_else(|| render_static_member_expr(object, property, state)),
-        JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
-            Some(go_string_literal(&quasis[0]))
-        }
+        JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         _ => None,
     }
 }
@@ -2340,9 +2344,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_string_expr(right, state)?;
             Some(format!("({left} + {right})"))
         }
-        JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
-            Some(go_string_literal(&quasis[0]))
-        }
+        JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
@@ -2360,6 +2362,49 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_string_expr,
             "string",
         ),
+        _ => None,
+    }
+}
+
+fn render_template_string_expr(
+    quasis: &[String],
+    exprs: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if quasis.len() != exprs.len() + 1 {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for (index, quasi) in quasis.iter().enumerate() {
+        if !quasi.is_empty() {
+            parts.push(go_string_literal(quasi));
+        }
+        if let Some(expr) = exprs.get(index) {
+            parts.push(render_template_part_string_expr(expr, state)?);
+        }
+    }
+    if parts.is_empty() {
+        return Some("\"\"".to_string());
+    }
+    Some(parts.join(" + "))
+}
+
+fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(go_string_literal(value)),
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::String) => {
+            render_static_member_expr(object, property, state)
+        }
         _ => None,
     }
 }
@@ -2401,6 +2446,34 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_bool_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Ident { name } = callee else {
+        return None;
+    };
+    let function = state.functions.get(name)?;
+    if !function_returns_bool(function, state) {
+        return None;
+    }
+    let call = render_call_expr(callee, args, state)?;
+    Some(format!("({call}).(bool)"))
+}
+
+fn function_returns_bool(function: &AotFunction, state: &AotState) -> bool {
+    let [JsStmt::Return { value: Some(value) }] = function.body.as_slice() else {
+        return false;
+    };
+    matches!(
+        value,
+        JsExpr::Value {
+            value: JsValue::Bool { .. },
+        }
+    ) || is_process_stdout_is_tty(value)
+        || matches!(value, JsExpr::Ident { name } if state.bool_bindings.contains(name))
 }
 
 fn render_js_to_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
