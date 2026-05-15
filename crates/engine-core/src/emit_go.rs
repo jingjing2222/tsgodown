@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::analyze;
 use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
+use crate::go_aot::render_aot_executable_program;
 use crate::runtime_contract::{
     fail_closed_report_version, is_codegen_blocking_diagnostic, runtime_contract,
     unsupported_codegen_diagnostic, unsupported_executable_features, ProgramPurpose,
@@ -219,7 +220,7 @@ fn sanitize_relative_go_path(value: &str) -> String {
     cleaned.to_string()
 }
 
-fn sanitize_go_identifier(value: &str) -> String {
+pub(crate) fn sanitize_go_identifier(value: &str) -> String {
     let cleaned: String = value
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
@@ -288,6 +289,9 @@ fn render_executable_program(
     module_path: &str,
     analyzed: &AnalyzeResponse,
 ) -> String {
+    if let Some(program) = render_aot_executable_program(package_name, analyzed) {
+        return program;
+    }
     let program_json = serde_json::to_string(&analyzed.ir).expect("analyzed IR should serialize");
     let program_literal = go_string_literal(&program_json);
     format!(
@@ -9483,7 +9487,7 @@ fn sanitize_go_comment_line(value: &str) -> String {
     }
 }
 
-fn go_string_literal(value: &str) -> String {
+pub(crate) fn go_string_literal(value: &str) -> String {
     let mut literal = String::with_capacity(value.len() + 2);
     literal.push('"');
     for ch in value.chars() {

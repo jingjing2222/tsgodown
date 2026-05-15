@@ -3,6 +3,7 @@ mod backend;
 mod backends;
 mod contract;
 mod emit_go;
+mod go_aot;
 mod runtime_contract;
 
 pub use analyze::analyze;
@@ -358,7 +359,8 @@ console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
-        assert!(response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("fmt.Println"));
         assert!(!response.files[0]
             .contents
             .contains(fail_closed_report_version(ProgramPurpose::VectorSuite)));
@@ -468,7 +470,8 @@ console.log("hello", value)
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
-        assert!(response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("fmt.Println"));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -798,9 +801,7 @@ console.log(JSON.stringify({
             ir_snapshot: None,
         });
 
-        assert!(response.files[0]
-            .contents
-            .contains("tsgodownrt.RunProgram(\""));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("\\uFEFF"));
         assert!(response.files[0].contents.contains("\\uD55C\\uAE00"));
         assert!(!response.files[0].contents.contains('\u{feff}'));
