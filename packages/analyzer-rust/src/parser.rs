@@ -675,6 +675,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
         Expr::Arrow(arrow) => Some(JsExprIR::Function {
             params: arrow.params.iter().flat_map(pat_names).collect(),
             r#async: arrow.is_async,
+            lexical_this: true,
             body: lower_arrow_body(&arrow.body)?,
         }),
         Expr::Unary(unary) => Some(JsExprIR::Unary {
@@ -751,7 +752,13 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             quasis: template
                 .quasis
                 .iter()
-                .map(|quasi| quasi.raw.to_string())
+                .map(|quasi| {
+                    quasi
+                        .cooked
+                        .as_ref()
+                        .map(|value| value.to_string_lossy().to_string())
+                        .unwrap_or_else(|| quasi.raw.to_string())
+                })
                 .collect(),
             exprs: template
                 .exprs
@@ -871,6 +878,7 @@ fn lower_function_expr(function: &Function) -> Option<JsExprIR> {
             .filter_map(|param| pat_name(&param.pat))
             .collect(),
         r#async: function.is_async,
+        lexical_this: false,
         body: lower_block_stmt(function.body.as_ref()?),
     })
 }

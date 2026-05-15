@@ -190,6 +190,8 @@ pub enum JsExpr {
     Function {
         params: Vec<String>,
         r#async: bool,
+        #[serde(default, rename = "lexicalThis")]
+        lexical_this: bool,
         body: Vec<JsStmt>,
     },
     #[serde(rename = "class")]

@@ -342,6 +342,7 @@ type FunctionValue struct {
 	Body   []map[string]any
 	Env    Env
 	Props  map[string]any
+	LexicalThis bool
 }
 
 type ClassValue struct {
@@ -485,6 +486,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"Set":    setGlobal(),
 		"WeakMap": mapGlobal(),
 		"WeakSet": setGlobal(),
+		"console": consoleObject(),
 		"parseInt": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return math.NaN(), nil
@@ -647,6 +649,19 @@ func moduleByID(program Program, id string) (Module, bool) {
 		}
 	}
 	return Module{}, false
+}
+
+func consoleObject() map[string]any {
+	return map[string]any{
+		"log": nativeFunction(func(args []any) (any, error) {
+			fmt.Println(jsFormat(args))
+			return jsUndefined, nil
+		}),
+		"error": nativeFunction(func(args []any) (any, error) {
+			fmt.Fprintln(os.Stderr, jsFormat(args))
+			return jsUndefined, nil
+		}),
+	}
 }
 
 func builtinModuleExports(spec string) (map[string]any, bool) {
@@ -2083,9 +2098,10 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		return out, nil
 	case "function":
 		return FunctionValue{
-			Params: asStringSlice(expr["params"]),
-			Body:   asStmtSlice(expr["body"]),
-			Env:    env,
+			Params:      asStringSlice(expr["params"]),
+			Body:        asStmtSlice(expr["body"]),
+			Env:         env,
+			LexicalThis: expr["lexicalThis"] == true,
 		}, nil
 	case "class":
 		return evalClass(optionalExpr(expr, "superClass"), asSlice(expr["methods"]), env)
@@ -3813,12 +3829,20 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	}
 	instance := map[string]any{"__class": classValue}
 	if classValue.Constructor != nil {
-		if _, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance); err != nil {
+		result, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance)
+		if err != nil {
 			return nil, err
 		}
+		if resultMap, ok := result.(map[string]any); ok {
+			return resultMap, nil
+		}
 	} else if classValue.Super != nil && classValue.Super.Constructor != nil {
-		if _, err := callFunctionWithThis(*classValue.Super.Constructor, rawArgs, callerEnv, instance); err != nil {
+		result, err := callFunctionWithThis(*classValue.Super.Constructor, rawArgs, callerEnv, instance)
+		if err != nil {
 			return nil, err
+		}
+		if resultMap, ok := result.(map[string]any); ok {
+			return resultMap, nil
 		}
 	}
 	return instance, nil
@@ -3894,7 +3918,11 @@ func callFunctionWithThis(function FunctionValue, rawArgs []any, callerEnv Env, 
 }
 
 func callFunctionWithThisValues(function FunctionValue, args []any, thisValue any) (any, error) {
-	child := Env{"__parent": function.Env, "this": thisValue}
+	effectiveThis := thisValue
+	if function.LexicalThis {
+		effectiveThis = lookupEnv(function.Env, "this")
+	}
+	child := Env{"__parent": function.Env, "this": effectiveThis}
 	for index, param := range function.Params {
 		value := any(jsUndefined)
 		if index < len(args) {

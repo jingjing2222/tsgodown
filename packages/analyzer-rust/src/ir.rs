@@ -175,6 +175,7 @@ pub enum JsExprIR {
     Function {
         params: Vec<String>,
         r#async: bool,
+        lexical_this: bool,
         body: Vec<JsStmtIR>,
     },
     Class {

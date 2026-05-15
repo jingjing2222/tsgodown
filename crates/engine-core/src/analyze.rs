@@ -209,10 +209,12 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
         analyzer_rust::JsExprIR::Function {
             params,
             r#async,
+            lexical_this,
             body,
         } => JsExpr::Function {
             params,
             r#async,
+            lexical_this,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
         analyzer_rust::JsExprIR::Class {

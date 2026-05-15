@@ -304,6 +304,7 @@ fn render_js_expr(expr: &JsExprIR) -> String {
             params,
             r#async,
             body,
+            ..
         } => format!(
             "function-expr async={} params=[{}] body=[{}]",
             r#async,
@@ -581,10 +582,12 @@ const cache = new Cache(2);
 #[test]
 fn executable_expression_forms_are_lowered_deterministically() {
     let source = r#"
+const capture = () => this.done;
 async function render(name, count) {
   const pattern = /node/gi;
   const big = 10n;
   const label = `hello ${name}`;
+  const escaped = `^a\\s+${name}$`;
   const value = count > 0 ? count : 0;
   const result = await load(label);
   return (result, this.done(value));
@@ -596,6 +599,23 @@ async function render(name, count) {
     assert!(rendered.contains("regexp(node/gi)"));
     assert!(rendered.contains("bigint(10n)"));
     assert!(rendered.contains("template([hello ,], [ident(name)])"));
+    assert!(rendered.contains(r"template([^a\s+,$], [ident(name)])"));
+    assert!(ir.modules[0]
+        .executable
+        .as_ref()
+        .expect("executable")
+        .stmts
+        .iter()
+        .any(|stmt| matches!(
+            stmt,
+            JsStmtIR::VarDecl {
+                name,
+                init: Some(JsExprIR::Function {
+                    lexical_this: true,
+                    ..
+                }),
+            } if name == "capture"
+        )));
     assert!(rendered.contains("conditional(binary(>, ident(count), number(0))"));
     assert!(rendered.contains("await(call(ident(load), [ident(label)]))"));
     assert!(

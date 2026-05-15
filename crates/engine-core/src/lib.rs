@@ -588,9 +588,12 @@ const boundSegment = boundExec(/(\[[^[\]]*])/g, "user[name]")
 const globalScan = /(\[[^[\]]*])/g
 const firstScan = globalScan.exec("user[name][role]")
 const secondScan = globalScan.exec("user[name][role]")
+const comparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s*(v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:\d*[a-zA-Z-][a-zA-Z0-9-]*|0|[1-9]\d*)(?:\.(?:\d*[a-zA-Z-][a-zA-Z0-9-]*|0|[1-9]\d*))*))?(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?)$|^$/)
+const safeComparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s{0,1}(v?(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})(?:-((?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256})(?:\.(?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256}))*))?(?:\+([a-zA-Z0-9-]{1,250}(?:\.[a-zA-Z0-9-]{1,250})*))?)$|^$/)
+const dynamicWhitespace = new RegExp(`^a\\s+b$`).test("a b")
 const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], protoSlice, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -640,7 +643,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] bcd 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true bcd 2|3 true\n"
         );
     }
 
@@ -2323,11 +2326,15 @@ function sum(left, right) {
 const direct = Function.prototype.call.call(sum, { base: 1 }, 2, 3)
 const applied = Reflect.apply(sum, { base: 4 }, [5, 6])
 const bound = sum.bind({ base: 7 }, 8)
+function mapWithThis() {
+  return this.values.map(value => this.base + value).join(",")
+}
+const lexicalThis = mapWithThis.call({ base: 10, values: [1, 2] })
 const re = /x/
 Reflect.defineProperty(re, "test", { value: function (value) { return value === "ok" } })
 const encoded = encodeURIComponent("a b/[]")
 const decoded = decodeURIComponent(encoded)
-const json = JSON.stringify({ direct, applied, bound: bound(9), ok: re.test("ok"), decoded, amp: "a&b" })
+const json = JSON.stringify({ direct, applied, bound: bound(9), lexicalThis, ok: re.test("ok"), decoded, amp: "a&b" })
 console.log("intrinsics", json)
 "#,
         );
@@ -2378,7 +2385,7 @@ console.log("intrinsics", json)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "intrinsics {\"amp\":\"a&b\",\"applied\":15,\"bound\":24,\"decoded\":\"a b/[]\",\"direct\":6,\"ok\":true}\n"
+            "intrinsics {\"amp\":\"a&b\",\"applied\":15,\"bound\":24,\"decoded\":\"a b/[]\",\"direct\":6,\"lexicalThis\":\"11,12\",\"ok\":true}\n"
         );
     }
 
@@ -2605,6 +2612,9 @@ class Counter {
   }
 
   constructor(start) {
+    if (start instanceof Counter) {
+      return start
+    }
     this.value = start
   }
 
@@ -2621,9 +2631,10 @@ class Counter {
 class DerivedCounter extends Counter {}
 class CustomError extends Error {}
 const counter = new Counter(2)
+const reused = new Counter(counter)
 const derived = new DerivedCounter(4)
 const error = new CustomError("boom")
-console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message)
+console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message, reused === counter, reused.current)
 "#,
         );
 
@@ -2673,7 +2684,7 @@ console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "class 5 5 * 5 true true boom\n"
+            "class 5 5 * 5 true true boom true 5\n"
         );
     }
 
