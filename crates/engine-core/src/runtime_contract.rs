@@ -216,10 +216,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             }
         }
         JsExpr::ArraySpread { items } => {
-            for JsArrayElement { spread, value } in items {
-                if *spread {
-                    unsupported.push("array spread".to_string());
-                }
+            for JsArrayElement { value, .. } in items {
                 collect_unsupported_expr(value, unsupported);
             }
         }

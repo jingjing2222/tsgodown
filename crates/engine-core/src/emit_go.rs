@@ -667,6 +667,21 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			out = append(out, value)
 		}
 		return out, nil
+	case "array-spread":
+		out := []any{}
+		for _, rawItem := range asSlice(expr["items"]) {
+			item := asMap(rawItem)
+			value, err := evalExpr(asMap(item["value"]), env)
+			if err != nil {
+				return nil, err
+			}
+			if item["spread"] == true {
+				out = append(out, iterableValues(value)...)
+			} else {
+				out = append(out, value)
+			}
+		}
+		return out, nil
 	case "object":
 		out := map[string]any{}
 		for _, prop := range asSlice(expr["props"]) {
