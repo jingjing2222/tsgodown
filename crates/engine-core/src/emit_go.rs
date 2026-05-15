@@ -4029,16 +4029,10 @@ func processObject(entry string) map[string]any {
 }
 
 func nodeExecutablePath() string {
-	if path := os.Getenv("TSGODOWN_NODE"); path != "" {
-		return resolveExecutablePath(path)
-	}
-	if path := findExecutableOnPath("node"); path != "" {
-		return resolveExecutablePath(path)
-	}
 	if len(os.Args) > 0 {
 		return resolveExecutablePath(os.Args[0])
 	}
-	return "node"
+	return "tsgodown-generated"
 }
 
 func resolveExecutablePath(path string) string {
@@ -4051,20 +4045,6 @@ func resolveExecutablePath(path string) string {
 		return absolute
 	}
 	return path
-}
-
-func findExecutableOnPath(name string) string {
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir == "" {
-			continue
-		}
-		candidate := filepath.Join(dir, name)
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return candidate
-		}
-	}
-	return ""
 }
 
 func diagnosticsChannelModuleExports() map[string]any {

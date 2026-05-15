@@ -222,9 +222,15 @@ async function runExeca(vector) {
       exitCode: error.exitCode,
       stdout: error.stdout,
       stderr: error.stderr,
-      shortMessagePrefix: String(error.shortMessage).split("\n")[0],
+      shortMessagePrefix: normalizeProcessExecPath(
+        String(error.shortMessage).split("\n")[0],
+      ),
     };
   }
+}
+
+function normalizeProcessExecPath(value) {
+  return value.replace(process.execPath, "<process.execPath>");
 }
 
 function normalizeError(error) {
