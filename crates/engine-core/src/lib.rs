@@ -251,6 +251,43 @@ export { value };
     }
 
     #[test]
+    fn emit_go_can_return_executable_vector_suite_file() {
+        let root = temp_project("engine-core-vector-suite-executable");
+        write(
+            &root,
+            "src/vector-entry.js",
+            r#"
+console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/vector-entry.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/vector-suite-executable".to_string()),
+            output_kind: EmitGoOutputKind::VectorSuite,
+            ir_snapshot: None,
+        });
+
+        assert_eq!(response.files[0].path, "vector_suite.go");
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(!response.files[0]
+            .contents
+            .contains(fail_closed_report_version(ProgramPurpose::VectorSuite)));
+    }
+
+    #[test]
     fn emit_go_can_include_ir_snapshot_file() {
         let response = emit_go(EmitGoRequest {
             analyze: AnalyzeRequest {

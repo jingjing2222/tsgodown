@@ -72,9 +72,7 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
             .unwrap_or("example.com/tsgodown-generated"),
     );
     let unsupported_features = unsupported_executable_features(&analyzed.ir);
-    let can_emit_executable = diagnostics.is_empty()
-        && unsupported_features.is_empty()
-        && matches!(request.output_kind, EmitGoOutputKind::Main);
+    let can_emit_executable = diagnostics.is_empty() && unsupported_features.is_empty();
     if !can_emit_executable {
         diagnostics.push(unsupported_codegen_diagnostic());
     }
