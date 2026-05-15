@@ -462,6 +462,27 @@ function renderStmt(stmt, ctx, indentLevel) {
       }
       return lines.filter(Boolean).join("\n");
     }
+    case "switch": {
+      const discriminant = renderExpr(stmt.discriminant, ctx);
+      const lines = [`${indent}switch {`];
+      for (const switchCase of stmt.cases ?? []) {
+        if (switchCase.test) {
+          lines.push(
+            `${indent}case jsStrictEqual(${discriminant}, ${renderExpr(
+              switchCase.test,
+              ctx,
+            )}):`,
+          );
+        } else {
+          lines.push(`${indent}default:`);
+        }
+        lines.push(
+          renderStmtBlock(switchCase.consequent ?? [], ctx, indentLevel + 1),
+        );
+      }
+      lines.push(`${indent}}`);
+      return lines.filter(Boolean).join("\n");
+    }
     case "for": {
       const init = (stmt.init ?? [])
         .map((child) => renderSimpleStmt(child, ctx))

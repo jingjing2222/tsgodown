@@ -738,6 +738,77 @@ test("renders executable for-of loops over arrays", () => {
   assert.deepEqual(JSON.parse(stdout), [1, 2, 3]);
 });
 
+test("renders executable switch statements", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "function-decl",
+        name: "main",
+        params: [],
+        async: false,
+        body: [
+          {
+            kind: "var-decl",
+            name: "kind",
+            init: { kind: "value", value: { kind: "string", value: "beta" } },
+          },
+          {
+            kind: "switch",
+            discriminant: { kind: "ident", name: "kind" },
+            cases: [
+              {
+                test: {
+                  kind: "value",
+                  value: { kind: "string", value: "alpha" },
+                },
+                consequent: [
+                  {
+                    kind: "return",
+                    value: {
+                      kind: "value",
+                      value: { kind: "string", value: "a" },
+                    },
+                  },
+                ],
+              },
+              {
+                test: {
+                  kind: "value",
+                  value: { kind: "string", value: "beta" },
+                },
+                consequent: [
+                  {
+                    kind: "return",
+                    value: {
+                      kind: "value",
+                      value: { kind: "string", value: "b" },
+                    },
+                  },
+                ],
+              },
+              {
+                test: null,
+                consequent: [
+                  {
+                    kind: "return",
+                    value: {
+                      kind: "value",
+                      value: { kind: "string", value: "fallback" },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.equal(JSON.parse(stdout), "b");
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
