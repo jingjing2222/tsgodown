@@ -5221,6 +5221,9 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		_, err := evalExpr(asMap(stmt["expr"]), env)
 		return completion{}, err
 	case "function-decl":
+		if _, ok := env[asString(stmt["name"])]; ok {
+			return completion{}, nil
+		}
 		env[asString(stmt["name"])] = userFunctionValue(
 			asStringSlice(stmt["params"]),
 			asString(stmt["restParam"]),

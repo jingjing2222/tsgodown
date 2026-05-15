@@ -2847,7 +2847,15 @@ const box = new Box("ok")
 const child = Object.create({ inherited: "yes" })
 const sized = new Array(3)
 sized[1] = "x"
-console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1])
+function copyFunctionProps(env) {
+  copied.load = () => "stale"
+  function copied() {}
+  Object.keys(env).forEach(key => {
+    copied[key] = env[key]
+  })
+  return copied.load()
+}
+console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1], copyFunctionProps({ load: () => "loaded" }))
 "#,
         );
 
@@ -2897,7 +2905,7 @@ console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "fn-props id:7 3 object tag ok yes true true false 3 x\n"
+            "fn-props id:7 3 object tag ok yes true true false 3 x loaded\n"
         );
     }
 
