@@ -590,8 +590,18 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		property := asString(expr["property"])
 		if objectMap, ok := object.(map[string]any); ok {
-			return objectMap[asString(expr["property"])], nil
+			return objectMap[property], nil
+		}
+		if objectArray, ok := object.([]any); ok {
+			if property == "length" {
+				return float64(len(objectArray)), nil
+			}
+			index, err := strconv.Atoi(property)
+			if err == nil && index >= 0 && index < len(objectArray) {
+				return objectArray[index], nil
+			}
 		}
 		return jsUndefined, nil
 	case "template":

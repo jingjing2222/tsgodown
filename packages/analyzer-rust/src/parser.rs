@@ -548,13 +548,79 @@ fn lower_stmt_as_block(stmt: &Stmt) -> Vec<JsStmtIR> {
 
 fn lower_var_decl_stmts(stmts: &mut Vec<JsStmtIR>, var_decl: &swc_ecma_ast::VarDecl) {
     for decl in &var_decl.decls {
-        let Some(name) = pat_name(&decl.name) else {
-            continue;
-        };
-        stmts.push(JsStmtIR::VarDecl {
-            name,
-            init: decl.init.as_deref().and_then(lower_js_expr),
-        });
+        let init = decl
+            .init
+            .as_deref()
+            .and_then(lower_js_expr)
+            .unwrap_or(JsExprIR::Value(JsValueIR::Undefined));
+        lower_pat_decl_stmts(stmts, &decl.name, init);
+    }
+}
+
+fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
+    match pat {
+        Pat::Ident(binding) => {
+            stmts.push(JsStmtIR::VarDecl {
+                name: binding.id.sym.to_string(),
+                init: Some(init),
+            });
+        }
+        Pat::Array(array) => {
+            let temp_name = format!("__tsgodown_destructure_{}", stmts.len());
+            stmts.push(JsStmtIR::VarDecl {
+                name: temp_name.clone(),
+                init: Some(init),
+            });
+            for (index, elem) in array.elems.iter().enumerate() {
+                let Some(elem) = elem else {
+                    continue;
+                };
+                lower_pat_decl_stmts(
+                    stmts,
+                    elem,
+                    JsExprIR::Member {
+                        object: Box::new(JsExprIR::Ident(temp_name.clone())),
+                        property: index.to_string(),
+                    },
+                );
+            }
+        }
+        Pat::Object(object) => {
+            let temp_name = format!("__tsgodown_destructure_{}", stmts.len());
+            stmts.push(JsStmtIR::VarDecl {
+                name: temp_name.clone(),
+                init: Some(init),
+            });
+            for prop in &object.props {
+                match prop {
+                    swc_ecma_ast::ObjectPatProp::KeyValue(kv) => {
+                        let Some(property) = prop_name(&kv.key) else {
+                            continue;
+                        };
+                        lower_pat_decl_stmts(
+                            stmts,
+                            &kv.value,
+                            JsExprIR::Member {
+                                object: Box::new(JsExprIR::Ident(temp_name.clone())),
+                                property,
+                            },
+                        );
+                    }
+                    swc_ecma_ast::ObjectPatProp::Assign(assign) => {
+                        let property = assign.key.sym.to_string();
+                        stmts.push(JsStmtIR::VarDecl {
+                            name: property.clone(),
+                            init: Some(JsExprIR::Member {
+                                object: Box::new(JsExprIR::Ident(temp_name.clone())),
+                                property,
+                            }),
+                        });
+                    }
+                    swc_ecma_ast::ObjectPatProp::Rest(_) => {}
+                }
+            }
+        }
+        _ => {}
     }
 }
 
