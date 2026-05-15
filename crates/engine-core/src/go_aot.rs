@@ -1958,6 +1958,11 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let arg = render_bool_expr(arg, state)?;
             Some(format!("(!{arg})"))
         }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => render_conditional_expr(test, consequent, alternate, state, render_bool_expr, "bool"),
         _ => None,
     }
 }
@@ -2108,6 +2113,11 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => render_conditional_expr(test, consequent, alternate, state, render_expr, "any"),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         JsExpr::Member {
@@ -2144,6 +2154,18 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => render_conditional_expr(
+            test,
+            consequent,
+            alternate,
+            state,
+            render_numeric_expr,
+            "float64",
+        ),
         _ => None,
     }
 }
@@ -2172,8 +2194,36 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => render_conditional_expr(
+            test,
+            consequent,
+            alternate,
+            state,
+            render_string_expr,
+            "string",
+        ),
         _ => None,
     }
+}
+
+fn render_conditional_expr(
+    test: &JsExpr,
+    consequent: &JsExpr,
+    alternate: &JsExpr,
+    state: &AotState,
+    render_branch: fn(&JsExpr, &AotState) -> Option<String>,
+    go_type: &str,
+) -> Option<String> {
+    let test = render_bool_expr(test, state)?;
+    let consequent = render_branch(consequent, state)?;
+    let alternate = render_branch(alternate, state)?;
+    Some(format!(
+        "func() {go_type} {{ if {test} {{ return {consequent} }}; return {alternate} }}()"
+    ))
 }
 
 fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
