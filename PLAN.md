@@ -59,6 +59,127 @@ Additional requirements for the latest active Node.js LTS target:
 - Generated Go must not use Node, V8, Node-API, N-API, native addon loading, or
   embedder fallback.
 
+## Final Completeness Contract
+
+This plan is complete only when `tsgodown` can accept every supported `tsdown`
+bundle artifact shape and either:
+
+- compile it into a standalone Go project that builds and matches Node.js
+  24.15.0 LTS observable behavior, or
+- reject it with deterministic diagnostics before codegen.
+
+"All tsdown-bundleable code" does not mean silently supporting impossible
+surfaces with partial behavior. It means every input shape and runtime feature
+has an explicit contract row: `DONE` with parity evidence, or `FAIL_CLOSED` /
+`BLOCKED` with diagnostics and no generated wrong Go.
+
+### Required contracts before completion
+
+| Contract | Completion requirement | Gate |
+|---|---|---|
+| tsdown artifact contract | Every supported bundle shape is documented: ESM/CJS output, sourcemap, `.d.ts`, package metadata, externals, assets, dynamic import, import attributes, top-level await, code splitting, platform target, and package manager metadata. Unsupported artifact shapes fail closed. | `pnpm run gate:tsdown-artifact-contract` |
+| ECMAScript semantics ledger | Every ECMAScript feature reachable from Node.js 24.15.0 LTS is tracked: values, coercion, scope, functions, classes, modules, objects, arrays, typed arrays, promises, async iteration, generators, regexp, date, JSON, errors, intl, and built-ins. | `pnpm run gate:ecmascript-ledger` |
+| Node.js LTS API ledger | Every official Node.js 24.15.0 LTS documentation area has a row with contract status, Go backend status, test evidence, diagnostic code, and known gaps. Stable APIs are `DONE` or explicitly `FAIL_CLOSED`/`BLOCKED`. | `pnpm run gate:node-lts-coverage-ledger` |
+| Backend provider interface | Rust exposes a backend-neutral provider interface. Go backend is registered only through that interface using adapter/provider pattern. No caller reaches Go emitter directly. | `pnpm run gate:backend-provider-interface` |
+| Runtime contract ownership | JS/Node semantic policy lives in backend-neutral IR/runtime contract. Go backend renders/implements contract operations but does not decide JS semantics. | `pnpm run gate:runtime-contract-ownership` |
+| No fallback | Generated Go never embeds, shells out to, links against, or requires Node.js, V8, Node-API, N-API, native addons, or corpus-specific helper binaries. | `pnpm run gate:no-node-fallback` |
+| No corpus hardcode | Compiler/runtime/codegen has no package-name, corpus-name, or fixture-name special branches. Holdout tests using same syntax/API patterns but different package names and data must pass. | `pnpm run gate:no-corpus-hardcode` |
+| Observable parity | Node.js and generated Go match stdout, stderr, exit code, JSON/library result, env, argv, cwd, filesystem side effects, async order, and observed error shape. | `pnpm run gate:full-observable-parity` |
+| Corpus proof | Existing 10 small corpus entries and 20 large corpus entries all have 100 Vitest vectors each and all vectors pass through Node.js LTS and generated Go. | `pnpm run gate:all-corpus-parity` |
+| Differential/fuzz proof | Spec-axis differential tests and fuzz/holdout suites cover syntax/API combinations beyond the fixed corpus. | `pnpm run gate:differential-fuzz` |
+
+### Backend provider contract
+
+The Rust compiler core must expose backend providers through one interface.
+Go is only the first provider.
+
+Required shape:
+
+```text
+Executable IR + Runtime Contract + Target Options
+  -> BackendProvider
+  -> Generated Project
+  -> Build Plan
+  -> Runtime Probe Contract
+```
+
+Provider rules:
+
+- `BackendProvider` owns target identity, capability status, artifact emission,
+  runtime package emission, build command metadata, and diagnostics mapping.
+- `GoBackendProvider` adapts the backend-neutral contract into Go source and the
+  `tsgodownrt` helper package.
+- Backend-neutral IR, analyzer, capability ledger, and runtime contract cannot
+  import Go backend modules or mention Go-only implementation concepts.
+- Adding a future backend must not change analyzer/IR semantics. It should add a
+  provider implementation and capability statuses.
+- Tests must prove the compiler can call the Go backend only through the
+  provider registry.
+
+### tsdown artifact acceptance contract
+
+`tsgodown` completion requires a written and tested input contract for every
+artifact shape `tsdown` can produce in supported mode.
+
+Required rows:
+
+- ESM bundle
+- CJS bundle
+- dual package output
+- `.d.ts` and declaration map input
+- source map input and original location diagnostics
+- package `exports`, `imports`, `main`, `module`, `type`
+- `node:` builtins
+- JSON modules and import attributes
+- dynamic import
+- top-level await
+- code splitting/chunks
+- external dependencies
+- asset/text imports
+- shebang/CLI entrypoints
+- sourcemap-mapped diagnostics for fail-closed cases
+
+Each row must declare `DONE`, `FAIL_CLOSED`, or `BLOCKED`. `TODO` cannot remain
+in the final gate.
+
+### Final project done condition
+
+The project is done only when this command group passes with no WIP allowance:
+
+```bash
+mise exec -- pnpm run lint
+mise exec -- pnpm run format:check
+mise exec -- pnpm run build
+mise exec -- pnpm run test
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
+mise exec -- pnpm run gate:tsdown-artifact-contract
+mise exec -- pnpm run gate:ecmascript-ledger
+mise exec -- pnpm run gate:node-lts-coverage-ledger
+mise exec -- pnpm run gate:backend-provider-interface
+mise exec -- pnpm run gate:runtime-contract-ownership
+mise exec -- pnpm run gate:no-node-fallback
+mise exec -- pnpm run gate:no-corpus-hardcode
+mise exec -- pnpm run gate:semantics-parity
+mise exec -- pnpm run gate:compliance
+mise exec -- pnpm run test:node-corpus:vitest
+mise exec -- pnpm run gate:node-corpus-vector-parity
+mise exec -- pnpm run gate:node-corpus-parity
+mise exec -- pnpm run test:node-large:vitest
+mise exec -- pnpm run gate:node-large-vector-parity
+mise exec -- pnpm run gate:node-large-parity
+mise exec -- pnpm run gate:full-observable-parity
+mise exec -- pnpm run gate:all-corpus-parity
+mise exec -- pnpm run gate:differential-fuzz
+./scripts/smoke-m1.sh
+```
+
+At that point, the project can claim: any TypeScript/JavaScript Node.js code
+that `tsdown` can bundle inside the supported artifact contract either compiles
+to standalone Go with Node.js LTS parity, or fails closed before producing
+incorrect output.
+
 ## Existing documentation audit
 
 Current docs are useful but not enough for the latest active Node.js LTS end state.
@@ -142,14 +263,28 @@ buildable/testable and commit by functional axis.
    - Add `pnpm run gate:node-lts-coverage-ledger`.
    - Commit: `docs: add node lts coverage ledger`
 
-4. **Sync capability matrix to the coverage ledger**
+4. **Create tsdown artifact contract**
+   - Add `docs/specs/TSDOWN_ARTIFACT_CONTRACT.md`.
+   - Track ESM/CJS, sourcemaps, declarations, exports/imports metadata,
+     dynamic import, top-level await, chunks, externals, assets, and CLI
+     entrypoints.
+   - Add `pnpm run gate:tsdown-artifact-contract`.
+   - Commit: `docs: add tsdown artifact contract`
+
+5. **Create ECMAScript semantics ledger**
+   - Add `docs/specs/ECMASCRIPT_SEMANTICS_LEDGER.md`.
+   - Track language and built-in semantics separately from Node APIs.
+   - Add `pnpm run gate:ecmascript-ledger`.
+   - Commit: `docs: add ecmascript semantics ledger`
+
+6. **Sync capability matrix to the coverage ledgers**
    - Make `docs/specs/CAPABILITY_MATRIX.md` generated from ledger data or guard
-     both files for 1:1 row/status consistency.
+     these files for 1:1 row/status consistency.
    - Expand capability keys beyond current coarse route-era set.
    - Add backend columns for Go/Rust/C++ while only Go is implemented.
    - Commit: `node-compat: sync capabilities with node lts ledger`
 
-5. **Harden no-hardcode and no-fallback gates**
+7. **Harden no-hardcode and no-fallback gates**
    - Expand `pnpm run gate:node-corpus-general-compiler`.
    - Ban corpus-name/package-name branches in compiler/codegen/runtime.
    - Keep generated Go free of Node/V8/shell-out fallback.
@@ -157,33 +292,36 @@ buildable/testable and commit by functional axis.
      data.
    - Commit: `test: enforce generic compiler parity`
 
-6. **Introduce backend interface and registry**
+8. **Introduce backend provider interface and registry**
    - Add Rust backend trait/registry.
    - Register Go as only enabled backend.
    - Unsupported backend names produce deterministic diagnostics.
    - Backend-neutral IR/contract cannot contain Go-specific concepts.
-   - Commit: `engine: introduce backend registry`
+   - Add `pnpm run gate:backend-provider-interface`.
+   - Commit: `engine: introduce backend provider registry`
 
-7. **Move Go emission behind Go backend**
+9. **Move Go emission behind Go provider**
    - Split `emit_go.rs` into backend-specific modules.
    - Keep Go emitter focused on rendering target code.
    - Remove semantic policy decisions from Go emitter call sites.
-   - Commit: `engine: isolate go backend emitter`
+   - Prove every Go generation path reaches emitter through provider registry.
+   - Commit: `engine: isolate go backend provider`
 
-8. **Extract runtime contract**
+10. **Extract runtime contract**
    - Promote JS operation rules into backend-neutral runtime contract.
    - Cover value operations, property access, call/construct/this, completion
      records, module cache, async queue, and Node API contracts.
    - Make generated Go runtime consume contract definitions.
+   - Add `pnpm run gate:runtime-contract-ownership`.
    - Commit: `engine: extract runtime contract`
 
-9. **Make existing 10-corpus gates run on Node.js 24.15.0 LTS**
+11. **Make existing 10-corpus gates run on Node.js 24.15.0 LTS**
    - Regenerate vectors if Node LTS behavior differs.
    - Run Node original, Go build, Go run, vector parity.
    - Keep 100 vectors per corpus.
    - Commit only if fixtures/vectors/gates change.
 
-10. **Add large corpus harness skeleton**
+12. **Add large corpus harness skeleton**
     - Create `test-corpus/node-large/manifest.json`.
     - Add shared vector runner, generated-Go runner, and parity report format.
     - Add scripts:
@@ -193,14 +331,14 @@ buildable/testable and commit by functional axis.
       - `pnpm run gate:node-large-general-compiler`
     - Commit: `test: add large node corpus harness`
 
-11. **Vendor large corpus entries**
+13. **Vendor large corpus entries**
     - Add the 20 framework/tooling/application targets listed below.
     - Record package version, license, source language, module format, native or
       external dependency status, probe command, and comparator.
     - Do not implement package-specific compiler branches.
     - Commit: `test: vendor large node corpus`
 
-12. **Add 100 Vitest vectors per large corpus**
+14. **Add 100 Vitest vectors per large corpus**
     - Total: 20 entries x 100 vectors = 2000 tests.
     - Tests must hit real behavior: routing, plugin hooks, config resolution,
       module loading, build output, diagnostics, FS effects, async order, error
@@ -209,7 +347,14 @@ buildable/testable and commit by functional axis.
       diff becomes unreviewable.
     - Commit: `test: add large corpus vectors`
 
-13. **Implement general JS semantics by failing gate order**
+15. **Add differential/fuzz proof**
+    - Add syntax/API fuzzers for ECMAScript and Node API combinations inside
+      supported artifact contract.
+    - Add holdout packages/apps that are not in fixed corpus.
+    - Add `pnpm run gate:differential-fuzz`.
+    - Commit: `test: add differential fuzz parity`
+
+16. **Implement general JS semantics by failing gate order**
     - Use failing 10-corpus, holdout, and large-corpus reports to choose next
       semantic axis.
     - Implement language semantics generally: scope/hoist/TDZ, prototype,
@@ -218,7 +363,7 @@ buildable/testable and commit by functional axis.
     - Add semantic-axis differential tests before or with implementation.
     - Commit sequence: one commit per semantic axis.
 
-14. **Implement Node.js LTS APIs by failing gate order**
+17. **Implement Node.js LTS APIs by failing gate order**
     - Implement API families generally:
       - process/CLI/env/stdio/signals
       - fs/path/url/querystring
@@ -232,14 +377,14 @@ buildable/testable and commit by functional axis.
       reimplementation is explicitly designed.
     - Commit sequence: one commit per API family.
 
-15. **Remove route-era product assumptions**
+18. **Remove route-era product assumptions**
     - Keep route fixtures only as compatibility samples.
     - README/docs/CLI output must describe user workflow around tsdown-bundleable
       Node packages, not Fastify/Hono route extraction.
     - Compiler core must not branch on framework names.
     - Commit: `docs: remove route-era product framing`
 
-16. **Run final release gate**
+19. **Run final release gate**
 
 Final required gate becomes:
 
@@ -253,11 +398,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 pnpm run gate:semantics-parity
 pnpm run gate:compliance
+pnpm run gate:tsdown-artifact-contract
+pnpm run gate:ecmascript-ledger
+pnpm run gate:backend-provider-interface
+pnpm run gate:runtime-contract-ownership
+pnpm run gate:no-node-fallback
+pnpm run gate:no-corpus-hardcode
 pnpm run test:node-corpus:vitest
 pnpm run gate:node-corpus-vector-parity
 pnpm run gate:node-corpus-parity
 pnpm run gate:node-corpus-general-compiler
 pnpm run gate:node-lts-coverage-ledger
+pnpm run test:node-large:vitest
+pnpm run gate:node-large-vector-parity
+pnpm run gate:node-large-parity
+pnpm run gate:full-observable-parity
+pnpm run gate:all-corpus-parity
+pnpm run gate:differential-fuzz
 ./scripts/smoke-m1.sh
 ```
 
