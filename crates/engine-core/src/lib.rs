@@ -66,6 +66,7 @@ mod tests {
                                 params: vec!["request".to_string()],
                                 rest_param: None,
                                 r#async: false,
+                                generator: false,
                                 body: vec![JsStmt::Return {
                                     value: Some(JsExpr::Value {
                                         value: JsValue::String {
@@ -1084,7 +1085,11 @@ const tag = [Object.prototype.toString.call(/x/), Object.prototype.toString.call
 const isArray = Array.isArray([1])
 const bools = [Boolean(0), Boolean("x")].join(",")
 const numbers = [Number.isFinite(3), Number.isInteger(3.2), Number.isSafeInteger(Math.floor(parseFloat("42")))].join(",")
-console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools, numbers)
+const finite = [isFinite("3"), isFinite("no")].join(",")
+const fromFill = Array.from({ length: 3 }).fill("x", 1).join(",")
+const typed = new Uint8Array(2)
+typed[1] = 7
+console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools, numbers, finite, fromFill, typed.length, typed[1], typeof Date.now())
 "#,
         );
 
@@ -1134,7 +1139,7 @@ console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Mat
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "builtins 12 a,b a:1|b:2 name,enabled,count true [object RegExp],[object String],[object Number],[object Boolean] true 1 3 1 false,true true,false,true\n"
+            "builtins 12 a,b a:1|b:2 name,enabled,count true [object RegExp],[object String],[object Number],[object Boolean] true 1 3 1 false,true true,false,true true,false ,x,x 2 7 number\n"
         );
     }
 
@@ -1148,7 +1153,7 @@ console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Mat
 const symbol = Symbol("x")
 const integer = (255).toString(16)
 const decimal = Math.random().toString(36).slice(0, 2)
-const math = [Math.ceil(1.2), Math.round(1.6), Math.trunc(1.9), Math.abs(-3)].join(",")
+const math = [Math.ceil(1.2), Math.round(1.6), Math.trunc(1.9), Math.abs(-3), Math.pow(2, 3)].join(",")
 console.log("symbol-math", typeof Symbol, typeof symbol, symbol.toString(), Symbol.prototype.toString.call(Symbol.iterator), integer, decimal.length, math)
 "#,
         );
@@ -1199,7 +1204,7 @@ console.log("symbol-math", typeof Symbol, typeof symbol, symbol.toString(), Symb
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "symbol-math function symbol Symbol(x) Symbol(Symbol.iterator) ff 2 2,2,1,3\n"
+            "symbol-math function symbol Symbol(x) Symbol(Symbol.iterator) ff 2 2,2,1,3,8\n"
         );
     }
 
@@ -2689,6 +2694,7 @@ class Counter {
 }
 
 class DerivedCounter extends Counter {}
+class ArrayChild extends Array {}
 class CustomError extends Error {}
 class PrivateCounter {
   #value = 1
@@ -2709,12 +2715,24 @@ class PrivateCounter {
     return this.#seed()
   }
 }
+class StaticPrivate {
+  static #open = false
+  static open() {
+    this.#open = true
+  }
+  static read() {
+    return this.#open
+  }
+}
 const counter = new Counter(2)
 const reused = new Counter(counter)
 const derived = new DerivedCounter(4)
+const arrayChild = new ArrayChild(2)
+arrayChild.fill("q")
 const error = new CustomError("boom")
 const privateCounter = new PrivateCounter()
-console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message, reused === counter, reused.current, privateCounter.next(), PrivateCounter.read())
+StaticPrivate.open()
+console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, typeof ArrayChild, arrayChild.length, arrayChild.join(""), error instanceof Error, error.message, reused === counter, reused.current, privateCounter.next(), PrivateCounter.read(), StaticPrivate.read())
 "#,
         );
 
@@ -2764,7 +2782,7 @@ console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "class 5 5 * 5 true true boom true 5 3 4\n"
+            "class 5 5 * 5 true function 2 qq true boom true 5 3 4 true\n"
         );
     }
 

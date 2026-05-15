@@ -157,6 +157,11 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
         }
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
+        JsStmt::Yield { value } => {
+            if let Some(value) = value {
+                collect_unsupported_expr(value, unsupported);
+            }
+        }
     }
 }
 
@@ -224,6 +229,11 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
             collect_unsupported_stmt_list(finally_body, true, unsupported);
         }
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
+        JsStmt::Yield { value } => {
+            if let Some(value) = value {
+                collect_unsupported_expr(value, unsupported);
+            }
+        }
         other => collect_unsupported_stmt(other, unsupported),
     }
 }
@@ -319,7 +329,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(consequent, unsupported);
             collect_unsupported_expr(alternate, unsupported);
         }
-        JsExpr::Call { callee, args } => {
+        JsExpr::Call { callee, args, .. } => {
             collect_unsupported_expr(callee, unsupported);
             for arg in args {
                 collect_unsupported_expr(arg, unsupported);

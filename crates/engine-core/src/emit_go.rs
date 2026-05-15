@@ -344,6 +344,7 @@ type FunctionValue struct {
 	Env    Env
 	Props  map[string]any
 	LexicalThis bool
+	Generator   bool
 }
 
 type ClassValue struct {
@@ -353,7 +354,9 @@ type ClassValue struct {
 	Static      map[string]FunctionValue
 	StaticGetters map[string]FunctionValue
 	Super       *ClassValue
+	SuperCtor   any
 	Callable    bool
+	Props       map[string]any
 }
 
 type BoundFunctionValue struct {
@@ -417,6 +420,7 @@ type completion struct {
 	returned  bool
 	broke     bool
 	continued bool
+	yields    []any
 }
 
 type moduleState struct {
@@ -473,9 +477,14 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			return isTruthy(args[0]), nil
 		}),
 		"RegExp": regexpGlobal(),
-		"Symbol": symbolGlobal(),
-		"Array":  arrayGlobal(),
-		"Object": objectGlobal(),
+			"Symbol": symbolGlobal(),
+			"Array":  arrayGlobal(),
+			"Date":   dateGlobal(),
+			"Promise": promiseGlobal(),
+			"Uint8Array": typedArrayGlobal(),
+			"Uint16Array": typedArrayGlobal(),
+			"Uint32Array": typedArrayGlobal(),
+			"Object": objectGlobal(),
 		"Reflect": reflectGlobal(),
 		"JSON": jsonGlobal(),
 		"Math":   mathGlobal(),
@@ -508,12 +517,41 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			number, _ := parseJSNumberLiteral(jsString(args[0]))
 			return number, nil
 		}),
-		"isNaN": nativeFunction(func(args []any) (any, error) {
-			if len(args) == 0 {
-				return true, nil
-			}
-			return math.IsNaN(toNumber(args[0])), nil
-		}),
+			"isNaN": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return true, nil
+				}
+				return math.IsNaN(toNumber(args[0])), nil
+			}),
+			"isFinite": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return false, nil
+				}
+				number := toNumber(args[0])
+				return !math.IsNaN(number) && !math.IsInf(number, 0), nil
+			}),
+			"setTimeout": nativeFunction(func(args []any) (any, error) {
+				delay := 0
+				if len(args) > 1 {
+					delay = jsInteger(args[1])
+				}
+				if delay > 0 {
+					time.Sleep(time.Duration(delay) * time.Millisecond)
+				}
+				if len(args) > 0 {
+					if _, err := callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined); err != nil {
+						return nil, err
+					}
+				}
+				return map[string]any{
+					"unref": nativeFunction(func(args []any) (any, error) {
+						return jsUndefined, nil
+					}),
+				}, nil
+			}),
+			"clearTimeout": nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			}),
 		"decodeURIComponent": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return "", nil
@@ -716,7 +754,7 @@ func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunct
 	}
 }
 
-func userFunctionValue(params []string, restParam string, body []map[string]any, env Env, lexicalThis bool) FunctionValue {
+func userFunctionValue(params []string, restParam string, body []map[string]any, env Env, lexicalThis bool, generator bool) FunctionValue {
 	props := map[string]any{}
 	function := FunctionValue{
 		Params:      params,
@@ -725,6 +763,7 @@ func userFunctionValue(params []string, restParam string, body []map[string]any,
 		Env:         env,
 		Props:       props,
 		LexicalThis: lexicalThis,
+		Generator:   generator,
 	}
 	if !lexicalThis {
 		prototype := map[string]any{}
@@ -774,7 +813,7 @@ func functionGlobal() map[string]any {
 	})
 	return map[string]any{
 		"__call": nativeFunction(func(args []any) (any, error) {
-			return userFunctionValue([]string{}, "", []map[string]any{}, Env{}, false), nil
+			return userFunctionValue([]string{}, "", []map[string]any{}, Env{}, false, false), nil
 		}),
 		"prototype": prototype,
 	}
@@ -925,6 +964,28 @@ func arrayGlobal() map[string]any {
 				}
 				return &ArrayValue{Items: append([]any{}, args...)}, nil
 			}),
+			"from": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return &ArrayValue{Items: []any{}}, nil
+				}
+				if array, ok := args[0].(*ArrayValue); ok {
+					return &ArrayValue{Items: append([]any{}, array.Items...)}, nil
+				}
+				if object, ok := args[0].(map[string]any); ok {
+					length := jsInteger(object["length"])
+					items := []any{}
+					for index := 0; index < length; index++ {
+						key := strconv.Itoa(index)
+						if item, ok := lookupObjectProperty(object, key); ok {
+							items = append(items, item)
+						} else {
+							items = append(items, jsUndefined)
+						}
+					}
+					return &ArrayValue{Items: items}, nil
+				}
+				return &ArrayValue{Items: iterableValues(args[0])}, nil
+			}),
 			"isArray": nativeFunction(func(args []any) (any, error) {
 				if len(args) == 0 {
 					return false, nil
@@ -934,6 +995,61 @@ func arrayGlobal() map[string]any {
 		}),
 		"prototype": prototype,
 	}
+}
+
+func typedArrayGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		length := 0
+		if len(args) > 0 {
+			length = jsInteger(args[0])
+		}
+		items := []any{}
+		for index := 0; index < length; index++ {
+			items = append(items, float64(0))
+		}
+		return &ArrayValue{Items: items}, nil
+	})
+}
+
+func dateGlobal() NativeFunctionValue {
+	constructor := nativeFunction(func(args []any) (any, error) {
+		return float64(time.Now().UnixMilli()), nil
+	})
+	constructor.Props["now"] = nativeFunction(func(args []any) (any, error) {
+		return float64(time.Now().UnixMilli()), nil
+	})
+	return constructor
+}
+
+func promiseGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		promise := map[string]any{
+			"then": nativeFunction(func(args []any) (any, error) {
+				if len(args) > 0 {
+					return callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined)
+				}
+				return jsUndefined, nil
+			}),
+			"catch": nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			}),
+		}
+		if len(args) > 0 {
+			resolve := nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			})
+			reject := nativeFunction(func(args []any) (any, error) {
+				if len(args) > 0 {
+					return nil, jsThrow{value: args[0]}
+				}
+				return nil, jsThrow{value: jsUndefined}
+			})
+			if _, err := callFunctionWithValues(args[0], []any{resolve, reject}, Env{}, jsUndefined); err != nil {
+				return nil, err
+			}
+		}
+		return promise, nil
+	})
 }
 
 func objectGlobal() map[string]any {
@@ -1147,12 +1263,18 @@ func mathGlobal() map[string]any {
 			}
 			return math.Trunc(toNumber(args[0])), nil
 		}),
-		"abs": nativeFunction(func(args []any) (any, error) {
-			if len(args) == 0 {
-				return math.NaN(), nil
-			}
-			return math.Abs(toNumber(args[0])), nil
-		}),
+			"abs": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return math.NaN(), nil
+				}
+				return math.Abs(toNumber(args[0])), nil
+			}),
+			"pow": nativeFunction(func(args []any) (any, error) {
+				if len(args) < 2 {
+					return math.NaN(), nil
+				}
+				return math.Pow(toNumber(args[0]), toNumber(args[1])), nil
+			}),
 		"max": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return math.Inf(-1), nil
@@ -1889,10 +2011,11 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		env[asString(stmt["name"])] = userFunctionValue(
 			asStringSlice(stmt["params"]),
 			asString(stmt["restParam"]),
-			asStmtSlice(stmt["body"]),
-			env,
-			false,
-		)
+				asStmtSlice(stmt["body"]),
+				env,
+				false,
+				stmt["generator"] == true,
+			)
 		return completion{}, nil
 	case "class-decl":
 		classValue, err := evalClass(optionalExpr(stmt, "superClass"), asSlice(stmt["methods"]), env)
@@ -1918,43 +2041,32 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			return completion{}, err
 		}
 		branch := asStmtSlice(stmt["alternate"])
-		if isTruthy(test) {
-			branch = asStmtSlice(stmt["consequent"])
-		}
-		for _, child := range branch {
-			result, err := evalStmt(child, env)
-			if err != nil {
-				return completion{}, err
+			if isTruthy(test) {
+				branch = asStmtSlice(stmt["consequent"])
 			}
-			if result.returned || result.broke || result.continued {
-				return result, nil
-			}
-		}
-		return completion{}, nil
+			return evalStmtList(branch, env)
 	case "for-of":
 		iterable, err := evalExpr(asMap(stmt["right"]), env)
 		if err != nil {
 			return completion{}, err
 		}
-		for _, value := range iterableValues(iterable) {
-			env[asString(stmt["left"])] = value
-			for _, child := range asStmtSlice(stmt["body"]) {
-				result, err := evalStmt(child, env)
+			out := completion{}
+			for _, value := range iterableValues(iterable) {
+				env[asString(stmt["left"])] = value
+				result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
 				if err != nil {
 					return completion{}, err
 				}
+				out.yields = append(out.yields, result.yields...)
 				if result.returned {
+					result.yields = out.yields
 					return result, nil
 				}
 				if result.broke {
-					return completion{}, nil
-				}
-				if result.continued {
-					break
+					return out, nil
 				}
 			}
-		}
-		return completion{}, nil
+			return out, nil
 	case "for":
 		for _, init := range asStmtSlice(stmt["init"]) {
 			result, err := evalStmt(init, env)
@@ -1965,62 +2077,58 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 				return completion{}, errors.New("invalid for initializer completion")
 			}
 		}
-		for {
+			out := completion{}
+			for {
 			if rawTest, ok := stmt["test"]; ok {
 				test, err := evalExpr(asMap(rawTest), env)
 				if err != nil {
 					return completion{}, err
 				}
 				if !isTruthy(test) {
-					return completion{}, nil
+						return out, nil
+					}
 				}
-			}
-			for _, child := range asStmtSlice(stmt["body"]) {
-				result, err := evalStmt(child, env)
+				result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
 				if err != nil {
 					return completion{}, err
 				}
+				out.yields = append(out.yields, result.yields...)
 				if result.returned {
+					result.yields = out.yields
 					return result, nil
 				}
 				if result.broke {
-					return completion{}, nil
+					return out, nil
 				}
-				if result.continued {
-					break
-				}
-			}
-			if rawUpdate, ok := stmt["update"]; ok {
+				if rawUpdate, ok := stmt["update"]; ok {
 				if _, err := evalExpr(asMap(rawUpdate), env); err != nil {
 					return completion{}, err
 				}
 			}
 		}
 	case "while":
-		for {
+			out := completion{}
+			for {
 			test, err := evalExpr(asMap(stmt["test"]), env)
 			if err != nil {
 				return completion{}, err
 			}
 			if !isTruthy(test) {
-				return completion{}, nil
-			}
-			for _, child := range asStmtSlice(stmt["body"]) {
-				result, err := evalStmt(child, env)
+					return out, nil
+				}
+				result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
 				if err != nil {
 					return completion{}, err
 				}
+				out.yields = append(out.yields, result.yields...)
 				if result.returned {
+					result.yields = out.yields
 					return result, nil
 				}
 				if result.broke {
-					return completion{}, nil
-				}
-				if result.continued {
-					break
+					return out, nil
 				}
 			}
-		}
 	case "switch":
 		discriminant, err := evalExpr(asMap(stmt["discriminant"]), env)
 		if err != nil {
@@ -2105,12 +2213,22 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			return completion{}, err
 		}
 		return result, nil
-	case "throw":
+		case "throw":
 		value, err := evalExpr(asMap(stmt["value"]), env)
 		if err != nil {
 			return completion{}, err
 		}
-		return completion{}, jsThrow{value: value}
+			return completion{}, jsThrow{value: value}
+		case "yield":
+			value := any(jsUndefined)
+			var err error
+			if raw, ok := stmt["value"]; ok {
+				value, err = evalExpr(asMap(raw), env)
+				if err != nil {
+					return completion{}, err
+				}
+			}
+			return completion{yields: []any{value}}, nil
 	case "break":
 		return completion{broke: true}, nil
 	case "continue":
@@ -2132,16 +2250,19 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 
 func evalStmtList(stmts []map[string]any, env Env) (completion, error) {
 	hoistFunctionDeclarations(stmts, env)
+	out := completion{}
 	for _, stmt := range stmts {
 		result, err := evalStmt(stmt, env)
 		if err != nil {
 			return completion{}, err
 		}
+		out.yields = append(out.yields, result.yields...)
 		if result.returned || result.broke || result.continued {
+			result.yields = out.yields
 			return result, nil
 		}
 	}
-	return completion{}, nil
+	return out, nil
 }
 
 func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
@@ -2152,10 +2273,11 @@ func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
 		env[asString(stmt["name"])] = userFunctionValue(
 			asStringSlice(stmt["params"]),
 			asString(stmt["restParam"]),
-			asStmtSlice(stmt["body"]),
-			env,
-			false,
-		)
+				asStmtSlice(stmt["body"]),
+				env,
+				false,
+				stmt["generator"] == true,
+			)
 	}
 }
 
@@ -2215,10 +2337,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		return userFunctionValue(
 			asStringSlice(expr["params"]),
 			asString(expr["restParam"]),
-			asStmtSlice(expr["body"]),
-			env,
-			expr["lexicalThis"] == true,
-		), nil
+				asStmtSlice(expr["body"]),
+				env,
+				expr["lexicalThis"] == true,
+				expr["generator"] == true,
+			), nil
 	case "class":
 		return evalClass(optionalExpr(expr, "superClass"), asSlice(expr["methods"]), env)
 	case "unary":
@@ -2298,6 +2421,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				if err != nil {
 					return nil, err
 				}
+				if callee["optional"] == true && isNullish(value) {
+					return jsUndefined, nil
+				}
 				args, err := evalCallArgs(asSlice(expr["args"]), env)
 				if err != nil {
 					return nil, err
@@ -2309,10 +2435,13 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return result, nil
 		}
 		value, err := evalExpr(asMap(expr["callee"]), env)
-		if err != nil {
-			return nil, err
-		}
-		return callFunction(value, asSlice(expr["args"]), env)
+			if err != nil {
+				return nil, err
+			}
+			if expr["optional"] == true && isNullish(value) {
+				return jsUndefined, nil
+			}
+			return callFunction(value, asSlice(expr["args"]), env)
 	case "new":
 		callee, err := evalExpr(asMap(expr["callee"]), env)
 		if err != nil {
@@ -2399,6 +2528,13 @@ func assignTarget(target map[string]any, value any, env Env) error {
 			regExpValue.Props[property] = value
 			return nil
 		}
+		if classValue, ok := object.(*ClassValue); ok {
+			if classValue.Props == nil {
+				classValue.Props = map[string]any{}
+			}
+			classValue.Props[property] = value
+			return nil
+		}
 		if objectArray, ok := object.(*ArrayValue); ok {
 			handled := assignArrayMember(objectArray, property, value)
 			if !handled {
@@ -2428,6 +2564,9 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 	if err != nil {
 		return nil, "", nil, err
 	}
+	if expr["optional"] == true && isNullish(object) {
+		return object, asString(expr["property"]), jsUndefined, nil
+	}
 	property, err := evalMemberProperty(expr, env)
 	if err != nil {
 		return nil, "", nil, err
@@ -2448,6 +2587,11 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 		return object, property, jsUndefined, nil
 	}
 	if classValue, ok := object.(*ClassValue); ok {
+		if classValue.Props != nil {
+			if value, ok := classValue.Props[property]; ok {
+				return object, property, value, nil
+			}
+		}
 		if property == "call" && classValue.Callable {
 			return object, property, nativeFunction(func(args []any) (any, error) {
 				thisValue := any(jsUndefined)
@@ -3260,8 +3404,8 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 			value.Items = next
 			return float64(len(value.Items)), nil
 		}), true
-	case "splice":
-		return nativeFunction(func(args []any) (any, error) {
+		case "splice":
+			return nativeFunction(func(args []any) (any, error) {
 			length := len(value.Items)
 			start := length
 			if len(args) > 0 {
@@ -3284,10 +3428,37 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 			next := append([]any{}, value.Items[:start]...)
 			next = append(next, insertItems...)
 			next = append(next, value.Items[start+deleteCount:]...)
-			value.Items = next
-			return &ArrayValue{Items: removed}, nil
-		}), true
-	case "join":
+				value.Items = next
+				return &ArrayValue{Items: removed}, nil
+			}), true
+		case "fill":
+			return nativeFunction(func(args []any) (any, error) {
+				fillValue := any(jsUndefined)
+				if len(args) > 0 {
+					fillValue = args[0]
+				}
+				start := 0
+				if len(args) > 1 {
+					start = jsInteger(args[1])
+					if start < 0 {
+						start = maxInt(len(value.Items)+start, 0)
+					}
+				}
+				end := len(value.Items)
+				if len(args) > 2 && !isNullish(args[2]) {
+					end = jsInteger(args[2])
+					if end < 0 {
+						end = maxInt(len(value.Items)+end, 0)
+					}
+				}
+				start = minInt(maxInt(start, 0), len(value.Items))
+				end = minInt(maxInt(end, 0), len(value.Items))
+				for index := start; index < end; index++ {
+					value.Items[index] = fillValue
+				}
+				return value, nil
+			}), true
+		case "join":
 		return nativeFunction(func(args []any) (any, error) {
 			separator := ","
 			if len(args) > 0 {
@@ -3974,26 +4145,30 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 		Getters:       map[string]FunctionValue{},
 		Static:        map[string]FunctionValue{},
 		StaticGetters: map[string]FunctionValue{},
+		Props:         map[string]any{},
 	}
-	if len(superExpr) > 0 {
-		superValue, err := evalExpr(superExpr, env)
-		if err != nil {
-			return nil, err
+		if len(superExpr) > 0 {
+			superValue, err := evalExpr(superExpr, env)
+			if err != nil {
+				return nil, err
+			}
+			if superClass, ok := superValue.(*ClassValue); ok {
+				classValue.Super = superClass
+			} else if !isConstructable(superValue) {
+				return nil, errors.New("class extends target is not constructable")
+			} else {
+				classValue.SuperCtor = superValue
+			}
 		}
-		superClass, ok := superValue.(*ClassValue)
-		if !ok {
-			return nil, errors.New("class extends target is not constructable")
-		}
-		classValue.Super = superClass
-	}
 	for _, rawMethod := range rawMethods {
 		method := asMap(rawMethod)
 		function := FunctionValue{
 			Params:    asStringSlice(method["params"]),
-			RestParam: asString(method["restParam"]),
-			Body:      asStmtSlice(method["body"]),
-			Env:       env,
-		}
+				RestParam: asString(method["restParam"]),
+				Body:      asStmtSlice(method["body"]),
+				Env:       env,
+				Generator: method["generator"] == true,
+			}
 		name := asString(method["name"])
 		switch asString(method["kind"]) {
 		case "constructor":
@@ -4058,7 +4233,17 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 		return nil, fmt.Errorf("constructor is not callable: %T %s", raw, jsInspect(raw))
 	}
-	instance := map[string]any{"__class": classValue}
+	var instance any = map[string]any{"__class": classValue}
+	if classValue.SuperCtor != nil {
+		superInstance, err := constructValue(classValue.SuperCtor, rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
+		}
+		if superMap, ok := superInstance.(map[string]any); ok {
+			superMap["__class"] = classValue
+		}
+		instance = superInstance
+	}
 	if classValue.Constructor != nil {
 		result, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance)
 		if err != nil {
@@ -4066,6 +4251,9 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 		if resultMap, ok := result.(map[string]any); ok {
 			return resultMap, nil
+		}
+		if resultArray, ok := result.(*ArrayValue); ok {
+			return resultArray, nil
 		}
 	} else if classValue.Super != nil && classValue.Super.Constructor != nil {
 		result, err := callFunctionWithThis(*classValue.Super.Constructor, rawArgs, callerEnv, instance)
@@ -4075,8 +4263,23 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		if resultMap, ok := result.(map[string]any); ok {
 			return resultMap, nil
 		}
+		if resultArray, ok := result.(*ArrayValue); ok {
+			return resultArray, nil
+		}
 	}
 	return instance, nil
+}
+
+func isConstructable(raw any) bool {
+	switch typed := raw.(type) {
+	case *ClassValue, FunctionValue, NativeFunctionValue:
+		return true
+	case map[string]any:
+		_, ok := typed["__call"]
+		return ok
+	default:
+		return false
+	}
 }
 
 func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
@@ -4183,6 +4386,9 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 	if err != nil {
 		return nil, err
 	}
+	if function.Generator {
+		return &IteratorValue{Values: result.yields}, nil
+	}
 	if result.returned {
 		return result.value, nil
 	}
@@ -4229,6 +4435,7 @@ func builtinErrorClass(name string) *ClassValue {
 		Static:      map[string]FunctionValue{},
 		StaticGetters: map[string]FunctionValue{},
 		Callable:    true,
+		Props:       map[string]any{},
 	}
 }
 

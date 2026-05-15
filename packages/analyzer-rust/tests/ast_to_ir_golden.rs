@@ -124,12 +124,14 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
             name,
             params,
             r#async,
+            generator,
             body,
             ..
         } => format!(
-            "function {} async={} params=[{}] body=[{}]",
+            "function {} async={}{} params=[{}] body=[{}]",
             name,
             r#async,
+            if *generator { " generator=true" } else { "" },
             params.join(","),
             body.iter()
                 .map(render_js_stmt)
@@ -258,6 +260,8 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
+        JsStmtIR::Yield(Some(expr)) => format!("yield {}", render_js_expr(expr)),
+        JsStmtIR::Yield(None) => "yield".to_string(),
         JsStmtIR::VarDecl { name, init } => format!(
             "var {} = {}",
             name,
@@ -304,11 +308,13 @@ fn render_js_expr(expr: &JsExprIR) -> String {
         JsExprIR::Function {
             params,
             r#async,
+            generator,
             body,
             ..
         } => format!(
-            "function-expr async={} params=[{}] body=[{}]",
+            "function-expr async={}{} params=[{}] body=[{}]",
             r#async,
+            if *generator { " generator=true" } else { "" },
             params.join(","),
             body.iter()
                 .map(render_js_stmt)
@@ -353,8 +359,13 @@ fn render_js_expr(expr: &JsExprIR) -> String {
         JsExprIR::Update { op, arg, prefix } => {
             format!("update({}, {}, {})", op, render_js_expr(arg), prefix)
         }
-        JsExprIR::Call { callee, args } => format!(
-            "call({}, [{}])",
+        JsExprIR::Call {
+            callee,
+            args,
+            optional,
+        } => format!(
+            "{}call({}, [{}])",
+            if *optional { "optional-" } else { "" },
             render_js_expr(callee),
             args.iter()
                 .map(render_js_expr)
@@ -374,13 +385,20 @@ fn render_js_expr(expr: &JsExprIR) -> String {
             object,
             property,
             computed,
+            optional,
         } => match computed {
             Some(computed) => format!(
-                "member({}, [{}])",
+                "{}member({}, [{}])",
+                if *optional { "optional-" } else { "" },
                 render_js_expr(object),
                 render_js_expr(computed)
             ),
-            None => format!("member({}, {})", render_js_expr(object), property),
+            None => format!(
+                "{}member({}, {})",
+                if *optional { "optional-" } else { "" },
+                render_js_expr(object),
+                property
+            ),
         },
         JsExprIR::Template { quasis, exprs } => format!(
             "template([{}], [{}])",
@@ -705,9 +723,8 @@ function errorName(result) {
     let ir = analyze_compiler_entry("optional-member.js", source);
     let rendered = render_ir(&ir);
 
-    assert!(
-        rendered.contains("return binary(??, member(member(ident(result), error), name), null)")
-    );
+    assert!(rendered
+        .contains("return binary(??, optional-member(member(ident(result), error), name), null)"));
 }
 
 #[test]

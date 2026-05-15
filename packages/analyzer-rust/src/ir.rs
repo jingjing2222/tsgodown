@@ -102,6 +102,7 @@ pub enum JsStmtIR {
         params: Vec<String>,
         rest_param: Option<String>,
         r#async: bool,
+        generator: bool,
         body: Vec<JsStmtIR>,
     },
     ClassDecl {
@@ -143,6 +144,7 @@ pub enum JsStmtIR {
     Continue(Option<String>),
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
+    Yield(Option<JsExprIR>),
     VarDecl {
         name: String,
         init: Option<JsExprIR>,
@@ -163,6 +165,7 @@ pub struct JsClassMethodIR {
     pub params: Vec<String>,
     pub rest_param: Option<String>,
     pub r#async: bool,
+    pub generator: bool,
     pub body: Vec<JsStmtIR>,
 }
 
@@ -178,6 +181,7 @@ pub enum JsExprIR {
         params: Vec<String>,
         rest_param: Option<String>,
         r#async: bool,
+        generator: bool,
         lexical_this: bool,
         body: Vec<JsStmtIR>,
     },
@@ -215,6 +219,7 @@ pub enum JsExprIR {
     Call {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,
+        optional: bool,
     },
     Spread {
         arg: Box<JsExprIR>,
@@ -227,6 +232,7 @@ pub enum JsExprIR {
         object: Box<JsExprIR>,
         property: String,
         computed: Option<Box<JsExprIR>>,
+        optional: bool,
     },
     Template {
         quasis: Vec<String>,

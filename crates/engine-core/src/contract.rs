@@ -82,6 +82,8 @@ pub enum JsStmt {
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
         rest_param: Option<String>,
         r#async: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        generator: bool,
         body: Vec<JsStmt>,
     },
     #[serde(rename = "class-decl")]
@@ -146,6 +148,11 @@ pub enum JsStmt {
     },
     #[serde(rename = "throw")]
     Throw { value: JsExpr },
+    #[serde(rename = "yield")]
+    Yield {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<JsExpr>,
+    },
     #[serde(rename = "var-decl")]
     VarDecl {
         name: String,
@@ -172,6 +179,8 @@ pub struct JsClassMethod {
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
     pub rest_param: Option<String>,
     pub r#async: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub generator: bool,
     pub body: Vec<JsStmt>,
 }
 
@@ -196,6 +205,8 @@ pub enum JsExpr {
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
         rest_param: Option<String>,
         r#async: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        generator: bool,
         #[serde(default, rename = "lexicalThis")]
         lexical_this: bool,
         body: Vec<JsStmt>,
@@ -238,6 +249,8 @@ pub enum JsExpr {
     Call {
         callee: Box<JsExpr>,
         args: Vec<JsExpr>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        optional: bool,
     },
     #[serde(rename = "spread")]
     Spread { arg: Box<JsExpr> },
@@ -252,6 +265,8 @@ pub enum JsExpr {
         property: String,
         #[serde(skip_serializing_if = "Option::is_none", rename = "propertyExpr")]
         property_expr: Option<Box<JsExpr>>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        optional: bool,
     },
     #[serde(rename = "template")]
     Template {
@@ -335,4 +350,8 @@ pub struct AnalyzeResponse {
     pub ir: IrDocument,
     #[serde(default)]
     pub diagnostics: Vec<Diagnostic>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

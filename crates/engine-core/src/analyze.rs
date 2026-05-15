@@ -95,12 +95,14 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             params,
             rest_param,
             r#async,
+            generator,
             body,
         } => JsStmt::FunctionDecl {
             name,
             params,
             rest_param,
             r#async,
+            generator,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
         analyzer_rust::JsStmtIR::ClassDecl {
@@ -173,6 +175,9 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
         analyzer_rust::JsStmtIR::Throw(value) => JsStmt::Throw {
             value: map_js_expr(value),
         },
+        analyzer_rust::JsStmtIR::Yield(value) => JsStmt::Yield {
+            value: value.map(map_js_expr),
+        },
         analyzer_rust::JsStmtIR::VarDecl { name, init } => JsStmt::VarDecl {
             name,
             init: init.map(map_js_expr),
@@ -213,12 +218,14 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             params,
             rest_param,
             r#async,
+            generator,
             lexical_this,
             body,
         } => JsExpr::Function {
             params,
             rest_param,
             r#async,
+            generator,
             lexical_this,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
@@ -260,9 +267,14 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             arg: Box::new(map_js_expr(*arg)),
             prefix,
         },
-        analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
+        analyzer_rust::JsExprIR::Call {
+            callee,
+            args,
+            optional,
+        } => JsExpr::Call {
             callee: Box::new(map_js_expr(*callee)),
             args: args.into_iter().map(map_js_expr).collect(),
+            optional,
         },
         analyzer_rust::JsExprIR::Spread { arg } => JsExpr::Spread {
             arg: Box::new(map_js_expr(*arg)),
@@ -275,10 +287,12 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             object,
             property,
             computed,
+            optional,
         } => JsExpr::Member {
             object: Box::new(map_js_expr(*object)),
             property,
             property_expr: computed.map(|expr| Box::new(map_js_expr(*expr))),
+            optional,
         },
         analyzer_rust::JsExprIR::Template { quasis, exprs } => JsExpr::Template {
             quasis,
@@ -298,6 +312,7 @@ fn map_js_class_method(method: analyzer_rust::JsClassMethodIR) -> JsClassMethod 
         params: method.params,
         rest_param: method.rest_param,
         r#async: method.r#async,
+        generator: method.generator,
         body: method.body.into_iter().map(map_js_stmt).collect(),
     }
 }

@@ -352,7 +352,11 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
             lower_class_decl_stmt(stmts, class_decl);
         }
         ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
-            if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
+            if let Expr::Yield(yield_expr) = &*expr_stmt.expr {
+                stmts.push(JsStmtIR::Yield(
+                    yield_expr.arg.as_deref().and_then(lower_js_expr),
+                ));
+            } else if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
             }
         }
@@ -377,7 +381,11 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
         Stmt::Decl(Decl::Fn(function)) => lower_fn_decl_stmt(stmts, function),
         Stmt::Decl(Decl::Class(class_decl)) => lower_class_decl_stmt(stmts, class_decl),
         Stmt::Expr(expr_stmt) => {
-            if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
+            if let Expr::Yield(yield_expr) = &*expr_stmt.expr {
+                stmts.push(JsStmtIR::Yield(
+                    yield_expr.arg.as_deref().and_then(lower_js_expr),
+                ));
+            } else if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
             }
         }
@@ -532,6 +540,7 @@ fn lower_fn_decl_stmt(stmts: &mut Vec<JsStmtIR>, function: &FnDecl) {
         params,
         rest_param,
         r#async: function.function.is_async,
+        generator: function.function.is_generator,
         body,
     });
 }
@@ -609,6 +618,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                         object: Box::new(JsExprIR::Ident(temp_name.clone())),
                         property: index.to_string(),
                         computed: None,
+                        optional: false,
                     },
                 );
             }
@@ -632,6 +642,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                                 object: Box::new(JsExprIR::Ident(temp_name.clone())),
                                 property,
                                 computed: None,
+                                optional: false,
                             },
                         );
                     }
@@ -641,6 +652,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                             object: Box::new(JsExprIR::Ident(temp_name.clone())),
                             property: property.clone(),
                             computed: None,
+                            optional: false,
                         };
                         let init = match assign.value.as_deref().and_then(lower_js_expr) {
                             Some(default_expr) => defaulted_expr(member, default_expr),
@@ -756,6 +768,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 params,
                 rest_param,
                 r#async: arrow.is_async,
+                generator: false,
                 lexical_this: true,
                 body,
             })
@@ -797,6 +810,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             Some(JsExprIR::Call {
                 callee: Box::new(callee),
                 args,
+                optional: false,
             })
         }
         Expr::New(new_expr) => {
@@ -810,12 +824,13 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 args,
             })
         }
-        Expr::Member(member) => lower_member_expr(member),
+        Expr::Member(member) => lower_member_expr(member, false),
         Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => lower_member_expr(member),
+            OptChainBase::Member(member) => lower_member_expr(member, true),
             OptChainBase::Call(call) => Some(JsExprIR::Call {
                 callee: Box::new(lower_js_expr(&call.callee)?),
                 args: lower_call_args(&call.args),
+                optional: true,
             }),
         },
         Expr::Tpl(template) => Some(JsExprIR::Template {
@@ -848,7 +863,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
     }
 }
 
-fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
+fn lower_member_expr(member: &MemberExpr, optional: bool) -> Option<JsExprIR> {
     let (property, computed) = match &member.prop {
         MemberProp::Ident(ident) => (ident.sym.to_string(), None),
         MemberProp::Computed(computed) => match &*computed.expr {
@@ -868,6 +883,7 @@ fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
         object: Box::new(lower_js_expr(&member.obj)?),
         property,
         computed,
+        optional,
     })
 }
 
@@ -899,6 +915,7 @@ fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
                     params,
                     rest_param,
                     r#async: false,
+                    generator: false,
                     body,
                 });
             }
@@ -922,6 +939,7 @@ fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
                     params,
                     rest_param,
                     r#async: method.function.is_async,
+                    generator: method.function.is_generator,
                     body,
                 });
             }
@@ -942,6 +960,7 @@ fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
                     params,
                     rest_param,
                     r#async: method.function.is_async,
+                    generator: method.function.is_generator,
                     body,
                 });
             }
@@ -959,6 +978,7 @@ fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
                 params: Vec::new(),
                 rest_param: None,
                 r#async: false,
+                generator: false,
                 body: instance_fields,
             },
         );
@@ -1003,6 +1023,7 @@ fn class_field_initializer(property: String, init: JsExprIR) -> JsStmtIR {
             object: Box::new(JsExprIR::This),
             property,
             computed: None,
+            optional: false,
         }),
         right: Box::new(init),
     })
@@ -1032,7 +1053,9 @@ fn lower_assign_target_expr(target: &AssignTarget) -> Option<JsExprIR> {
         AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
             Some(JsExprIR::Ident(ident.id.sym.to_string()))
         }
-        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => lower_member_expr(member),
+        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
+            lower_member_expr(member, false)
+        }
         _ => None,
     }
 }
@@ -1046,6 +1069,7 @@ fn lower_function_expr(function: &Function) -> Option<JsExprIR> {
         params,
         rest_param,
         r#async: function.is_async,
+        generator: function.is_generator,
         lexical_this: false,
         body,
     })
