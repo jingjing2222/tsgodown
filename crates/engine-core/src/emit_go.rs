@@ -245,6 +245,7 @@ fn render_executable_program(
     analyzed: &AnalyzeResponse,
 ) -> String {
     let program_json = serde_json::to_string(&analyzed.ir).expect("analyzed IR should serialize");
+    let program_literal = go_raw_string_literal(&program_json);
     format!(
         r#"package {package_name}
 
@@ -256,7 +257,7 @@ import (
 )
 
 func main() {{
-	if err := tsgodownrt.RunProgram({program_json:?}); err != nil {{
+	if err := tsgodownrt.RunProgram({program_literal}); err != nil {{
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}}

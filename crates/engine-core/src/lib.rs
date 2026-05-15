@@ -388,6 +388,63 @@ console.log("hello", value)
     }
 
     #[test]
+    fn emit_go_escapes_program_json_as_raw_string_literal() {
+        let root = temp_project("engine-core-raw-program-json");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+console.log("escape", "\x1b[31m")
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/raw-program-json".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownrt.RunProgram(`"));
+        assert!(!response.files[0].contents.contains("\\x1b"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["build", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("build generated go");
+        assert!(
+            output.status.success(),
+            "go build failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn emit_go_runs_simple_function_call_subset() {
         let root = temp_project("engine-core-simple-function-call");
         write(
