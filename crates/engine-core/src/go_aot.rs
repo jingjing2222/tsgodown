@@ -213,7 +213,7 @@ fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>
 }
 
 fn collect_builtin_usage_expr_features(expr: &JsExpr, features: &mut BTreeSet<String>) {
-    if is_process_stdout_is_tty(expr) {
+    if is_process_stdout_is_tty(expr) || process_env_lookup_name(expr).is_some() {
         return;
     }
     match expr {
@@ -427,7 +427,7 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             collect_expr_imports(consequent, imports);
             collect_expr_imports(alternate, imports);
         }
-        expr if is_process_stdout_is_tty(expr) => {
+        expr if is_process_stdout_is_tty(expr) || process_env_lookup_name(expr).is_some() => {
             imports.insert("os");
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
@@ -2072,6 +2072,10 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Bool { value },
         } => Some(value.to_string()),
         expr if is_process_stdout_is_tty(expr) => Some("tsgodownStdoutIsTTY()".to_string()),
+        expr if process_env_lookup_name(expr).is_some() => {
+            let value = render_process_env_lookup(expr)?;
+            Some(format!("({value} != \"\")"))
+        }
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2282,6 +2286,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
+            render_bool_expr(expr, state)
+        }
         JsExpr::Unary { .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state)),
@@ -2300,7 +2307,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_bool_expr(expr, state)
+        } => render_string_expr(expr, state)
+            .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_static_member_expr(object, property, state)),
         JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         _ => None,
@@ -2366,6 +2374,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if process_env_lookup_name(expr).is_some() => render_process_env_lookup(expr),
         JsExpr::Member {
             object,
             property,
@@ -2829,6 +2838,36 @@ fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
             optional: false,
         } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process") && property == "stdout"
     )
+}
+
+fn process_env_lookup_name(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    match object.as_ref() {
+        JsExpr::Member {
+            object,
+            property: env_property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+            && env_property == "env" =>
+        {
+            Some(property)
+        }
+        _ => None,
+    }
+}
+
+fn render_process_env_lookup(expr: &JsExpr) -> Option<String> {
+    let name = process_env_lookup_name(expr)?;
+    Some(format!("os.Getenv({})", go_string_literal(name)))
 }
 
 fn narrowed_typeof_state(test: &JsExpr, state: &AotState) -> AotState {
