@@ -302,6 +302,13 @@ type FunctionValue struct {
 	Env    Env
 }
 
+type UndefinedValue struct{}
+
+type NullValue struct{}
+
+var jsUndefined = UndefinedValue{}
+var jsNull = NullValue{}
+
 type completion struct {
 	value    any
 	returned bool
@@ -358,7 +365,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		}
 		return completion{}, nil
 	case "var-decl":
-		value := any(nil)
+		value := any(jsUndefined)
 		var err error
 		if init, ok := stmt["init"]; ok {
 			value, err = evalExpr(asMap(init), env)
@@ -368,8 +375,27 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		}
 		env[asString(stmt["name"])] = value
 		return completion{}, nil
+	case "if":
+		test, err := evalExpr(asMap(stmt["test"]), env)
+		if err != nil {
+			return completion{}, err
+		}
+		branch := asStmtSlice(stmt["alternate"])
+		if isTruthy(test) {
+			branch = asStmtSlice(stmt["consequent"])
+		}
+		for _, child := range branch {
+			result, err := evalStmt(child, env)
+			if err != nil {
+				return completion{}, err
+			}
+			if result.returned {
+				return result, nil
+			}
+		}
+		return completion{}, nil
 	case "return":
-		value := any(nil)
+		value := any(jsUndefined)
 		var err error
 		if raw, ok := stmt["value"]; ok {
 			value, err = evalExpr(asMap(raw), env)
@@ -421,11 +447,24 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		op := asString(expr["op"])
+		if op == "&&" {
+			if !isTruthy(left) {
+				return left, nil
+			}
+			return evalExpr(asMap(expr["right"]), env)
+		}
+		if op == "||" {
+			if isTruthy(left) {
+				return left, nil
+			}
+			return evalExpr(asMap(expr["right"]), env)
+		}
 		right, err := evalExpr(asMap(expr["right"]), env)
 		if err != nil {
 			return nil, err
 		}
-		return evalBinary(asString(expr["op"]), left, right)
+		return evalBinary(op, left, right)
 	case "conditional":
 		if truthy, err := evalExpr(asMap(expr["test"]), env); err != nil {
 			return nil, err
@@ -456,7 +495,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				parts = append(parts, jsString(value))
 			}
 			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
-			return nil, nil
+			return jsUndefined, nil
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
 			return callFunction(env[asString(callee["name"])], asSlice(expr["args"]), env)
@@ -470,7 +509,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if objectMap, ok := object.(map[string]any); ok {
 			return objectMap[asString(expr["property"])], nil
 		}
-		return nil, nil
+		return jsUndefined, nil
 	case "template":
 		var out strings.Builder
 		quasis := asStringSlice(expr["quasis"])
@@ -532,7 +571,7 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		child[key] = value
 	}
 	for index, param := range function.Params {
-		value := any(nil)
+		value := any(jsUndefined)
 		if index < len(rawArgs) {
 			evaluated, err := evalExpr(asMap(rawArgs[index]), callerEnv)
 			if err != nil {
@@ -556,8 +595,10 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 
 func evalValue(value map[string]any) (any, error) {
 	switch value["kind"] {
-	case "undefined", "null":
-		return nil, nil
+	case "undefined":
+		return jsUndefined, nil
+	case "null":
+		return jsNull, nil
 	case "bool":
 		return value["value"] == true, nil
 	case "number":
@@ -581,6 +622,8 @@ func evalUnary(op string, arg any) (any, error) {
 		return toNumber(arg), nil
 	case "-":
 		return -toNumber(arg), nil
+	case "typeof":
+		return jsTypeof(arg), nil
 	default:
 		return nil, fmt.Errorf("unsupported unary %s", op)
 	}
@@ -631,7 +674,7 @@ func isConsoleLog(callee map[string]any) bool {
 
 func isTruthy(value any) bool {
 	switch typed := value.(type) {
-	case nil:
+	case nil, UndefinedValue, NullValue:
 		return false
 	case bool:
 		return typed
@@ -646,8 +689,10 @@ func isTruthy(value any) bool {
 
 func toNumber(value any) float64 {
 	switch typed := value.(type) {
-	case nil:
+	case nil, NullValue:
 		return 0
+	case UndefinedValue:
+		return math.NaN()
 	case float64:
 		return typed
 	case bool:
@@ -668,8 +713,10 @@ func toNumber(value any) float64 {
 
 func jsString(value any) string {
 	switch typed := value.(type) {
-	case nil:
+	case nil, UndefinedValue:
 		return "undefined"
+	case NullValue:
+		return "null"
 	case string:
 		return typed
 	case float64:
@@ -688,6 +735,25 @@ func jsString(value any) string {
 			return fmt.Sprint(typed)
 		}
 		return string(bytes)
+	}
+}
+
+func jsTypeof(value any) string {
+	switch value.(type) {
+	case nil, UndefinedValue:
+		return "undefined"
+	case NullValue:
+		return "object"
+	case bool:
+		return "boolean"
+	case float64:
+		return "number"
+	case string:
+		return "string"
+	case FunctionValue:
+		return "function"
+	default:
+		return "object"
 	}
 }
 

@@ -60,7 +60,15 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             }
         }
         JsStmt::ClassDecl { .. } => unsupported.push("class declarations".to_string()),
-        JsStmt::If { .. } => unsupported.push("if statements".to_string()),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_unsupported_expr(test, unsupported);
+            collect_unsupported_stmt_list(consequent, false, unsupported);
+            collect_unsupported_stmt_list(alternate, false, unsupported);
+        }
         JsStmt::For { .. } => unsupported.push("for statements".to_string()),
         JsStmt::ForOf { .. } => unsupported.push("for-of statements".to_string()),
         JsStmt::While { .. } => unsupported.push("while statements".to_string()),
@@ -75,18 +83,43 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
 
 fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<String>) {
     match stmt {
-        JsStmt::Return { value } => {
-            if let Some(value) = value {
-                collect_unsupported_expr(value, unsupported);
-            }
-        }
+        JsStmt::Return { value } => collect_unsupported_return(value, unsupported),
         JsStmt::Expr { expr } => collect_unsupported_expr(expr, unsupported),
         JsStmt::VarDecl { init, .. } => {
             if let Some(init) = init {
                 collect_unsupported_expr(init, unsupported);
             }
         }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_unsupported_expr(test, unsupported);
+            collect_unsupported_stmt_list(consequent, true, unsupported);
+            collect_unsupported_stmt_list(alternate, true, unsupported);
+        }
         other => collect_unsupported_stmt(other, unsupported),
+    }
+}
+
+fn collect_unsupported_stmt_list(
+    stmts: &[JsStmt],
+    allow_return: bool,
+    unsupported: &mut Vec<String>,
+) {
+    for stmt in stmts {
+        if allow_return {
+            collect_unsupported_stmt_in_function(stmt, unsupported);
+        } else {
+            collect_unsupported_stmt(stmt, unsupported);
+        }
+    }
+}
+
+fn collect_unsupported_return(value: &Option<JsExpr>, unsupported: &mut Vec<String>) {
+    if let Some(value) = value {
+        collect_unsupported_expr(value, unsupported);
     }
 }
 
@@ -112,7 +145,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             }
         }
         JsExpr::Unary { op, arg } => {
-            if !matches!(op.as_str(), "!" | "+" | "-") {
+            if !matches!(op.as_str(), "!" | "+" | "-" | "typeof") {
                 unsupported.push(format!("unary {op}"));
             }
             collect_unsupported_expr(arg, unsupported);
@@ -120,7 +153,20 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         JsExpr::Binary { op, left, right } => {
             if !matches!(
                 op.as_str(),
-                "+" | "-" | "*" | "/" | "%" | "===" | "!==" | "==" | "!=" | "<" | "<=" | ">" | ">="
+                "+" | "-"
+                    | "*"
+                    | "/"
+                    | "%"
+                    | "==="
+                    | "!=="
+                    | "=="
+                    | "!="
+                    | "<"
+                    | "<="
+                    | ">"
+                    | ">="
+                    | "&&"
+                    | "||"
             ) {
                 unsupported.push(format!("binary {op}"));
             }
