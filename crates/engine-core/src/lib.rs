@@ -3344,7 +3344,10 @@ console.log("class", counter.current, Counter.label, Counter.ANY, derived.curren
             r#"
 import { format } from "util"
 const util = require("util")
-console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"))
+const wrapped = util.deprecate(function add(left, right) {
+  return this.base + left + right
+}, "add is deprecated")
+console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"), wrapped.call({ base: 1 }, 2, 4))
 "#,
         );
 
@@ -3394,7 +3397,7 @@ console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "util name:items count:3 \"quoted\"\n"
+            "util name:items count:3 \"quoted\" 7\n"
         );
     }
 
@@ -3819,6 +3822,92 @@ main()
     }
 
     #[test]
+    fn emit_go_runs_create_require_relative_module_subset() {
+        let root = temp_project("engine-core-create-require-relative");
+        write(
+            &root,
+            "packages/pkg/package.json",
+            r#"
+{
+  "name": "pkg",
+  "main": "lib/main.js"
+}
+"#,
+        );
+        write(
+            &root,
+            "packages/pkg/lib/main.js",
+            r#"
+module.exports = {
+  label: "pkg",
+  add(left, right) {
+    return left + right
+  }
+}
+"#,
+        );
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { createRequire } from "node:module"
+const require = createRequire(import.meta.url)
+const pkg = require("../packages/pkg")
+console.log("create-require", pkg.label, pkg.add(2, 5))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/create-require-relative".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "create-require pkg 7\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_node_querystring_zlib_timers_async_hooks_subset() {
         let root = temp_project("engine-core-node-api-subset");
         write(
@@ -3847,8 +3936,14 @@ let tick = "pending"
 timers.setImmediate(() => {
   tick = "immediate"
 })
+const stackTarget = { name: "Trace", message: "ok" }
+Error.captureStackTrace(stackTarget)
+const headers = new Headers({ "X-Trace": "one" })
+headers.append("x-trace", "two")
+const response = new Response(null, { status: 302, headers })
 console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, performance.now() >= 0)
 console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv6("::1"), net.isIP("bad"))
+console.log("web-api", stackTarget.stack, response.status, response.headers.get("X-Trace"))
 "#,
         );
 
@@ -3898,7 +3993,7 @@ console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\n"
+            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok 302 one, two\n"
         );
     }
 

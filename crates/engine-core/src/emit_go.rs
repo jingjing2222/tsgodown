@@ -555,6 +555,8 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			"TextDecoder": textDecoderGlobal(),
 			"URL": urlGlobal(),
 			"URLSearchParams": urlSearchParamsGlobal(),
+			"Headers": headersGlobal(),
+			"Response": responseGlobal(),
 			"fetch": fetchGlobal(),
 			"Uint8Array": typedArrayGlobal(),
 			"Uint16Array": typedArrayGlobal(),
@@ -669,7 +671,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	}
 	env["globalThis"] = sharedGlobal
 	sharedGlobal["process"] = process
-	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL", "URLSearchParams", "fetch"} {
+	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL", "URLSearchParams", "Headers", "Response", "fetch"} {
 		sharedGlobal[name] = env[name]
 	}
 	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
@@ -677,7 +679,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			return nil, errors.New("require specifier is required")
 		}
 		spec := jsString(args[0])
-		if exports, ok := builtinModuleExports(spec); ok {
+		if exports, ok := builtinModuleExportsFor(spec, program, module, cache); ok {
 			return exports, nil
 		}
 		for _, importDecl := range module.Imports {
@@ -703,7 +705,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			return promiseRejected(nodeError("ERR_MODULE_NOT_FOUND", "dynamic import specifier is required")), nil
 		}
 		spec := jsString(args[0])
-		if exports, ok := builtinModuleExports(spec); ok {
+		if exports, ok := builtinModuleExportsFor(spec, program, module, cache); ok {
 			return promiseFulfilled(exports), nil
 		}
 		for _, importDecl := range module.Imports {
@@ -740,7 +742,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		if importDecl.Kind == "cjs" {
 			continue
 		}
-		importedExports, ok := builtinModuleExports(importDecl.Spec)
+		importedExports, ok := builtinModuleExportsFor(importDecl.Spec, program, module, cache)
 		var importedValue any = importedExports
 		if !ok {
 			importedModule, moduleOk := moduleByID(program, importDecl.Resolved)
@@ -903,6 +905,18 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 				return jsUndefined, nil
 			}), nil
 		})
+		exports["deprecate"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			fn := args[0]
+			if !isCallable(fn) {
+				return nil, jsThrow{value: nodeError("ERR_INVALID_ARG_TYPE", "The \"fn\" argument must be of type function")}
+			}
+			return nativeMethod(func(thisValue any, callArgs []any) (any, error) {
+				return callFunctionWithValues(fn, callArgs, Env{}, thisValue)
+			}), nil
+		})
 		exports["stripVTControlCharacters"] = nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return "", nil
@@ -1035,6 +1049,13 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func builtinModuleExportsFor(spec string, program Program, module Module, cache map[string]*moduleState) (map[string]any, bool) {
+	if spec == "module" || spec == "node:module" {
+		return moduleModuleExportsFor(program, module, cache), true
+	}
+	return builtinModuleExports(spec)
 }
 
 func assertModuleExports() map[string]any {
@@ -4669,6 +4690,132 @@ func urlSearchParamsGlobal() NativeFunctionValue {
 	})
 }
 
+func headersGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		headers := map[string]any{"__headers": true, "__values": map[string]any{}}
+		if len(args) > 0 && !isNullish(args[0]) {
+			if source, ok := args[0].(map[string]any); ok {
+				if values, ok := source["__values"].(map[string]any); ok {
+					for _, key := range objectKeys(values) {
+						headerSet(headers, key, values[key])
+					}
+				} else {
+					for _, key := range objectKeys(source) {
+						headerSet(headers, key, source[key])
+					}
+				}
+			} else {
+				for _, entry := range iterableValues(args[0]) {
+					values := iterableValues(entry)
+					if len(values) >= 2 {
+						headerSet(headers, jsString(values[0]), values[1])
+					}
+				}
+			}
+		}
+		headers["set"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			if len(args) >= 2 {
+				headerSet(headers, jsString(args[0]), args[1])
+			}
+			return jsUndefined, nil
+		})
+		headers["append"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			if len(args) >= 2 {
+				key := headerKey(jsString(args[0]))
+				values := headers["__values"].(map[string]any)
+				if previous, ok := values[key]; ok && !isUndefined(previous) {
+					values[key] = jsString(previous) + ", " + jsString(args[1])
+				} else {
+					values[key] = jsString(args[1])
+				}
+			}
+			return jsUndefined, nil
+		})
+		headers["get"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			if len(args) == 0 {
+				return jsNull, nil
+			}
+			values := headers["__values"].(map[string]any)
+			if value, ok := values[headerKey(jsString(args[0]))]; ok {
+				return value, nil
+			}
+			return jsNull, nil
+		})
+		headers["has"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			values := headers["__values"].(map[string]any)
+			_, ok := values[headerKey(jsString(args[0]))]
+			return ok, nil
+		})
+		headers["entries"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			return headerEntries(headers), nil
+		})
+		headers["Symbol.iterator"] = headers["entries"]
+		return headers, nil
+	})
+}
+
+func responseGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		body := any(jsNull)
+		if len(args) > 0 {
+			body = args[0]
+		}
+		init := map[string]any{}
+		if len(args) > 1 {
+			init, _ = args[1].(map[string]any)
+		}
+		status := float64(200)
+		if value, ok := init["status"]; ok && !isUndefined(value) {
+			status = float64(jsInteger(value))
+		}
+		var headers map[string]any
+		if value, ok := init["headers"]; ok && !isNullish(value) {
+			if existing, ok := value.(map[string]any); ok && existing["__headers"] == true {
+				headers = existing
+			} else {
+				created, err := callFunctionWithValues(headersGlobal(), []any{value}, Env{}, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				headers, _ = created.(map[string]any)
+			}
+		} else {
+			created, err := callFunctionWithValues(headersGlobal(), []any{}, Env{}, jsUndefined)
+			if err != nil {
+				return nil, err
+			}
+			headers, _ = created.(map[string]any)
+		}
+		return map[string]any{
+			"body":    body,
+			"status":  status,
+			"headers": headers,
+			"ok":      status >= 200 && status <= 299,
+		}, nil
+	})
+}
+
+func headerKey(key string) string {
+	return strings.ToLower(key)
+}
+
+func headerSet(headers map[string]any, key string, value any) {
+	values := headers["__values"].(map[string]any)
+	values[headerKey(key)] = jsString(value)
+}
+
+func headerEntries(headers map[string]any) *ArrayValue {
+	values, _ := headers["__values"].(map[string]any)
+	entries := []any{}
+	for _, key := range objectKeys(values) {
+		entries = append(entries, &ArrayValue{Items: []any{key, values[key]}})
+	}
+	return &ArrayValue{Items: entries}
+}
+
 func urlObject(raw string) map[string]any {
 	parsed, err := url.Parse(raw)
 	pathname := raw
@@ -4821,6 +4968,40 @@ func moduleModuleExports() map[string]any {
 				return exports, nil
 			}
 			return nil, fmt.Errorf("module import %s is not resolved", jsString(args[0]))
+		}}, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func moduleModuleExportsFor(program Program, module Module, cache map[string]*moduleState) map[string]any {
+	exports := map[string]any{}
+	exports["createRequire"] = nativeFunction(func(args []any) (any, error) {
+		return NativeFunctionValue{Call: func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("require specifier is required")
+			}
+			spec := jsString(args[0])
+			if exports, ok := builtinModuleExportsFor(spec, program, module, cache); ok {
+				return exports, nil
+			}
+			for _, importDecl := range module.Imports {
+				if importDecl.Spec != spec {
+					continue
+				}
+				importedModule, ok := moduleByID(program, importDecl.Resolved)
+				if !ok {
+					return nil, fmt.Errorf("module import %s is not resolved", spec)
+				}
+				return executeModule(importedModule, program, cache)
+			}
+			if importedModule, ok := resolveRelativeModuleAtRuntime(program, module.SourcePath, spec); ok {
+				return executeModule(importedModule, program, cache)
+			}
+			if importedModule, ok := resolveBareModule(program, spec); ok {
+				return executeModule(importedModule, program, cache)
+			}
+			return nil, fmt.Errorf("module import %s is not resolved", spec)
 		}}, nil
 	})
 	exports["default"] = exports
@@ -7789,7 +7970,16 @@ func builtinErrorClass(name string) *ClassValue {
 		StaticGetters: map[string]FunctionValue{},
 		StaticSetters: map[string]FunctionValue{},
 		Callable:    true,
-		Props:       map[string]any{},
+		Props: map[string]any{
+			"captureStackTrace": nativeFunction(func(args []any) (any, error) {
+				if len(args) > 0 {
+					if object, ok := args[0].(map[string]any); ok {
+						object["stack"] = jsString(object["name"]) + ": " + jsString(object["message"])
+					}
+				}
+				return jsUndefined, nil
+			}),
+		},
 	}
 }
 
