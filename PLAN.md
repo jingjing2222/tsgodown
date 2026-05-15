@@ -17,9 +17,9 @@ Commits should not be split too finely. Commit by large functional axis.
 There are two scoring layers now:
 
 1. **Current Go parity phase**: the selected 10 real Node corpus entries pass.
-2. **Project end state**: Node.js 26 public runtime/language/package semantics
+2. **Project end state**: Node.js 24.15.0 LTS public runtime/language/package semantics
    are either implemented with parity or explicitly fail closed with
-   deterministic diagnostics. Stable Node.js 26 APIs are support targets, not
+   deterministic diagnostics. Stable Node.js 24.15.0 LTS APIs are support targets, not
    optional backlog.
 
 All 10 real Node app/library corpus entries must pass:
@@ -46,12 +46,12 @@ Implementation claims required for 100 points:
 - Capabilities required by the corpus are `DONE`.
 - Corpus gate runs with `allowWip=false`.
 
-Additional requirements for the Node.js 26 target:
+Additional requirements for the latest active Node.js LTS target:
 
-- Node.js 26.1.0 official API docs are the coverage baseline:
-  <https://nodejs.org/api/documentation.html>
+- Node.js 24.15.0 LTS official API docs are the coverage baseline:
+  <https://nodejs.org/docs/latest-v24.x/api/>
 - Every documented area has a row in the capability ledger.
-- Every stable Node.js 26 area must be `DONE` for Go backend or have a tracked
+- Every stable Node.js 24.15.0 LTS area must be `DONE` for Go backend or have a tracked
   blocking issue and deterministic fail-closed diagnostic.
 - Experimental/deprecated/native/embedder areas still appear in the ledger; the
   project must choose `DONE`, `TODO`, `BLOCKED`, or `FAIL_CLOSED`, never omit
@@ -61,45 +61,45 @@ Additional requirements for the Node.js 26 target:
 
 ## Existing documentation audit
 
-Current docs are useful but not enough for the Node.js 26 end state.
+Current docs are useful but not enough for the latest active Node.js LTS end state.
 
 | Document | Current content | Gap |
 |---|---|---|
-| `README.md` | States "100% behavioral coverage" only inside the declared semantic envelope; links capability matrix. | Does not claim or track Node.js 26 full API coverage. Still contains old service/route framing. |
-| `docs/specs/CAPABILITY_MATRIX.md` | Backend-aware matrix for 10 coarse capabilities (`route.basic`, `module.esm`, `node.fs.basic`, etc.). | Too small for Node.js 26. Missing most core modules, JS language semantics, globals, process/CLI behavior, streams, network, crypto, workers, test runner, diagnostics, and native/embedder decisions. |
-| `docs/backlog/NODE_COMPAT_MATRIX.md` | Initial Node matrix with 9 TODO rows. | Backlog only; not synchronized with code or official Node 26 docs. |
+| `README.md` | States "100% behavioral coverage" only inside the declared semantic envelope; links capability matrix. | Does not claim or track Node.js 24.15.0 LTS full API coverage. Still contains old service/route framing. |
+| `docs/specs/CAPABILITY_MATRIX.md` | Backend-aware matrix for 10 coarse capabilities (`route.basic`, `module.esm`, `node.fs.basic`, etc.). | Too small for Node.js 24.15.0 LTS. Missing most core modules, JS language semantics, globals, process/CLI behavior, streams, network, crypto, workers, test runner, diagnostics, and native/embedder decisions. |
+| `docs/backlog/NODE_COMPAT_MATRIX.md` | Initial Node matrix with 9 TODO rows. | Backlog only; not synchronized with code or official Node.js 24.15.0 LTS docs. |
 | `docs/specs/SEMANTIC_PARITY_CONTRACT.md` | HTTP route parity contract: status/body/headers/method behavior. | Narrow route-era parity. Does not define CLI/library/FS/env/argv/async/error/module side-effect parity for Node corpus. |
-| `test-corpus/node-real/manifest.json` | 10 real corpus entries and gate metadata. | Good corpus manifest, but not a full Node 26 coverage ledger. |
+| `test-corpus/node-real/manifest.json` | 10 real corpus entries and gate metadata. | Good corpus manifest, but not a full Node.js LTS coverage ledger. |
 
-Action: create a dedicated Node.js 26 coverage ledger and make
+Action: create a dedicated latest active Node.js LTS coverage ledger and make
 `docs/specs/CAPABILITY_MATRIX.md` a generated/backend summary of that ledger
 instead of a small hand-maintained table.
 
-## Node.js 26 coverage ledger baseline
+## Latest Active Node.js LTS Coverage Ledger Baseline
 
 Status legend:
 
 - `DONE`: implemented and covered by Node/Go differential tests.
 - `WIP`: partially implemented; accepted only in explicit WIP gates.
-- `TODO`: required for Node.js 26 target, not yet implemented.
+- `TODO`: required for latest active Node.js LTS target, not yet implemented.
 - `FAIL_CLOSED`: intentionally unsupported for now, with deterministic
   diagnostic and no silent codegen.
 - `BLOCKED`: incompatible with no-Node/no-V8/no-native-fallback policy unless
   re-scoped as source-level rewrite or separate runtime feature.
 
-Current score against full Node.js 26 coverage is approximately **70/100**:
-the 10-corpus Go parity phase is green, but the full Node.js 26 API/semantics
+Current score against full latest active Node.js LTS coverage is approximately **70/100**:
+the 10-corpus Go parity phase is green, but the full Node.js 24.15.0 LTS API/semantics
 ledger and backend plugin split are not complete.
 
-| Area | Node.js 26 required surface | Current repo evidence | Current status | Gap to 100 |
+| Area | Node.js 24.15.0 LTS required surface | Current repo evidence | Current status | Gap to 100 |
 |---|---|---|---|---|
 | JS value model | `undefined`, `null`, booleans, numbers, strings, bigint, symbol, object identity, arrays, functions, classes | Runtime code in `crates/engine-core/src/emit_go.rs`; focused tests in `crates/engine-core/src/lib.rs` | WIP | Complete BigInt, Symbol registry, property descriptors, prototypes, getters/setters, typed arrays, equality/coercion matrix. |
 | JS control flow | block, if, switch, loops, labels, break/continue, return, throw, try/catch/finally | Labeled control flow recently added in Rust IR/codegen tests | WIP | Exhaustive completion semantics, finally override rules, iterator closing, generator/async-generator semantics. |
 | JS functions/binding | lexical scope, closures, `this`, call/apply/bind, constructors, classes, private fields, destructuring, rest/spread | Corpus vectors and engine tests cover subset | WIP | Full hoist/TDZ, `super`, static blocks, decorators if emitted by TS, advanced destructuring defaults. |
-| JS standard built-ins | `Array`, `Object`, `Map`, `Set`, `Date`, `RegExp`, `JSON`, `Error`, `Promise`, `Intl`, `Temporal` | Corpus covers subset; Date/RegExp/JSON/Error have focused runtime work | WIP | Full ECMAScript built-in matrix; Node 26 has Temporal available, needs explicit target decision/tests. |
+| JS standard built-ins | `Array`, `Object`, `Map`, `Set`, `Date`, `RegExp`, `JSON`, `Error`, `Promise`, `Intl` | Corpus covers subset; Date/RegExp/JSON/Error have focused runtime work | WIP | Full ECMAScript built-in matrix for the Node.js 24.15.0 LTS runtime. |
 | Async/event loop | Promise jobs, `async`/`await`, microtasks, timers, `nextTick`, immediates | Corpus async vectors pass for current subset | WIP | Precise Node ordering: `process.nextTick`, microtask queue, timers, immediates, unhandled rejection, abort signals. |
-| Module system | CJS, ESM, dual packages, `exports`, `imports`, `main`, `type`, `node:` specifiers, JSON modules, TypeScript module docs | Analyzer/module graph tests; corpus uses package graph | WIP | Full Node 26 package resolution, loader hooks policy, CJS/ESM interop edge cases, circular dependency parity. |
-| TypeScript input | Node 26 TypeScript module handling plus tsdown bundle/source map/`.d.ts` compiler input | README and CLI path describe tsdown input | WIP | Exact TS syntax/lowering support matrix; source map diagnostics for every fail-closed path. |
+| Module system | CJS, ESM, dual packages, `exports`, `imports`, `main`, `type`, `node:` specifiers, JSON modules, TypeScript module docs | Analyzer/module graph tests; corpus uses package graph | WIP | Full Node.js 24.15.0 LTS package resolution, loader hooks policy, CJS/ESM interop edge cases, circular dependency parity. |
+| TypeScript input | Node.js 24.15.0 LTS TypeScript module handling plus tsdown bundle/source map/`.d.ts` compiler input | README and CLI path describe tsdown input | WIP | Exact TS syntax/lowering support matrix; source map diagnostics for every fail-closed path. |
 | `process`/CLI/env | `argv`, `execPath`, `env`, `cwd`, `exit`, stdio, signals, warnings, versions, resource usage | Corpus and runtime tests cover argv/env/cwd/exit/stdout/stderr subset | WIP | Full `process` object, signals, warnings, exit lifecycle, stdin, permissions, report integration. |
 | File system | `node:fs`, `fs/promises`, sync/callback/promise APIs, watchers, streams, stats, permissions | `fs-extra` corpus subset green | WIP | Full fs API, watchers, symlink/hardlink/stat modes, platform differences, abortable operations. |
 | Path/URL/querystring | `node:path`, `node:url`, `node:querystring`, URL globals | `path`/`url` marked WIP in matrix; corpus subset green | WIP | POSIX/win32 path split, file URL conversion, URLSearchParams edge cases, legacy querystring. |
@@ -116,104 +116,130 @@ ledger and backend plugin split are not complete.
 | Deprecated/legacy | domain, punycode, deprecated APIs | Not covered | TODO/FAIL_CLOSED | Still ledger rows required; choose support or deterministic diagnostic. |
 | Packaging/runtime artifacts | SEA, permissions, report, REPL, WASI, SQLite, zlib | Not covered | TODO/FAIL_CLOSED | Decide per API. Stable APIs need implementation target; experimental can fail closed with diagnostics. |
 
-## 100-point implementation plan from current state
+## Completion Sequence From Current State
 
-### Phase 1: Backend interface and registry
+Do this in order. No short/mid/long split. Each step must leave the repo
+buildable/testable and commit by functional axis.
 
-- Add a Rust `Backend` trait for backend-neutral emission.
-- Move Go emission behind a `GoBackend` implementation.
-- Add backend registry with `go` as the only enabled backend.
-- Unsupported backend names produce deterministic diagnostics.
-- Strengthen guards so backend-neutral IR/contract cannot contain Go terms.
+1. **Pin and verify Node.js LTS toolchain**
+   - Keep `.mise.toml` pinned to Node.js `24.15.0` and pnpm `10.22.0`.
+   - Run all JS gates through `mise exec --`.
+   - Add or update preflight docs/scripts if any command bypasses mise.
+   - Commit: `tooling: pin node lts runtime`
 
-Commit: `engine: introduce backend interface and go backend`
+2. **Keep docs and gates on latest-LTS policy**
+   - README, PLAN, coverage docs, gate names, and diagnostics must say
+     "latest active Node.js LTS" or explicit `24.15.0`.
+   - Future Node upgrade policy: update mise pin, regenerate coverage ledger,
+     then rerun all corpus parity gates.
+   - Commit: `docs: align parity target with node lts`
 
-### Phase 2: Go emitter isolation
+3. **Create Node.js LTS coverage ledger**
+   - Add `docs/specs/NODE_LTS_COVERAGE_LEDGER.md`.
+   - Include every official Node.js 24.15.0 LTS documentation/API area.
+   - Track: contract status, Go status, test evidence, diagnostic code, known
+     semantic gaps, corpus coverage.
+   - Add `pnpm run gate:node-lts-coverage-ledger`.
+   - Commit: `docs: add node lts coverage ledger`
 
-- Split `crates/engine-core/src/emit_go.rs` into backend-specific modules:
-  - `backend/mod.rs`
-  - `backend/go/mod.rs`
-  - `backend/go/emitter.rs`
-  - `backend/go/runtime_emit.rs`
-- Keep Go emitter responsible for rendering Go only.
-- Remove JS semantic policy decisions from Go emitter.
+4. **Sync capability matrix to the coverage ledger**
+   - Make `docs/specs/CAPABILITY_MATRIX.md` generated from ledger data or guard
+     both files for 1:1 row/status consistency.
+   - Expand capability keys beyond current coarse route-era set.
+   - Add backend columns for Go/Rust/C++ while only Go is implemented.
+   - Commit: `node-compat: sync capabilities with node lts ledger`
 
-Commit: `engine: isolate go emitter from semantic policy`
+5. **Harden no-hardcode and no-fallback gates**
+   - Expand `pnpm run gate:node-corpus-general-compiler`.
+   - Ban corpus-name/package-name branches in compiler/codegen/runtime.
+   - Keep generated Go free of Node/V8/shell-out fallback.
+   - Add holdout fixtures with same syntax/API patterns but different names and
+     data.
+   - Commit: `test: enforce generic compiler parity`
 
-### Phase 3: Runtime contract extraction
+6. **Introduce backend interface and registry**
+   - Add Rust backend trait/registry.
+   - Register Go as only enabled backend.
+   - Unsupported backend names produce deterministic diagnostics.
+   - Backend-neutral IR/contract cannot contain Go-specific concepts.
+   - Commit: `engine: introduce backend registry`
 
-- Promote `runtime_contract.rs` into backend-neutral semantic contract SSoT.
-- Define JS operations in contract form:
-  - value operations
-  - property access/mutation
-  - call/construct/this binding
-  - completion records
-  - module cache/resolution hooks
-  - async queue contract
-  - Node runtime API contracts
-- Make Go runtime generator consume the contract instead of owning policy.
+7. **Move Go emission behind Go backend**
+   - Split `emit_go.rs` into backend-specific modules.
+   - Keep Go emitter focused on rendering target code.
+   - Remove semantic policy decisions from Go emitter call sites.
+   - Commit: `engine: isolate go backend emitter`
 
-Commit: `engine: extract backend neutral runtime contract`
+8. **Extract runtime contract**
+   - Promote JS operation rules into backend-neutral runtime contract.
+   - Cover value operations, property access, call/construct/this, completion
+     records, module cache, async queue, and Node API contracts.
+   - Make generated Go runtime consume contract definitions.
+   - Commit: `engine: extract runtime contract`
 
-### Phase 4: Node.js 26 coverage ledger
+9. **Make existing 10-corpus gates run on Node.js 24.15.0 LTS**
+   - Regenerate vectors if Node LTS behavior differs.
+   - Run Node original, Go build, Go run, vector parity.
+   - Keep 100 vectors per corpus.
+   - Commit only if fixtures/vectors/gates change.
 
-- Add `docs/specs/NODE26_COVERAGE_LEDGER.md`.
-- Include every official Node.js 26 documentation area.
-- Track per area:
-  - contract status
-  - Go backend status
-  - test evidence
-  - fail-closed diagnostic code
-  - known semantic gaps
-- Generate/sync `docs/specs/CAPABILITY_MATRIX.md` from this ledger or add a
-  guard that proves both stay consistent.
+10. **Add large corpus harness skeleton**
+    - Create `test-corpus/node-large/manifest.json`.
+    - Add shared vector runner, generated-Go runner, and parity report format.
+    - Add scripts:
+      - `pnpm run test:node-large:vitest`
+      - `pnpm run gate:node-large-vector-parity`
+      - `pnpm run gate:node-large-parity`
+      - `pnpm run gate:node-large-general-compiler`
+    - Commit: `test: add large node corpus harness`
 
-Commit: `docs: add node 26 coverage ledger`
+11. **Vendor large corpus entries**
+    - Add the 20 framework/tooling/application targets listed below.
+    - Record package version, license, source language, module format, native or
+      external dependency status, probe command, and comparator.
+    - Do not implement package-specific compiler branches.
+    - Commit: `test: vendor large node corpus`
 
-### Phase 5: Hardcode prevention and holdout tests
+12. **Add 100 Vitest vectors per large corpus**
+    - Total: 20 entries x 100 vectors = 2000 tests.
+    - Tests must hit real behavior: routing, plugin hooks, config resolution,
+      module loading, build output, diagnostics, FS effects, async order, error
+      shape.
+    - Commit in large functional groups, not one package per commit unless the
+      diff becomes unreviewable.
+    - Commit: `test: add large corpus vectors`
 
-- Extend `pnpm run gate:node-corpus-general-compiler`.
-- Scan compiler/codegen/runtime for corpus-name/package-specific branches.
-- Add holdout semantics tests with same syntax patterns but different packages,
-  names, data, and control-flow shapes.
-- Fail if corpus vectors pass only because corpus-specific strings or package
-  paths are recognized.
+13. **Implement general JS semantics by failing gate order**
+    - Use failing 10-corpus, holdout, and large-corpus reports to choose next
+      semantic axis.
+    - Implement language semantics generally: scope/hoist/TDZ, prototype,
+      descriptors, equality/coercion, class/super/private, destructuring,
+      spread/rest, finally completion, Promise/microtask/timers, built-ins.
+    - Add semantic-axis differential tests before or with implementation.
+    - Commit sequence: one commit per semantic axis.
 
-Commit: `test: enforce non corpus specific parity`
+14. **Implement Node.js LTS APIs by failing gate order**
+    - Implement API families generally:
+      - process/CLI/env/stdio/signals
+      - fs/path/url/querystring
+      - buffer/text/crypto
+      - events/async context/timers
+      - streams/child_process
+      - net/http/https/tls/dns/dgram
+      - os/perf/util/assert/console/test
+      - zlib/sqlite/permissions/report
+    - VM/V8/native/embedder surfaces fail closed unless source-level
+      reimplementation is explicitly designed.
+    - Commit sequence: one commit per API family.
 
-### Phase 6: General JS semantics expansion
+15. **Remove route-era product assumptions**
+    - Keep route fixtures only as compatibility samples.
+    - README/docs/CLI output must describe user workflow around tsdown-bundleable
+      Node packages, not Fastify/Hono route extraction.
+    - Compiler core must not branch on framework names.
+    - Commit: `docs: remove route-era product framing`
 
-- Add differential tests by semantic axis, not by corpus:
-  - scope/closure/hoist/TDZ
-  - object/prototype/descriptors
-  - array/property ordering
-  - equality/coercion
-  - `this`/class/private/super
-  - destructuring/spread/rest
-  - try/finally completion
-  - Promise/microtask/timer ordering
-  - built-ins matrix
-- Require Node and generated Go to run the same vectors.
-
-Commit: `engine: expand general js semantic parity`
-
-### Phase 7: Node.js 26 runtime API expansion
-
-- Implement stable Node.js 26 API groups in functional batches:
-  - process/CLI/env/stdio/signals
-  - fs/path/url/querystring
-  - buffer/text/crypto
-  - events/async context/timers
-  - streams/child_process
-  - net/http/https/tls/dns/dgram
-  - os/perf/util/assert/console/test
-  - zlib/sqlite/permissions/report
-- For VM/V8/native/embedder surfaces, add deterministic fail-closed
-  diagnostics unless a source-level reimplementation strategy is approved.
-
-Commit sequence: one commit per API family, not per test case.
-
-### Phase 8: Final Node.js 26 gate
+16. **Run final release gate**
 
 Final required gate becomes:
 
@@ -231,7 +257,7 @@ pnpm run test:node-corpus:vitest
 pnpm run gate:node-corpus-vector-parity
 pnpm run gate:node-corpus-parity
 pnpm run gate:node-corpus-general-compiler
-pnpm run gate:node26-coverage-ledger
+pnpm run gate:node-lts-coverage-ledger
 ./scripts/smoke-m1.sh
 ```
 
@@ -317,7 +343,7 @@ Each test case runs a Node probe and a Go probe with the same input.
 ## Large package/application corpus
 
 The 10 existing corpus entries are useful but too small. They mostly prove
-library/CLI utility semantics. After the Node.js 26 parity ledger is in place,
+library/CLI utility semantics. After the Node.js LTS parity ledger is in place,
 add a second corpus tier with large framework, build-tool, compiler, server,
 GraphQL, and ORM packages.
 
@@ -338,7 +364,7 @@ Large corpus rules:
 - Add 20 more corpus entries under `test-corpus/node-large/`.
 - Each entry must have exactly 100 Vitest tests at first landing.
 - The same 100 test vectors must run through:
-  - original Node.js 26 execution
+  - original Node.js 24.15.0 LTS execution
   - `tsgodown` compile
   - generated Go `go build`
   - generated Go binary execution
@@ -388,11 +414,11 @@ pnpm run gate:node-large-general-compiler
 
 Large corpus acceptance:
 
-- 20 entries x 100 vectors = 2000 Vitest tests pass on Node.js 26.
+- 20 entries x 100 vectors = 2000 Vitest tests pass on Node.js 24.15.0 LTS.
 - The same 2000 vectors pass through generated Go.
 - All generated Go projects pass `go build`.
 - Node/Go parity diff is zero.
-- Capability coverage report maps every failure to a Node.js 26 ledger row.
+- Capability coverage report maps every failure to a Node.js LTS ledger row.
 - Corpus-specific code branches are a release blocker.
 
 The diff report is grouped by capability:
