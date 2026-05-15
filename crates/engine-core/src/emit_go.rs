@@ -76,23 +76,27 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     if !can_emit_executable {
         diagnostics.push(unsupported_codegen_diagnostic(&unsupported_features));
     }
+    let output_kind = request.output_kind.clone();
     let mut files = vec![
         GeneratedFile {
-            path: match request.output_kind {
+            path: match output_kind.clone() {
                 EmitGoOutputKind::Main => "main.go",
                 EmitGoOutputKind::VectorSuite => "vector_suite.go",
             }
             .to_string(),
-            contents: if can_emit_executable {
-                render_executable_program(&package_name, &module_path, &analyzed)
-            } else {
-                render_fail_closed_program(
-                    &package_name,
-                    &module_path,
-                    &diagnostics,
-                    request.output_kind.purpose(),
-                )
-            },
+            contents: add_output_kind_prelude(
+                output_kind,
+                if can_emit_executable {
+                    render_executable_program(&package_name, &module_path, &analyzed)
+                } else {
+                    render_fail_closed_program(
+                        &package_name,
+                        &module_path,
+                        &diagnostics,
+                        request.output_kind.purpose(),
+                    )
+                },
+            ),
         },
         GeneratedFile {
             path: "go.mod".to_string(),
@@ -121,6 +125,15 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
         target_backend: "go".to_string(),
         files,
         diagnostics,
+    }
+}
+
+fn add_output_kind_prelude(output_kind: EmitGoOutputKind, contents: String) -> String {
+    match output_kind {
+        EmitGoOutputKind::Main => contents,
+        EmitGoOutputKind::VectorSuite => {
+            format!("//go:build tsgodown_vector\n\n{contents}")
+        }
     }
 }
 

@@ -248,6 +248,9 @@ export { value };
         assert_eq!(response.files[0].path, "vector_suite.go");
         assert!(response.files[0]
             .contents
+            .starts_with("//go:build tsgodown_vector\n\npackage main"));
+        assert!(response.files[0]
+            .contents
             .contains(fail_closed_report_version(ProgramPurpose::VectorSuite)));
         assert!(response.files[0].contents.contains("\"results\": []any{}"));
         assert!(response.files[0].contents.contains("corpus := \"\""));
@@ -280,6 +283,9 @@ console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
         });
 
         assert_eq!(response.files[0].path, "vector_suite.go");
+        assert!(response.files[0]
+            .contents
+            .starts_with("//go:build tsgodown_vector\n\npackage main"));
         assert!(!response
             .diagnostics
             .iter()
