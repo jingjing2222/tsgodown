@@ -94,6 +94,7 @@ function emitGoEntry(testCase, entry, outputKind = "main") {
         config: {},
       },
       packageName: "main",
+      modulePath: goModulePath(testCase),
       outputKind,
     }),
   });
@@ -135,6 +136,10 @@ function emittedFileContents(testCase, emitGoJson, fileName) {
 
 function goString(value) {
   return JSON.stringify(String(value));
+}
+
+function goModulePath(testCase) {
+  return `example.com/tsgodown-node-corpus/${testCase.id}`;
 }
 
 function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
@@ -1409,12 +1414,9 @@ func appendString(out map[string]any, key string, value string) {
 }
 
 function renderGoMod(testCase) {
-  return [
-    `module example.com/tsgodown-node-corpus/${testCase.id}`,
-    "",
-    "go 1.22",
-    "",
-  ].join("\n");
+  return [goModulePath(testCase), "", "go 1.22", ""]
+    .map((line, index) => (index === 0 ? `module ${line}` : line))
+    .join("\n");
 }
 
 function renderSourceIrGo(analyzeJson) {
@@ -1557,11 +1559,7 @@ function generateCase(testCase) {
   const outDir = path.join(generatedRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, "go.mod"), renderGoMod(testCase), "utf8");
-  fs.writeFileSync(
-    path.join(outDir, "main.go"),
-    mainGoFromEmitResponse(testCase, emitGoJson),
-    "utf8",
-  );
+  writeEmitGoFiles(testCase, outDir, emitGoJson, "main.go");
   fs.writeFileSync(
     path.join(outDir, "source_ir.go"),
     renderSourceIrGo(analyzeJson),
@@ -1572,11 +1570,7 @@ function generateCase(testCase) {
     renderProbeIrGo(probeAnalyzeJson),
     "utf8",
   );
-  fs.writeFileSync(
-    path.join(outDir, "vector_suite.go"),
-    vectorSuiteGoFromEmitResponse(testCase, vectorEmitGoJson),
-    "utf8",
-  );
+  writeEmitGoFiles(testCase, outDir, vectorEmitGoJson, "vector_suite.go");
 
   return {
     id: testCase.id,
@@ -1589,6 +1583,18 @@ function generateCase(testCase) {
     probeExecutableIr: executableIrStats(probeAnalyzeJson),
     vectorExecutableIr: executableIrStats(vectorAnalyzeJson),
   };
+}
+
+function writeEmitGoFiles(testCase, outDir, emitGoJson, requiredFile) {
+  emittedFileContents(testCase, emitGoJson, requiredFile);
+  for (const file of emitGoJson?.files ?? []) {
+    if (typeof file?.path !== "string" || typeof file?.contents !== "string") {
+      continue;
+    }
+    const outPath = path.join(outDir, file.path);
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, file.contents, "utf8");
+  }
 }
 
 function main() {

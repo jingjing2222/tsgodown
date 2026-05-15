@@ -186,19 +186,25 @@ export { value };
                 config: AnalyzeConfig::default(),
             },
             package_name: Some("9-bad package".to_string()),
+            module_path: Some("example.com/custom-module".to_string()),
             output_kind: EmitGoOutputKind::Main,
         });
 
         assert_eq!(response.version, "engine-core.emit-go.v1");
         assert_eq!(response.target_backend, "go");
-        assert_eq!(response.files.len(), 1);
+        assert_eq!(response.files.len(), 2);
         assert_eq!(response.files[0].path, "main.go");
         assert!(response.files[0]
             .contents
             .contains("package pkg_9badpackage"));
         assert!(response.files[0]
             .contents
+            .contains("\"example.com/custom-module/tsgodownrt\""));
+        assert!(response.files[0]
+            .contents
             .contains("engine-core.emit-go.fail-closed.v1"));
+        assert_eq!(response.files[1].path, "tsgodownrt/runtime.go");
+        assert!(response.files[1].contents.contains("package tsgodownrt"));
         assert!(response
             .diagnostics
             .iter()
@@ -219,10 +225,11 @@ export { value };
                 config: AnalyzeConfig::default(),
             },
             package_name: None,
+            module_path: Some("example.com/vector-suite".to_string()),
             output_kind: EmitGoOutputKind::VectorSuite,
         });
 
-        assert_eq!(response.files.len(), 1);
+        assert_eq!(response.files.len(), 2);
         assert_eq!(response.files[0].path, "vector_suite.go");
         assert!(response.files[0]
             .contents
