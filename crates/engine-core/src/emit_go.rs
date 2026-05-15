@@ -327,6 +327,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	stdnet "net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1019,6 +1020,8 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return v8ModuleExports(), true
 	case "module", "node:module":
 		return moduleModuleExports(), true
+	case "net", "node:net":
+		return netModuleExports(), true
 	case "zlib", "node:zlib":
 		return zlibModuleExports(), true
 	default:
@@ -4522,6 +4525,77 @@ func moduleModuleExports() map[string]any {
 			}
 			return nil, fmt.Errorf("module import %s is not resolved", jsString(args[0]))
 		}}, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func netModuleExports() map[string]any {
+	exports := map[string]any{}
+	isIP := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return float64(0), nil
+		}
+		ip := stdnet.ParseIP(jsString(args[0]))
+		if ip == nil {
+			return float64(0), nil
+		}
+		if ip.To4() != nil {
+			return float64(4), nil
+		}
+		return float64(6), nil
+	})
+	exports["isIP"] = isIP
+	exports["isIPv4"] = nativeFunction(func(args []any) (any, error) {
+		value, err := isIP.Call(args)
+		if err != nil {
+			return nil, err
+		}
+		return toNumber(value) == 4, nil
+	})
+	exports["isIPv6"] = nativeFunction(func(args []any) (any, error) {
+		value, err := isIP.Call(args)
+		if err != nil {
+			return nil, err
+		}
+		return toNumber(value) == 6, nil
+	})
+	socketCtor := nativeFunction(func(args []any) (any, error) {
+		socket := newEventEmitter()
+		socket["setTimeout"] = nativeFunction(func(args []any) (any, error) { return socket, nil })
+		socket["setNoDelay"] = nativeFunction(func(args []any) (any, error) { return socket, nil })
+		socket["setKeepAlive"] = nativeFunction(func(args []any) (any, error) { return socket, nil })
+		socket["destroy"] = nativeFunction(func(args []any) (any, error) {
+			emitEvent(socket, "close")
+			return socket, nil
+		})
+		return socket, nil
+	})
+	exports["Socket"] = socketCtor
+	exports["Stream"] = socketCtor
+	exports["connect"] = nativeFunction(func(args []any) (any, error) {
+		return callFunctionWithValues(socketCtor, []any{}, Env{}, jsUndefined)
+	})
+	exports["createConnection"] = exports["connect"]
+	exports["createServer"] = nativeFunction(func(args []any) (any, error) {
+		server := newEventEmitter()
+		server["listen"] = nativeFunction(func(args []any) (any, error) {
+			emitEvent(server, "listening")
+			return server, nil
+		})
+		server["close"] = nativeFunction(func(args []any) (any, error) {
+			if callback := lastCallback(args); callback != nil {
+				if _, err := callFunctionWithValues(callback, []any{}, Env{}, jsUndefined); err != nil {
+					return nil, err
+				}
+			}
+			emitEvent(server, "close")
+			return server, nil
+		})
+		server["address"] = nativeFunction(func(args []any) (any, error) {
+			return map[string]any{"address": "127.0.0.1", "family": "IPv4", "port": float64(0)}, nil
+		})
+		return server, nil
 	})
 	exports["default"] = exports
 	return exports

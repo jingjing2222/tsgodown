@@ -137,6 +137,8 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:v8",
     "module",
     "node:module",
+    "net",
+    "node:net",
     "zlib",
     "node:zlib",
 ];
