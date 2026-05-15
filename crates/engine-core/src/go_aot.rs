@@ -102,12 +102,9 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
     else {
         return None;
     };
-    if rest_param.is_some() || *r#async || *generator || body.len() != 1 {
+    if rest_param.is_some() || *r#async || *generator {
         return None;
     }
-    let JsStmt::Return { value: Some(value) } = &body[0] else {
-        return None;
-    };
     let mut function_state = AotState {
         functions: state.functions.clone(),
         ..AotState::default()
@@ -120,11 +117,68 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
         .map(|param| format!("{} float64", sanitize_go_identifier(param)))
         .collect::<Vec<_>>()
         .join(", ");
-    let returned = render_numeric_expr(value, &function_state)?;
+    let function_body = render_function_body(body, &function_state)?;
     Some(format!(
-        "func {}({rendered_params}) any {{\n\treturn {returned}\n}}",
-        sanitize_go_identifier(name)
+        "func {}({rendered_params}) any {{\n{}\n}}",
+        sanitize_go_identifier(name),
+        indent_lines(&function_body)
     ))
+}
+
+fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
+    body.iter()
+        .map(|stmt| render_function_stmt(stmt, state))
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
+}
+
+fn render_function_stmt(stmt: &JsStmt, state: &AotState) -> Option<String> {
+    match stmt {
+        JsStmt::Return { value: Some(value) } => {
+            let returned = render_expr(value, state)?;
+            Some(format!("return {returned}"))
+        }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            let test = render_bool_expr(test, state)?;
+            let consequent = indent_lines(&render_function_body(consequent, state)?);
+            if alternate.is_empty() {
+                return Some(format!("if {test} {{\n{consequent}\n}}"));
+            }
+            let alternate = indent_lines(&render_function_body(alternate, state)?);
+            Some(format!(
+                "if {test} {{\n{consequent}\n}} else {{\n{alternate}\n}}"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Bool { value },
+        } => Some(value.to_string()),
+        JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            let op = go_comparison_op(op)?;
+            Some(format!("({left} {op} {right})"))
+        }
+        JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
+            let left = render_bool_expr(left, state)?;
+            let right = render_bool_expr(right, state)?;
+            Some(format!("({left} {op} {right})"))
+        }
+        JsExpr::Unary { op, arg } if op == "!" => {
+            let arg = render_bool_expr(arg, state)?;
+            Some(format!("(!{arg})"))
+        }
+        _ => None,
+    }
 }
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
@@ -231,6 +285,18 @@ fn number_literal(value: &str) -> Option<String> {
 
 fn is_numeric_binary_op(op: &str) -> bool {
     matches!(op, "+" | "-" | "*" | "/" | "%")
+}
+
+fn go_comparison_op(op: &str) -> Option<&'static str> {
+    match op {
+        ">" => Some(">"),
+        ">=" => Some(">="),
+        "<" => Some("<"),
+        "<=" => Some("<="),
+        "==" | "===" => Some("=="),
+        "!=" | "!==" => Some("!="),
+        _ => None,
+    }
 }
 
 fn indent_lines(value: &str) -> String {

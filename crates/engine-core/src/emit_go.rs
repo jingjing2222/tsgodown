@@ -2379,7 +2379,7 @@ func jsonGlobal() map[string]any {
 func mathGlobal() map[string]any {
 	return map[string]any{
 		"random": nativeFunction(func(args []any) (any, error) {
-			return float64(time.Now().UnixNano()%1000000) / 1000000, nil
+			return float64(time.Now().UnixNano()%1000000+1) / 1000001, nil
 		}),
 		"ceil": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
