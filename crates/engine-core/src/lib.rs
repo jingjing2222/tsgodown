@@ -4633,6 +4633,81 @@ console.log("parse-int", numeric("42"), numeric("A"), parseInt("ff", 16))
     }
 
     #[test]
+    fn emit_go_runs_aot_number_array_stack_subset() {
+        let root = temp_project("engine-core-aot-number-array-stack");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function collect() {
+  let stack, result
+  stack = []
+  stack.push(1)
+  stack.push(7)
+  result = [stack.length, stack.pop(), stack[0]]
+  return result
+}
+const values = collect()
+console.log("num-array", values[0], values[1], values[2])
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-number-array-stack".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownNumberArrayPop"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "num-array 2 7 1\n");
+    }
+
+    #[test]
     fn emit_go_runs_aot_var_retyped_for_loop_subset() {
         let root = temp_project("engine-core-aot-var-retyped-for-loop");
         write(
