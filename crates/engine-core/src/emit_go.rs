@@ -478,6 +478,24 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			}
 		}
 		return completion{}, nil
+	case "for-of":
+		iterable, err := evalExpr(asMap(stmt["right"]), env)
+		if err != nil {
+			return completion{}, err
+		}
+		for _, value := range iterableValues(iterable) {
+			env[asString(stmt["left"])] = value
+			for _, child := range asStmtSlice(stmt["body"]) {
+				result, err := evalStmt(child, env)
+				if err != nil {
+					return completion{}, err
+				}
+				if result.returned {
+					return result, nil
+				}
+			}
+		}
+		return completion{}, nil
 	case "return":
 		value := any(jsUndefined)
 		var err error
@@ -526,6 +544,8 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return nil, err
 		}
 		return evalUnary(asString(expr["op"]), arg)
+	case "await":
+		return evalExpr(asMap(expr["arg"]), env)
 	case "binary":
 		left, err := evalExpr(asMap(expr["left"]), env)
 		if err != nil {
@@ -580,6 +600,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			}
 			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
 			return jsUndefined, nil
+		}
+		if isArrayPush(asMap(expr["callee"])) {
+			return callArrayPush(asMap(expr["callee"]), asSlice(expr["args"]), env)
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
 			return callFunction(env[asString(callee["name"])], asSlice(expr["args"]), env)
@@ -653,6 +676,29 @@ func assignTarget(target map[string]any, value any, env Env) error {
 	default:
 		return fmt.Errorf("unsupported assignment target %v", target["kind"])
 	}
+}
+
+func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
+	objectExpr := asMap(callee["object"])
+	current, err := evalExpr(objectExpr, env)
+	if err != nil {
+		return nil, err
+	}
+	array, ok := current.([]any)
+	if !ok {
+		return nil, errors.New("push receiver is not array")
+	}
+	for _, arg := range rawArgs {
+		value, err := evalExpr(asMap(arg), env)
+		if err != nil {
+			return nil, err
+		}
+		array = append(array, value)
+	}
+	if err := assignTarget(objectExpr, array, env); err != nil {
+		return nil, err
+	}
+	return float64(len(array)), nil
 }
 
 func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
@@ -764,6 +810,25 @@ func isConsoleLog(callee map[string]any) bool {
 	}
 	object := asMap(callee["object"])
 	return object["kind"] == "ident" && asString(object["name"]) == "console"
+}
+
+func isArrayPush(callee map[string]any) bool {
+	return callee["kind"] == "member" && asString(callee["property"]) == "push"
+}
+
+func iterableValues(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case map[string]any:
+		values := []any{}
+		for _, item := range typed {
+			values = append(values, item)
+		}
+		return values
+	default:
+		return nil
+	}
 }
 
 func isTruthy(value any) bool {

@@ -74,7 +74,10 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_stmt_list(alternate, false, unsupported);
         }
         JsStmt::For { .. } => unsupported.push("for statements".to_string()),
-        JsStmt::ForOf { .. } => unsupported.push("for-of statements".to_string()),
+        JsStmt::ForOf { right, body, .. } => {
+            collect_unsupported_expr(right, unsupported);
+            collect_unsupported_stmt_list(body, false, unsupported);
+        }
         JsStmt::While { .. } => unsupported.push("while statements".to_string()),
         JsStmt::Switch { .. } => unsupported.push("switch statements".to_string()),
         JsStmt::Try { .. } => unsupported.push("try statements".to_string()),
@@ -187,7 +190,8 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(alternate, unsupported);
         }
         JsExpr::Call { callee, args } => {
-            if !is_console_log_call(callee) && !matches!(callee.as_ref(), JsExpr::Ident { .. }) {
+            if !is_supported_member_call(callee) && !matches!(callee.as_ref(), JsExpr::Ident { .. })
+            {
                 unsupported.push("function calls".to_string());
             }
             for arg in args {
@@ -207,7 +211,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         }
         JsExpr::Function { .. } => unsupported.push("function expressions".to_string()),
         JsExpr::Class { .. } => unsupported.push("class expressions".to_string()),
-        JsExpr::Await { .. } => unsupported.push("await expressions".to_string()),
+        JsExpr::Await { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Assign { op, left, right } => {
             if op != "=" {
                 unsupported.push(format!("assignment {op}"));
@@ -223,11 +227,12 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
     }
 }
 
-fn is_console_log_call(callee: &JsExpr) -> bool {
+fn is_supported_member_call(callee: &JsExpr) -> bool {
     matches!(
         callee,
         JsExpr::Member { object, property }
-            if property == "log" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "console")
+            if (property == "log" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "console"))
+                || property == "push"
     )
 }
 
