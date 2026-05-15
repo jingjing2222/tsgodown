@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::contract::{AnalyzeResponse, IrDocument, JsExpr, JsStmt, JsValue, Module};
 use crate::emit_go::{go_string_literal, sanitize_go_identifier};
 
+const CJS_DEFAULT_EXPORT_FUNCTION: &str = "__cjs_default_export";
+
 pub(crate) fn render_aot_executable_program(
     package_name: &str,
     analyzed: &AnalyzeResponse,
@@ -16,10 +18,17 @@ pub(crate) fn render_aot_executable_program(
     let module_default_exports = collect_module_default_exports(&analyzed.ir, &module_functions);
     let module_default_class_exports =
         collect_module_default_class_exports(&analyzed.ir, &module_classes);
-    let module_object_exports =
-        collect_module_object_function_exports(&analyzed.ir, &module_functions);
-    let module_named_exports =
-        collect_module_named_exports(&analyzed.ir, &module_functions, &module_object_exports);
+    let module_object_exports = collect_module_object_function_exports(
+        &analyzed.ir,
+        &module_functions,
+        &module_default_exports,
+    );
+    let module_named_exports = collect_module_named_exports(
+        &analyzed.ir,
+        &module_functions,
+        &module_default_exports,
+        &module_object_exports,
+    );
     let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
     let declarations = render_module_decls(
         &analyzed.ir,
@@ -72,9 +81,14 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
     let module_classes = collect_module_classes(ir);
     let module_default_exports = collect_module_default_exports(ir, &module_functions);
     let module_default_class_exports = collect_module_default_class_exports(ir, &module_classes);
-    let module_object_exports = collect_module_object_function_exports(ir, &module_functions);
-    let module_named_exports =
-        collect_module_named_exports(ir, &module_functions, &module_object_exports);
+    let module_object_exports =
+        collect_module_object_function_exports(ir, &module_functions, &module_default_exports);
+    let module_named_exports = collect_module_named_exports(
+        ir,
+        &module_functions,
+        &module_default_exports,
+        &module_object_exports,
+    );
     let module_slots = collect_module_slots(ir, &module_functions);
     let mut features = BTreeSet::new();
     for module in &ir.modules {
@@ -451,6 +465,21 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
                     },
                 );
             }
+            if let Some(parts) = cjs_default_function_expr(stmt) {
+                let go_name = function_go_name(module, entry, CJS_DEFAULT_EXPORT_FUNCTION);
+                functions.insert(
+                    (module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string()),
+                    AotFunction {
+                        params: parts.params.clone(),
+                        param_kinds: infer_function_param_kinds(parts.params, parts.body),
+                        rest_param: parts.rest_param.clone(),
+                        r#async: *parts.r#async,
+                        generator: *parts.generator,
+                        body: parts.body.clone(),
+                        go_name,
+                    },
+                );
+            }
         }
     }
     functions
@@ -575,10 +604,13 @@ fn collect_module_default_exports(
             if op != "=" || !is_module_exports_member(left) {
                 continue;
             }
-            let JsExpr::Ident { name } = right.as_ref() else {
-                continue;
+            let function = match right.as_ref() {
+                JsExpr::Ident { name } => module_functions.get(&(module.id.clone(), name.clone())),
+                JsExpr::Function { .. } => module_functions
+                    .get(&(module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string())),
+                _ => None,
             };
-            if let Some(function) = module_functions.get(&(module.id.clone(), name.clone())) {
+            if let Some(function) = function {
                 exports.insert(module.id.clone(), function.clone());
             }
         }
@@ -619,6 +651,7 @@ fn collect_module_default_class_exports(
 fn collect_module_named_exports(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_default_exports: &BTreeMap<String, AotFunction>,
     module_object_exports: &BTreeMap<(String, String), BTreeMap<String, AotFunction>>,
 ) -> BTreeMap<String, BTreeMap<String, AotFunction>> {
     let mut exports = BTreeMap::new();
@@ -638,9 +671,11 @@ fn collect_module_named_exports(
             }
             if is_module_exports_member(left) {
                 if let Some(object_exports) = module_exported_object_functions(
+                    ir,
                     module,
                     right,
                     module_functions,
+                    module_default_exports,
                     module_object_exports,
                 ) {
                     exports
@@ -686,16 +721,24 @@ fn collect_module_named_exports(
 }
 
 fn module_exported_object_functions(
+    ir: &IrDocument,
     module: &Module,
     expr: &JsExpr,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_default_exports: &BTreeMap<String, AotFunction>,
     module_object_exports: &BTreeMap<(String, String), BTreeMap<String, AotFunction>>,
 ) -> Option<BTreeMap<String, AotFunction>> {
     match expr {
         JsExpr::Ident { name } => module_object_exports
             .get(&(module.id.clone(), name.clone()))
             .cloned(),
-        JsExpr::Object { props } => collect_object_function_props(module, props, module_functions),
+        JsExpr::Object { props } => Some(collect_object_function_props(
+            ir,
+            module,
+            props,
+            module_functions,
+            module_default_exports,
+        )),
         _ => None,
     }
 }
@@ -703,6 +746,7 @@ fn module_exported_object_functions(
 fn collect_module_object_function_exports(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_default_exports: &BTreeMap<String, AotFunction>,
 ) -> BTreeMap<(String, String), BTreeMap<String, AotFunction>> {
     let mut objects = BTreeMap::new();
     for module in &ir.modules {
@@ -717,10 +761,13 @@ fn collect_module_object_function_exports(
             else {
                 continue;
             };
-            let Some(functions) = collect_object_function_props(module, props, module_functions)
-            else {
-                continue;
-            };
+            let functions = collect_object_function_props(
+                ir,
+                module,
+                props,
+                module_functions,
+                module_default_exports,
+            );
             if !functions.is_empty() {
                 objects.insert((module.id.clone(), name.clone()), functions);
             }
@@ -730,25 +777,60 @@ fn collect_module_object_function_exports(
 }
 
 fn collect_object_function_props(
+    ir: &IrDocument,
     module: &Module,
     props: &[crate::contract::JsObjectProp],
     module_functions: &BTreeMap<(String, String), AotFunction>,
-) -> Option<BTreeMap<String, AotFunction>> {
+    module_default_exports: &BTreeMap<String, AotFunction>,
+) -> BTreeMap<String, AotFunction> {
     let mut functions = BTreeMap::new();
     for prop in props {
         if prop.spread || prop.key_expr.is_some() {
-            return None;
+            continue;
         }
-        let JsExpr::Ident {
-            name: function_name,
-        } = &prop.value
-        else {
-            return None;
-        };
-        let function = module_functions.get(&(module.id.clone(), function_name.clone()))?;
-        functions.insert(prop.key.clone(), function.clone());
+        if let Some(function) = resolve_module_function_binding(
+            ir,
+            module,
+            &prop.value,
+            module_functions,
+            module_default_exports,
+        ) {
+            functions.insert(prop.key.clone(), function);
+        }
     }
-    Some(functions)
+    functions
+}
+
+fn resolve_module_function_binding(
+    ir: &IrDocument,
+    module: &Module,
+    expr: &JsExpr,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_default_exports: &BTreeMap<String, AotFunction>,
+) -> Option<AotFunction> {
+    let JsExpr::Ident { name } = expr else {
+        return None;
+    };
+    if let Some(function) = module_functions.get(&(module.id.clone(), name.clone())) {
+        return Some(function.clone());
+    }
+    for import in &module.imports {
+        if import.kind != "cjs" {
+            continue;
+        }
+        if !import.bindings.iter().any(|binding| binding.local == *name) {
+            continue;
+        }
+        let resolved = import.resolved.as_ref()?;
+        let imported_module = ir
+            .modules
+            .iter()
+            .find(|candidate| &candidate.id == resolved)?;
+        if let Some(function) = module_default_exports.get(&imported_module.id) {
+            return Some(function.clone());
+        }
+    }
+    None
 }
 
 fn collect_module_slots(
@@ -808,9 +890,14 @@ fn render_module_decls(
     let mut declarations = Vec::new();
     let module_default_exports = collect_module_default_exports(ir, module_functions);
     let module_default_class_exports = collect_module_default_class_exports(ir, module_classes);
-    let module_object_exports = collect_module_object_function_exports(ir, module_functions);
-    let module_named_exports =
-        collect_module_named_exports(ir, module_functions, &module_object_exports);
+    let module_object_exports =
+        collect_module_object_function_exports(ir, module_functions, &module_default_exports);
+    let module_named_exports = collect_module_named_exports(
+        ir,
+        module_functions,
+        &module_default_exports,
+        &module_object_exports,
+    );
     for module in &ir.modules {
         let state = module_aot_state(
             module,
@@ -838,7 +925,9 @@ fn render_module_decls(
                 if !is_exported_name(module, name) {
                     continue;
                 }
-                let slot = module_slots.get(&(module.id.clone(), name.clone()))?;
+                let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) else {
+                    continue;
+                };
                 declarations.push(format!(
                     "var {} {} = {}",
                     slot.go_name, slot.go_type, slot.rendered
@@ -848,6 +937,11 @@ fn render_module_decls(
         for stmt in &module.executable.as_ref()?.stmts {
             if let Some(parts) = function_parts(stmt) {
                 let function = module_functions.get(&(module.id.clone(), parts.name.clone()))?;
+                declarations.push(render_function_decl(function, &state)?);
+            }
+            if cjs_default_function_expr(stmt).is_some() {
+                let function = module_functions
+                    .get(&(module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string()))?;
                 declarations.push(render_function_decl(function, &state)?);
             }
         }
@@ -902,7 +996,9 @@ fn module_aot_state(
                     state.classes.insert(binding.local.clone(), class.clone());
                     continue;
                 }
-                let named = context.named_exports.get(&imported_module.id)?;
+                let Some(named) = context.named_exports.get(&imported_module.id) else {
+                    continue;
+                };
                 for (property, function) in named {
                     state
                         .namespace_functions
@@ -1096,6 +1192,14 @@ struct AotFunctionParts<'a> {
     body: &'a Vec<JsStmt>,
 }
 
+struct AotInlineFunctionParts<'a> {
+    params: &'a Vec<String>,
+    rest_param: &'a Option<String>,
+    r#async: &'a bool,
+    generator: &'a bool,
+    body: &'a Vec<JsStmt>,
+}
+
 struct AotModuleContext<'a> {
     functions: &'a BTreeMap<(String, String), AotFunction>,
     classes: &'a BTreeMap<(String, String), AotClass>,
@@ -1176,6 +1280,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                             .keys()
                             .any(|(namespace, _)| namespace == name))
                 {
+                    return Some(String::new());
+                }
+                if is_require_call(expr) {
                     return Some(String::new());
                 }
                 if let Some(value) = render_numeric_expr(expr, state) {
@@ -1744,6 +1851,36 @@ fn function_parts(stmt: &JsStmt) -> Option<AotFunctionParts<'_>> {
         }),
         _ => None,
     }
+}
+
+fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    let JsExpr::Assign { op, left, right } = expr else {
+        return None;
+    };
+    if op != "=" || !is_module_exports_member(left) {
+        return None;
+    }
+    let JsExpr::Function {
+        params,
+        rest_param,
+        r#async,
+        generator,
+        body,
+        ..
+    } = right.as_ref()
+    else {
+        return None;
+    };
+    Some(AotInlineFunctionParts {
+        params,
+        rest_param,
+        r#async,
+        generator,
+        body,
+    })
 }
 
 fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {

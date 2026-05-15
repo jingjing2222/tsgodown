@@ -1474,6 +1474,81 @@ module.exports = add
     }
 
     #[test]
+    fn emit_go_runs_aot_commonjs_default_function_expression_subset() {
+        let root = temp_project("engine-core-aot-cjs-default-function-expression");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const tag = require("./tag.js")
+console.log("aot-cjs-default-fn-expr", tag("go"))
+"#,
+        );
+        write(
+            &root,
+            "src/tag.js",
+            r#"
+module.exports = function (name) {
+  return name + "!"
+}
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-cjs-default-function-expression".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("src_tag_js___cjs_default_export"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "aot-cjs-default-fn-expr go!\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_commonjs_named_function_namespace_subset() {
         let root = temp_project("engine-core-aot-cjs-named-function");
         write(
@@ -1784,6 +1859,110 @@ module.exports = { add, label }
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "aot-cjs-inline-object-ns 6 ok\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_commonjs_reexported_default_functions_subset() {
+        let root = temp_project("engine-core-aot-cjs-reexport-default-functions");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const api = require("./api.js")
+console.log("aot-cjs-reexport", api.add(2, 4), api.tag("go"))
+"#,
+        );
+        write(
+            &root,
+            "src/add.js",
+            r#"
+module.exports = function (left, right) {
+  return left + right
+}
+"#,
+        );
+        write(
+            &root,
+            "src/tag.js",
+            r#"
+module.exports = function (name) {
+  return name + "!"
+}
+"#,
+        );
+        write(
+            &root,
+            "src/api.js",
+            r#"
+const add = require("./add.js")
+const tag = require("./tag.js")
+const unsupported = require("./constants.js")
+module.exports = { add, tag, unsupported }
+"#,
+        );
+        write(
+            &root,
+            "src/constants.js",
+            r#"
+module.exports = { label: "skip" }
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-cjs-reexport-default-functions".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("src_add_js___cjs_default_export"));
+        assert!(response.files[0]
+            .contents
+            .contains("src_tag_js___cjs_default_export"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "aot-cjs-reexport 6 go!\n"
         );
     }
 
