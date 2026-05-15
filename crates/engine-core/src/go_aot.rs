@@ -188,6 +188,12 @@ fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>
                 collect_builtin_usage_features(stmt, features);
             }
         }
+        JsStmt::While { test, body } => {
+            collect_builtin_usage_expr_features(test, features);
+            for stmt in body {
+                collect_builtin_usage_features(stmt, features);
+            }
+        }
         _ => {}
     }
 }
@@ -1232,6 +1238,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             update,
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
+        JsStmt::While { test, body } => render_while_stmt(test, body, state),
+        JsStmt::Break { label: None } => Some("break".to_string()),
+        JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
     }
 }
@@ -1274,6 +1283,13 @@ fn render_for_stmt(
         .unwrap_or_else(|| Some(String::new()))?;
     let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
     Some(format!("for {init}; {test}; {update} {{\n{body}\n}}"))
+}
+
+fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option<String> {
+    let loop_state = clone_aot_state(state);
+    let test = render_bool_expr(test, &loop_state)?;
+    let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+    Some(format!("for {test} {{\n{body}\n}}"))
 }
 
 fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
@@ -1571,6 +1587,9 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             update,
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
+        JsStmt::While { test, body } => render_while_stmt(test, body, state),
+        JsStmt::Break { label: None } => Some("break".to_string()),
+        JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
     }
 }
