@@ -12,9 +12,16 @@ pub(crate) fn render_aot_executable_program(
         return None;
     }
     let module_functions = collect_module_functions(&analyzed.ir);
+    let module_default_exports = collect_module_default_exports(&analyzed.ir, &module_functions);
     let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
     let declarations = render_module_decls(&analyzed.ir, &module_functions, &module_slots)?;
-    let mut state = module_aot_state(module, &analyzed.ir, &module_functions, &module_slots)?;
+    let mut state = module_aot_state(
+        module,
+        &analyzed.ir,
+        &module_functions,
+        &module_default_exports,
+        &module_slots,
+    )?;
     state.go_imports = collect_aot_imports(&analyzed.ir);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
@@ -166,10 +173,9 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
 fn can_aot_module_graph(ir: &IrDocument) -> bool {
     ir.modules.iter().all(|module| {
         module.executable.is_some()
-            && module
-                .imports
-                .iter()
-                .all(|import| import.kind == "esm" && import.resolved.is_some())
+            && module.imports.iter().all(|import| {
+                matches!(import.kind.as_str(), "esm" | "cjs") && import.resolved.is_some()
+            })
     })
 }
 
@@ -206,6 +212,36 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
     functions
 }
 
+fn collect_module_default_exports(
+    ir: &IrDocument,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+) -> BTreeMap<String, AotFunction> {
+    let mut exports = BTreeMap::new();
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            let JsStmt::Expr { expr } = stmt else {
+                continue;
+            };
+            let JsExpr::Assign { op, left, right } = expr else {
+                continue;
+            };
+            if op != "=" || !is_module_exports_member(left) {
+                continue;
+            }
+            let JsExpr::Ident { name } = right.as_ref() else {
+                continue;
+            };
+            if let Some(function) = module_functions.get(&(module.id.clone(), name.clone())) {
+                exports.insert(module.id.clone(), function.clone());
+            }
+        }
+    }
+    exports
+}
+
 fn collect_module_slots(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
@@ -215,7 +251,13 @@ fn collect_module_slots(
         let Some(executable) = &module.executable else {
             continue;
         };
-        let Some(state) = module_aot_state(module, ir, module_functions, &BTreeMap::new()) else {
+        let Some(state) = module_aot_state(
+            module,
+            ir,
+            module_functions,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        ) else {
             continue;
         };
         for stmt in &executable.stmts {
@@ -249,8 +291,15 @@ fn render_module_decls(
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<Vec<String>> {
     let mut declarations = Vec::new();
+    let module_default_exports = collect_module_default_exports(ir, module_functions);
     for module in &ir.modules {
-        let state = module_aot_state(module, ir, module_functions, module_slots)?;
+        let state = module_aot_state(
+            module,
+            ir,
+            module_functions,
+            &module_default_exports,
+            module_slots,
+        )?;
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::VarDecl { name, .. } = stmt {
                 if !is_exported_name(module, name) {
@@ -277,6 +326,7 @@ fn module_aot_state(
     module: &Module,
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_default_exports: &BTreeMap<String, AotFunction>,
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<AotState> {
     let mut state = AotState::default();
@@ -298,6 +348,13 @@ fn module_aot_state(
             .iter()
             .find(|candidate| &candidate.id == resolved)?;
         for binding in &import.bindings {
+            if import.kind == "cjs" {
+                let function = module_default_exports.get(&imported_module.id)?;
+                state
+                    .functions
+                    .insert(binding.local.clone(), function.clone());
+                continue;
+            }
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
             if let Some(function) =
                 module_functions.get(&(imported_module.id.clone(), imported.to_string()))
@@ -316,6 +373,18 @@ fn module_aot_state(
 
 fn is_exported_name(module: &Module, name: &str) -> bool {
     module.exports.iter().any(|exported| exported == name)
+}
+
+fn is_module_exports_member(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "module") && property == "exports"
+    )
 }
 
 fn module_go_prefix(module: &Module) -> String {
@@ -408,6 +477,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::VarDecl { name, init } => {
             let ident = sanitize_go_identifier(name);
             if let Some(expr) = init {
+                if is_require_call(expr)
+                    && (state.functions.contains_key(name) || state.bindings.contains(name))
+                {
+                    return Some(String::new());
+                }
                 if let Some(value) = render_numeric_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Number);
                     return Some(format!("var {ident} float64 = {value}"));
@@ -733,6 +807,13 @@ fn is_console_log(expr: &JsExpr) -> bool {
             property_expr: None,
             ..
         } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "console") && property == "log"
+    )
+}
+
+fn is_require_call(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Call { callee, .. } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "require")
     )
 }
 

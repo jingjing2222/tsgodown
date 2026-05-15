@@ -1120,6 +1120,77 @@ console.log(JSON.stringify(report, null, 2))
     }
 
     #[test]
+    fn emit_go_runs_aot_commonjs_default_function_subset() {
+        let root = temp_project("engine-core-aot-cjs-default-function");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const add = require("./add.js")
+console.log("aot-cjs", add(2, 4))
+"#,
+        );
+        write(
+            &root,
+            "src/add.js",
+            r#"
+function add(left, right) {
+  return left + right
+}
+module.exports = add
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-cjs-default-function".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("src_add_js_add"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "aot-cjs 6\n");
+    }
+
+    #[test]
     fn emit_go_runs_aot_top_level_numeric_if_subset() {
         let root = temp_project("engine-core-aot-top-level-if");
         write(
