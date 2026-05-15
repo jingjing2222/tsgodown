@@ -1670,6 +1670,12 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(left, param_index, kinds);
             infer_expr_param_kinds(right, param_index, kinds);
         }
+        JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
+            infer_comparison_param_kind(left, right, param_index, kinds);
+            infer_comparison_param_kind(right, left, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds);
+            infer_expr_param_kinds(right, param_index, kinds);
+        }
         JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
             infer_expr_param_kinds(left, param_index, kinds);
             infer_expr_param_kinds(right, param_index, kinds);
@@ -1720,6 +1726,30 @@ fn infer_expr_param_kinds(
             for expr in exprs {
                 infer_expr_param_kinds(expr, param_index, kinds);
             }
+        }
+        _ => {}
+    }
+}
+
+fn infer_comparison_param_kind(
+    candidate: &JsExpr,
+    other: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match other {
+        expr if is_string_literal_like(expr) => {
+            mark_ident_param_kind(candidate, param_index, kinds, AotSlotKind::String);
+        }
+        JsExpr::Value {
+            value: JsValue::Bool { .. },
+        } => {
+            mark_ident_param_kind(candidate, param_index, kinds, AotSlotKind::Bool);
+        }
+        JsExpr::Value {
+            value: JsValue::Number { .. },
+        } => {
+            mark_ident_param_kind(candidate, param_index, kinds, AotSlotKind::Number);
         }
         _ => {}
     }
@@ -1944,10 +1974,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_static_member_expr(object, property, state)
         }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
-            let left = render_numeric_expr(left, state)?;
-            let right = render_numeric_expr(right, state)?;
-            let op = go_comparison_op(op)?;
-            Some(format!("({left} {op} {right})"))
+            render_comparison_expr(op, left, right, state)
         }
         JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
             let left = render_bool_expr(left, state)?;
@@ -2224,6 +2251,36 @@ fn render_conditional_expr(
     Some(format!(
         "func() {go_type} {{ if {test} {{ return {consequent} }}; return {alternate} }}()"
     ))
+}
+
+fn render_comparison_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let op = go_comparison_op(op)?;
+    if let (Some(left), Some(right)) = (
+        render_numeric_expr(left, state),
+        render_numeric_expr(right, state),
+    ) {
+        return Some(format!("({left} {op} {right})"));
+    }
+    if let (Some(left), Some(right)) = (
+        render_string_expr(left, state),
+        render_string_expr(right, state),
+    ) {
+        return Some(format!("({left} {op} {right})"));
+    }
+    if matches!(op, "==" | "!=") {
+        if let (Some(left), Some(right)) = (
+            render_bool_expr(left, state),
+            render_bool_expr(right, state),
+        ) {
+            return Some(format!("({left} {op} {right})"));
+        }
+    }
+    None
 }
 
 fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
