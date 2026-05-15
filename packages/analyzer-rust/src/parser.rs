@@ -130,7 +130,11 @@ fn collect_imports_from_ast(module: &Module) -> Vec<ImportIR> {
                         spec: src.value.to_string_lossy().to_string(),
                         kind: "esm".to_string(),
                         resolved: None,
-                        bindings: Vec::new(),
+                        bindings: named
+                            .specifiers
+                            .iter()
+                            .filter_map(export_named_import_binding)
+                            .collect(),
                     });
                 }
             }
@@ -196,6 +200,31 @@ fn import_binding(specifier: &ImportSpecifier) -> Option<ImportBindingIR> {
                     .unwrap_or_else(|| named.local.sym.to_string()),
             ),
             kind: "named".to_string(),
+        }),
+    }
+}
+
+fn export_named_import_binding(specifier: &ExportSpecifier) -> Option<ImportBindingIR> {
+    match specifier {
+        ExportSpecifier::Named(named) => Some(ImportBindingIR {
+            local: named
+                .exported
+                .as_ref()
+                .unwrap_or(&named.orig)
+                .atom()
+                .to_string(),
+            imported: Some(named.orig.atom().to_string()),
+            kind: "named".to_string(),
+        }),
+        ExportSpecifier::Default(default) => Some(ImportBindingIR {
+            local: default.exported.sym.to_string(),
+            imported: Some("default".to_string()),
+            kind: "named".to_string(),
+        }),
+        ExportSpecifier::Namespace(namespace) => Some(ImportBindingIR {
+            local: namespace.name.atom().to_string(),
+            imported: Some("*".to_string()),
+            kind: "namespace".to_string(),
         }),
     }
 }
@@ -322,6 +351,65 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
                 });
             }
         }
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(export)) => match &export.decl {
+            swc_ecma_ast::DefaultDecl::Fn(function_expr) => {
+                if let Some(ident) = &function_expr.ident {
+                    let (params, rest_param, body) = lower_param_bound_body(
+                        function_expr.function.params.iter().map(|param| &param.pat),
+                        function_expr
+                            .function
+                            .body
+                            .as_ref()
+                            .map(lower_block_stmt)
+                            .unwrap_or_default(),
+                    );
+                    stmts.push(JsStmtIR::FunctionDecl {
+                        name: ident.sym.to_string(),
+                        params,
+                        rest_param,
+                        r#async: function_expr.function.is_async,
+                        generator: function_expr.function.is_generator,
+                        body,
+                    });
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: "default".to_string(),
+                        init: Some(JsExprIR::Ident(ident.sym.to_string())),
+                    });
+                } else if let Some(function) = lower_function_expr(&function_expr.function) {
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: "default".to_string(),
+                        init: Some(function),
+                    });
+                }
+            }
+            swc_ecma_ast::DefaultDecl::Class(class_expr) => {
+                let class = JsExprIR::Class {
+                    super_class: class_expr
+                        .class
+                        .super_class
+                        .as_deref()
+                        .and_then(lower_js_expr)
+                        .map(Box::new),
+                    methods: lower_class_methods(&class_expr.class),
+                };
+                if let Some(ident) = &class_expr.ident {
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: ident.sym.to_string(),
+                        init: Some(class.clone()),
+                    });
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: "default".to_string(),
+                        init: Some(JsExprIR::Ident(ident.sym.to_string())),
+                    });
+                } else {
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: "default".to_string(),
+                        init: Some(class),
+                    });
+                }
+            }
+            _ => {}
+        },
         ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(named)) if named.src.is_none() => {
             for specifier in &named.specifiers {
                 if let ExportSpecifier::Named(named_specifier) = specifier {

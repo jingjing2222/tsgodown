@@ -275,6 +275,11 @@ fn render_runtime_package() -> String {
 
 import (
 	"bytes"
+	"crypto/md5"
+	cryptorand "crypto/rand"
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -429,6 +434,8 @@ type moduleState struct {
 	evaluating bool
 }
 
+var sharedProcess map[string]any
+
 type jsThrow struct {
 	value any
 }
@@ -442,6 +449,7 @@ func RunProgram(programJSON string) error {
 	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
 		return err
 	}
+	sharedProcess = processObject()
 	module, ok := entryModule(program)
 	if !ok {
 		return errors.New("entry module not found")
@@ -479,6 +487,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"RegExp": regexpGlobal(),
 			"Symbol": symbolGlobal(),
 			"Array":  arrayGlobal(),
+			"Buffer": bufferGlobal(),
 			"Date":   dateGlobal(),
 			"Promise": promiseGlobal(),
 			"Uint8Array": typedArrayGlobal(),
@@ -586,7 +595,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			return decoded, nil
 		}),
-		"process": processObject(),
+		"process": sharedProcess,
 		"module": map[string]any{
 			"exports": exports,
 		},
@@ -725,6 +734,12 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return osModuleExports(), true
 	case "node:diagnostics_channel":
 		return diagnosticsChannelModuleExports(), true
+	case "buffer", "node:buffer":
+		exports := map[string]any{"Buffer": bufferGlobal()}
+		exports["default"] = exports
+		return exports, true
+	case "crypto", "node:crypto":
+		return cryptoModuleExports(), true
 	case "fs", "node:fs":
 		return fsModuleExports(), true
 	case "node:module":
@@ -998,7 +1013,7 @@ func arrayGlobal() map[string]any {
 }
 
 func typedArrayGlobal() NativeFunctionValue {
-	return nativeFunction(func(args []any) (any, error) {
+	constructor := nativeFunction(func(args []any) (any, error) {
 		length := 0
 		if len(args) > 0 {
 			length = jsInteger(args[0])
@@ -1009,6 +1024,151 @@ func typedArrayGlobal() NativeFunctionValue {
 		}
 		return &ArrayValue{Items: items}, nil
 	})
+	constructor.Props["of"] = nativeFunction(func(args []any) (any, error) {
+		items := []any{}
+		for _, arg := range args {
+			items = append(items, float64(byte(toUint32(arg))))
+		}
+		return &ArrayValue{Items: items}, nil
+	})
+	constructor.Props["from"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return &ArrayValue{Items: []any{}}, nil
+		}
+		return arrayFromBytes(bytesFromJSValue(args[0])), nil
+	})
+	return constructor
+}
+
+func bufferGlobal() map[string]any {
+	return map[string]any{
+		"from": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			encoding := "utf8"
+			if len(args) > 1 {
+				encoding = strings.ToLower(jsString(args[1]))
+			}
+			if text, ok := args[0].(string); ok {
+				switch encoding {
+				case "hex":
+					decoded, err := hex.DecodeString(text)
+					if err != nil {
+						return nil, err
+					}
+					return arrayFromBytes(decoded), nil
+				case "base64":
+					decoded, err := base64.StdEncoding.DecodeString(text)
+					if err != nil {
+						return nil, err
+					}
+					return arrayFromBytes(decoded), nil
+				default:
+					return arrayFromBytes([]byte(text)), nil
+				}
+			}
+			return arrayFromBytes(bytesFromJSValue(args[0])), nil
+		}),
+	}
+}
+
+func cryptoModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["createHash"] = nativeFunction(func(args []any) (any, error) {
+		algorithm := ""
+		if len(args) > 0 {
+			algorithm = strings.ToLower(jsString(args[0]))
+		}
+		var digest func([]byte) []byte
+		switch algorithm {
+		case "md5":
+			digest = func(input []byte) []byte {
+				sum := md5.Sum(input)
+				return sum[:]
+			}
+		case "sha1":
+			digest = func(input []byte) []byte {
+				sum := sha1.Sum(input)
+				return sum[:]
+			}
+		default:
+			return nil, fmt.Errorf("unsupported crypto hash %s", algorithm)
+		}
+		data := []byte{}
+		hashObject := map[string]any{}
+		hashObject["update"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				data = append(data, bytesFromJSValue(args[0])...)
+			}
+			return hashObject, nil
+		})
+		hashObject["digest"] = nativeFunction(func(args []any) (any, error) {
+			output := digest(data)
+			if len(args) > 0 {
+				switch strings.ToLower(jsString(args[0])) {
+				case "hex":
+					return hex.EncodeToString(output), nil
+				case "base64":
+					return base64.StdEncoding.EncodeToString(output), nil
+				}
+			}
+			return arrayFromBytes(output), nil
+		})
+		return hashObject, nil
+	})
+	exports["randomFillSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nil
+		}
+		array, ok := args[0].(*ArrayValue)
+		if !ok {
+			return args[0], nil
+		}
+		bytes := make([]byte, len(array.Items))
+		if _, err := cryptorand.Read(bytes); err != nil {
+			return nil, err
+		}
+		for index, item := range bytes {
+			array.Items[index] = float64(item)
+		}
+		return array, nil
+	})
+	exports["randomUUID"] = nativeFunction(func(args []any) (any, error) {
+		bytes := make([]byte, 16)
+		if _, err := cryptorand.Read(bytes); err != nil {
+			return nil, err
+		}
+		bytes[6] = (bytes[6] & 0x0f) | 0x40
+		bytes[8] = (bytes[8] & 0x3f) | 0x80
+		text := hex.EncodeToString(bytes)
+		return text[0:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:32], nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func arrayFromBytes(bytes []byte) *ArrayValue {
+	items := []any{}
+	for _, item := range bytes {
+		items = append(items, float64(item))
+	}
+	return &ArrayValue{Items: items}
+}
+
+func bytesFromJSValue(value any) []byte {
+	switch typed := value.(type) {
+	case string:
+		return []byte(typed)
+	case *ArrayValue:
+		output := []byte{}
+		for _, item := range typed.Items {
+			output = append(output, byte(toUint32(item)))
+		}
+		return output
+	default:
+		return []byte(jsString(value))
+	}
 }
 
 func dateGlobal() NativeFunctionValue {
@@ -1203,6 +1363,12 @@ func reflectGlobal() map[string]any {
 				return true, nil
 			}
 			return false, nil
+		}),
+		"deleteProperty": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return false, nil
+			}
+			return deleteDynamicProperty(args[0], jsPropertyKey(args[1])), nil
 		}),
 	}
 }
@@ -1463,6 +1629,36 @@ func setDynamicProperty(target any, property string, value any) bool {
 	}
 }
 
+func deleteDynamicProperty(target any, property string) bool {
+	switch typed := target.(type) {
+	case map[string]any:
+		delete(typed, property)
+		return true
+	case *ArrayValue:
+		index, err := strconv.Atoi(property)
+		if err == nil && index >= 0 && index < len(typed.Items) {
+			typed.Items[index] = jsUndefined
+			return true
+		}
+		if typed.Props != nil {
+			delete(typed.Props, property)
+		}
+		return true
+	case FunctionValue:
+		if typed.Props != nil {
+			delete(typed.Props, property)
+		}
+		return true
+	case NativeFunctionValue:
+		if typed.Props != nil {
+			delete(typed.Props, property)
+		}
+		return true
+	default:
+		return true
+	}
+}
+
 func jsonCompatible(value any, seen map[uintptr]bool) any {
 	switch typed := value.(type) {
 	case nil, UndefinedValue, NullValue:
@@ -1567,6 +1763,12 @@ func objectTag(value any) string {
 
 func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 	goPattern := pattern
+	if strings.Contains(flags, "m") {
+		goPattern = "(?m)" + goPattern
+	}
+	if strings.Contains(flags, "s") {
+		goPattern = "(?s)" + goPattern
+	}
 	if strings.Contains(flags, "i") {
 		goPattern = "(?i)" + goPattern
 	}
@@ -1914,6 +2116,52 @@ func fsModuleExports() map[string]any {
 		return string(bytes), nil
 	})
 	exports["readFileSync"] = readFileSync
+	exports["writeFileSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return nil, errors.New("writeFileSync path and data are required")
+		}
+		return jsUndefined, os.WriteFile(jsString(args[0]), bytesFromJSValue(args[1]), 0o666)
+	})
+	exports["mkdtempSync"] = nativeFunction(func(args []any) (any, error) {
+		prefix := ""
+		if len(args) > 0 {
+			prefix = jsString(args[0])
+		}
+		parent := filepath.Dir(prefix)
+		pattern := filepath.Base(prefix) + "*"
+		path, err := os.MkdirTemp(parent, pattern)
+		if err != nil {
+			return nil, err
+		}
+		return path, nil
+	})
+	exports["rmSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("rmSync path is required")
+		}
+		if len(args) > 1 {
+			if options, ok := args[1].(map[string]any); ok && isTruthy(options["recursive"]) {
+				if isTruthy(options["force"]) {
+					return jsUndefined, os.RemoveAll(jsString(args[0]))
+				}
+				return jsUndefined, os.RemoveAll(jsString(args[0]))
+			}
+		}
+		err := os.Remove(jsString(args[0]))
+		if err != nil && len(args) > 1 {
+			if options, ok := args[1].(map[string]any); ok && isTruthy(options["force"]) {
+				return jsUndefined, nil
+			}
+		}
+		return jsUndefined, err
+	})
+	exports["existsSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		_, err := os.Stat(jsString(args[0]))
+		return err == nil, nil
+	})
 	exports["default"] = exports
 	return exports
 }
@@ -2818,13 +3066,11 @@ func evalDelete(target map[string]any, env Env) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if objectMap, ok := object.(map[string]any); ok {
-		property, err := evalMemberProperty(target, env)
-		if err != nil {
-			return nil, err
-		}
-		delete(objectMap, property)
+	property, err := evalMemberProperty(target, env)
+	if err != nil {
+		return nil, err
 	}
+	deleteDynamicProperty(object, property)
 	return true, nil
 }
 
@@ -3073,6 +3319,10 @@ func stringMember(value string, property string, env Env) (any, bool) {
 	switch property {
 	case "length":
 		return float64(len([]rune(value))), true
+	case "toString", "valueOf":
+		return nativeFunction(func(args []any) (any, error) {
+			return value, nil
+		}), true
 	case "trim":
 		return nativeFunction(func(args []any) (any, error) {
 			return strings.TrimSpace(value), nil
@@ -3431,11 +3681,11 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 				value.Items = next
 				return &ArrayValue{Items: removed}, nil
 			}), true
-		case "fill":
-			return nativeFunction(func(args []any) (any, error) {
-				fillValue := any(jsUndefined)
-				if len(args) > 0 {
-					fillValue = args[0]
+	case "fill":
+		return nativeFunction(func(args []any) (any, error) {
+			fillValue := any(jsUndefined)
+			if len(args) > 0 {
+				fillValue = args[0]
 				}
 				start := 0
 				if len(args) > 1 {
@@ -3455,10 +3705,28 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 				end = minInt(maxInt(end, 0), len(value.Items))
 				for index := start; index < end; index++ {
 					value.Items[index] = fillValue
+			}
+			return value, nil
+		}), true
+	case "set":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			offset := 0
+			if len(args) > 1 {
+				offset = jsInteger(args[1])
+			}
+			source := iterableValues(args[0])
+			for index, item := range source {
+				targetIndex := offset + index
+				if targetIndex >= 0 && targetIndex < len(value.Items) {
+					value.Items[targetIndex] = float64(byte(toUint32(item)))
 				}
-				return value, nil
-			}), true
-		case "join":
+			}
+			return jsUndefined, nil
+		}), true
+	case "join":
 		return nativeFunction(func(args []any) (any, error) {
 			separator := ","
 			if len(args) > 0 {
@@ -4565,9 +4833,13 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return hasProperty(right, jsPropertyKey(left)), nil
 	case "instanceof":
 		return jsInstanceOf(left, right), nil
-	case "==", "===":
+	case "==":
+		return jsLooseEqual(left, right), nil
+	case "===":
 		return jsSameValue(left, right), nil
-	case "!=", "!==":
+	case "!=":
+		return !jsLooseEqual(left, right), nil
+	case "!==":
 		return !jsSameValue(left, right), nil
 	case "<":
 		return toNumber(left) < toNumber(right), nil
@@ -4706,6 +4978,23 @@ func referenceIdentity(value any) uintptr {
 	default:
 		return 0
 	}
+}
+
+func jsLooseEqual(left any, right any) bool {
+	if isNullish(left) && isNullish(right) {
+		return true
+	}
+	if jsSameValue(left, right) {
+		return true
+	}
+	switch left.(type) {
+	case string, float64, bool:
+		switch right.(type) {
+		case string, float64, bool:
+			return toNumber(left) == toNumber(right)
+		}
+	}
+	return false
 }
 
 func isNullish(value any) bool {

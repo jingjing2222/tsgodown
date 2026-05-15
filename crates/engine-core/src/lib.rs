@@ -2913,6 +2913,75 @@ console.log("path", basename("/tmp/app.txt", ".txt"), dirname("/tmp/app.txt"), j
     }
 
     #[test]
+    fn emit_go_runs_builtin_crypto_buffer_import_subset() {
+        let root = temp_project("engine-core-crypto-buffer-import");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { createHash, randomFillSync, randomUUID } from "node:crypto"
+const crypto = require("crypto")
+const md5 = createHash("md5").update(Buffer.from("abc", "utf8")).digest("hex")
+const sha1 = crypto.createHash("sha1").update("abc").digest("hex")
+const bytes = Uint8Array.of(1, 2, 255)
+randomFillSync(bytes)
+const randomBytesOk = bytes.length === 3 && bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)
+const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(randomUUID())
+console.log("crypto", md5, sha1, Buffer.from("ff", "hex")[0], randomBytesOk, uuidOk)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/crypto-buffer-import".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "crypto 900150983cd24fb0d6963f7d28e17f72 a9993e364706816aba3e25717850c26c9cd0d89d 255 true true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_dynamic_import_thenable_subset() {
         let root = temp_project("engine-core-dynamic-import");
         write(
