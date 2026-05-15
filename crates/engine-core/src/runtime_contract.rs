@@ -434,6 +434,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                     | "??"
                     | "&"
                     | "|"
+                    | "^"
                     | "<<"
                     | ">>"
                     | ">>>"
@@ -490,7 +491,24 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         } => collect_unsupported_class(super_class.as_deref(), methods, unsupported),
         JsExpr::Await { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Assign { op, left, right } => {
-            if !matches!(op.as_str(), "=" | "+=" | "-=" | "*=" | "|=" | "??=") {
+            if !matches!(
+                op.as_str(),
+                "=" | "+="
+                    | "-="
+                    | "*="
+                    | "/="
+                    | "%="
+                    | "**="
+                    | "&="
+                    | "|="
+                    | "^="
+                    | "<<="
+                    | ">>="
+                    | ">>>="
+                    | "&&="
+                    | "||="
+                    | "??="
+            ) {
                 unsupported.push(format!("assignment {op}"));
             }
             if !matches!(left.as_ref(), JsExpr::Ident { .. } | JsExpr::Member { .. }) {

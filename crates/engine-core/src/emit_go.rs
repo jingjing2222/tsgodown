@@ -5174,7 +5174,7 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 	switch op {
 	case "=":
 		value, err = evalExpr(rightExpr, env)
-	case "+=":
+	case "+=", "-=", "*=", "/=", "%=", "**=", "&=", "|=", "^=", "<<=", ">>=", ">>>=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
 			return nil, readErr
@@ -5183,37 +5183,25 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 		if evalErr != nil {
 			return nil, evalErr
 		}
-		value, err = evalBinary("+", current, right)
-	case "-=":
+		value, err = evalBinary(strings.TrimSuffix(op, "="), current, right)
+	case "&&=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
 			return nil, readErr
 		}
-		right, evalErr := evalExpr(rightExpr, env)
-		if evalErr != nil {
-			return nil, evalErr
+		if !isTruthy(current) {
+			return current, nil
 		}
-		value, err = evalBinary("-", current, right)
-	case "*=":
+		value, err = evalExpr(rightExpr, env)
+	case "||=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
 			return nil, readErr
 		}
-		right, evalErr := evalExpr(rightExpr, env)
-		if evalErr != nil {
-			return nil, evalErr
+		if isTruthy(current) {
+			return current, nil
 		}
-		value, err = evalBinary("*", current, right)
-	case "|=":
-		current, readErr := readTarget(left, env)
-		if readErr != nil {
-			return nil, readErr
-		}
-		right, evalErr := evalExpr(rightExpr, env)
-		if evalErr != nil {
-			return nil, evalErr
-		}
-		value, err = evalBinary("|", current, right)
+		value, err = evalExpr(rightExpr, env)
 	case "??=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
@@ -7173,6 +7161,8 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return float64(toInt32(left) & toInt32(right)), nil
 	case "|":
 		return float64(toInt32(left) | toInt32(right)), nil
+	case "^":
+		return float64(toInt32(left) ^ toInt32(right)), nil
 	case "<<":
 		return float64(toInt32(left) << (toUint32(right) & 31)), nil
 	case ">>":

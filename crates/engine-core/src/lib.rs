@@ -944,6 +944,96 @@ console.log("numbers", fromLiteral, fromNumber, empty)
     }
 
     #[test]
+    fn emit_go_runs_bitwise_and_compound_assignment_subset() {
+        let root = temp_project("engine-core-bitwise-compound-assignment");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const trace = []
+function mark(value) {
+  trace.push(value)
+  return value
+}
+const bit = 5 ^ 3
+let value = 5
+value ^= 3
+value &= 6
+value <<= 2
+value >>= 1
+value >>>= 1
+value |= 1
+let math = 20
+math /= 4
+math %= 3
+math **= 4
+let truthy = "keep"
+truthy ||= mark("bad")
+let empty = ""
+empty ||= mark("fallback")
+let falsy = 0
+falsy &&= mark("bad2")
+let yes = 2
+yes &&= mark("and")
+let nil = null
+nil ??= mark("nil")
+let defined = false
+defined ??= mark("bad3")
+console.log("compound", bit, value, math, truthy, empty, falsy, yes, nil, defined, trace.join("|"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/bitwise-compound-assignment".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "compound 6 7 16 keep fallback 0 and nil false fallback|and|nil\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_regexp_string_and_array_methods_subset() {
         let root = temp_project("engine-core-regexp-string-array-methods");
         write(
