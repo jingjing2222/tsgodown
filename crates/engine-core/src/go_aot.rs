@@ -2096,6 +2096,20 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("({value} != 0)"))
+        }
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("({value} != \"\")"))
+        }
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!(
+                "func() bool {{ switch value := any({value}).(type) {{ case nil: return false; case bool: return value; case float64: return value != 0; case int: return value != 0; case int64: return value != 0; case string: return value != \"\"; default: return true }} }}()"
+            ))
+        }
         JsExpr::Member {
             object,
             property,
