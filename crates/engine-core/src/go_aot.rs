@@ -327,6 +327,10 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
             init: Some(init), ..
         } => collect_expr_imports(init, imports),
         JsStmt::VarDecl { init: None, .. } => {}
+        JsStmt::Return { value: Some(expr) } | JsStmt::Throw { value: expr } => {
+            collect_expr_imports(expr, imports)
+        }
+        JsStmt::Return { value: None } => {}
         JsStmt::FunctionDecl { body, .. } => {
             for stmt in body {
                 collect_stmt_imports(stmt, imports);
@@ -401,6 +405,20 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         JsExpr::Binary { left, right, .. } => {
             collect_expr_imports(left, imports);
             collect_expr_imports(right, imports);
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => collect_expr_imports(arg, imports),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_expr_imports(test, imports);
+            collect_expr_imports(consequent, imports);
+            collect_expr_imports(alternate, imports);
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
         _ => {}
@@ -1367,8 +1385,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             consequent,
             alternate,
         } => {
-            let test = render_bool_expr(test, state)?;
-            let consequent = indent_lines(&render_stmt_block(consequent, state)?);
+            let test_expr = test;
+            let test = render_bool_expr(test_expr, state)?;
+            let consequent_state = narrowed_typeof_state(test_expr, state);
+            let consequent = indent_lines(&render_stmt_block(consequent, &consequent_state)?);
             if alternate.is_empty() {
                 return Some(format!("if {test} {{\n{consequent}\n}}"));
             }
@@ -1991,8 +2011,10 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             consequent,
             alternate,
         } => {
-            let test = render_bool_expr(test, state)?;
-            let consequent = indent_lines(&render_function_body(consequent, state)?);
+            let test_expr = test;
+            let test = render_bool_expr(test_expr, state)?;
+            let consequent_state = narrowed_typeof_state(test_expr, state);
+            let consequent = indent_lines(&render_function_body(consequent, &consequent_state)?);
             if alternate.is_empty() {
                 return Some(format!("if {test} {{\n{consequent}\n}}"));
             }
@@ -2050,7 +2072,8 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_boolean_cast_call(callee, args) => {
             render_js_to_bool_expr(args.first()?, state)
         }
-        JsExpr::Call { callee, args, .. } => render_string_bool_method_call(callee, args, state),
+        JsExpr::Call { callee, args, .. } => render_string_bool_method_call(callee, args, state)
+            .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
     }
 }
@@ -2608,6 +2631,37 @@ fn render_string_bool_method_call(
     Some(format!("strings.Contains({object}, {needle})"))
 }
 
+fn render_array_bool_method_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "includes" || args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Array { items } = object.as_ref() else {
+        return None;
+    };
+    let needle = render_string_expr(args.first()?, state)?;
+    let comparisons = items
+        .iter()
+        .map(|item| render_string_expr(item, state).map(|item| format!("{item} == {needle}")))
+        .collect::<Option<Vec<_>>>()?;
+    if comparisons.is_empty() {
+        return Some("false".to_string());
+    }
+    Some(format!("({})", comparisons.join(" || ")))
+}
+
 fn render_string_numeric_method_call(
     callee: &JsExpr,
     args: &[JsExpr],
@@ -2625,6 +2679,74 @@ fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 
 fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Boolean")
+}
+
+fn narrowed_typeof_state(test: &JsExpr, state: &AotState) -> AotState {
+    let mut narrowed = clone_aot_state(state);
+    let Some((name, kind)) = typeof_narrowing(test) else {
+        return narrowed;
+    };
+    if !state.bindings.contains(&name) {
+        return narrowed;
+    }
+    let go_ref = if state.string_bindings.contains(&name)
+        || state.numeric_bindings.contains(&name)
+        || state.bool_bindings.contains(&name)
+    {
+        go_binding_ref(&name, state)
+    } else {
+        format!(
+            "{}.({})",
+            go_binding_ref(&name, state),
+            go_type_for_slot(kind)
+        )
+    };
+    narrowed.bind_slot(&name, go_ref, kind);
+    narrowed
+}
+
+fn typeof_narrowing(test: &JsExpr) -> Option<(String, AotSlotKind)> {
+    let JsExpr::Binary { op, left, right } = test else {
+        return None;
+    };
+    if !matches!(op.as_str(), "===" | "==") {
+        return None;
+    }
+    typeof_comparison_narrowing(left, right).or_else(|| typeof_comparison_narrowing(right, left))
+}
+
+fn typeof_comparison_narrowing(
+    candidate: &JsExpr,
+    other: &JsExpr,
+) -> Option<(String, AotSlotKind)> {
+    let JsExpr::Unary { op, arg } = candidate else {
+        return None;
+    };
+    if op != "typeof" {
+        return None;
+    }
+    let JsExpr::Ident { name } = arg.as_ref() else {
+        return None;
+    };
+    let kind = match string_literal_value(other)?.as_str() {
+        "boolean" => AotSlotKind::Bool,
+        "number" => AotSlotKind::Number,
+        "string" => AotSlotKind::String,
+        _ => return None,
+    };
+    Some((name.clone(), kind))
+}
+
+fn string_literal_value(expr: &JsExpr) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(value.clone()),
+        JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
+            Some(quasis[0].clone())
+        }
+        _ => None,
+    }
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
