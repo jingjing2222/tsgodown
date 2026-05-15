@@ -4,8 +4,8 @@ use crate::analyze;
 use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
-    fail_closed_report_version, unsupported_codegen_diagnostic, unsupported_executable_features,
-    ProgramPurpose,
+    fail_closed_report_version, runtime_contract, unsupported_codegen_diagnostic,
+    unsupported_executable_features, ProgramPurpose, RuntimeOperationOwner, RuntimeOperationStatus,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -309,7 +309,7 @@ func main() {{
 }
 
 fn render_runtime_package() -> String {
-    r#"package tsgodownrt
+    let source = r#"package tsgodownrt
 
 import (
 	"bytes"
@@ -7584,8 +7584,51 @@ func asStringSlice(value any) []string {
 	}
 	return out
 }
-"#
-    .to_string()
+"#;
+    source.replacen(
+        ")\n\nfunc FailClosedReport",
+        &format!(
+            ")\n\n{}\nfunc FailClosedReport",
+            render_runtime_contract_go_metadata()
+        ),
+        1,
+    )
+}
+
+fn render_runtime_contract_go_metadata() -> String {
+    let contract = runtime_contract();
+    let operations = contract
+        .operations
+        .iter()
+        .map(|operation| {
+            format!(
+                "\t{{Key: {:?}, Owner: {:?}, Status: {:?}}},",
+                operation.key,
+                runtime_operation_owner_key(operation.owner),
+                runtime_operation_status_key(operation.status)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "const runtimeContractVersion = {:?}\n\ntype runtimeContractOperation struct {{\n\tKey string\n\tOwner string\n\tStatus string\n}}\n\nvar runtimeContractOperations = []runtimeContractOperation{{\n{}\n}}\n\n",
+        contract.version, operations
+    )
+}
+
+fn runtime_operation_owner_key(owner: RuntimeOperationOwner) -> &'static str {
+    match owner {
+        RuntimeOperationOwner::Contract => "contract",
+        RuntimeOperationOwner::BackendRuntime => "backend-runtime",
+    }
+}
+
+fn runtime_operation_status_key(status: RuntimeOperationStatus) -> &'static str {
+    match status {
+        RuntimeOperationStatus::Done => "done",
+        RuntimeOperationStatus::Wip => "wip",
+        RuntimeOperationStatus::FailClosed => "fail-closed",
+    }
 }
 
 fn render_go_mod(module_path: &str) -> String {

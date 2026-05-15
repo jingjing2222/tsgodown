@@ -9,6 +9,131 @@ pub enum ProgramPurpose {
     VectorSuite,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeContract {
+    pub version: &'static str,
+    pub operations: &'static [RuntimeOperation],
+    pub node_builtins: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeOperation {
+    pub key: &'static str,
+    pub owner: RuntimeOperationOwner,
+    pub status: RuntimeOperationStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeOperationOwner {
+    Contract,
+    BackendRuntime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeOperationStatus {
+    Done,
+    Wip,
+    FailClosed,
+}
+
+pub const RUNTIME_OPERATIONS: &[RuntimeOperation] = &[
+    RuntimeOperation {
+        key: "js.value-model",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "js.property-access",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "js.call-construct-this",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "js.completion-records",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "js.module-cache",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "js.async-queue",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "node.process",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "node.fs",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "node.child-process",
+        owner: RuntimeOperationOwner::Contract,
+        status: RuntimeOperationStatus::Wip,
+    },
+    RuntimeOperation {
+        key: "backend.runtime-rendering",
+        owner: RuntimeOperationOwner::BackendRuntime,
+        status: RuntimeOperationStatus::Done,
+    },
+];
+
+pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
+    "util",
+    "node:util",
+    "path",
+    "node:path",
+    "os",
+    "node:os",
+    "node:diagnostics_channel",
+    "process",
+    "node:process",
+    "buffer",
+    "node:buffer",
+    "child_process",
+    "node:child_process",
+    "events",
+    "node:events",
+    "crypto",
+    "node:crypto",
+    "constants",
+    "node:constants",
+    "stream",
+    "node:stream",
+    "node:stream/promises",
+    "fs",
+    "node:fs",
+    "string_decoder",
+    "node:string_decoder",
+    "node:timers/promises",
+    "tty",
+    "node:tty",
+    "url",
+    "node:url",
+    "v8",
+    "node:v8",
+    "node:module",
+];
+
+pub fn runtime_contract() -> RuntimeContract {
+    RuntimeContract {
+        version: "runtime-contract.v1",
+        operations: RUNTIME_OPERATIONS,
+        node_builtins: SUPPORTED_NODE_BUILTINS,
+    }
+}
+
 pub fn unsupported_codegen_diagnostic(features: &[String]) -> Diagnostic {
     let detail = if features.is_empty() {
         "unknown unsupported executable feature".to_string()
@@ -51,43 +176,7 @@ pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
 }
 
 fn is_supported_builtin_import(spec: &str) -> bool {
-    matches!(
-        spec,
-        "util"
-            | "node:util"
-            | "path"
-            | "node:path"
-            | "os"
-            | "node:os"
-            | "node:diagnostics_channel"
-            | "process"
-            | "node:process"
-            | "buffer"
-            | "node:buffer"
-            | "child_process"
-            | "node:child_process"
-            | "events"
-            | "node:events"
-            | "crypto"
-            | "node:crypto"
-            | "constants"
-            | "node:constants"
-            | "stream"
-            | "node:stream"
-            | "node:stream/promises"
-            | "fs"
-            | "node:fs"
-            | "string_decoder"
-            | "node:string_decoder"
-            | "node:timers/promises"
-            | "tty"
-            | "node:tty"
-            | "url"
-            | "node:url"
-            | "v8"
-            | "node:v8"
-            | "node:module"
-    )
+    runtime_contract().node_builtins.contains(&spec)
 }
 
 fn entry_module(ir: &IrDocument) -> Option<&Module> {

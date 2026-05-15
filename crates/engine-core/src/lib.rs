@@ -20,7 +20,8 @@ pub use emit_go::{
     IrSnapshotRequest,
 };
 pub use runtime_contract::{
-    fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
+    fail_closed_report_version, runtime_contract, unsupported_codegen_diagnostic, ProgramPurpose,
+    RuntimeContract, RuntimeOperation, RuntimeOperationOwner, RuntimeOperationStatus,
 };
 
 #[cfg(test)]
@@ -224,6 +225,23 @@ export { value };
         assert!(response.diagnostics[0]
             .message
             .contains("available backends: go"));
+    }
+
+    #[test]
+    fn runtime_contract_declares_backend_neutral_semantic_operations() {
+        let contract = runtime_contract();
+        assert_eq!(contract.version, "runtime-contract.v1");
+        assert!(contract
+            .operations
+            .iter()
+            .any(|operation| operation.key == "js.value-model"
+                && operation.owner == RuntimeOperationOwner::Contract));
+        assert!(contract
+            .operations
+            .iter()
+            .any(|operation| operation.key == "node.process"
+                && operation.owner == RuntimeOperationOwner::Contract));
+        assert!(contract.node_builtins.contains(&"node:fs"));
     }
 
     #[test]
