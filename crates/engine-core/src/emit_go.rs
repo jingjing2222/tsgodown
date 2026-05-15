@@ -861,6 +861,10 @@ func consoleObject() map[string]any {
 
 func builtinModuleExports(spec string) (map[string]any, bool) {
 	switch spec {
+	case "assert", "node:assert":
+		exports := assertModuleExports()
+		exports["default"] = exports
+		return exports, true
 	case "util", "node:util":
 		exports := map[string]any{}
 		inspect := nativeFunction(func(args []any) (any, error) {
@@ -998,6 +1002,131 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func assertModuleExports() map[string]any {
+	exports := map[string]any{}
+	fail := func(code string, actual any, expected any, message any) error {
+		text := jsString(message)
+		if text == "" || isUndefined(message) {
+			text = fmt.Sprintf("%s: %s != %s", code, jsInspect(actual), jsInspect(expected))
+		}
+		return jsThrow{value: nodeError(code, text)}
+	}
+	ok := nativeFunction(func(args []any) (any, error) {
+		value := any(false)
+		if len(args) > 0 {
+			value = args[0]
+		}
+		if isTruthy(value) {
+			return jsUndefined, nil
+		}
+		message := any(jsUndefined)
+		if len(args) > 1 {
+			message = args[1]
+		}
+		return jsUndefined, fail("ERR_ASSERTION", value, true, message)
+	})
+	equal := nativeFunction(func(args []any) (any, error) {
+		actual := any(jsUndefined)
+		expected := any(jsUndefined)
+		message := any(jsUndefined)
+		if len(args) > 0 {
+			actual = args[0]
+		}
+		if len(args) > 1 {
+			expected = args[1]
+		}
+		if len(args) > 2 {
+			message = args[2]
+		}
+		if jsLooseEqual(actual, expected) {
+			return jsUndefined, nil
+		}
+		return jsUndefined, fail("ERR_ASSERTION", actual, expected, message)
+	})
+	strictEqual := nativeFunction(func(args []any) (any, error) {
+		actual := any(jsUndefined)
+		expected := any(jsUndefined)
+		message := any(jsUndefined)
+		if len(args) > 0 {
+			actual = args[0]
+		}
+		if len(args) > 1 {
+			expected = args[1]
+		}
+		if len(args) > 2 {
+			message = args[2]
+		}
+		if jsSameValue(actual, expected) {
+			return jsUndefined, nil
+		}
+		return jsUndefined, fail("ERR_ASSERTION", actual, expected, message)
+	})
+	notStrictEqual := nativeFunction(func(args []any) (any, error) {
+		actual := any(jsUndefined)
+		expected := any(jsUndefined)
+		message := any(jsUndefined)
+		if len(args) > 0 {
+			actual = args[0]
+		}
+		if len(args) > 1 {
+			expected = args[1]
+		}
+		if len(args) > 2 {
+			message = args[2]
+		}
+		if !jsSameValue(actual, expected) {
+			return jsUndefined, nil
+		}
+		return jsUndefined, fail("ERR_ASSERTION", actual, expected, message)
+	})
+	deepStrictEqual := nativeFunction(func(args []any) (any, error) {
+		actual := any(jsUndefined)
+		expected := any(jsUndefined)
+		message := any(jsUndefined)
+		if len(args) > 0 {
+			actual = args[0]
+		}
+		if len(args) > 1 {
+			expected = args[1]
+		}
+		if len(args) > 2 {
+			message = args[2]
+		}
+		if reflect.DeepEqual(actual, expected) {
+			return jsUndefined, nil
+		}
+		return jsUndefined, fail("ERR_ASSERTION", actual, expected, message)
+	})
+	exports["ok"] = ok
+	exports["equal"] = equal
+	exports["strictEqual"] = strictEqual
+	exports["notStrictEqual"] = notStrictEqual
+	exports["deepStrictEqual"] = deepStrictEqual
+	exports["deepEqual"] = deepStrictEqual
+	exports["AssertionError"] = builtinErrorClass("AssertionError")
+	exports["throws"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, fail("ERR_ASSERTION", jsUndefined, "throwing function", jsUndefined)
+		}
+		_, err := callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined)
+		if err != nil {
+			return jsUndefined, nil
+		}
+		return jsUndefined, fail("ERR_ASSERTION", jsUndefined, "throw", jsUndefined)
+	})
+	exports["doesNotThrow"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nil
+		}
+		_, err := callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined)
+		if err != nil {
+			return jsUndefined, fail("ERR_ASSERTION", err.Error(), "no throw", jsUndefined)
+		}
+		return jsUndefined, nil
+	})
+	return exports
 }
 
 func nativeFunction(call func(args []any) (any, error)) NativeFunctionValue {
@@ -7248,6 +7377,15 @@ func jsLooseEqual(left any, right any) bool {
 func isNullish(value any) bool {
 	switch value.(type) {
 	case nil, UndefinedValue, NullValue:
+		return true
+	default:
+		return false
+	}
+}
+
+func isUndefined(value any) bool {
+	switch value.(type) {
+	case nil, UndefinedValue:
 		return true
 	default:
 		return false

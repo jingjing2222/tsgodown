@@ -90,6 +90,8 @@ pub const RUNTIME_OPERATIONS: &[RuntimeOperation] = &[
 ];
 
 pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
+    "assert",
+    "node:assert",
     "util",
     "node:util",
     "path",
