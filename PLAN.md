@@ -314,6 +314,87 @@ The 10 corpus entries are:
 
 Each test case runs a Node probe and a Go probe with the same input.
 
+## Large package/application corpus
+
+The 10 existing corpus entries are useful but too small. They mostly prove
+library/CLI utility semantics. After the Node.js 26 parity ledger is in place,
+add a second corpus tier with large framework, build-tool, compiler, server,
+GraphQL, and ORM packages.
+
+Important package classification:
+
+- Not every target is authored in TypeScript. `express`, `koa`, `webpack`, and
+  other older packages are often JavaScript-authored and TypeScript-consumable
+  through declarations.
+- This is still in scope. `tsgodown` must compile TypeScript/JavaScript Node
+  source after `tsdown` prepares the bundle, sourcemap, `.d.ts`, and package
+  metadata.
+- The corpus manifest must record source language, declaration source, module
+  format, package manager metadata, license, version, and whether any native or
+  external binary dependency exists.
+
+Large corpus rules:
+
+- Add 20 more corpus entries under `test-corpus/node-large/`.
+- Each entry must have exactly 100 Vitest tests at first landing.
+- The same 100 test vectors must run through:
+  - original Node.js 26 execution
+  - `tsgodown` compile
+  - generated Go `go build`
+  - generated Go binary execution
+  - Node/Go observable parity comparator
+- Tests must exercise real package behavior, not toy wrappers.
+- Network tests use local loopback only.
+- Filesystem tests use temp directories only.
+- Database/cache/message-queue tests must avoid external services unless the
+  dependency is vendored and deterministic; otherwise the unsupported surface
+  must fail closed with diagnostics.
+- Package-specific hacks are forbidden. The same syntax/API capability must work
+  for holdout apps using different names and data.
+
+Initial large corpus candidates verified from npm metadata on 2026-05-15:
+
+| Corpus id | npm package/version | Class | 100-vector probe focus | Primary parity dimensions |
+|---|---|---|---|---|
+| `express-app` | `express@5.2.1` | HTTP framework, JS-authored TS-consumable | routing, middleware order, params/query/body, errors, async handlers | status, headers, body, stderr, async order |
+| `nestjs-app` | `@nestjs/core@11.1.21`, `@nestjs/common@11.1.21` | TS framework | controllers, providers, DI graph, pipes, filters, guards, module lifecycle | HTTP output, DI behavior, thrown error shape, async order |
+| `fastify-app` | `fastify@5.8.5` | HTTP framework | plugin registration, schemas, hooks, encapsulation, route params | status/body/header parity, plugin order |
+| `koa-app` | `koa@3.2.0` | HTTP middleware framework | onion middleware order, context mutation, thrown errors, async compose | body/status, side effects, async order |
+| `hapi-app` | `@hapi/hapi@21.4.9` | HTTP framework | route config, validation hooks, lifecycle extensions, response toolkit | status/body/header parity, lifecycle order |
+| `vite-build` | `vite@8.0.13` | dev/build tool | config loading, plugin hooks, resolve/transform/build manifest | emitted files, stdout/stderr, exit code, plugin order |
+| `rollup-build` | `rollup@4.60.4` | bundler | plugin pipeline, tree-shaking, chunk graph, sourcemaps | output chunks, warnings, sourcemaps, exit code |
+| `webpack-build` | `webpack@5.106.2` | bundler | loaders/plugins, resolver, asset graph, code splitting | emitted assets, stats JSON, warnings/errors |
+| `next-app` | `next@16.2.6` | full-stack framework | config load, file routes, server rendering probes, build output metadata | stdout/stderr, files, HTTP render output |
+| `nuxt-app` | `nuxt@4.4.5` | full-stack framework | config/modules, Nitro server output, route rendering probes | output files, HTTP render output, hooks |
+| `astro-app` | `astro@6.3.3` | site framework | content collections, integrations, build output, server render probes | output files, HTML, diagnostics |
+| `remix-app` | `remix@2.17.4` | web framework/tooling | route modules, loaders/actions, build output, server adapter probes | HTTP/data responses, output files, errors |
+| `eslint-engine` | `eslint@10.3.0` | linter engine | config resolution, parser services boundary, rules, formatters | result JSON, stdout/stderr, exit code |
+| `prettier-engine` | `prettier@3.8.3` | formatter engine | parser selection, plugin hooks, doc printer, config resolution | formatted text, diagnostics, async plugin order |
+| `babel-core` | `@babel/core@7.29.0` | compiler transform engine | parser/traverse/generator, plugins, presets, sourcemaps | generated code, sourcemaps, diagnostics |
+| `typescript-compiler` | `typescript@6.0.3` | compiler API | program creation, type checker probes, emit, diagnostics | emitted JS/d.ts, diagnostic shape, exit code |
+| `graphql-engine` | `graphql@16.14.0` | query language/runtime | schema build, validation, execution, subscriptions subset | result JSON, error shape, async order |
+| `apollo-server-app` | `@apollo/server@5.5.1` | GraphQL server | schema/resolvers/plugins, context, errors, local HTTP execution | JSON result, HTTP status, plugin order |
+| `socketio-app` | `socket.io@4.8.3` | realtime server | local loopback connection, rooms, ack callbacks, middleware | event order, payload JSON, close/error shape |
+| `typeorm-app` | `typeorm@0.3.29` | ORM | metadata, entity manager, query builder, transaction API with deterministic local driver | SQL/log output, result JSON, error shape |
+
+Large corpus gates:
+
+```bash
+pnpm run test:node-large:vitest
+pnpm run gate:node-large-vector-parity
+pnpm run gate:node-large-parity
+pnpm run gate:node-large-general-compiler
+```
+
+Large corpus acceptance:
+
+- 20 entries x 100 vectors = 2000 Vitest tests pass on Node.js 26.
+- The same 2000 vectors pass through generated Go.
+- All generated Go projects pass `go build`.
+- Node/Go parity diff is zero.
+- Capability coverage report maps every failure to a Node.js 26 ledger row.
+- Corpus-specific code branches are a release blocker.
+
 The diff report is grouped by capability:
 
 - language
