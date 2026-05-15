@@ -3817,6 +3817,86 @@ main()
     }
 
     #[test]
+    fn emit_go_runs_node_querystring_zlib_timers_async_hooks_subset() {
+        let root = temp_project("engine-core-node-api-subset");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import qs from "querystring"
+import { gzipSync, gunzipSync, deflateSync, inflateSync } from "zlib"
+import { performance } from "perf_hooks"
+import { AsyncLocalStorage } from "async_hooks"
+import timers from "timers"
+
+const parsed = qs.parse("a=1&b=x&b=y")
+const encoded = qs.stringify({ a: 1, b: ["x", "y"] })
+const gzipText = gunzipSync(gzipSync("abc")).toString()
+const inflateText = inflateSync(deflateSync("def")).toString()
+const storage = new AsyncLocalStorage()
+let stored = 0
+storage.run({ id: 3 }, () => {
+  stored = storage.getStore().id
+})
+let tick = "pending"
+timers.setImmediate(() => {
+  tick = "immediate"
+})
+console.log("node-api", parsed.a, parsed.b.join("|"), encoded, gzipText, inflateText, stored, tick, performance.now() >= 0)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/node-api-subset".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "node-api 1 x|y a=1&b=x&b=y abc def 3 immediate true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_callback_promise_await_subset() {
         let root = temp_project("engine-core-callback-promise-await");
         write(

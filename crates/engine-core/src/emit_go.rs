@@ -315,6 +315,8 @@ fn render_runtime_package() -> String {
 
 import (
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"crypto/md5"
 	cryptorand "crypto/rand"
 	"crypto/sha1"
@@ -323,6 +325,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/url"
 	"os"
@@ -988,6 +991,10 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		exports := constantsModuleExports()
 		exports["default"] = exports
 		return exports, true
+	case "perf_hooks", "node:perf_hooks":
+		return perfHooksModuleExports(), true
+	case "querystring", "node:querystring":
+		return querystringModuleExports(), true
 	case "stream", "node:stream":
 		return streamModuleExports(), true
 	case "node:stream/promises":
@@ -1000,6 +1007,10 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return stringDecoderModuleExports(), true
 	case "node:timers/promises":
 		return timersPromisesModuleExports(), true
+	case "timers", "node:timers":
+		return timersModuleExports(), true
+	case "async_hooks", "node:async_hooks":
+		return asyncHooksModuleExports(), true
 	case "tty", "node:tty":
 		return ttyModuleExports(), true
 	case "url", "node:url":
@@ -1008,6 +1019,8 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return v8ModuleExports(), true
 	case "module", "node:module":
 		return moduleModuleExports(), true
+	case "zlib", "node:zlib":
+		return zlibModuleExports(), true
 	default:
 		return nil, false
 	}
@@ -3335,6 +3348,144 @@ func constantsModuleExports() map[string]any {
 	}
 }
 
+func perfHooksModuleExports() map[string]any {
+	origin := time.Now()
+	performance := map[string]any{}
+	performance["now"] = nativeFunction(func(args []any) (any, error) {
+		return float64(time.Since(origin).Microseconds()) / 1000, nil
+	})
+	performance["timeOrigin"] = float64(origin.UnixMilli())
+	exports := map[string]any{"performance": performance}
+	exports["default"] = exports
+	return exports
+}
+
+func querystringModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["parse"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return map[string]any{}, nil
+		}
+		values, err := url.ParseQuery(jsString(args[0]))
+		if err != nil {
+			return map[string]any{}, nil
+		}
+		out := map[string]any{}
+		for key, entries := range values {
+			if len(entries) == 1 {
+				out[key] = entries[0]
+			} else {
+				items := []any{}
+				for _, entry := range entries {
+					items = append(items, entry)
+				}
+				out[key] = &ArrayValue{Items: items}
+			}
+		}
+		return out, nil
+	})
+	exports["stringify"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		values := url.Values{}
+		if object, ok := args[0].(map[string]any); ok {
+			for _, key := range objectKeys(object) {
+				value := object[key]
+				if array, ok := value.(*ArrayValue); ok {
+					for _, item := range array.Items {
+						values.Add(key, jsString(item))
+					}
+					continue
+				}
+				values.Set(key, jsString(value))
+			}
+		}
+		return values.Encode(), nil
+	})
+	exports["escape"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		return url.QueryEscape(jsString(args[0])), nil
+	})
+	exports["unescape"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		value, err := url.QueryUnescape(jsString(args[0]))
+		if err != nil {
+			return jsString(args[0]), nil
+		}
+		return value, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func zlibModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["gzipSync"] = nativeFunction(func(args []any) (any, error) {
+		var out bytes.Buffer
+		writer := gzip.NewWriter(&out)
+		if len(args) > 0 {
+			if _, err := writer.Write(bytesFromJSValue(args[0])); err != nil {
+				return nil, err
+			}
+		}
+		if err := writer.Close(); err != nil {
+			return nil, err
+		}
+		return arrayFromBytes(out.Bytes()), nil
+	})
+	exports["gunzipSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return arrayFromBytes(nil), nil
+		}
+		reader, err := gzip.NewReader(bytes.NewReader(bytesFromJSValue(args[0])))
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+		return arrayFromBytes(data), nil
+	})
+	exports["deflateSync"] = nativeFunction(func(args []any) (any, error) {
+		var out bytes.Buffer
+		writer := zlib.NewWriter(&out)
+		if len(args) > 0 {
+			if _, err := writer.Write(bytesFromJSValue(args[0])); err != nil {
+				return nil, err
+			}
+		}
+		if err := writer.Close(); err != nil {
+			return nil, err
+		}
+		return arrayFromBytes(out.Bytes()), nil
+	})
+	exports["inflateSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return arrayFromBytes(nil), nil
+		}
+		reader, err := zlib.NewReader(bytes.NewReader(bytesFromJSValue(args[0])))
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+		return arrayFromBytes(data), nil
+	})
+	exports["constants"] = map[string]any{}
+	exports["default"] = exports
+	return exports
+}
+
 func streamModuleExports() map[string]any {
 	stream := map[string]any{}
 	streamCtor := nativeFunction(func(args []any) (any, error) {
@@ -3434,6 +3585,111 @@ func timersPromisesModuleExports() map[string]any {
 		}),
 		"wait": setTimeoutFn,
 	}
+	exports["default"] = exports
+	return exports
+}
+
+func timersModuleExports() map[string]any {
+	exports := map[string]any{}
+	setTimeoutFn := nativeFunction(func(args []any) (any, error) {
+		delay := 0
+		if len(args) > 1 {
+			delay = jsInteger(args[1])
+		}
+		if delay > 0 {
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
+		if len(args) > 0 {
+			callArgs := []any{}
+			if len(args) > 2 {
+				callArgs = args[2:]
+			}
+			if _, err := callFunctionWithValues(args[0], callArgs, Env{}, jsUndefined); err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{"_idleTimeout": float64(delay)}, nil
+	})
+	setImmediateFn := nativeFunction(func(args []any) (any, error) {
+		if len(args) > 0 {
+			callArgs := []any{}
+			if len(args) > 1 {
+				callArgs = args[1:]
+			}
+			if _, err := callFunctionWithValues(args[0], callArgs, Env{}, jsUndefined); err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{}, nil
+	})
+	clearFn := nativeFunction(func(args []any) (any, error) { return jsUndefined, nil })
+	exports["setTimeout"] = setTimeoutFn
+	exports["setInterval"] = setTimeoutFn
+	exports["setImmediate"] = setImmediateFn
+	exports["clearTimeout"] = clearFn
+	exports["clearInterval"] = clearFn
+	exports["clearImmediate"] = clearFn
+	exports["default"] = exports
+	return exports
+}
+
+func asyncHooksModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["AsyncLocalStorage"] = nativeFunction(func(args []any) (any, error) {
+		store := any(jsUndefined)
+		instance := map[string]any{}
+		instance["run"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return jsUndefined, nil
+			}
+			previous := store
+			store = args[0]
+			result, err := callFunctionWithValues(args[1], args[2:], Env{}, jsUndefined)
+			store = previous
+			return result, err
+		})
+		instance["getStore"] = nativeFunction(func(args []any) (any, error) {
+			return store, nil
+		})
+		instance["enterWith"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				store = args[0]
+			}
+			return jsUndefined, nil
+		})
+		instance["disable"] = nativeFunction(func(args []any) (any, error) {
+			store = jsUndefined
+			return jsUndefined, nil
+		})
+		return instance, nil
+	})
+	exports["AsyncResource"] = nativeFunction(func(args []any) (any, error) {
+		instance := map[string]any{}
+		instance["runInAsyncScope"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			thisValue := any(jsUndefined)
+			callArgs := []any{}
+			if len(args) > 1 {
+				thisValue = args[1]
+				callArgs = args[2:]
+			}
+			return callFunctionWithValues(args[0], callArgs, Env{}, thisValue)
+		})
+		instance["emitDestroy"] = nativeFunction(func(args []any) (any, error) { return jsUndefined, nil })
+		instance["asyncId"] = nativeFunction(func(args []any) (any, error) { return float64(1), nil })
+		instance["triggerAsyncId"] = nativeFunction(func(args []any) (any, error) { return float64(0), nil })
+		return instance, nil
+	})
+	exports["executionAsyncId"] = nativeFunction(func(args []any) (any, error) { return float64(1), nil })
+	exports["triggerAsyncId"] = nativeFunction(func(args []any) (any, error) { return float64(0), nil })
+	exports["createHook"] = nativeFunction(func(args []any) (any, error) {
+		return map[string]any{
+			"enable":  nativeFunction(func(args []any) (any, error) { return jsUndefined, nil }),
+			"disable": nativeFunction(func(args []any) (any, error) { return jsUndefined, nil }),
+		}, nil
+	})
 	exports["default"] = exports
 	return exports
 }

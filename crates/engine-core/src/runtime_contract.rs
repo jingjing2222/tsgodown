@@ -111,6 +111,10 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:crypto",
     "constants",
     "node:constants",
+    "perf_hooks",
+    "node:perf_hooks",
+    "querystring",
+    "node:querystring",
     "stream",
     "node:stream",
     "node:stream/promises",
@@ -121,6 +125,10 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "string_decoder",
     "node:string_decoder",
     "node:timers/promises",
+    "timers",
+    "node:timers",
+    "async_hooks",
+    "node:async_hooks",
     "tty",
     "node:tty",
     "url",
@@ -129,6 +137,8 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:v8",
     "module",
     "node:module",
+    "zlib",
+    "node:zlib",
 ];
 
 pub fn runtime_contract() -> RuntimeContract {
