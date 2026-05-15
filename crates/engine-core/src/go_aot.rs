@@ -233,7 +233,10 @@ fn collect_builtin_usage_expr_features(
     features: &mut BTreeSet<String>,
     shadowed: &BTreeSet<String>,
 ) {
-    if is_process_supported_builtin_expr(expr) || is_supported_node_builtin_call_expr(expr) {
+    if is_process_supported_builtin_expr(expr)
+        || is_supported_node_builtin_call_expr(expr)
+        || is_node_fs_function_ref(expr).is_some()
+    {
         return;
     }
     if is_node_path_static_string_expr(expr) {
@@ -2371,6 +2374,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_bool_expr(expr),
         expr if is_process_function_ref(expr).is_some() => Some("true".to_string()),
+        expr if is_node_fs_function_ref(expr).is_some() => Some("true".to_string()),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2574,8 +2578,10 @@ fn is_node_builtin_spec(spec: &str) -> bool {
             | "string_decoder"
             | "timers"
             | "timers/promises"
+            | "tty"
             | "url"
             | "util"
+            | "v8"
             | "zlib"
     )
 }
@@ -2857,6 +2863,7 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_bool_expr(expr),
         expr if is_process_function_ref(expr).is_some() => Some("true".to_string()),
+        expr if is_node_fs_function_ref(expr).is_some() => Some("true".to_string()),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2962,6 +2969,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             ))
         }
         expr if is_process_function_ref(expr).is_some() => Some("\"function\"".to_string()),
+        expr if is_node_fs_function_ref(expr).is_some() => Some("\"function\"".to_string()),
         _ => None,
     }
 }
@@ -3589,6 +3597,27 @@ fn is_node_fs_stat_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
                 && property == "statSync"
         )
+}
+
+fn is_node_fs_function_ref(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return None;
+    };
+    if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+        && matches!(
+            property.as_str(),
+            "close" | "closeSync" | "existsSync" | "stat" | "statSync"
+        )
+    {
+        return Some(property);
+    }
+    None
 }
 
 fn render_node_fs_stat_sync_object(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {

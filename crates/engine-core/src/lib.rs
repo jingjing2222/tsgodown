@@ -1194,9 +1194,11 @@ export const enabled = true
 import { randomUUID } from "node:crypto"
 import diagnosticsChannel from "node:diagnostics_channel"
 import { StringDecoder } from "node:string_decoder"
+import tty from "node:tty"
+import v8 from "node:v8"
 const fs = require("fs")
 const constants = require("constants")
-console.log("aot-builtin-import", "unused")
+console.log("aot-builtin-import", "unused", Boolean(fs.stat), typeof fs.closeSync === "function")
 "#,
         );
 
@@ -1247,7 +1249,7 @@ console.log("aot-builtin-import", "unused")
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "aot-builtin-import unused\n"
+            "aot-builtin-import unused true true\n"
         );
     }
 
