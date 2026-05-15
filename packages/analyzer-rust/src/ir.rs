@@ -216,6 +216,9 @@ pub enum JsExprIR {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,
     },
+    Spread {
+        arg: Box<JsExprIR>,
+    },
     New {
         callee: Box<JsExprIR>,
         args: Vec<JsExprIR>,
@@ -241,6 +244,7 @@ pub struct JsArrayElementIR {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsObjectPropIR {
     pub key: String,
+    pub key_expr: Option<JsExprIR>,
     pub value: JsExprIR,
 }
 

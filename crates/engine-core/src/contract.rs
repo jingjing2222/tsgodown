@@ -239,6 +239,8 @@ pub enum JsExpr {
         callee: Box<JsExpr>,
         args: Vec<JsExpr>,
     },
+    #[serde(rename = "spread")]
+    Spread { arg: Box<JsExpr> },
     #[serde(rename = "new")]
     New {
         callee: Box<JsExpr>,
@@ -263,6 +265,8 @@ pub enum JsExpr {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JsObjectProp {
     pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "keyExpr")]
+    pub key_expr: Option<JsExpr>,
     pub value: JsExpr,
 }
 

@@ -361,6 +361,7 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        JsExprIR::Spread { arg } => format!("spread({})", render_js_expr(arg)),
         JsExprIR::New { callee, args } => format!(
             "new({}, [{}])",
             render_js_expr(callee),
@@ -683,13 +684,15 @@ async function render(name, count) {
 fn executable_array_spread_is_lowered_deterministically() {
     let source = r#"
 function copy(items) {
-  return [0, ...items, 9];
+  return join(0, ...items, 9, ...tail);
 }
 "#;
     let ir = analyze_compiler_entry("array-spread.js", source);
     let rendered = render_ir(&ir);
 
-    assert!(rendered.contains("array-spread([number(0), ...ident(items), number(9)])"));
+    assert!(rendered.contains(
+        "call(ident(join), [number(0), spread(ident(items)), number(9), spread(ident(tail))])"
+    ));
 }
 
 #[test]
@@ -802,4 +805,19 @@ const { execa } = require("execa");
             .any(|binding| binding.local == "execa"
                 && binding.imported.as_deref() == Some("execa")
                 && binding.kind == "destructure")));
+}
+
+#[test]
+fn executable_export_default_and_named_aliases_are_bound() {
+    let source = r#"
+const callable = () => "ok";
+callable.extra = true;
+export default callable;
+export { callable as "module.exports" };
+"#;
+    let ir = analyze_compiler_entry("export-default.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("var default = ident(callable)"));
+    assert!(rendered.contains("var module.exports = ident(callable)"));
 }

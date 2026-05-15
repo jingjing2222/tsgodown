@@ -659,6 +659,9 @@ const values = [1, 2, 3, 4]
 const seen = []
 values.forEach((value, index) => seen.push(value + index))
 const queue = ["b", "c"]
+function collect(...items) {
+  return items.join(",")
+}
 queue.unshift("a")
 const shifted = queue.shift()
 const popped = queue.pop()
@@ -676,7 +679,8 @@ const result = [
   values.includes(5),
   values.concat([5], 6).slice(2, 5).join(":"),
   [1, [2, [3]]].flat(2).join(":"),
-  shifted + popped + ":" + spliced.join("") + ":" + queue.join("")
+  shifted + popped + ":" + spliced.join("") + ":" + queue.join(""),
+  collect("a", ...["b", "c"])
 ].join("|")
 console.log("array-more", seen.join(","), result)
 "#,
@@ -728,7 +732,7 @@ console.log("array-more", seen.join(","), result)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "array-more 1,3,5,7 10|cba|true|true|3|2|2|false|3:4:5|1:2:3|ac:d:bxyez\n"
+            "array-more 1,3,5,7 10|cba|true|true|3|2|2|false|3:4:5|1:2:3|ac:d:bxyez|a,b,c\n"
         );
     }
 
@@ -1078,7 +1082,8 @@ const has = Object.prototype.hasOwnProperty.call(target, "a")
 const tag = Object.prototype.toString.call(/x/)
 const isArray = Array.isArray([1])
 const bools = [Boolean(0), Boolean("x")].join(",")
-console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools)
+const numbers = [Number.isFinite(3), Number.isInteger(3.2), Number.isSafeInteger(Math.floor(parseFloat("42")))].join(",")
+console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools, numbers)
 "#,
         );
 
@@ -1128,7 +1133,7 @@ console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "builtins 12 a,b a:1|b:2 true [object RegExp] true 1 3 1 false,true\n"
+            "builtins 12 a,b a:1|b:2 true [object RegExp] true 1 3 1 false,true true,false,true\n"
         );
     }
 
@@ -1466,10 +1471,23 @@ console.log("types", typeof null, typeof undefined, null, undefined)
             "src/index.js",
             r#"
 import { value } from "./value.js";
-console.log("imported", value + 2)
+import parser from "./parser.js";
+console.log("imported", value + 2, parser(["x"]).kind, parser.moduleKind)
 "#,
         );
         write(&root, "src/value.js", "export const value = 40;");
+        write(
+            &root,
+            "src/parser.js",
+            r#"
+const parser = function Parser(args) {
+  return { kind: args[0] }
+}
+parser.moduleKind = "esm-default"
+export default parser
+export { parser as "module.exports" }
+"#,
+        );
 
         let response = emit_go(EmitGoRequest {
             analyze: AnalyzeRequest {
@@ -1515,7 +1533,10 @@ console.log("imported", value + 2)
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "imported 42\n");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "imported 42 x esm-default\n"
+        );
     }
 
     #[test]
@@ -2480,11 +2501,13 @@ function later() {
             &root,
             "src/index.js",
             r#"
-const target = { keep: 1, drop: 2 }
+const target = { keep: 1, drop: 2, alias: 3 }
 let value = 10
 value -= 3
 const deleted = delete target.drop
-console.log("delete", value, deleted, "drop" in target, "keep" in target)
+const alias = "alias"
+delete target[alias]
+console.log("delete", value, deleted, "drop" in target, "keep" in target, "alias" in target)
 "#,
         );
 
@@ -2534,7 +2557,7 @@ console.log("delete", value, deleted, "drop" in target, "keep" in target)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "delete 7 true false true\n"
+            "delete 7 true false true false\n"
         );
     }
 

@@ -463,12 +463,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"SyntaxError": builtinErrorClass("SyntaxError"),
 		"ReferenceError": builtinErrorClass("ReferenceError"),
 		"Function": functionGlobal(),
-		"Number": nativeFunction(func(args []any) (any, error) {
-			if len(args) == 0 {
-				return float64(0), nil
-			}
-			return toNumber(args[0]), nil
-		}),
+		"Number": numberGlobal(),
 		"String": stringGlobal(),
 		"Boolean": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -827,6 +822,37 @@ func stringGlobal() NativeFunctionValue {
 		})
 	}
 	constructor.Props["prototype"] = prototype
+	return constructor
+}
+
+func numberGlobal() NativeFunctionValue {
+	constructor := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return float64(0), nil
+		}
+		return toNumber(args[0]), nil
+	})
+	constructor.Props["isFinite"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		number, ok := args[0].(float64)
+		return ok && !math.IsNaN(number) && !math.IsInf(number, 0), nil
+	})
+	constructor.Props["isInteger"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		number, ok := args[0].(float64)
+		return ok && !math.IsNaN(number) && !math.IsInf(number, 0) && math.Trunc(number) == number, nil
+	})
+	constructor.Props["isSafeInteger"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		number, ok := args[0].(float64)
+		return ok && !math.IsNaN(number) && !math.IsInf(number, 0) && math.Trunc(number) == number && math.Abs(number) <= 9007199254740991, nil
+	})
 	return constructor
 }
 
@@ -2097,7 +2123,15 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			out[asString(propMap["key"])] = value
+			key := asString(propMap["key"])
+			if rawKeyExpr, ok := propMap["keyExpr"]; ok {
+				keyValue, err := evalExpr(asMap(rawKeyExpr), env)
+				if err != nil {
+					return nil, err
+				}
+				key = jsPropertyKey(keyValue)
+			}
+			out[key] = value
 		}
 		return out, nil
 	case "function":
@@ -2164,11 +2198,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 	case "call":
 		if isConsoleLog(asMap(expr["callee"])) {
 			parts := []string{}
-			for _, arg := range asSlice(expr["args"]) {
-				value, err := evalExpr(asMap(arg), env)
-				if err != nil {
-					return nil, err
-				}
+			values, err := evalCallArgs(asSlice(expr["args"]), env)
+			if err != nil {
+				return nil, err
+			}
+			for _, value := range values {
 				parts = append(parts, jsString(value))
 			}
 			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
@@ -2205,6 +2239,8 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return nil, err
 		}
 		return constructValue(callee, asSlice(expr["args"]), env)
+	case "spread":
+		return evalExpr(asMap(expr["arg"]), env)
 	case "member":
 		object, err := evalExpr(asMap(expr["object"]), env)
 		if err != nil {
@@ -2511,7 +2547,11 @@ func evalDelete(target map[string]any, env Env) (any, error) {
 		return nil, err
 	}
 	if objectMap, ok := object.(map[string]any); ok {
-		delete(objectMap, asString(target["property"]))
+		property, err := evalMemberProperty(target, env)
+		if err != nil {
+			return nil, err
+		}
+		delete(objectMap, property)
 	}
 	return true, nil
 }
@@ -3866,13 +3906,11 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		if bound, boundOk := raw.(BoundFunctionValue); boundOk {
 			instance := map[string]any{}
 			args := append([]any{}, bound.Args...)
-			for _, rawArg := range rawArgs {
-				value, err := evalExpr(asMap(rawArg), callerEnv)
-				if err != nil {
-					return nil, err
-				}
-				args = append(args, value)
+			callArgs, err := evalCallArgs(rawArgs, callerEnv)
+			if err != nil {
+				return nil, err
 			}
+			args = append(args, callArgs...)
 			result, err := callFunctionWithThisValues(bound.Function, args, instance)
 			if err != nil {
 				return nil, err
@@ -3914,22 +3952,16 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		return callFunctionWithThis(function, rawArgs, callerEnv, jsUndefined)
 	case BoundFunctionValue:
 		args := append([]any{}, function.Args...)
-		for _, rawArg := range rawArgs {
-			value, err := evalExpr(asMap(rawArg), callerEnv)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, value)
+		callArgs, err := evalCallArgs(rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
 		}
+		args = append(args, callArgs...)
 		return callFunctionWithThisValues(function.Function, args, function.This)
 	case NativeFunctionValue:
-		args := []any{}
-		for _, rawArg := range rawArgs {
-			value, err := evalExpr(asMap(rawArg), callerEnv)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, value)
+		args, err := evalCallArgs(rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
 		}
 		return function.Call(args)
 	case map[string]any:
@@ -3966,15 +3998,32 @@ func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (
 }
 
 func callFunctionWithThis(function FunctionValue, rawArgs []any, callerEnv Env, thisValue any) (any, error) {
+	args, err := evalCallArgs(rawArgs, callerEnv)
+	if err != nil {
+		return nil, err
+	}
+	return callFunctionWithThisValues(function, args, thisValue)
+}
+
+func evalCallArgs(rawArgs []any, env Env) ([]any, error) {
 	args := []any{}
 	for _, rawArg := range rawArgs {
-		value, err := evalExpr(asMap(rawArg), callerEnv)
+		argExpr := asMap(rawArg)
+		if argExpr["kind"] == "spread" {
+			spreadValue, err := evalExpr(asMap(argExpr["arg"]), env)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, iterableValues(spreadValue)...)
+			continue
+		}
+		value, err := evalExpr(argExpr, env)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, value)
 	}
-	return callFunctionWithThisValues(function, args, thisValue)
+	return args, nil
 }
 
 func callFunctionWithThisValues(function FunctionValue, args []any, thisValue any) (any, error) {

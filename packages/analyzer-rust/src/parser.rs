@@ -314,6 +314,34 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
             };
             lower_class_decl_stmt(stmts, class_decl);
         }
+        ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(export)) => {
+            if let Some(expr) = lower_js_expr(&export.expr) {
+                stmts.push(JsStmtIR::VarDecl {
+                    name: "default".to_string(),
+                    init: Some(expr),
+                });
+            }
+        }
+        ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(named)) if named.src.is_none() => {
+            for specifier in &named.specifiers {
+                if let ExportSpecifier::Named(named_specifier) = specifier {
+                    let local = named_specifier.orig.atom().to_string();
+                    let exported = named_specifier
+                        .exported
+                        .as_ref()
+                        .unwrap_or(&named_specifier.orig)
+                        .atom()
+                        .to_string();
+                    if exported == local {
+                        continue;
+                    }
+                    stmts.push(JsStmtIR::VarDecl {
+                        name: exported,
+                        init: Some(JsExprIR::Ident(local)),
+                    });
+                }
+            }
+        }
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
             lower_var_decl_stmts(stmts, var_decl);
         }
@@ -765,11 +793,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 Callee::Import(_) => JsExprIR::Ident("import".to_string()),
                 Callee::Super(_) => return None,
             };
-            let args = call
-                .args
-                .iter()
-                .filter_map(|arg| lower_js_expr(&arg.expr))
-                .collect();
+            let args = lower_call_args(&call.args);
             Some(JsExprIR::Call {
                 callee: Box::new(callee),
                 args,
@@ -779,11 +803,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             let args = new_expr
                 .args
                 .as_ref()
-                .map(|args| {
-                    args.iter()
-                        .filter_map(|arg| lower_js_expr(&arg.expr))
-                        .collect::<Vec<_>>()
-                })
+                .map(|args| lower_call_args(args))
                 .unwrap_or_default();
             Some(JsExprIR::New {
                 callee: Box::new(lower_js_expr(&new_expr.callee)?),
@@ -795,11 +815,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             OptChainBase::Member(member) => lower_member_expr(member),
             OptChainBase::Call(call) => Some(JsExprIR::Call {
                 callee: Box::new(lower_js_expr(&call.callee)?),
-                args: call
-                    .args
-                    .iter()
-                    .filter_map(|arg| lower_js_expr(&arg.expr))
-                    .collect(),
+                args: lower_call_args(&call.args),
             }),
         },
         Expr::Tpl(template) => Some(JsExprIR::Template {
@@ -1042,6 +1058,21 @@ fn lower_arrow_body(body: &BlockStmtOrExpr) -> Option<Vec<JsStmtIR>> {
     }
 }
 
+fn lower_call_args(args: &[swc_ecma_ast::ExprOrSpread]) -> Vec<JsExprIR> {
+    args.iter()
+        .filter_map(|arg| {
+            let expr = lower_js_expr(&arg.expr)?;
+            if arg.spread.is_some() {
+                Some(JsExprIR::Spread {
+                    arg: Box::new(expr),
+                })
+            } else {
+                Some(expr)
+            }
+        })
+        .collect()
+}
+
 fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
     let PropOrSpread::Prop(prop) = prop else {
         return None;
@@ -1050,17 +1081,32 @@ fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
     match &**prop {
         Prop::Shorthand(ident) => Some(JsObjectPropIR {
             key: ident.sym.to_string(),
+            key_expr: None,
             value: JsExprIR::Ident(ident.sym.to_string()),
         }),
-        Prop::KeyValue(kv) => Some(JsObjectPropIR {
-            key: prop_name(&kv.key)?,
-            value: lower_js_expr(&kv.value)?,
-        }),
+        Prop::KeyValue(kv) => {
+            let (key, key_expr) = lower_object_key(&kv.key)?;
+            Some(JsObjectPropIR {
+                key,
+                key_expr,
+                value: lower_js_expr(&kv.value)?,
+            })
+        }
         Prop::Assign(assign) => Some(JsObjectPropIR {
             key: assign.key.sym.to_string(),
+            key_expr: None,
             value: lower_js_expr(&assign.value)?,
         }),
         Prop::Getter(_) | Prop::Setter(_) | Prop::Method(_) => None,
+    }
+}
+
+fn lower_object_key(key: &PropName) -> Option<(String, Option<JsExprIR>)> {
+    match key {
+        PropName::Computed(computed) => {
+            Some(("".to_string(), Some(lower_js_expr(&computed.expr)?)))
+        }
+        prop => Some((prop_name(prop)?, None)),
     }
 }
 

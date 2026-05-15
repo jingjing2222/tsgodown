@@ -325,6 +325,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                 collect_unsupported_expr(arg, unsupported);
             }
         }
+        JsExpr::Spread { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Member {
             object,
             property_expr,

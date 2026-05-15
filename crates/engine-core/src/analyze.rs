@@ -204,6 +204,7 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
                 .into_iter()
                 .map(|prop| JsObjectProp {
                     key: prop.key,
+                    key_expr: prop.key_expr.map(map_js_expr),
                     value: map_js_expr(prop.value),
                 })
                 .collect(),
@@ -262,6 +263,9 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
         analyzer_rust::JsExprIR::Call { callee, args } => JsExpr::Call {
             callee: Box::new(map_js_expr(*callee)),
             args: args.into_iter().map(map_js_expr).collect(),
+        },
+        analyzer_rust::JsExprIR::Spread { arg } => JsExpr::Spread {
+            arg: Box::new(map_js_expr(*arg)),
         },
         analyzer_rust::JsExprIR::New { callee, args } => JsExpr::New {
             callee: Box::new(map_js_expr(*callee)),
