@@ -213,6 +213,9 @@ fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>
 }
 
 fn collect_builtin_usage_expr_features(expr: &JsExpr, features: &mut BTreeSet<String>) {
+    if is_process_stdout_is_tty(expr) {
+        return;
+    }
     match expr {
         JsExpr::Call { callee, args, .. } => {
             if let JsExpr::Member {
@@ -420,6 +423,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             collect_expr_imports(consequent, imports);
             collect_expr_imports(alternate, imports);
         }
+        expr if is_process_stdout_is_tty(expr) => {
+            imports.insert("os");
+        }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
         _ => {}
     }
@@ -476,6 +482,16 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
 	default:
 		return "[object Object]"
 	}
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("os") {
+        helpers.push(
+            r#"func tsgodownStdoutIsTTY() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && (info.Mode()&os.ModeCharDevice) != 0
 }
 "#
             .to_string(),
@@ -2041,6 +2057,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::Bool { value },
         } => Some(value.to_string()),
+        expr if is_process_stdout_is_tty(expr) => Some("tsgodownStdoutIsTTY()".to_string()),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2242,7 +2259,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_static_member_expr(object, property, state),
+        } => render_bool_expr(expr, state)
+            .or_else(|| render_static_member_expr(object, property, state)),
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
@@ -2679,6 +2697,30 @@ fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 
 fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Boolean")
+}
+
+fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = expr
+    else {
+        return false;
+    };
+    if property != "isTTY" {
+        return false;
+    }
+    matches!(
+        object.as_ref(),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process") && property == "stdout"
+    )
 }
 
 fn narrowed_typeof_state(test: &JsExpr, state: &AotState) -> AotState {
