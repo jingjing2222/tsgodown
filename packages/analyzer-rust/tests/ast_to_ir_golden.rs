@@ -255,6 +255,14 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::Label { label, body } => format!(
+            "label {} [{}]",
+            label,
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
         JsStmtIR::Break(label) => format!("break {}", label.as_deref().unwrap_or("<none>")),
         JsStmtIR::Continue(label) => format!("continue {}", label.as_deref().unwrap_or("<none>")),
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
@@ -557,6 +565,10 @@ fn executable_control_flow_is_lowered_deterministically() {
     let source = r#"
 function scan(items) {
   let total = 0;
+  WHILE: while (total < 2) {
+    total++;
+    continue WHILE;
+  }
   for (let i = 0; i < 3; i++) {
     switch (i) {
       case 0:
@@ -580,6 +592,9 @@ function scan(items) {
     let rendered = render_ir(&ir);
 
     assert!(rendered.contains("for init=[var i = number(0)]"));
+    assert!(rendered.contains("label WHILE [while"));
+    assert!(rendered.contains("while binary(<, ident(total), number(2))"));
+    assert!(rendered.contains("continue WHILE"));
     assert!(rendered.contains("switch ident(i)"));
     assert!(rendered.contains("continue <none>"));
     assert!(rendered.contains("break <none>"));

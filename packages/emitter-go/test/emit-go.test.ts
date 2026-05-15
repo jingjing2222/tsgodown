@@ -40,7 +40,7 @@ test("emitGoProject delegates Go emission to engine-core and writes returned fil
 
   const mainGo = fs.readFileSync(path.join(outDir, "main.go"), "utf8");
   assert.match(mainGo, /^package main/m);
-  assert.match(mainGo, /tsgodownrt\.FailClosedReport/);
+  assert.match(mainGo, /tsgodownrt\.RunProgram/);
   assert.equal(
     fs.existsSync(path.join(outDir, "tsgodownrt", "runtime.go")),
     true,

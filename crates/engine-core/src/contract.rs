@@ -131,6 +131,8 @@ pub enum JsStmt {
         #[serde(rename = "finallyBody")]
         finally_body: Vec<JsStmt>,
     },
+    #[serde(rename = "label")]
+    Label { label: String, body: Vec<JsStmt> },
     #[serde(rename = "break")]
     Break {
         #[serde(skip_serializing_if = "Option::is_none")]

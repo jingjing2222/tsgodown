@@ -583,6 +583,12 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
                     .unwrap_or_default(),
             });
         }
+        Stmt::Labeled(labeled_stmt) => {
+            stmts.push(JsStmtIR::Label {
+                label: labeled_stmt.label.sym.to_string(),
+                body: lower_stmt_as_block(&labeled_stmt.body),
+            });
+        }
         Stmt::Break(break_stmt) => {
             stmts.push(JsStmtIR::Break(
                 break_stmt.label.as_ref().map(|label| label.sym.to_string()),

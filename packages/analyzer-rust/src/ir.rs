@@ -140,6 +140,10 @@ pub enum JsStmtIR {
         catch_body: Vec<JsStmtIR>,
         finally_body: Vec<JsStmtIR>,
     },
+    Label {
+        label: String,
+        body: Vec<JsStmtIR>,
+    },
     Break(Option<String>),
     Continue(Option<String>),
     Return(Option<JsExprIR>),

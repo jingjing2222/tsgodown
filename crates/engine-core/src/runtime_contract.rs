@@ -169,16 +169,9 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_stmt_list(catch_body, false, unsupported);
             collect_unsupported_stmt_list(finally_body, false, unsupported);
         }
-        JsStmt::Break { label } => {
-            if label.is_some() {
-                unsupported.push("labeled break".to_string());
-            }
-        }
-        JsStmt::Continue { label } => {
-            if label.is_some() {
-                unsupported.push("labeled continue".to_string());
-            }
-        }
+        JsStmt::Label { body, .. } => collect_unsupported_stmt_list(body, false, unsupported),
+        JsStmt::Break { .. } => {}
+        JsStmt::Continue { .. } => {}
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
         JsStmt::Yield { value, .. } => {
@@ -252,6 +245,7 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
             collect_unsupported_stmt_list(catch_body, true, unsupported);
             collect_unsupported_stmt_list(finally_body, true, unsupported);
         }
+        JsStmt::Label { body, .. } => collect_unsupported_stmt_list(body, true, unsupported),
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
         JsStmt::Yield { value, .. } => {
             if let Some(value) = value {

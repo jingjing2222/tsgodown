@@ -392,6 +392,10 @@ type RegExpValue struct {
 	Props   map[string]any
 }
 
+type DateValue struct {
+	Time time.Time
+}
+
 type SymbolValue struct {
 	Description string
 }
@@ -426,6 +430,8 @@ type completion struct {
 	returned  bool
 	broke     bool
 	continued bool
+	breakLabel string
+	continueLabel string
 	yields    []any
 }
 
@@ -451,7 +457,7 @@ func RunProgram(programJSON string) error {
 	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
 		return err
 	}
-	sharedProcess = processObject()
+	sharedProcess = processObject(program.Entry)
 	sharedGlobal = map[string]any{}
 	module, ok := entryModule(program)
 	if !ok {
@@ -1354,10 +1360,53 @@ func bytesFromJSValue(value any) []byte {
 
 func dateGlobal() NativeFunctionValue {
 	constructor := nativeFunction(func(args []any) (any, error) {
-		return float64(time.Now().UnixMilli()), nil
+		if len(args) == 0 {
+			return &DateValue{Time: time.Now().UTC()}, nil
+		}
+		if text, ok := args[0].(string); ok {
+			if parsed, err := time.Parse(time.RFC3339, text); err == nil {
+				return &DateValue{Time: parsed.UTC()}, nil
+			}
+			if parsed, err := time.Parse("2006-01-02", text); err == nil {
+				return &DateValue{Time: parsed.UTC()}, nil
+			}
+		}
+		return &DateValue{Time: time.UnixMilli(int64(toNumber(args[0]))).UTC()}, nil
 	})
 	constructor.Props["now"] = nativeFunction(func(args []any) (any, error) {
 		return float64(time.Now().UnixMilli()), nil
+	})
+	constructor.Props["UTC"] = nativeFunction(func(args []any) (any, error) {
+		year := 0
+		month := 0
+		day := 1
+		hour := 0
+		minute := 0
+		second := 0
+		millisecond := 0
+		if len(args) > 0 {
+			year = int(toNumber(args[0]))
+		}
+		if len(args) > 1 {
+			month = int(toNumber(args[1]))
+		}
+		if len(args) > 2 {
+			day = int(toNumber(args[2]))
+		}
+		if len(args) > 3 {
+			hour = int(toNumber(args[3]))
+		}
+		if len(args) > 4 {
+			minute = int(toNumber(args[4]))
+		}
+		if len(args) > 5 {
+			second = int(toNumber(args[5]))
+		}
+		if len(args) > 6 {
+			millisecond = int(toNumber(args[6]))
+		}
+		value := time.Date(year, time.Month(month+1), day, hour, minute, second, millisecond*int(time.Millisecond), time.UTC)
+		return float64(value.UnixMilli()), nil
 	})
 	return constructor
 }
@@ -1668,20 +1717,18 @@ func objectGlobal() map[string]any {
 		if len(args) == 0 || isNullish(args[0]) {
 			return map[string]any{}, nil
 		}
-		target, ok := args[0].(map[string]any)
-		if !ok {
-			target = map[string]any{}
-		}
-				for _, source := range args[1:] {
-					if sourceMap, ok := source.(map[string]any); ok {
-						for key, value := range sourceMap {
-							if strings.HasPrefix(key, "__") {
-								continue
-							}
-							setObjectProperty(target, key, value)
-						}
+		target := args[0]
+		for _, source := range args[1:] {
+			if sourceMap, ok := source.(map[string]any); ok {
+				for _, key := range objectKeys(sourceMap) {
+					value, exists := sourceMap[key]
+					if !exists {
+						continue
 					}
+					setDynamicProperty(target, key, value)
 				}
+			}
+		}
 		return target, nil
 	})
 	return map[string]any{
@@ -1915,11 +1962,12 @@ func jsonGlobal() map[string]any {
 			if len(args) == 0 {
 				return jsUndefined, nil
 			}
-			var value any
-			if err := json.Unmarshal([]byte(jsString(args[0])), &value); err != nil {
+			decoder := json.NewDecoder(strings.NewReader(jsString(args[0])))
+			value, err := parseJSONValue(decoder)
+			if err != nil {
 				return nil, err
 			}
-			return jsValueFromJSON(value), nil
+			return value, nil
 		}),
 	}
 }
@@ -2225,6 +2273,8 @@ func jsonCompatible(value any, seen map[uintptr]bool) any {
 			}
 		}
 		return out
+	case *DateValue:
+		return formatDateISO(typed.Time)
 	case *RegExpValue:
 		return map[string]any{}
 	case *MapValue:
@@ -2233,6 +2283,70 @@ func jsonCompatible(value any, seen map[uintptr]bool) any {
 		return map[string]any{}
 	default:
 		return typed
+	}
+}
+
+func parseJSONValue(decoder *json.Decoder) (any, error) {
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	switch typed := token.(type) {
+	case json.Delim:
+		switch typed {
+		case '{':
+			out := map[string]any{}
+			for decoder.More() {
+				keyToken, err := decoder.Token()
+				if err != nil {
+					return nil, err
+				}
+				key, ok := keyToken.(string)
+				if !ok {
+					return nil, fmt.Errorf("JSON object key is not a string: %T", keyToken)
+				}
+				value, err := parseJSONValue(decoder)
+				if err != nil {
+					return nil, err
+				}
+				setObjectProperty(out, key, value)
+			}
+			if end, err := decoder.Token(); err != nil {
+				return nil, err
+			} else if end != json.Delim('}') {
+				return nil, fmt.Errorf("JSON object ended with %v", end)
+			}
+			return out, nil
+		case '[':
+			items := []any{}
+			for decoder.More() {
+				value, err := parseJSONValue(decoder)
+				if err != nil {
+					return nil, err
+				}
+				items = append(items, value)
+			}
+			if end, err := decoder.Token(); err != nil {
+				return nil, err
+			} else if end != json.Delim(']') {
+				return nil, fmt.Errorf("JSON array ended with %v", end)
+			}
+			return &ArrayValue{Items: items}, nil
+		default:
+			return nil, fmt.Errorf("unsupported JSON delimiter %q", typed)
+		}
+	case nil:
+		return jsNull, nil
+	case bool, string, float64:
+		return typed, nil
+	case json.Number:
+		number, err := typed.Float64()
+		if err != nil {
+			return nil, err
+		}
+		return number, nil
+	default:
+		return nil, fmt.Errorf("unsupported JSON token %T", token)
 	}
 }
 
@@ -3117,18 +3231,32 @@ func childProcessModuleExports() map[string]any {
 		if err != nil {
 			return map[string]any{"error": nodeError("ENOENT", err.Error())}, nil
 		}
+		stdout := commandOutputValue(result.Stdout, args)
+		stderr := commandOutputValue(result.Stderr, args)
 		return map[string]any{
 			"pid":    float64(os.Getpid()),
 			"status": float64(result.ExitCode),
 			"signal": jsNull,
-			"stdout": arrayFromBytes([]byte(result.Stdout)),
-			"stderr": arrayFromBytes([]byte(result.Stderr)),
-			"output": &ArrayValue{Items: []any{jsNull, arrayFromBytes([]byte(result.Stdout)), arrayFromBytes([]byte(result.Stderr))}},
+			"stdout": stdout,
+			"stderr": stderr,
+			"output": &ArrayValue{Items: []any{jsNull, stdout, stderr}},
 			"error":  jsUndefined,
 		}, nil
 	})
 	exports["default"] = exports
 	return exports
+}
+
+func commandOutputValue(value string, args []any) any {
+	if len(args) > 2 {
+		if options, ok := args[2].(map[string]any); ok {
+			encoding := jsString(options["encoding"])
+			if encoding == "utf8" || encoding == "utf-8" {
+				return value
+			}
+		}
+	}
+	return arrayFromBytes([]byte(value))
 }
 
 type commandResult struct {
@@ -3292,23 +3420,117 @@ func evalSimpleNodeExpression(expr string, argv []string, env map[string]string)
 	parts := splitSimpleConcat(expr)
 	var out strings.Builder
 	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		switch {
-		case len(part) >= 2 && ((part[0] == '\'' && part[len(part)-1] == '\'') || (part[0] == '"' && part[len(part)-1] == '"')):
-			out.WriteString(unquoteSimpleJSString(part))
-		case strings.HasPrefix(part, "process.env."):
-			out.WriteString(env[strings.TrimPrefix(part, "process.env.")])
-		case strings.HasPrefix(part, "process.argv[") && strings.HasSuffix(part, "]"):
-			indexText := strings.TrimSuffix(strings.TrimPrefix(part, "process.argv["), "]")
-			index, _ := strconv.Atoi(indexText)
-			if index >= 0 && index < len(argv) {
-				out.WriteString(argv[index])
-			}
-		default:
-			out.WriteString(part)
-		}
+		out.WriteString(evalSimpleNodeExpressionPart(part, argv, env))
 	}
 	return out.String()
+}
+
+func evalSimpleNodeExpressionPart(part string, argv []string, env map[string]string) string {
+	part = stripBalancedParens(strings.TrimSpace(part))
+	if orIndex := findTopLevelLogicalOr(part); orIndex >= 0 {
+		left := evalSimpleNodeExpressionPart(part[:orIndex], argv, env)
+		if left != "" {
+			return left
+		}
+		return evalSimpleNodeExpressionPart(part[orIndex+2:], argv, env)
+	}
+	switch {
+	case len(part) >= 2 && ((part[0] == '\'' && part[len(part)-1] == '\'') || (part[0] == '"' && part[len(part)-1] == '"')):
+		return unquoteSimpleJSString(part)
+	case strings.HasPrefix(part, "process.env."):
+		return env[strings.TrimPrefix(part, "process.env.")]
+	case strings.HasPrefix(part, "process.argv[") && strings.HasSuffix(part, "]"):
+		indexText := strings.TrimSuffix(strings.TrimPrefix(part, "process.argv["), "]")
+		index, _ := strconv.Atoi(indexText)
+		if index >= 0 && index < len(argv) {
+			return argv[index]
+		}
+		return ""
+	default:
+		return part
+	}
+}
+
+func stripBalancedParens(value string) string {
+	for strings.HasPrefix(value, "(") && strings.HasSuffix(value, ")") {
+		depth := 0
+		quote := rune(0)
+		escaped := false
+		balanced := true
+		for index, ch := range value {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if quote != 0 {
+				if ch == '\\' {
+					escaped = true
+				} else if ch == quote {
+					quote = 0
+				}
+				continue
+			}
+			if ch == '\'' || ch == '"' || ch == '`' {
+				quote = ch
+				continue
+			}
+			switch ch {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 && index != len(value)-1 {
+					balanced = false
+				}
+			}
+			if depth < 0 {
+				balanced = false
+				break
+			}
+		}
+		if !balanced || depth != 0 {
+			return value
+		}
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+	return value
+}
+
+func findTopLevelLogicalOr(value string) int {
+	depth := 0
+	quote := rune(0)
+	escaped := false
+	for index, ch := range value {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if quote != 0 {
+			if ch == '\\' {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' || ch == '`' {
+			quote = ch
+			continue
+		}
+		switch ch {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case '|':
+			if depth == 0 && index+1 < len(value) && value[index+1] == '|' {
+				return index
+			}
+		}
+	}
+	return -1
 }
 
 func splitSimpleConcat(expr string) []string {
@@ -3739,7 +3961,7 @@ func moduleModuleExports() map[string]any {
 	return exports
 }
 
-func processObject() map[string]any {
+func processObject(entry string) map[string]any {
 	env := map[string]any{}
 	for _, entry := range os.Environ() {
 		parts := strings.SplitN(entry, "=", 2)
@@ -3749,9 +3971,13 @@ func processObject() map[string]any {
 		}
 		env[parts[0]] = value
 	}
+	argv := []string{nodeExecutablePath(), entry}
+	if len(os.Args) > 1 {
+		argv = append(argv, os.Args[1:]...)
+	}
 	process := map[string]any{
 		"env":      env,
-		"argv":     &ArrayValue{Items: stringsToAny(os.Args)},
+		"argv":     &ArrayValue{Items: stringsToAny(argv)},
 		"execArgv": &ArrayValue{Items: []any{}},
 		"execPath": nodeExecutablePath(),
 		"version":  "v20.0.0",
@@ -3935,11 +4161,37 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 				branch = asStmtSlice(stmt["consequent"])
 			}
 			return evalStmtList(branch, env)
+	case "label":
+		label := asString(stmt["label"])
+		body := asStmtSlice(stmt["body"])
+		if len(body) == 1 {
+			wrapped := cloneStmtMap(body[0])
+			wrapped["__label"] = label
+			result, err := evalStmt(wrapped, env)
+			if err != nil {
+				return completion{}, err
+			}
+			if result.broke && result.breakLabel == label {
+				result.broke = false
+				result.breakLabel = ""
+			}
+			return result, nil
+		}
+		result, err := evalStmtList(body, env)
+		if err != nil {
+			return completion{}, err
+		}
+		if result.broke && result.breakLabel == label {
+			result.broke = false
+			result.breakLabel = ""
+		}
+		return result, nil
 	case "for-of":
 		iterable, err := evalExpr(asMap(stmt["right"]), env)
 		if err != nil {
 			return completion{}, err
 		}
+			loopLabel := asString(stmt["__label"])
 			out := completion{}
 			for _, value := range iterableValues(iterable) {
 				env[asString(stmt["left"])] = value
@@ -3953,11 +4205,23 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return result, nil
 				}
 				if result.broke {
-					return out, nil
+					if result.breakLabel == "" || result.breakLabel == loopLabel {
+						return out, nil
+					}
+					result.yields = out.yields
+					return result, nil
+				}
+				if result.continued {
+					if result.continueLabel == "" || result.continueLabel == loopLabel {
+						continue
+					}
+					result.yields = out.yields
+					return result, nil
 				}
 			}
 			return out, nil
 	case "for":
+		loopLabel := asString(stmt["__label"])
 		for _, init := range asStmtSlice(stmt["init"]) {
 			result, err := evalStmt(init, env)
 			if err != nil {
@@ -3988,7 +4252,15 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return result, nil
 				}
 				if result.broke {
-					return out, nil
+					if result.breakLabel == "" || result.breakLabel == loopLabel {
+						return out, nil
+					}
+					result.yields = out.yields
+					return result, nil
+				}
+				if result.continued && result.continueLabel != "" && result.continueLabel != loopLabel {
+					result.yields = out.yields
+					return result, nil
 				}
 				if rawUpdate, ok := stmt["update"]; ok {
 				if _, err := evalExpr(asMap(rawUpdate), env); err != nil {
@@ -3997,6 +4269,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			}
 		}
 	case "while":
+			loopLabel := asString(stmt["__label"])
 			out := completion{}
 			for {
 			test, err := evalExpr(asMap(stmt["test"]), env)
@@ -4016,7 +4289,15 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return result, nil
 				}
 				if result.broke {
-					return out, nil
+					if result.breakLabel == "" || result.breakLabel == loopLabel {
+						return out, nil
+					}
+					result.yields = out.yields
+					return result, nil
+				}
+				if result.continued && result.continueLabel != "" && result.continueLabel != loopLabel {
+					result.yields = out.yields
+					return result, nil
 				}
 			}
 	case "switch":
@@ -4073,7 +4354,10 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return result, nil
 				}
 				if result.broke {
-					return completion{}, nil
+					if result.breakLabel == "" {
+						return completion{}, nil
+					}
+					return result, nil
 				}
 				if result.continued {
 					return result, nil
@@ -4123,9 +4407,9 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			}
 			return completion{yields: []any{value}}, nil
 	case "break":
-		return completion{broke: true}, nil
+		return completion{broke: true, breakLabel: asString(stmt["label"])}, nil
 	case "continue":
-		return completion{continued: true}, nil
+		return completion{continued: true, continueLabel: asString(stmt["label"])}, nil
 	case "return":
 		value := any(jsUndefined)
 		var err error
@@ -4597,6 +4881,11 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 	}
 	if regExpValue, ok := object.(*RegExpValue); ok {
 		if member, ok := regexpMember(regExpValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if dateValue, ok := object.(*DateValue); ok {
+		if member, ok := dateMember(dateValue, property); ok {
 			return object, property, member, nil
 		}
 	}
@@ -5333,6 +5622,24 @@ func regexpMember(value *RegExpValue, property string) (any, bool) {
 		}), true
 	}
 	return nil, false
+}
+
+func dateMember(value *DateValue, property string) (any, bool) {
+	switch property {
+	case "toISOString", "toJSON":
+		return nativeFunction(func(args []any) (any, error) {
+			return formatDateISO(value.Time), nil
+		}), true
+	case "getTime", "valueOf":
+		return nativeFunction(func(args []any) (any, error) {
+			return float64(value.Time.UnixMilli()), nil
+		}), true
+	}
+	return nil, false
+}
+
+func formatDateISO(value time.Time) string {
+	return value.UTC().Format("2006-01-02T15:04:05.000Z")
 }
 
 func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
@@ -6347,6 +6654,23 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	return instance, nil
 }
 
+func constructClassWithValues(classValue *ClassValue, args []any) (any, error) {
+	var instance any = map[string]any{"__class": classValue}
+	if classValue.Constructor != nil {
+		result, err := callFunctionWithThisValues(*classValue.Constructor, args, instance)
+		if err != nil {
+			return nil, err
+		}
+		if resultMap, ok := result.(map[string]any); ok {
+			return resultMap, nil
+		}
+		if resultArray, ok := result.(*ArrayValue); ok {
+			return resultArray, nil
+		}
+	}
+	return instance, nil
+}
+
 func isConstructable(raw any) bool {
 	switch typed := raw.(type) {
 	case *ClassValue, FunctionValue, NativeFunctionValue:
@@ -6377,6 +6701,15 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 			return nil, err
 		}
 		return function.Call(args)
+	case *ClassValue:
+		if !function.Callable {
+			return nil, fmt.Errorf("class constructor cannot be invoked without new: %s", jsInspect(raw))
+		}
+		args, err := evalCallArgs(rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
+		}
+		return constructClassWithValues(function, args)
 	case map[string]any:
 		if callable, ok := function["__call"]; ok {
 			return callFunction(callable, rawArgs, callerEnv)
@@ -6400,6 +6733,11 @@ func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (
 			return function.CallWithThis(thisValue, args)
 		}
 		return function.Call(args)
+	case *ClassValue:
+		if !function.Callable {
+			return nil, fmt.Errorf("class constructor cannot be invoked without new: %s", jsInspect(raw))
+		}
+		return constructClassWithValues(function, args)
 	case map[string]any:
 		if callable, ok := function["__call"]; ok {
 			return callFunctionWithValues(callable, args, callerEnv, thisValue)
@@ -7072,6 +7410,8 @@ func jsString(value any) string {
 		return objectTag(typed)
 	case *RegExpValue:
 		return "/" + typed.Pattern + "/" + typed.Flags
+	case *DateValue:
+		return formatDateISO(typed.Time)
 	case *MapValue:
 		return "[object Map]"
 	case *SetValue:
@@ -7180,6 +7520,14 @@ func asMap(value any) map[string]any {
 		return typed
 	}
 	return map[string]any{}
+}
+
+func cloneStmtMap(value map[string]any) map[string]any {
+	out := map[string]any{}
+	for key, item := range value {
+		out[key] = item
+	}
+	return out
 }
 
 func optionalExpr(source map[string]any, key string) map[string]any {

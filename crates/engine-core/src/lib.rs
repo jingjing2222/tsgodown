@@ -394,6 +394,275 @@ console.log("hello", value)
     }
 
     #[test]
+    fn emit_go_runs_node_style_process_argv_subset() {
+        let root = temp_project("engine-core-process-argv");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+console.log(JSON.stringify({
+  node: process.argv[0],
+  entry: process.argv[1],
+  first: process.argv[2],
+  second: process.argv[3],
+  argc: process.argv.length
+}))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/process-argv".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", ".", "alpha", "beta"])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let observed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("generated stdout JSON");
+        assert!(observed["node"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert_eq!(observed["entry"], "src/index.js");
+        assert_eq!(observed["first"], "alpha");
+        assert_eq!(observed["second"], "beta");
+        assert_eq!(observed["argc"], 4);
+    }
+
+    #[test]
+    fn emit_go_runs_runtime_object_error_json_and_child_eval_subset() {
+        let root = temp_project("engine-core-runtime-object-error-json-child");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { spawnSync } from "node:child_process"
+
+const assigned = Object.assign(/a/, { _src: "a" })
+const globRe = Object.assign(new RegExp("^(?!\\.)[ai][^/]*?\\.ts$", "u"), {
+  _src: "(?!\\.)[ai][^/]*?\\.ts",
+  _glob: "[ai]*.ts"
+})
+const globStar = Symbol("globstar **")
+const globPattern = ["src", globStar, globRe]
+const globFile = "src/app.spec.ts".split("/")
+const globTail = globPattern.slice(globPattern.lastIndexOf(globStar) + 1)
+const globTailStart = globFile.length - globTail.length
+function indexedGlobMatch(file, pattern, fileIndex, patternIndex) {
+  let fi
+  let pi
+  let fl
+  let pl
+  for (
+    fi = fileIndex,
+    pi = patternIndex,
+    fl = file.length,
+    pl = pattern.length;
+    fi < fl && pi < pl;
+    fi++, pi++
+  ) {
+    return pattern[pi].test(file[fi])
+  }
+  return null
+}
+class MagicTracker {
+  #hasMagic
+  parse() {
+    const [src, needUflag, consumed, magic] = ["[ai]", false, 4, true]
+    this.#hasMagic = this.#hasMagic || magic
+    return src === "[ai]" && needUflag === false && consumed === 4 && !!this.#hasMagic
+  }
+}
+function parseSimpleClass(glob, position) {
+  const braceEscape = (s) => s.replace(/[[\]\\-]/g, "\\$&")
+  const regexpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")
+  const rangesToString = (ranges) => ranges.join("")
+  const pos = position
+  const ranges = []
+  const negs = []
+  let i = pos + 1
+  let sawStart = false
+  let escaping = false
+  let negate = false
+  let endPos = pos
+  let rangeStart = ""
+  while (i < glob.length) {
+    const c = glob.charAt(i)
+    if ((c === "!" || c === "^") && i === pos + 1) {
+      negate = true
+      i++
+      continue
+    }
+    if (c === "]" && sawStart && !escaping) {
+      endPos = i + 1
+      break
+    }
+    sawStart = true
+    escaping = false
+    if (rangeStart) {
+      if (c > rangeStart) ranges.push(braceEscape(rangeStart) + "-" + braceEscape(c))
+      else if (c === rangeStart) ranges.push(braceEscape(c))
+      rangeStart = ""
+      i++
+      continue
+    }
+    if (glob.startsWith("-]", i + 1)) {
+      ranges.push(braceEscape(c + "-"))
+      i += 2
+      continue
+    }
+    if (glob.startsWith("-", i + 1)) {
+      rangeStart = c
+      i += 2
+      continue
+    }
+    ranges.push(braceEscape(c))
+    i++
+  }
+  if (endPos < i) return ["", false, 0, false]
+  if (negs.length === 0 &&
+    ranges.length === 1 &&
+    /^\\?.$/.test(ranges[0]) &&
+    !negate) {
+    const r = ranges[0].length === 2 ? ranges[0].slice(-1) : ranges[0]
+    return [regexpEscape(r), false, endPos - pos, false]
+  }
+  const comb = ranges.length ? "[" + rangesToString(ranges) + "]" : "[^" + rangesToString(negs) + "]"
+  return [comb, false, endPos - pos, true]
+}
+const parsed = JSON.parse('{"empty":"","bool":true,"num":42}')
+const err = TypeError("Invalid UUID")
+const date = new Date(Date.UTC(2026, 4, 15))
+const child = spawnSync(
+  process.execPath,
+  ["-e", 'console.log((process.env.TSGODOWN_VECTOR || "") + ":" + process.argv[1])', "argv-1"],
+  { env: { TSGODOWN_VECTOR: "ok-1" }, encoding: "utf8" }
+)
+
+console.log(JSON.stringify({
+  regexp: assigned.test("a") && assigned._src,
+  glob: globRe.test("app.spec.ts"),
+  globstar: globPattern.includes(globStar) &&
+    globPattern.indexOf(globStar) === 1 &&
+    globPattern.lastIndexOf(globStar) === 1 &&
+    globTail[0].test(globFile[globTailStart]),
+  forSequence: indexedGlobMatch(globFile, globTail, globTailStart, 0),
+  privateMagic: new MagicTracker().parse(),
+  parseClass: parseSimpleClass("[ai]*.ts", 0),
+  keys: Object.keys(parsed),
+  error: { name: err.name, message: err.message },
+  date: date.toISOString(),
+  child: child.stdout.trim()
+}))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/runtime-object-error-json-child".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let observed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("generated stdout JSON");
+        assert_eq!(observed["regexp"], "a");
+        assert_eq!(observed["glob"], true);
+        assert_eq!(observed["globstar"], true);
+        assert_eq!(observed["forSequence"], true);
+        assert_eq!(observed["privateMagic"], true);
+        assert_eq!(
+            observed["parseClass"],
+            serde_json::json!(["[ai]", false, 4, true])
+        );
+        assert_eq!(
+            observed["keys"],
+            serde_json::json!(["empty", "bool", "num"])
+        );
+        assert_eq!(
+            observed["error"],
+            serde_json::json!({"name": "TypeError", "message": "Invalid UUID"})
+        );
+        assert_eq!(observed["date"], "2026-05-15T00:00:00.000Z");
+        assert_eq!(observed["child"], "ok-1:argv-1");
+    }
+
+    #[test]
     fn emit_go_escapes_program_json_as_raw_string_literal() {
         let root = temp_project("engine-core-raw-program-json");
         write(

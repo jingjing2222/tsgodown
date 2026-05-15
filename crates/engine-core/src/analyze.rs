@@ -167,6 +167,10 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             catch_body: catch_body.into_iter().map(map_js_stmt).collect(),
             finally_body: finally_body.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsStmtIR::Label { label, body } => JsStmt::Label {
+            label,
+            body: body.into_iter().map(map_js_stmt).collect(),
+        },
         analyzer_rust::JsStmtIR::Break(label) => JsStmt::Break { label },
         analyzer_rust::JsStmtIR::Continue(label) => JsStmt::Continue { label },
         analyzer_rust::JsStmtIR::Return(value) => JsStmt::Return {
