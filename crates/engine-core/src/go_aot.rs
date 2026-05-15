@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::contract::{AnalyzeResponse, IrDocument, JsExpr, JsStmt, JsValue, Module};
 use crate::emit_go::{go_string_literal, sanitize_go_identifier};
@@ -21,8 +21,23 @@ pub(crate) fn render_aot_executable_program(
     }
     let executable = module.executable.as_ref()?;
     let mut state = AotState::default();
+    for stmt in &executable.stmts {
+        if let JsStmt::FunctionDecl { name, params, .. } = stmt {
+            state.functions.insert(
+                name.clone(),
+                AotFunction {
+                    params: params.clone(),
+                },
+            );
+        }
+    }
+    let mut declarations = Vec::new();
     let mut body = Vec::new();
     for stmt in &executable.stmts {
+        if let JsStmt::FunctionDecl { .. } = stmt {
+            declarations.push(render_function_decl(stmt, &state)?);
+            continue;
+        }
         body.push(render_stmt(stmt, &mut state)?);
     }
     Some(format!(
@@ -30,10 +45,12 @@ pub(crate) fn render_aot_executable_program(
 
 import "fmt"
 
+{declarations}
 func main() {{
 {body}
 }}
 "#,
+        declarations = declarations.join("\n\n"),
         body = indent_lines(&body.join("\n"))
     ))
 }
@@ -41,6 +58,13 @@ func main() {{
 #[derive(Default)]
 struct AotState {
     bindings: BTreeSet<String>,
+    numeric_bindings: BTreeSet<String>,
+    functions: BTreeMap<String, AotFunction>,
+}
+
+#[derive(Clone)]
+struct AotFunction {
+    params: Vec<String>,
 }
 
 fn entry_module(ir: &IrDocument) -> Option<&Module> {
@@ -64,6 +88,43 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::Expr { expr } => render_expr_stmt(expr, state),
         _ => None,
     }
+}
+
+fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
+    let JsStmt::FunctionDecl {
+        name,
+        params,
+        rest_param,
+        r#async,
+        generator,
+        body,
+    } = stmt
+    else {
+        return None;
+    };
+    if rest_param.is_some() || *r#async || *generator || body.len() != 1 {
+        return None;
+    }
+    let JsStmt::Return { value: Some(value) } = &body[0] else {
+        return None;
+    };
+    let mut function_state = AotState {
+        functions: state.functions.clone(),
+        ..AotState::default()
+    };
+    for param in params {
+        function_state.numeric_bindings.insert(param.clone());
+    }
+    let rendered_params = params
+        .iter()
+        .map(|param| format!("{} float64", sanitize_go_identifier(param)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let returned = render_numeric_expr(value, &function_state)?;
+    Some(format!(
+        "func {}({rendered_params}) any {{\n\treturn {returned}\n}}",
+        sanitize_go_identifier(name)
+    ))
 }
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
@@ -103,6 +164,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
@@ -118,6 +180,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(sanitize_go_identifier(name))
         }
+        JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
+            Some(sanitize_go_identifier(name))
+        }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
@@ -125,6 +190,25 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Ident { name } = callee else {
+        return None;
+    };
+    let function = state.functions.get(name)?;
+    if function.params.len() != args.len() {
+        return None;
+    }
+    let rendered_args = args
+        .iter()
+        .map(|arg| render_numeric_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    Some(format!(
+        "{}({})",
+        sanitize_go_identifier(name),
+        rendered_args.join(", ")
+    ))
 }
 
 fn render_value(value: &JsValue) -> Option<String> {

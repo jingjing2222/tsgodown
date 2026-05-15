@@ -865,6 +865,8 @@ console.log("sum", add(2, 3))
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("func add("));
 
         if std::process::Command::new("go")
             .arg("version")
