@@ -701,6 +701,74 @@ console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3
     }
 
     #[test]
+    fn emit_go_runs_map_set_iterator_subset() {
+        let root = temp_project("engine-core-map-set-iterator");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const map = new Map()
+map.set("b", 2).set("a", 1)
+const firstKey = map.keys().next().value
+const values = [...map.values()].join("|")
+map.delete("b")
+const set = new Set(["x", "x"])
+set.add("y")
+console.log("collections", firstKey, values, map.has("a"), map.size, [...set.values()].join("|"), set.size)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/map-set-iterator".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "collections b 2|1 true 1 x|y 2\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_member_assignment_subset() {
         let root = temp_project("engine-core-member-assignment");
         write(

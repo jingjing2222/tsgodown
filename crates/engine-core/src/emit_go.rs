@@ -276,6 +276,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -357,6 +358,24 @@ type RegExpValue struct {
 	Flags   string
 	Regex   *regexp.Regexp
 	Global  bool
+}
+
+type MapEntry struct {
+	Key   any
+	Value any
+}
+
+type MapValue struct {
+	Entries []MapEntry
+}
+
+type SetValue struct {
+	Values []any
+}
+
+type IteratorValue struct {
+	Values []any
+	Index  int
 }
 
 type UndefinedValue struct{}
@@ -448,6 +467,10 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"Array":  arrayGlobal(),
 		"Object": objectGlobal(),
 		"Math":   mathGlobal(),
+		"Map":    mapGlobal(),
+		"Set":    setGlobal(),
+		"WeakMap": mapGlobal(),
+		"WeakSet": setGlobal(),
 		"parseInt": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return math.NaN(), nil
@@ -779,6 +802,32 @@ func mathGlobal() map[string]any {
 	}
 }
 
+func mapGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		value := &MapValue{Entries: []MapEntry{}}
+		if len(args) > 0 {
+			for _, entry := range iterableValues(args[0]) {
+				if pair, ok := entry.([]any); ok && len(pair) >= 2 {
+					mapSet(value, pair[0], pair[1])
+				}
+			}
+		}
+		return value, nil
+	})
+}
+
+func setGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		value := &SetValue{Values: []any{}}
+		if len(args) > 0 {
+			for _, item := range iterableValues(args[0]) {
+				setAdd(value, item)
+			}
+		}
+		return value, nil
+	})
+}
+
 func objectKeys(object map[string]any) []string {
 	keys := []string{}
 	for key := range object {
@@ -797,6 +846,10 @@ func objectTag(value any) string {
 		return "[object Array]"
 	case *RegExpValue:
 		return "[object RegExp]"
+	case *MapValue:
+		return "[object Map]"
+	case *SetValue:
+		return "[object Set]"
 	case NullValue:
 		return "[object Null]"
 	case UndefinedValue:
@@ -1498,6 +1551,21 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return member, nil
 			}
 		}
+		if mapValue, ok := object.(*MapValue); ok {
+			if member, ok := mapMember(mapValue, property); ok {
+				return member, nil
+			}
+		}
+		if setValue, ok := object.(*SetValue); ok {
+			if member, ok := setMember(setValue, property); ok {
+				return member, nil
+			}
+		}
+		if iteratorValue, ok := object.(*IteratorValue); ok {
+			if member, ok := iteratorMember(iteratorValue, property); ok {
+				return member, nil
+			}
+		}
 		if objectArray, ok := object.([]any); ok {
 			if member, ok := arrayMember(objectArray, property, env); ok {
 				return member, nil
@@ -1926,6 +1994,176 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 	return nil, false
 }
 
+func mapMember(value *MapValue, property string) (any, bool) {
+	switch property {
+	case "size":
+		return float64(len(value.Entries)), true
+	case "get":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			if index := mapIndex(value, args[0]); index >= 0 {
+				return value.Entries[index].Value, nil
+			}
+			return jsUndefined, nil
+		}), true
+	case "set":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return value, nil
+			}
+			next := any(jsUndefined)
+			if len(args) > 1 {
+				next = args[1]
+			}
+			mapSet(value, args[0], next)
+			return value, nil
+		}), true
+	case "has":
+		return nativeFunction(func(args []any) (any, error) {
+			return len(args) > 0 && mapIndex(value, args[0]) >= 0, nil
+		}), true
+	case "delete":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			index := mapIndex(value, args[0])
+			if index < 0 {
+				return false, nil
+			}
+			value.Entries = append(value.Entries[:index], value.Entries[index+1:]...)
+			return true, nil
+		}), true
+	case "clear":
+		return nativeFunction(func(args []any) (any, error) {
+			value.Entries = []MapEntry{}
+			return jsUndefined, nil
+		}), true
+	case "keys":
+		return nativeFunction(func(args []any) (any, error) {
+			keys := []any{}
+			for _, entry := range value.Entries {
+				keys = append(keys, entry.Key)
+			}
+			return &IteratorValue{Values: keys}, nil
+		}), true
+	case "values":
+		return nativeFunction(func(args []any) (any, error) {
+			values := []any{}
+			for _, entry := range value.Entries {
+				values = append(values, entry.Value)
+			}
+			return &IteratorValue{Values: values}, nil
+		}), true
+	case "entries":
+		return nativeFunction(func(args []any) (any, error) {
+			entries := []any{}
+			for _, entry := range value.Entries {
+				entries = append(entries, []any{entry.Key, entry.Value})
+			}
+			return &IteratorValue{Values: entries}, nil
+		}), true
+	}
+	return nil, false
+}
+
+func setMember(value *SetValue, property string) (any, bool) {
+	switch property {
+	case "size":
+		return float64(len(value.Values)), true
+	case "add":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				setAdd(value, args[0])
+			}
+			return value, nil
+		}), true
+	case "has":
+		return nativeFunction(func(args []any) (any, error) {
+			return len(args) > 0 && setIndex(value, args[0]) >= 0, nil
+		}), true
+	case "delete":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			index := setIndex(value, args[0])
+			if index < 0 {
+				return false, nil
+			}
+			value.Values = append(value.Values[:index], value.Values[index+1:]...)
+			return true, nil
+		}), true
+	case "clear":
+		return nativeFunction(func(args []any) (any, error) {
+			value.Values = []any{}
+			return jsUndefined, nil
+		}), true
+	case "values", "keys":
+		return nativeFunction(func(args []any) (any, error) {
+			return &IteratorValue{Values: append([]any{}, value.Values...)}, nil
+		}), true
+	case "entries":
+		return nativeFunction(func(args []any) (any, error) {
+			entries := []any{}
+			for _, item := range value.Values {
+				entries = append(entries, []any{item, item})
+			}
+			return &IteratorValue{Values: entries}, nil
+		}), true
+	}
+	return nil, false
+}
+
+func iteratorMember(value *IteratorValue, property string) (any, bool) {
+	switch property {
+	case "next":
+		return nativeFunction(func(args []any) (any, error) {
+			if value.Index >= len(value.Values) {
+				return map[string]any{"done": true, "value": jsUndefined}, nil
+			}
+			next := value.Values[value.Index]
+			value.Index++
+			return map[string]any{"done": false, "value": next}, nil
+		}), true
+	}
+	return nil, false
+}
+
+func mapSet(value *MapValue, key any, next any) {
+	if index := mapIndex(value, key); index >= 0 {
+		value.Entries[index].Value = next
+		return
+	}
+	value.Entries = append(value.Entries, MapEntry{Key: key, Value: next})
+}
+
+func mapIndex(value *MapValue, key any) int {
+	for index, entry := range value.Entries {
+		if jsSameValue(entry.Key, key) {
+			return index
+		}
+	}
+	return -1
+}
+
+func setAdd(value *SetValue, item any) {
+	if setIndex(value, item) < 0 {
+		value.Values = append(value.Values, item)
+	}
+}
+
+func setIndex(value *SetValue, item any) int {
+	for index, current := range value.Values {
+		if jsSameValue(current, item) {
+			return index
+		}
+	}
+	return -1
+}
+
 func replaceRegExp(value string, search *RegExpValue, replacement any, env Env) (any, error) {
 	matches := search.Regex.FindAllStringSubmatchIndex(value, -1)
 	if matches == nil {
@@ -2328,6 +2566,21 @@ func iterableValues(value any) []any {
 	switch typed := value.(type) {
 	case []any:
 		return typed
+	case *IteratorValue:
+		if typed.Index >= len(typed.Values) {
+			return []any{}
+		}
+		values := append([]any{}, typed.Values[typed.Index:]...)
+		typed.Index = len(typed.Values)
+		return values
+	case *MapValue:
+		values := []any{}
+		for _, entry := range typed.Entries {
+			values = append(values, []any{entry.Key, entry.Value})
+		}
+		return values
+	case *SetValue:
+		return append([]any{}, typed.Values...)
 	case map[string]any:
 		values := []any{}
 		for _, item := range typed {
@@ -2371,8 +2624,32 @@ func jsSameValue(left any, right any) bool {
 	case bool:
 		rightTyped, ok := right.(bool)
 		return ok && leftTyped == rightTyped
+	case *MapValue:
+		rightTyped, ok := right.(*MapValue)
+		return ok && leftTyped == rightTyped
+	case *SetValue:
+		rightTyped, ok := right.(*SetValue)
+		return ok && leftTyped == rightTyped
+	case *IteratorValue:
+		rightTyped, ok := right.(*IteratorValue)
+		return ok && leftTyped == rightTyped
+	case map[string]any, []any, FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
+		return referenceIdentity(left) == referenceIdentity(right)
 	default:
 		return fmt.Sprintf("%p", &left) == fmt.Sprintf("%p", &right)
+	}
+}
+
+func referenceIdentity(value any) uintptr {
+	reflectValue := reflect.ValueOf(value)
+	switch reflectValue.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Func, reflect.Pointer:
+		if reflectValue.IsNil() {
+			return 0
+		}
+		return reflectValue.Pointer()
+	default:
+		return 0
 	}
 }
 
