@@ -53,7 +53,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const mainFn = stmts.find(
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
-  const functionDecls = stmts.filter((stmt) => stmt?.kind === "function-decl");
+  const functionDecls = collectTopLevelFunctionDecls(stmts);
   const ctx = {
     declared: new Set(),
     arrays: new Set(),
@@ -69,7 +69,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const body = renderStmtBlock(
     mainFn
       ? (mainFn.body ?? [])
-      : stmts.filter((stmt) => stmt?.kind !== "function-decl"),
+      : stmts.filter((stmt) => !isTopLevelFunctionDecl(stmt)),
     ctx,
     1,
   );
@@ -188,6 +188,29 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn 0",
     "}",
     "",
+    "func jsBinaryArithmetic(op string, left any, right any) any {",
+    "\tswitch op {",
+    '\tcase "+":',
+    "\t\tif _, ok := left.(string); ok {",
+    "\t\t\treturn fmt.Sprint(left) + fmt.Sprint(right)",
+    "\t\t}",
+    "\t\tif _, ok := right.(string); ok {",
+    "\t\t\treturn fmt.Sprint(left) + fmt.Sprint(right)",
+    "\t\t}",
+    "\t\treturn jsNumber(left) + jsNumber(right)",
+    '\tcase "-":',
+    "\t\treturn jsNumber(left) - jsNumber(right)",
+    '\tcase "*":',
+    "\t\treturn jsNumber(left) * jsNumber(right)",
+    '\tcase "/":',
+    "\t\treturn jsNumber(left) / jsNumber(right)",
+    '\tcase "%":',
+    "\t\treturn float64(int64(jsNumber(left)) % int64(jsNumber(right)))",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported arithmetic op %s", op))',
+    "\t}",
+    "}",
+    "",
     "func jsStrictEqual(left any, right any) bool {",
     "\treturn reflect.DeepEqual(left, right)",
     "}",
@@ -246,6 +269,14 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "",
     "func jsString(value any) string {",
     "\treturn fmt.Sprint(value)",
+    "}",
+    "",
+    "func jsSymbol(description ...any) any {",
+    '\tlabel := ""',
+    "\tif len(description) > 0 {",
+    "\t\tlabel = fmt.Sprint(description[0])",
+    "\t}",
+    '\treturn "Symbol(" + label + ")"',
     "}",
     "",
     "func jsPathJoin(parts ...any) string {",
@@ -389,6 +420,23 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\tjsCallMember(property string, args ...any) any",
     "}",
     "",
+    "type jsRegExp struct {",
+    "\tpattern string",
+    "\tflags string",
+    "}",
+    "",
+    "func (re *jsRegExp) jsCallMember(property string, args ...any) any {",
+    "\tswitch property {",
+    '\tcase "test":',
+    "\t\tif len(args) == 0 {",
+    "\t\t\treturn false",
+    "\t\t}",
+    "\t\treturn jsRegExpTest(re.pattern, re.flags, args[0])",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported regexp member %s", property))',
+    "\t}",
+    "}",
+    "",
     "func jsCallMember(value any, property string, args ...any) any {",
     "\tif target, ok := value.(jsMemberCallable); ok {",
     "\t\treturn target.jsCallMember(property, args...)",
@@ -423,6 +471,33 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   ]
     .filter((line) => line !== null)
     .join("\n");
+}
+
+function collectTopLevelFunctionDecls(stmts) {
+  return stmts
+    .map((stmt) => {
+      if (stmt?.kind === "function-decl") {
+        return stmt;
+      }
+      if (stmt?.kind === "var-decl" && stmt.init?.kind === "function") {
+        return {
+          kind: "function-decl",
+          name: stmt.name,
+          params: stmt.init.params ?? [],
+          async: Boolean(stmt.init.async),
+          body: stmt.init.body ?? [],
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function isTopLevelFunctionDecl(stmt) {
+  return (
+    stmt?.kind === "function-decl" ||
+    (stmt?.kind === "var-decl" && stmt.init?.kind === "function")
+  );
 }
 
 function renderFunctionDecl(stmt, parentCtx) {
@@ -709,6 +784,12 @@ function renderExpr(expr, ctx) {
           ctx,
         )}))`;
       }
+      if (["+", "-", "*", "/", "%"].includes(expr.op)) {
+        return `jsBinaryArithmetic(${JSON.stringify(expr.op)}, ${renderExpr(
+          expr.left,
+          ctx,
+        )}, ${renderExpr(expr.right, ctx)})`;
+      }
       return `(${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(expr.right, ctx)})`;
     case "await": {
       const timerPromise = renderTimerPromise(expr.arg, ctx);
@@ -874,6 +955,9 @@ function renderBuiltinCall(expr, ctx) {
   if (expr.callee?.kind === "ident" && expr.callee.name === "String") {
     return `jsString(${args})`;
   }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "Symbol") {
+    return `jsSymbol(${args})`;
+  }
   if (expr.callee?.kind === "ident" && expr.callee.name === "join") {
     return `jsPathJoin(${args})`;
   }
@@ -983,6 +1067,10 @@ function renderValue(value) {
       return String(value.value);
     case "string":
       return JSON.stringify(value.value);
+    case "regexp":
+      return `&jsRegExp{pattern: ${JSON.stringify(value.pattern)}, flags: ${JSON.stringify(
+        value.flags ?? "",
+      )}}`;
     default:
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_VALUE:${value?.kind ?? "unknown"}`,

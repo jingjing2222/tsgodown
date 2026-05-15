@@ -923,6 +923,110 @@ test("renders Node path, os, and fs sync runtime helpers", () => {
   assert.deepEqual(JSON.parse(stdout), { parentMatches: true });
 });
 
+test("promotes top-level function-valued bindings into callable functions", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "var-decl",
+        name: "double",
+        init: {
+          kind: "function",
+          params: ["value"],
+          async: false,
+          body: [
+            {
+              kind: "return",
+              value: {
+                kind: "binary",
+                op: "*",
+                left: { kind: "ident", name: "value" },
+                right: { kind: "value", value: { kind: "number", value: "2" } },
+              },
+            },
+          ],
+        },
+      },
+      {
+        kind: "return",
+        value: {
+          kind: "call",
+          callee: { kind: "ident", name: "double" },
+          args: [{ kind: "value", value: { kind: "number", value: "4" } }],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.equal(JSON.parse(stdout), 8);
+});
+
+test("renders RegExp values with test member calls", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "var-decl",
+        name: "matcher",
+        init: {
+          kind: "value",
+          value: { kind: "regexp", pattern: "^a+$", flags: "" },
+        },
+      },
+      {
+        kind: "return",
+        value: {
+          kind: "array",
+          items: [
+            {
+              kind: "call",
+              callee: {
+                kind: "member",
+                object: { kind: "ident", name: "matcher" },
+                property: "test",
+              },
+              args: [
+                { kind: "value", value: { kind: "string", value: "aaa" } },
+              ],
+            },
+            {
+              kind: "call",
+              callee: {
+                kind: "member",
+                object: { kind: "ident", name: "matcher" },
+                property: "test",
+              },
+              args: [
+                { kind: "value", value: { kind: "string", value: "bbb" } },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), [true, false]);
+});
+
+test("renders Symbol constructor calls as deterministic runtime values", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "return",
+        value: {
+          kind: "call",
+          callee: { kind: "ident", name: "Symbol" },
+          args: [{ kind: "value", value: { kind: "string", value: "probe" } }],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.equal(JSON.parse(stdout), "Symbol(probe)");
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
