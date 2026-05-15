@@ -1223,6 +1223,68 @@ if (!ready) {
     }
 
     #[test]
+    fn emit_go_runs_aot_static_object_property_subset() {
+        let root = temp_project("engine-core-aot-static-object");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const item = { count: 3, label: "box", ready: true }
+console.log("item", item.label, item.count + 2, item.ready)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-static-object".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("item.label"));
+        assert!(response.files[0].contents.contains("item.count"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "item box 5 true\n");
+    }
+
+    #[test]
     fn emit_go_runs_aot_function_if_return_subset() {
         let root = temp_project("engine-core-aot-function-if-return");
         write(

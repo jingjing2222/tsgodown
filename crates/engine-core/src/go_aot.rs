@@ -61,12 +61,25 @@ struct AotState {
     numeric_bindings: BTreeSet<String>,
     string_bindings: BTreeSet<String>,
     bool_bindings: BTreeSet<String>,
+    object_bindings: BTreeMap<String, AotObject>,
     functions: BTreeMap<String, AotFunction>,
 }
 
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
+}
+
+#[derive(Clone)]
+struct AotObject {
+    fields: BTreeMap<String, AotSlotKind>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AotSlotKind {
+    Bool,
+    Number,
+    String,
 }
 
 fn entry_module(ir: &IrDocument) -> Option<&Module> {
@@ -95,6 +108,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.bool_bindings.insert(name.clone());
                     return Some(format!("var {ident} bool = {value}"));
+                }
+                if let Some((value, object)) = render_object_literal(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.object_bindings.insert(name.clone(), object);
+                    return Some(format!("var {ident} = {value}"));
                 }
                 let value = render_expr(expr, state)?;
                 state.bindings.insert(name.clone());
@@ -144,6 +162,7 @@ fn render_for_stmt(
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
     };
     let init = init
@@ -208,6 +227,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
@@ -219,6 +239,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
     };
     stmts
@@ -302,6 +323,14 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } => Some(value.to_string()),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(sanitize_go_identifier(name))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::Bool) => {
+            render_static_member_expr(object, property, state)
         }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             let left = render_numeric_expr(left, state)?;
@@ -393,6 +422,12 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } => render_static_member_expr(object, property, state),
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
@@ -407,6 +442,14 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } => number_literal(value),
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
             Some(sanitize_go_identifier(name))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::Number) => {
+            render_static_member_expr(object, property, state)
         }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
@@ -425,6 +468,14 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(sanitize_go_identifier(name))
         }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::String) => {
+            render_static_member_expr(object, property, state)
+        }
         JsExpr::Binary { op, left, right } if op == "+" => {
             let left = render_string_expr(left, state)?;
             let right = render_string_expr(right, state)?;
@@ -435,6 +486,69 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
+    let JsExpr::Object { props } = expr else {
+        return None;
+    };
+    let mut fields = BTreeMap::new();
+    let mut type_fields = Vec::new();
+    let mut value_fields = Vec::new();
+    for prop in props {
+        if prop.spread || prop.key_expr.is_some() {
+            return None;
+        }
+        let field_name = sanitize_go_identifier(&prop.key);
+        let (kind, rendered, go_type) = render_typed_slot_expr(&prop.value, state)?;
+        fields.insert(prop.key.clone(), kind);
+        type_fields.push(format!("{field_name} {go_type}"));
+        value_fields.push(format!("{field_name}: {rendered}"));
+    }
+    Some((
+        format!(
+            "struct {{\n{}\n}}{{\n{},\n}}",
+            indent_lines(&type_fields.join("\n")),
+            indent_lines(&value_fields.join(",\n"))
+        ),
+        AotObject { fields },
+    ))
+}
+
+fn render_typed_slot_expr(
+    expr: &JsExpr,
+    state: &AotState,
+) -> Option<(AotSlotKind, String, &'static str)> {
+    if let Some(value) = render_numeric_expr(expr, state) {
+        return Some((AotSlotKind::Number, value, "float64"));
+    }
+    if let Some(value) = render_string_expr(expr, state) {
+        return Some((AotSlotKind::String, value, "string"));
+    }
+    if let Some(value) = render_bool_expr(expr, state) {
+        return Some((AotSlotKind::Bool, value, "bool"));
+    }
+    None
+}
+
+fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) -> Option<String> {
+    static_member_kind(object, property, state)?;
+    let JsExpr::Ident { name } = object else {
+        return None;
+    };
+    Some(format!(
+        "{}.{}",
+        sanitize_go_identifier(name),
+        sanitize_go_identifier(property)
+    ))
+}
+
+fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Option<AotSlotKind> {
+    let JsExpr::Ident { name } = object else {
+        return None;
+    };
+    let object = state.object_bindings.get(name)?;
+    object.fields.get(property).copied()
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
