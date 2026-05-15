@@ -54,9 +54,12 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
   const functionDecls = collectTopLevelFunctionDecls(stmts);
+  const classDecls = stmts.filter((stmt) => stmt?.kind === "class-decl");
+  const classes = new Map(classDecls.map((stmt) => [stmt.name, stmt]));
   const ctx = {
     declared: new Set(),
     arrays: new Set(),
+    classes,
     functions: new Set([
       ...functionDecls.map((stmt) => stmt.name),
       ...externalFunctions,
@@ -69,13 +72,22 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const body = renderStmtBlock(
     mainFn
       ? (mainFn.body ?? [])
-      : stmts.filter((stmt) => !isTopLevelFunctionDecl(stmt)),
+      : stmts.filter(
+          (stmt) =>
+            !isTopLevelFunctionDecl(stmt) && stmt?.kind !== "class-decl",
+        ),
     ctx,
     1,
   );
   const helperFunctions = functionDecls
     .filter((stmt) => stmt.name !== "main")
     .map((stmt) => renderFunctionDecl(stmt, ctx))
+    .join("\n\n");
+  const helperClasses = [
+    ...classDecls.map((stmt) => renderClassDecl(stmt, ctx)),
+    renderClassDispatch(classDecls),
+  ]
+    .filter(Boolean)
     .join("\n\n");
 
   return [
@@ -104,6 +116,8 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "}",
     helperFunctions ? "" : null,
     helperFunctions,
+    helperClasses ? "" : null,
+    helperClasses,
     options.helperSource ? "" : null,
     options.helperSource ?? null,
     "",
@@ -130,6 +144,13 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn fallback",
     "\t}",
     "\treturn value",
+    "}",
+    "",
+    "func jsArg(args []any, index int) any {",
+    "\tif index >= 0 && index < len(args) {",
+    "\t\treturn args[index]",
+    "\t}",
+    "\treturn nil",
     "}",
     "",
     "func jsTruthy(value any) bool {",
@@ -219,6 +240,13 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn value",
     "}",
     "",
+    "func jsCall(value any, args ...any) any {",
+    "\tif callable, ok := value.(func(...any) any); ok {",
+    "\t\treturn callable(args...)",
+    "\t}",
+    '\tpanic(fmt.Sprintf("value is not callable: %T", value))',
+    "}",
+    "",
     "func jsConsoleLog(args ...any) any {",
     "\tfor index, arg := range args {",
     "\t\tif index > 0 {",
@@ -255,6 +283,9 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "}",
     "",
     "func jsGet(value any, property string) any {",
+    "\tif instance, ok := value.(*jsClassInstance); ok {",
+    "\t\treturn instance.fields[property]",
+    "\t}",
     "\tif object, ok := value.(map[string]any); ok {",
     "\t\treturn object[property]",
     "\t}",
@@ -350,6 +381,10 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "}",
     "",
     "func jsSetMember(value any, property string, next any) any {",
+    "\tif instance, ok := value.(*jsClassInstance); ok {",
+    "\t\tinstance.fields[property] = next",
+    "\t\treturn next",
+    "\t}",
     "\tif object, ok := value.(map[string]any); ok {",
     "\t\tobject[property] = next",
     "\t\treturn next",
@@ -416,8 +451,212 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn len(*target)",
     "}",
     "",
+    "type jsSet struct {",
+    "\titems []any",
+    "}",
+    "",
+    "func jsNewSet(values ...any) any {",
+    "\tset := &jsSet{items: []any{}}",
+    "\tif len(values) > 0 {",
+    "\t\tfor _, item := range jsIterable(values[0]) {",
+    "\t\t\tset.add(item)",
+    "\t\t}",
+    "\t}",
+    "\treturn set",
+    "}",
+    "",
+    "func (set *jsSet) add(value any) {",
+    "\tif !set.has(value) {",
+    "\t\tset.items = append(set.items, value)",
+    "\t}",
+    "}",
+    "",
+    "func (set *jsSet) has(value any) bool {",
+    "\tfor _, item := range set.items {",
+    "\t\tif reflect.DeepEqual(item, value) {",
+    "\t\t\treturn true",
+    "\t\t}",
+    "\t}",
+    "\treturn false",
+    "}",
+    "",
+    "func (set *jsSet) jsCallMember(property string, args ...any) any {",
+    "\tswitch property {",
+    '\tcase "add":',
+    "\t\tset.add(jsArg(args, 0))",
+    "\t\treturn set",
+    '\tcase "has":',
+    "\t\treturn set.has(jsArg(args, 0))",
+    '\tcase "delete":',
+    "\t\tfor index, item := range set.items {",
+    "\t\t\tif reflect.DeepEqual(item, jsArg(args, 0)) {",
+    "\t\t\t\tset.items = append(set.items[:index], set.items[index+1:]...)",
+    "\t\t\t\treturn true",
+    "\t\t\t}",
+    "\t\t}",
+    "\t\treturn false",
+    '\tcase "values", "keys":',
+    "\t\treturn append([]any{}, set.items...)",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported Set member %s", property))',
+    "\t}",
+    "}",
+    "",
+    "type jsMapEntry struct {",
+    "\tkey any",
+    "\tvalue any",
+    "}",
+    "",
+    "type jsMap struct {",
+    "\tentries []jsMapEntry",
+    "}",
+    "",
+    "func jsNewMap(values ...any) any {",
+    "\tmapValue := &jsMap{entries: []jsMapEntry{}}",
+    "\tif len(values) > 0 {",
+    "\t\tfor _, item := range jsIterable(values[0]) {",
+    "\t\t\tif pair, ok := item.([]any); ok && len(pair) >= 2 {",
+    "\t\t\t\tmapValue.set(pair[0], pair[1])",
+    "\t\t\t}",
+    "\t\t}",
+    "\t}",
+    "\treturn mapValue",
+    "}",
+    "",
+    "func (mapValue *jsMap) set(key any, value any) {",
+    "\tfor index, entry := range mapValue.entries {",
+    "\t\tif reflect.DeepEqual(entry.key, key) {",
+    "\t\t\tmapValue.entries[index].value = value",
+    "\t\t\treturn",
+    "\t\t}",
+    "\t}",
+    "\tmapValue.entries = append(mapValue.entries, jsMapEntry{key: key, value: value})",
+    "}",
+    "",
+    "func (mapValue *jsMap) get(key any) any {",
+    "\tfor _, entry := range mapValue.entries {",
+    "\t\tif reflect.DeepEqual(entry.key, key) {",
+    "\t\t\treturn entry.value",
+    "\t\t}",
+    "\t}",
+    "\treturn nil",
+    "}",
+    "",
+    "func (mapValue *jsMap) has(key any) bool {",
+    "\tfor _, entry := range mapValue.entries {",
+    "\t\tif reflect.DeepEqual(entry.key, key) {",
+    "\t\t\treturn true",
+    "\t\t}",
+    "\t}",
+    "\treturn false",
+    "}",
+    "",
+    "func (mapValue *jsMap) jsCallMember(property string, args ...any) any {",
+    "\tswitch property {",
+    '\tcase "set":',
+    "\t\tmapValue.set(jsArg(args, 0), jsArg(args, 1))",
+    "\t\treturn mapValue",
+    '\tcase "get":',
+    "\t\treturn mapValue.get(jsArg(args, 0))",
+    '\tcase "has":',
+    "\t\treturn mapValue.has(jsArg(args, 0))",
+    '\tcase "keys":',
+    "\t\tout := make([]any, 0, len(mapValue.entries))",
+    "\t\tfor _, entry := range mapValue.entries {",
+    "\t\t\tout = append(out, entry.key)",
+    "\t\t}",
+    "\t\treturn out",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported Map member %s", property))',
+    "\t}",
+    "}",
+    "",
+    "func jsNewError(name string, args ...any) any {",
+    '\tmessage := ""',
+    "\tif len(args) > 0 {",
+    "\t\tmessage = fmt.Sprint(args[0])",
+    "\t}",
+    '\treturn map[string]any{"name": name, "message": message}',
+    "}",
+    "",
+    "func jsNewAbortController() any {",
+    '\treturn map[string]any{"signal": map[string]any{"aborted": false}}',
+    "}",
+    "",
+    "func jsNewUint8Array(args ...any) any {",
+    "\tif len(args) == 0 || args[0] == nil {",
+    "\t\treturn []any{}",
+    "\t}",
+    "\tif length := int(jsNumber(args[0])); length > 0 && fmt.Sprint(args[0]) == fmt.Sprint(length) {",
+    "\t\tout := make([]any, length)",
+    "\t\tfor index := range out {",
+    "\t\t\tout[index] = 0",
+    "\t\t}",
+    "\t\treturn out",
+    "\t}",
+    "\treturn jsIterable(args[0])",
+    "}",
+    "",
+    "type jsTextEncoder struct{}",
+    "",
+    "func (encoder *jsTextEncoder) jsCallMember(property string, args ...any) any {",
+    "\tswitch property {",
+    '\tcase "encode":',
+    "\t\tbytes := []byte(fmt.Sprint(jsArg(args, 0)))",
+    "\t\tout := make([]any, 0, len(bytes))",
+    "\t\tfor _, value := range bytes {",
+    "\t\t\tout = append(out, int(value))",
+    "\t\t}",
+    "\t\treturn out",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported TextEncoder member %s", property))',
+    "\t}",
+    "}",
+    "",
+    "type jsTextDecoder struct{}",
+    "",
+    "func (decoder *jsTextDecoder) jsCallMember(property string, args ...any) any {",
+    "\tswitch property {",
+    '\tcase "decode":',
+    "\t\titems := jsIterable(jsArg(args, 0))",
+    "\t\tbytes := make([]byte, 0, len(items))",
+    "\t\tfor _, item := range items {",
+    "\t\t\tbytes = append(bytes, byte(jsNumber(item)))",
+    "\t\t}",
+    "\t\treturn string(bytes)",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported TextDecoder member %s", property))',
+    "\t}",
+    "}",
+    "",
+    "func jsNewPromise(executor any) any {",
+    "\tvar resolved any = nil",
+    "\tresolve := func(args ...any) any {",
+    "\t\tresolved = jsArg(args, 0)",
+    "\t\treturn nil",
+    "\t}",
+    "\treject := func(args ...any) any {",
+    "\t\tpanic(jsArg(args, 0))",
+    "\t}",
+    "\tjsCall(executor, resolve, reject)",
+    "\treturn resolved",
+    "}",
+    "",
     "type jsMemberCallable interface {",
     "\tjsCallMember(property string, args ...any) any",
+    "}",
+    "",
+    "type jsClassInstance struct {",
+    "\tclassName string",
+    "\tfields map[string]any",
+    "}",
+    "",
+    "type jsClassValue struct {",
+    "\tname string",
+    "}",
+    "",
+    "func (instance *jsClassInstance) jsCallMember(property string, args ...any) any {",
+    "\treturn jsDispatchClassMember(instance, property, args...)",
     "}",
     "",
     "type jsRegExp struct {",
@@ -505,21 +744,99 @@ function renderFunctionDecl(stmt, parentCtx) {
   const ctx = {
     declared: new Set(params),
     arrays: new Set(),
+    classes: parentCtx.classes,
     functions: parentCtx.functions,
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,
     externalMembers: parentCtx.externalMembers,
     externalConstructors: parentCtx.externalConstructors,
   };
-  const renderedParams = params.map((param) => `${param} any`).join(", ");
   return [
-    `func js_${goIdent(stmt.name)}(${renderedParams}) any {`,
+    `func js_${goIdent(stmt.name)}(jsArgs ...any) any {`,
+    ...params.map((param, index) => `\t${param} := jsArg(jsArgs, ${index})`),
     renderStmtBlock(stmt.body ?? [], ctx, 1),
     "\treturn nil",
     "}",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function renderClassDecl(stmt, parentCtx) {
+  const className = goIdent(stmt.name);
+  const methods = stmt.methods ?? [];
+  const constructorMethod = methods.find(
+    (method) => method.kind === "constructor",
+  );
+  const methodDecls = methods
+    .filter((method) => method.kind !== "constructor")
+    .map((method) => renderClassMethodDecl(stmt, method, parentCtx))
+    .join("\n\n");
+  return [
+    `func js_new_${className}(jsArgs ...any) any {`,
+    `\tinstance := &jsClassInstance{className: ${JSON.stringify(stmt.name)}, fields: map[string]any{}}`,
+    constructorMethod
+      ? `\tjs_${className}_constructor(instance, jsArgs...)`
+      : "\t_ = jsArgs",
+    "\treturn instance",
+    "}",
+    "",
+    constructorMethod
+      ? renderClassMethodDecl(stmt, constructorMethod, parentCtx)
+      : null,
+    methodDecls ? "" : null,
+    methodDecls,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function renderClassMethodDecl(classDecl, method, parentCtx) {
+  const params = (method.params ?? []).map(goIdent);
+  const ctx = {
+    declared: new Set(["jsThis", ...params]),
+    arrays: new Set(),
+    classes: parentCtx.classes,
+    functions: parentCtx.functions,
+    externalFunctions: parentCtx.externalFunctions,
+    externalNamespaces: parentCtx.externalNamespaces,
+    externalMembers: parentCtx.externalMembers,
+    externalConstructors: parentCtx.externalConstructors,
+    thisName: "jsThis",
+  };
+  return [
+    `func js_${goIdent(classDecl.name)}_${goIdent(method.name)}(jsThis any, jsArgs ...any) any {`,
+    ...params.map((param, index) => `\t${param} := jsArg(jsArgs, ${index})`),
+    renderStmtBlock(method.body ?? [], ctx, 1),
+    "\treturn nil",
+    "}",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function renderClassDispatch(classDecls) {
+  const cases = [];
+  for (const classDecl of classDecls) {
+    for (const method of classDecl.methods ?? []) {
+      if (method.kind === "constructor" || method.isStatic) {
+        continue;
+      }
+      cases.push([
+        `\tcase instance.className == ${JSON.stringify(classDecl.name)} && property == ${JSON.stringify(method.name)}:`,
+        `\t\treturn js_${goIdent(classDecl.name)}_${goIdent(method.name)}(instance, args...)`,
+      ]);
+    }
+  }
+  return [
+    "func jsDispatchClassMember(instance *jsClassInstance, property string, args ...any) any {",
+    "\tswitch {",
+    ...cases.flat(),
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported class member %s.%s", instance.className, property))',
+    "\t}",
+    "}",
+  ].join("\n");
 }
 
 function renderStmtBlock(stmts, ctx, indentLevel) {
@@ -721,6 +1038,8 @@ function renderExpr(expr, ctx) {
   switch (expr?.kind) {
     case "value":
       return renderValue(expr.value);
+    case "this":
+      return ctx.thisName ?? "jsThis";
     case "ident":
       if (expr.name === "undefined") {
         return "nil";
@@ -751,6 +1070,10 @@ function renderExpr(expr, ctx) {
         .join(", ")}}, []any{${(expr.exprs ?? [])
         .map((child) => renderExpr(child, ctx))
         .join(", ")}})`;
+    case "function":
+      return renderFunctionExpression(expr, ctx);
+    case "class":
+      return '&jsClassValue{name: ""}';
     case "unary":
       if (expr.op === "!") {
         return `(!jsTruthy(${renderExpr(expr.arg, ctx)}))`;
@@ -763,6 +1086,15 @@ function renderExpr(expr, ctx) {
       }
       if (expr.op === "-") {
         return `(-jsNumber(${renderExpr(expr.arg, ctx)}))`;
+      }
+      if (expr.op === "delete") {
+        if (expr.arg?.kind === "member") {
+          return `jsReflectDeleteProperty(${renderExpr(
+            expr.arg.object,
+            ctx,
+          )}, ${JSON.stringify(expr.arg.property)})`;
+        }
+        return "true";
       }
       throw new Error(`EXECUTABLE_IR_UNSUPPORTED_UNARY:${expr.op}`);
     case "binary":
@@ -830,15 +1162,72 @@ function renderExpr(expr, ctx) {
         expr.callee?.kind !== "ident" ||
         !ctx.functions.has(expr.callee.name)
       ) {
-        throw new Error(
-          `EXECUTABLE_IR_UNSUPPORTED_CALL:${expr.callee?.name ?? expr.callee?.kind ?? "unknown"}`,
-        );
+        return `jsCall(${renderExpr(expr.callee, ctx)}${
+          (expr.args ?? []).length
+            ? `, ${(expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ")}`
+            : ""
+        })`;
       }
       return `js_${goIdent(expr.callee.name)}(${(expr.args ?? [])
         .map((arg) => renderExpr(arg, ctx))
         .join(", ")})`;
     }
     case "new":
+      if (expr.callee?.kind === "ident" && expr.callee.name === "Promise") {
+        return `jsNewPromise(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "Set") {
+        return `jsNewSet(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (
+        expr.callee?.kind === "ident" &&
+        ["Map", "WeakMap"].includes(expr.callee.name)
+      ) {
+        return `jsNewMap(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "WeakSet") {
+        return `jsNewSet(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (
+        expr.callee?.kind === "ident" &&
+        ["Error", "TypeError"].includes(expr.callee.name)
+      ) {
+        return `jsNewError(${JSON.stringify(expr.callee.name)}, ${(
+          expr.args ?? []
+        )
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (
+        expr.callee?.kind === "ident" &&
+        expr.callee.name === "AbortController"
+      ) {
+        return "jsNewAbortController()";
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "Uint8Array") {
+        return `jsNewUint8Array(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "TextEncoder") {
+        return "&jsTextEncoder{}";
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "TextDecoder") {
+        return "&jsTextDecoder{}";
+      }
+      if (expr.callee?.kind === "ident" && ctx.classes.has(expr.callee.name)) {
+        return `js_new_${goIdent(expr.callee.name)}(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
       if (
         expr.callee?.kind === "ident" &&
         ctx.externalConstructors.has(expr.callee.name)
@@ -885,6 +1274,24 @@ function renderExpr(expr, ctx) {
   }
 }
 
+function renderFunctionExpression(expr, parentCtx) {
+  const params = (expr.params ?? []).map(goIdent);
+  const ctx = {
+    ...parentCtx,
+    declared: new Set([...parentCtx.declared, ...params]),
+    arrays: new Set(parentCtx.arrays),
+  };
+  return [
+    "func(jsArgs ...any) any {",
+    ...params.map((param, index) => `\t${param} := jsArg(jsArgs, ${index})`),
+    renderStmtBlock(expr.body ?? [], ctx, 1),
+    "\treturn nil",
+    "}",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function renderTimerPromise(expr, ctx) {
   if (
     expr?.kind !== "new" ||
@@ -909,6 +1316,23 @@ function renderTimerPromise(expr, ctx) {
 }
 
 function renderBuiltinCall(expr, ctx) {
+  const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
+  if (
+    expr.callee?.kind === "member" &&
+    expr.callee.object?.kind === "ident" &&
+    ctx.classes.has(expr.callee.object.name)
+  ) {
+    const classDecl = ctx.classes.get(expr.callee.object.name);
+    const method = (classDecl.methods ?? []).find(
+      (candidate) =>
+        candidate.isStatic && candidate.name === expr.callee.property,
+    );
+    if (method) {
+      return `js_${goIdent(classDecl.name)}_${goIdent(method.name)}(nil${
+        args ? `, ${args}` : ""
+      })`;
+    }
+  }
   if (
     expr.callee?.kind === "member" &&
     expr.callee.property === "map" &&
@@ -951,7 +1375,6 @@ function renderBuiltinCall(expr, ctx) {
       ctx,
     )})`;
   }
-  const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
   if (expr.callee?.kind === "ident" && expr.callee.name === "String") {
     return `jsString(${args})`;
   }
@@ -1027,6 +1450,7 @@ function renderMapperFunction(expr, parentCtx) {
   const ctx = {
     declared: new Set(params.map(goIdent)),
     arrays: new Set(),
+    classes: parentCtx.classes,
     functions: parentCtx.functions,
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,
@@ -1065,6 +1489,8 @@ function renderValue(value) {
       return value.value ? "true" : "false";
     case "number":
       return String(value.value);
+    case "bigint":
+      return String(value.value).replace(/n$/, "");
     case "string":
       return JSON.stringify(value.value);
     case "regexp":

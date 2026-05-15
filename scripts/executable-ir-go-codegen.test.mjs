@@ -1027,6 +1027,259 @@ test("renders Symbol constructor calls as deterministic runtime values", () => {
   assert.equal(JSON.parse(stdout), "Symbol(probe)");
 });
 
+test("renders class construction, this fields, instance methods, and static methods", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "class-decl",
+        name: "Box",
+        methods: [
+          {
+            name: "constructor",
+            kind: "constructor",
+            isStatic: false,
+            params: ["value"],
+            async: false,
+            body: [
+              {
+                kind: "expr",
+                expr: {
+                  kind: "assign",
+                  op: "=",
+                  left: {
+                    kind: "member",
+                    object: { kind: "this" },
+                    property: "value",
+                  },
+                  right: { kind: "ident", name: "value" },
+                },
+              },
+            ],
+          },
+          {
+            name: "read",
+            kind: "method",
+            isStatic: false,
+            params: [],
+            async: false,
+            body: [
+              {
+                kind: "return",
+                value: {
+                  kind: "member",
+                  object: { kind: "this" },
+                  property: "value",
+                },
+              },
+            ],
+          },
+          {
+            name: "make",
+            kind: "method",
+            isStatic: true,
+            params: ["value"],
+            async: false,
+            body: [
+              {
+                kind: "return",
+                value: {
+                  kind: "new",
+                  callee: { kind: "ident", name: "Box" },
+                  args: [{ kind: "ident", name: "value" }],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "var-decl",
+        name: "box",
+        init: {
+          kind: "call",
+          callee: {
+            kind: "member",
+            object: { kind: "ident", name: "Box" },
+            property: "make",
+          },
+          args: [{ kind: "value", value: { kind: "string", value: "ok" } }],
+        },
+      },
+      {
+        kind: "return",
+        value: {
+          kind: "call",
+          callee: {
+            kind: "member",
+            object: { kind: "ident", name: "box" },
+            property: "read",
+          },
+          args: [],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.equal(JSON.parse(stdout), "ok");
+});
+
+test("renders Set and Map construction with core methods", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "var-decl",
+        name: "set",
+        init: {
+          kind: "new",
+          callee: { kind: "ident", name: "Set" },
+          args: [
+            {
+              kind: "array",
+              items: [
+                { kind: "value", value: { kind: "string", value: "a" } },
+                { kind: "value", value: { kind: "string", value: "b" } },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        kind: "expr",
+        expr: {
+          kind: "call",
+          callee: {
+            kind: "member",
+            object: { kind: "ident", name: "set" },
+            property: "add",
+          },
+          args: [{ kind: "value", value: { kind: "string", value: "c" } }],
+        },
+      },
+      {
+        kind: "var-decl",
+        name: "map",
+        init: {
+          kind: "new",
+          callee: { kind: "ident", name: "Map" },
+          args: [],
+        },
+      },
+      {
+        kind: "expr",
+        expr: {
+          kind: "call",
+          callee: {
+            kind: "member",
+            object: { kind: "ident", name: "map" },
+            property: "set",
+          },
+          args: [
+            { kind: "value", value: { kind: "string", value: "k" } },
+            { kind: "value", value: { kind: "number", value: "3" } },
+          ],
+        },
+      },
+      {
+        kind: "return",
+        value: {
+          kind: "object",
+          props: [
+            {
+              key: "setHas",
+              value: {
+                kind: "call",
+                callee: {
+                  kind: "member",
+                  object: { kind: "ident", name: "set" },
+                  property: "has",
+                },
+                args: [
+                  { kind: "value", value: { kind: "string", value: "c" } },
+                ],
+              },
+            },
+            {
+              key: "mapValue",
+              value: {
+                kind: "call",
+                callee: {
+                  kind: "member",
+                  object: { kind: "ident", name: "map" },
+                  property: "get",
+                },
+                args: [
+                  { kind: "value", value: { kind: "string", value: "k" } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), { mapValue: 3, setHas: true });
+});
+
+test("renders nested function expressions and dynamic calls", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "var-decl",
+        name: "makeAdder",
+        init: {
+          kind: "function",
+          params: ["left"],
+          async: false,
+          body: [
+            {
+              kind: "return",
+              value: {
+                kind: "function",
+                params: ["right"],
+                async: false,
+                body: [
+                  {
+                    kind: "return",
+                    value: {
+                      kind: "binary",
+                      op: "+",
+                      left: { kind: "ident", name: "left" },
+                      right: { kind: "ident", name: "right" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        kind: "var-decl",
+        name: "addTwo",
+        init: {
+          kind: "call",
+          callee: { kind: "ident", name: "makeAdder" },
+          args: [{ kind: "value", value: { kind: "number", value: "2" } }],
+        },
+      },
+      {
+        kind: "return",
+        value: {
+          kind: "call",
+          callee: { kind: "ident", name: "addTwo" },
+          args: [{ kind: "value", value: { kind: "number", value: "5" } }],
+        },
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.equal(JSON.parse(stdout), 7);
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
