@@ -4,8 +4,9 @@ use crate::analyze;
 use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
-    fail_closed_report_version, runtime_contract, unsupported_codegen_diagnostic,
-    unsupported_executable_features, ProgramPurpose, RuntimeOperationOwner, RuntimeOperationStatus,
+    fail_closed_report_version, is_codegen_blocking_diagnostic, runtime_contract,
+    unsupported_codegen_diagnostic, unsupported_executable_features, ProgramPurpose,
+    RuntimeOperationOwner, RuntimeOperationStatus,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,7 +100,8 @@ pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitRespons
     let package_name = request.package_name;
     let module_path = request.module_path;
     let unsupported_features = unsupported_executable_features(&analyzed.ir);
-    let can_emit_executable = diagnostics.is_empty() && unsupported_features.is_empty();
+    let can_emit_executable =
+        !diagnostics.iter().any(is_codegen_blocking_diagnostic) && unsupported_features.is_empty();
     if !can_emit_executable {
         diagnostics.push(unsupported_codegen_diagnostic(&unsupported_features));
     }

@@ -150,6 +150,19 @@ pub fn unsupported_codegen_diagnostic(features: &[String]) -> Diagnostic {
     }
 }
 
+pub fn is_codegen_blocking_diagnostic(diagnostic: &Diagnostic) -> bool {
+    !matches!(
+        diagnostic.code.as_str(),
+        "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE"
+            | "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_METHOD"
+            | "ANALYZER_UNSUPPORTED_DYNAMIC_PATH"
+            | "ANALYZER_UNSUPPORTED_INLINE_HANDLER"
+            | "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE"
+            | "ANALYZER_UNSUPPORTED_REGISTER_CALLBACK"
+            | "ANALYZER_UNSUPPORTED_REGISTER_BOUNDARY"
+    )
+}
+
 pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
     if entry_module(ir).is_none() {
         return vec!["entry module not found".to_string()];

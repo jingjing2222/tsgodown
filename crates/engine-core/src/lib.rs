@@ -365,6 +365,46 @@ console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
     }
 
     #[test]
+    fn emit_go_does_not_fail_closed_on_route_metadata_only_diagnostics() {
+        let root = temp_project("engine-core-route-metadata-nonblocking");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const app = {};
+const route = makeRoute();
+app.route(route);
+console.log("still executable");
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/route-metadata-nonblocking".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "ANALYZER_UNSUPPORTED_ROUTE_OBJECT_SHAPE"));
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
     fn emit_go_can_include_ir_snapshot_file() {
         let response = emit_go(EmitGoRequest {
             analyze: AnalyzeRequest {
