@@ -69,6 +69,8 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
 }
 
 pub fn emit_backend(target_backend: &str, request: EmitGoRequest) -> EmitGoResponse {
+    let allow_ir_interpreter =
+        request.analyze.config.profile.as_deref() == Some("legacy-ir-interpreter");
     let analyzed = analyze(request.analyze);
     let package_name = sanitize_package_name(request.package_name.as_deref().unwrap_or("main"));
     let module_path = sanitize_module_path(
@@ -83,6 +85,7 @@ pub fn emit_backend(target_backend: &str, request: EmitGoRequest) -> EmitGoRespo
         module_path,
         output_kind: request.output_kind,
         ir_snapshot: request.ir_snapshot,
+        allow_ir_interpreter,
     };
     match backend_provider(target_backend) {
         Ok(provider) => provider.emit(backend_request).into(),
@@ -107,6 +110,23 @@ pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitRespons
         diagnostics.push(unsupported_codegen_diagnostic(&unsupported_features));
     }
     let output_kind = request.output_kind.clone();
+    let purpose = request.output_kind.purpose();
+    let contents = if can_emit_executable {
+        match render_executable_program(&package_name, &analyzed) {
+            Some(program) => program,
+            None if request.allow_ir_interpreter => {
+                render_interpreted_program(&package_name, &module_path, &analyzed)
+            }
+            None => {
+                diagnostics.push(unsupported_codegen_diagnostic(&[
+                    "aot emission unsupported by Go backend".to_string(),
+                ]));
+                render_fail_closed_program(&package_name, &module_path, &diagnostics, purpose)
+            }
+        }
+    } else {
+        render_fail_closed_program(&package_name, &module_path, &diagnostics, purpose)
+    };
     let mut files = vec![
         GeneratedFile {
             path: match output_kind.clone() {
@@ -114,19 +134,7 @@ pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitRespons
                 EmitGoOutputKind::VectorSuite => "vector_suite.go",
             }
             .to_string(),
-            contents: add_output_kind_prelude(
-                output_kind,
-                if can_emit_executable {
-                    render_executable_program(&package_name, &module_path, &analyzed)
-                } else {
-                    render_fail_closed_program(
-                        &package_name,
-                        &module_path,
-                        &diagnostics,
-                        request.output_kind.purpose(),
-                    )
-                },
-            ),
+            contents: add_output_kind_prelude(output_kind, contents),
         },
         GeneratedFile {
             path: "go.mod".to_string(),
@@ -284,14 +292,15 @@ func main() {{
     )
 }
 
-fn render_executable_program(
+fn render_executable_program(package_name: &str, analyzed: &AnalyzeResponse) -> Option<String> {
+    render_aot_executable_program(package_name, analyzed)
+}
+
+fn render_interpreted_program(
     package_name: &str,
     module_path: &str,
     analyzed: &AnalyzeResponse,
 ) -> String {
-    if let Some(program) = render_aot_executable_program(package_name, analyzed) {
-        return program;
-    }
     let program_json = serde_json::to_string(&analyzed.ir).expect("analyzed IR should serialize");
     let program_literal = go_string_literal(&program_json);
     format!(

@@ -8,6 +8,7 @@ pub struct BackendEmitRequest {
     pub module_path: String,
     pub output_kind: EmitGoOutputKind,
     pub ir_snapshot: Option<IrSnapshotRequest>,
+    pub allow_ir_interpreter: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
