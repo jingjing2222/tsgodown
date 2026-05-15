@@ -54,7 +54,11 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
                 collect_unsupported_expr(init, unsupported);
             }
         }
-        JsStmt::FunctionDecl { .. } => unsupported.push("function declarations".to_string()),
+        JsStmt::FunctionDecl { body, .. } => {
+            for stmt in body {
+                collect_unsupported_stmt_in_function(stmt, unsupported);
+            }
+        }
         JsStmt::ClassDecl { .. } => unsupported.push("class declarations".to_string()),
         JsStmt::If { .. } => unsupported.push("if statements".to_string()),
         JsStmt::For { .. } => unsupported.push("for statements".to_string()),
@@ -66,6 +70,23 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
         JsStmt::Continue { .. } => unsupported.push("continue statements".to_string()),
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
         JsStmt::Throw { .. } => unsupported.push("throw statements".to_string()),
+    }
+}
+
+fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<String>) {
+    match stmt {
+        JsStmt::Return { value } => {
+            if let Some(value) = value {
+                collect_unsupported_expr(value, unsupported);
+            }
+        }
+        JsStmt::Expr { expr } => collect_unsupported_expr(expr, unsupported),
+        JsStmt::VarDecl { init, .. } => {
+            if let Some(init) = init {
+                collect_unsupported_expr(init, unsupported);
+            }
+        }
+        other => collect_unsupported_stmt(other, unsupported),
     }
 }
 
@@ -116,7 +137,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(alternate, unsupported);
         }
         JsExpr::Call { callee, args } => {
-            if !is_console_log_call(callee) {
+            if !is_console_log_call(callee) && !matches!(callee.as_ref(), JsExpr::Ident { .. }) {
                 unsupported.push("function calls".to_string());
             }
             for arg in args {

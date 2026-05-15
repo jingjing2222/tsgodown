@@ -296,6 +296,17 @@ type ExecutableModule struct {
 
 type Env map[string]any
 
+type FunctionValue struct {
+	Params []string
+	Body   []map[string]any
+	Env    Env
+}
+
+type completion struct {
+	value    any
+	returned bool
+}
+
 func RunProgram(programJSON string) error {
 	var program Program
 	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
@@ -307,8 +318,10 @@ func RunProgram(programJSON string) error {
 	}
 	env := Env{}
 	for _, stmt := range module.Executable.Stmts {
-		if err := evalStmt(stmt, env); err != nil {
+		if result, err := evalStmt(stmt, env); err != nil {
 			return err
+		} else if result.returned {
+			return errors.New("top-level return is not supported")
 		}
 	}
 	return nil
@@ -326,24 +339,41 @@ func entryModule(program Program) (Module, bool) {
 	return Module{}, false
 }
 
-func evalStmt(stmt map[string]any, env Env) error {
+func evalStmt(stmt map[string]any, env Env) (completion, error) {
 	switch stmt["kind"] {
 	case "expr":
 		_, err := evalExpr(asMap(stmt["expr"]), env)
-		return err
+		return completion{}, err
+	case "function-decl":
+		env[asString(stmt["name"])] = FunctionValue{
+			Params: asStringSlice(stmt["params"]),
+			Body:   asStmtSlice(stmt["body"]),
+			Env:    env,
+		}
+		return completion{}, nil
 	case "var-decl":
 		value := any(nil)
 		var err error
 		if init, ok := stmt["init"]; ok {
 			value, err = evalExpr(asMap(init), env)
 			if err != nil {
-				return err
+				return completion{}, err
 			}
 		}
 		env[asString(stmt["name"])] = value
-		return nil
+		return completion{}, nil
+	case "return":
+		value := any(nil)
+		var err error
+		if raw, ok := stmt["value"]; ok {
+			value, err = evalExpr(asMap(raw), env)
+			if err != nil {
+				return completion{}, err
+			}
+		}
+		return completion{value: value, returned: true}, nil
 	default:
-		return fmt.Errorf("unsupported statement %v", stmt["kind"])
+		return completion{}, fmt.Errorf("unsupported statement %v", stmt["kind"])
 	}
 }
 
@@ -410,6 +440,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
 			return nil, nil
 		}
+		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
+			return callFunction(env[asString(callee["name"])], asSlice(expr["args"]), env)
+		}
 		return nil, errors.New("unsupported call")
 	case "member":
 		object, err := evalExpr(asMap(expr["object"]), env)
@@ -448,6 +481,38 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported expression %v", expr["kind"])
 	}
+}
+
+func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
+	function, ok := raw.(FunctionValue)
+	if !ok {
+		return nil, errors.New("callee is not callable")
+	}
+	child := Env{}
+	for key, value := range function.Env {
+		child[key] = value
+	}
+	for index, param := range function.Params {
+		value := any(nil)
+		if index < len(rawArgs) {
+			evaluated, err := evalExpr(asMap(rawArgs[index]), callerEnv)
+			if err != nil {
+				return nil, err
+			}
+			value = evaluated
+		}
+		child[param] = value
+	}
+	for _, stmt := range function.Body {
+		result, err := evalStmt(stmt, child)
+		if err != nil {
+			return nil, err
+		}
+		if result.returned {
+			return result.value, nil
+		}
+	}
+	return nil, nil
 }
 
 func evalValue(value map[string]any) (any, error) {
@@ -599,6 +664,14 @@ func asSlice(value any) []any {
 		return typed
 	}
 	return nil
+}
+
+func asStmtSlice(value any) []map[string]any {
+	out := []map[string]any{}
+	for _, item := range asSlice(value) {
+		out = append(out, asMap(item))
+	}
+	return out
 }
 
 func asString(value any) string {
