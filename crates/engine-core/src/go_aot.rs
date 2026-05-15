@@ -432,6 +432,18 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
                 collect_stmt_imports(stmt, imports);
             }
         }
+        JsStmt::While { test, body } => {
+            collect_expr_imports(test, imports);
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+        }
+        JsStmt::DoWhile { body, test } => {
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+            collect_expr_imports(test, imports);
+        }
         _ => {}
     }
 }
@@ -469,6 +481,21 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             }
             if is_string_match_call(callee, args) {
                 imports.insert("regexp");
+            }
+            if is_string_replace_call(callee, args) {
+                match args.first() {
+                    Some(JsExpr::Value {
+                        value: JsValue::RegExp { .. },
+                    }) => {
+                        imports.insert("regexp");
+                    }
+                    Some(JsExpr::Value {
+                        value: JsValue::String { .. },
+                    }) => {
+                        imports.insert("strings");
+                    }
+                    _ => {}
+                }
             }
             if is_node_path_string_call(callee, args) {
                 imports.insert("path/filepath");
@@ -813,6 +840,20 @@ func tsgodownStringArrayFromAny(value any) []string {
 		return nil
 	}
 	return matches
+}
+
+func tsgodownRegexpReplace(value string, pattern string, replacement string, global bool) string {
+	re := regexp.MustCompile(pattern)
+	if global {
+		return re.ReplaceAllString(value, replacement)
+	}
+	match := re.FindStringSubmatchIndex(value)
+	if match == nil {
+		return value
+	}
+	var expanded []byte
+	expanded = re.ExpandString(expanded, replacement, value, match)
+	return value[:match[0]] + string(expanded) + value[match[1]:]
 }
 "#
             .to_string(),
@@ -3763,7 +3804,7 @@ fn string_method_name(callee: &JsExpr) -> Option<&str> {
     };
     match property.as_str() {
         "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt"
-        | "charCodeAt" | "slice" => Some(property.as_str()),
+        | "charCodeAt" | "replace" | "slice" => Some(property.as_str()),
         _ => None,
     }
 }
@@ -3785,6 +3826,7 @@ fn string_method_receiver<'a>(
         "includes" | "indexOf" if args.len() == 1 => {}
         "charAt" if args.len() == 1 => {}
         "charCodeAt" if args.len() == 1 => {}
+        "replace" if args.len() == 2 => {}
         "slice" if matches!(args.len(), 1 | 2) => {}
         _ => return None,
     }
@@ -3822,6 +3864,30 @@ fn render_string_string_method_call(
             return Some(format!("tsgodownStringSlice({object}, {start}, {end})"));
         }
         return Some(format!("tsgodownStringSlice({object}, {start})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "replace", args, state) {
+        let object = render_string_expr(object, state)?;
+        let replacement = render_string_expr(args.get(1)?, state)?;
+        match args.first()? {
+            JsExpr::Value {
+                value: JsValue::String { value },
+            } => {
+                return Some(format!(
+                    "strings.Replace({object}, {}, {replacement}, 1)",
+                    go_string_literal(value)
+                ));
+            }
+            JsExpr::Value {
+                value: JsValue::RegExp { .. },
+            } => {
+                let (pattern, global) = render_supported_regexp_replace_pattern(args.first()?)?;
+                return Some(format!(
+                    "tsgodownRegexpReplace({object}, {}, {replacement}, {global})",
+                    go_string_literal(&pattern)
+                ));
+            }
+            _ => {}
+        }
     }
     None
 }
@@ -4023,6 +4089,21 @@ fn render_string_match_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) 
     ))
 }
 
+fn is_string_replace_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    string_method_name(callee) == Some("replace")
+        && args.len() == 2
+        && matches!(
+            args.first(),
+            Some(
+                JsExpr::Value {
+                    value: JsValue::String { .. },
+                } | JsExpr::Value {
+                    value: JsValue::RegExp { .. },
+                }
+            )
+        )
+}
+
 fn is_regexp_test_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     if args.len() != 1 {
         return false;
@@ -4074,6 +4155,34 @@ fn render_supported_regexp_pattern(expr: &JsExpr) -> Option<String> {
     } else {
         pattern.clone()
     })
+}
+
+fn render_supported_regexp_replace_pattern(expr: &JsExpr) -> Option<(String, bool)> {
+    let JsExpr::Value {
+        value: JsValue::RegExp { pattern, flags },
+    } = expr
+    else {
+        return None;
+    };
+    if pattern.contains("\\1") || pattern.contains("\\2") || pattern.contains("\\3") {
+        return None;
+    }
+    if !flags.chars().all(|flag| matches!(flag, 'g' | 'i' | 'm')) {
+        return None;
+    }
+    let mut prefix = String::new();
+    if flags.contains('i') {
+        prefix.push('i');
+    }
+    if flags.contains('m') {
+        prefix.push('m');
+    }
+    let pattern = if prefix.is_empty() {
+        pattern.clone()
+    } else {
+        format!("(?{prefix}){pattern}")
+    };
+    Some((pattern, flags.contains('g')))
 }
 
 fn regexp_test_needs_to_string_helper(args: &[JsExpr]) -> bool {
