@@ -19,20 +19,24 @@ pub fn unsupported_codegen_diagnostic() -> Diagnostic {
 }
 
 pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
-    let Some(entry) = entry_module(ir) else {
+    if entry_module(ir).is_none() {
         return vec!["entry module not found".to_string()];
     };
     let mut unsupported = Vec::new();
-    if !entry.imports.is_empty() {
-        unsupported.push("module imports".to_string());
-    }
-    for stmt in entry
-        .executable
-        .as_ref()
-        .map(|executable| executable.stmts.as_slice())
-        .unwrap_or(&[])
-    {
-        collect_unsupported_stmt(stmt, &mut unsupported);
+    for module in &ir.modules {
+        for import in &module.imports {
+            if import.resolved.is_none() {
+                unsupported.push(format!("external module import {}", import.spec));
+            }
+        }
+        for stmt in module
+            .executable
+            .as_ref()
+            .map(|executable| executable.stmts.as_slice())
+            .unwrap_or(&[])
+        {
+            collect_unsupported_stmt(stmt, &mut unsupported);
+        }
     }
     unsupported.sort();
     unsupported.dedup();

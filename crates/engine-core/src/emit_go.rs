@@ -287,7 +287,22 @@ type Program struct {
 type Module struct {
 	ID         string           `json:"id"`
 	SourcePath string           `json:"sourcePath"`
+	Exports    []string         `json:"exports"`
+	Imports    []Import         `json:"imports"`
 	Executable ExecutableModule `json:"executable"`
+}
+
+type Import struct {
+	Spec     string          `json:"spec"`
+	Kind     string          `json:"kind"`
+	Resolved string          `json:"resolved"`
+	Bindings []ImportBinding `json:"bindings"`
+}
+
+type ImportBinding struct {
+	Local    string `json:"local"`
+	Imported string `json:"imported"`
+	Kind     string `json:"kind"`
 }
 
 type ExecutableModule struct {
@@ -314,6 +329,12 @@ type completion struct {
 	returned bool
 }
 
+type moduleState struct {
+	exports   map[string]any
+	evaluated bool
+	evaluating bool
+}
+
 func RunProgram(programJSON string) error {
 	var program Program
 	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
@@ -323,21 +344,58 @@ func RunProgram(programJSON string) error {
 	if !ok {
 		return errors.New("entry module not found")
 	}
+	cache := map[string]*moduleState{}
+	_, err := executeModule(module, program, cache)
+	return err
+}
+
+func executeModule(module Module, program Program, cache map[string]*moduleState) (map[string]any, error) {
+	if state, ok := cache[module.SourcePath]; ok {
+		if state.evaluated || state.evaluating {
+			return state.exports, nil
+		}
+	}
 	exports := map[string]any{}
+	state := &moduleState{exports: exports, evaluating: true}
+	cache[module.SourcePath] = state
 	env := Env{
 		"exports": exports,
 		"module": map[string]any{
 			"exports": exports,
 		},
 	}
+	for _, importDecl := range module.Imports {
+		importedModule, ok := moduleByID(program, importDecl.Resolved)
+		if !ok {
+			return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
+		}
+		importedExports, err := executeModule(importedModule, program, cache)
+		if err != nil {
+			return nil, err
+		}
+		bindImport(env, importDecl, importedExports)
+	}
 	for _, stmt := range module.Executable.Stmts {
 		if result, err := evalStmt(stmt, env); err != nil {
-			return err
+			return nil, err
 		} else if result.returned {
-			return errors.New("top-level return is not supported")
+			return nil, errors.New("top-level return is not supported")
 		}
 	}
-	return nil
+	if moduleObject, ok := env["module"].(map[string]any); ok {
+		if moduleExports, ok := moduleObject["exports"].(map[string]any); ok {
+			exports = moduleExports
+			state.exports = exports
+		}
+	}
+	for _, name := range module.Exports {
+		if value, ok := env[name]; ok {
+			exports[name] = value
+		}
+	}
+	state.evaluating = false
+	state.evaluated = true
+	return exports, nil
 }
 
 func entryModule(program Program) (Module, bool) {
@@ -350,6 +408,32 @@ func entryModule(program Program) (Module, bool) {
 		return program.Modules[0], true
 	}
 	return Module{}, false
+}
+
+func moduleByID(program Program, id string) (Module, bool) {
+	for _, module := range program.Modules {
+		if module.SourcePath == id || module.ID == id {
+			return module, true
+		}
+	}
+	return Module{}, false
+}
+
+func bindImport(env Env, importDecl Import, importedExports map[string]any) {
+	for _, binding := range importDecl.Bindings {
+		switch binding.Kind {
+		case "named":
+			env[binding.Local] = importedExports[binding.Imported]
+		case "default":
+			if value, ok := importedExports["default"]; ok {
+				env[binding.Local] = value
+			} else {
+				env[binding.Local] = importedExports
+			}
+		case "namespace":
+			env[binding.Local] = importedExports
+		}
+	}
 }
 
 func evalStmt(stmt map[string]any, env Env) (completion, error) {
