@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyze;
-use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse, BackendProvider};
+use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
     fail_closed_report_version, unsupported_codegen_diagnostic, unsupported_executable_features,
@@ -62,20 +62,6 @@ pub struct IrSnapshotRequest {
     pub description: String,
 }
 
-pub struct GoBackendProvider;
-
-pub static GO_BACKEND_PROVIDER: GoBackendProvider = GoBackendProvider;
-
-impl BackendProvider for GoBackendProvider {
-    fn name(&self) -> &'static str {
-        "go"
-    }
-
-    fn emit(&self, request: BackendEmitRequest) -> BackendEmitResponse {
-        emit_go_project(request)
-    }
-}
-
 pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     emit_backend("go", request)
 }
@@ -107,7 +93,7 @@ pub fn emit_backend(target_backend: &str, request: EmitGoRequest) -> EmitGoRespo
     }
 }
 
-fn emit_go_project(request: BackendEmitRequest) -> BackendEmitResponse {
+pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitResponse {
     let analyzed = request.analyzed;
     let mut diagnostics = analyzed.diagnostics.clone();
     let package_name = request.package_name;

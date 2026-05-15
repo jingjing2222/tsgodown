@@ -24,12 +24,12 @@ pub trait BackendProvider: Sync {
 }
 
 pub fn registered_backend_names() -> Vec<&'static str> {
-    vec![crate::emit_go::GO_BACKEND_PROVIDER.name()]
+    vec![crate::backends::go::GO_BACKEND_PROVIDER.name()]
 }
 
 pub fn backend_provider(name: &str) -> Result<&'static dyn BackendProvider, Diagnostic> {
     match name {
-        "go" => Ok(&crate::emit_go::GO_BACKEND_PROVIDER),
+        "go" => Ok(&crate::backends::go::GO_BACKEND_PROVIDER),
         other => Err(unsupported_backend_diagnostic(other)),
     }
 }

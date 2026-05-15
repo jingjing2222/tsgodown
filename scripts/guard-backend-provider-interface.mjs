@@ -7,6 +7,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const files = {
   backend: "crates/engine-core/src/backend.rs",
+  backendsGo: "crates/engine-core/src/backends/go.rs",
   emitGo: "crates/engine-core/src/emit_go.rs",
   lib: "crates/engine-core/src/lib.rs",
   packageJson: "package.json",
@@ -40,17 +41,23 @@ const checks = [
       "Unsupported backend names must fail closed with deterministic diagnostic",
   },
   {
-    file: "emitGo",
+    file: "backendsGo",
     code: "GO_BACKEND_PROVIDER_MISSING",
     pattern: /pub static GO_BACKEND_PROVIDER\b/,
     reason:
       "Go backend must be registered as provider, not ad hoc target branch",
   },
   {
-    file: "emitGo",
+    file: "backendsGo",
     code: "GO_BACKEND_ADAPTER_MISSING",
     pattern: /impl BackendProvider for GoBackendProvider\b/,
     reason: "Go backend must adapt through BackendProvider",
+  },
+  {
+    file: "backend",
+    code: "GO_PROVIDER_REGISTRY_REFERENCE_MISSING",
+    pattern: /crate::backends::go::GO_BACKEND_PROVIDER/,
+    reason: "Provider registry must register Go through the backend module",
   },
   {
     file: "emitGo",
@@ -73,6 +80,16 @@ const checks = [
   },
 ];
 
+const forbidden = [
+  {
+    file: "emitGo",
+    code: "GO_BACKEND_PROVIDER_IN_EMITTER",
+    pattern:
+      /impl BackendProvider for GoBackendProvider|pub static GO_BACKEND_PROVIDER/,
+    reason: "Go provider adapter belongs in backends/go.rs, not emitter body",
+  },
+];
+
 const findings = [];
 
 for (const check of checks) {
@@ -88,6 +105,22 @@ for (const check of checks) {
   }
   const contents = fs.readFileSync(absolute, "utf8");
   if (!check.pattern.test(contents)) {
+    findings.push({
+      code: check.code,
+      file: relPath,
+      reason: check.reason,
+    });
+  }
+}
+
+for (const check of forbidden) {
+  const relPath = files[check.file];
+  const absolute = path.join(repoRoot, relPath);
+  if (!fs.existsSync(absolute)) {
+    continue;
+  }
+  const contents = fs.readFileSync(absolute, "utf8");
+  if (check.pattern.test(contents)) {
     findings.push({
       code: check.code,
       file: relPath,
