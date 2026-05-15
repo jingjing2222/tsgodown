@@ -599,6 +599,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		}
 		bindImport(env, importDecl, importedValue)
 	}
+	hoistFunctionDeclarations(module.Executable.Stmts, env)
 	for _, stmt := range module.Executable.Stmts {
 		if result, err := evalStmt(stmt, env); err != nil {
 			return nil, err
@@ -1661,6 +1662,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 }
 
 func evalStmtList(stmts []map[string]any, env Env) (completion, error) {
+	hoistFunctionDeclarations(stmts, env)
 	for _, stmt := range stmts {
 		result, err := evalStmt(stmt, env)
 		if err != nil {
@@ -1671,6 +1673,19 @@ func evalStmtList(stmts []map[string]any, env Env) (completion, error) {
 		}
 	}
 	return completion{}, nil
+}
+
+func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
+	for _, stmt := range stmts {
+		if stmt["kind"] != "function-decl" {
+			continue
+		}
+		env[asString(stmt["name"])] = FunctionValue{
+			Params: asStringSlice(stmt["params"]),
+			Body:   asStmtSlice(stmt["body"]),
+			Env:    env,
+		}
+	}
 }
 
 func evalExpr(expr map[string]any, env Env) (any, error) {
@@ -3395,14 +3410,12 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 		}
 		child[param] = value
 	}
-	for _, stmt := range function.Body {
-		result, err := evalStmt(stmt, child)
-		if err != nil {
-			return nil, err
-		}
-		if result.returned {
-			return result.value, nil
-		}
+	result, err := evalStmtList(function.Body, child)
+	if err != nil {
+		return nil, err
+	}
+	if result.returned {
+		return result.value, nil
 	}
 	return nil, nil
 }
