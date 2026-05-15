@@ -3813,7 +3813,7 @@ console.log("env", process.env.TSGODOWN_AOT_ENV, flag())
 const cwd = process.cwd
 const options = { cwd: process.cwd }
 process.chdir(process.cwd())
-console.log("process", process.version, process.versions.node, process.cwd().length > 0, cwd().length > 0, options.cwd().length > 0, process.execPath.length > 0, process.getuid() >= 0, process.getgid() >= 0, Boolean(process.stdin), Boolean(process.stdout), Boolean(process.stderr), Boolean(process.channel))
+console.log("process", process.version, process.versions.node, process.cwd().length > 0, cwd().length > 0, options.cwd().length > 0, process.execPath.length > 0, process.arch.length > 0, process.getuid() >= 0, process.getgid() >= 0, typeof process.getuid === "function", Boolean(process.chdir), Boolean(process.emitWarning), Boolean(process.nextTick), Boolean(process.on), Boolean(process.stdin), Boolean(process.stdout), Boolean(process.stderr), Boolean(process.channel))
 "#,
         );
 
@@ -3868,7 +3868,7 @@ console.log("process", process.version, process.versions.node, process.cwd().len
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "process v24.15.0 24.15.0 true true true true true true true true true false\n"
+            "process v24.15.0 24.15.0 true true true true true true true true true true true true true true true false\n"
         );
     }
 
