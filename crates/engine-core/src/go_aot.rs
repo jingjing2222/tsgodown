@@ -215,7 +215,7 @@ fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>
 }
 
 fn collect_builtin_usage_expr_features(expr: &JsExpr, features: &mut BTreeSet<String>) {
-    if is_process_supported_builtin_expr(expr) {
+    if is_process_supported_builtin_expr(expr) || is_supported_node_builtin_call_expr(expr) {
         return;
     }
     match expr {
@@ -399,6 +399,12 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_regexp_test_call(callee, args) {
                 imports.insert("regexp");
             }
+            if is_node_path_string_call(callee, args) {
+                imports.insert("path/filepath");
+            }
+            if is_node_os_homedir_call(callee, args) {
+                imports.insert("os");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -534,6 +540,14 @@ func tsgodownProcessEnv() map[string]any {
 		}
 	}
 	return env
+}
+
+func tsgodownOsHomedir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 "#
             .to_string(),
@@ -2507,15 +2521,25 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
         }
-        JsExpr::Call { callee, args, .. } if is_process_cwd_call(callee, args) => {
-            Some("tsgodownProcessCwd()".to_string())
-        }
-        JsExpr::Call { callee, args, .. } if is_string_function_call(callee, args, state) => {
-            render_call_expr(callee, args, state)
-        }
+        JsExpr::Call { callee, args, .. } => render_node_path_string_call(callee, args, state)
+            .or_else(|| render_node_os_homedir_call(callee, args, state))
+            .or_else(|| {
+                if is_process_cwd_call(callee, args) {
+                    Some("tsgodownProcessCwd()".to_string())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                if is_string_function_call(callee, args, state) {
+                    render_call_expr(callee, args, state)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| render_string_string_method_call(callee, args, state)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
-        JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
             consequent,
@@ -2989,6 +3013,91 @@ fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
         "regexp.MustCompile({}).MatchString({value})",
         go_string_literal(&pattern)
     ))
+}
+
+fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_node_path_string_call(callee, args) || is_node_os_homedir_call(callee, args))
+}
+
+fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+            && matches!(property.as_str(), "join" | "resolve")
+    )
+}
+
+fn render_node_path_string_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if name != "path" || !state.builtin_bindings.contains(name) {
+        return None;
+    }
+    let rendered_args = args
+        .iter()
+        .map(|arg| render_string_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    match property.as_str() {
+        "join" => Some(format!("filepath.Join({})", rendered_args.join(", "))),
+        "resolve" => Some(format!(
+            "func() string {{ value, err := filepath.Abs(filepath.Join({})); if err != nil {{ return \"\" }}; return value }}()",
+            rendered_args.join(", ")
+        )),
+        _ => None,
+    }
+}
+
+fn is_node_os_homedir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
+                && property == "homedir"
+        )
+}
+
+fn render_node_os_homedir_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if state.builtin_bindings.contains(name) && is_node_os_homedir_call(callee, args) {
+        return Some("tsgodownOsHomedir()".to_string());
+    }
+    None
 }
 
 fn render_string_numeric_method_call(
