@@ -407,6 +407,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_process_cwd_call(callee, args) {
                 imports.insert("os");
             }
+            if is_process_uid_gid_call(callee, args) || is_process_chdir_call(callee, args) {
+                imports.insert("os");
+            }
             if is_console_log(callee) {
                 imports.insert("fmt");
             }
@@ -489,7 +492,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         }
         expr if is_process_stdout_is_tty(expr)
             || process_env_lookup_name(expr).is_some()
-            || is_process_env_ref(expr) =>
+            || is_process_env_ref(expr)
+            || is_process_exec_path_expr(expr)
+            || is_process_stdio_ref(expr).is_some() =>
         {
             imports.insert("os");
         }
@@ -610,6 +615,19 @@ func tsgodownProcessCwd() string {
 		return ""
 	}
 	return cwd
+}
+
+func tsgodownProcessExecPath() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+func tsgodownProcessChdir(path string) any {
+	_ = os.Chdir(path)
+	return nil
 }
 
 func tsgodownProcessEnv() map[string]any {
@@ -2296,6 +2314,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
             Some("true".to_string())
         }
+        expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_bool_expr(expr),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2545,9 +2564,11 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
+        expr if is_process_exec_path_expr(expr) => Some("tsgodownProcessExecPath()".to_string()),
         expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
         expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
+        expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_expr(expr),
         JsExpr::Member {
             object,
             property,
@@ -2627,6 +2648,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_numeric_expr,
             "float64",
         ),
+        JsExpr::Call { callee, args, .. } if is_process_uid_gid_call(callee, args) => {
+            render_process_uid_gid_call(callee, args)
+        }
         JsExpr::Call { callee, args, .. } => render_string_numeric_method_call(callee, args, state),
         _ => None,
     }
@@ -2642,6 +2666,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if process_env_lookup_name(expr).is_some() => render_process_env_lookup(expr),
         expr if is_node_path_static_string_expr(expr) => render_node_path_static_string_expr(expr),
+        expr if is_process_exec_path_expr(expr) => Some("tsgodownProcessExecPath()".to_string()),
         JsExpr::Member {
             object,
             property,
@@ -2686,6 +2711,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_string_string_method_call(callee, args, state)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
+        expr if is_process_exec_path_expr(expr) => Some("tsgodownProcessExecPath()".to_string()),
         JsExpr::Conditional {
             test,
             consequent,
@@ -2769,6 +2795,7 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
             Some("true".to_string())
         }
+        expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_bool_expr(expr),
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -3612,9 +3639,13 @@ fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
         || is_process_env_ref(expr)
         || is_process_versions_ref(expr)
         || is_process_platform_expr(expr)
+        || is_process_exec_path_expr(expr)
         || is_process_cwd_ref(expr)
         || is_process_cwd_call_expr(expr)
         || is_process_version_expr(expr)
+        || is_process_stdio_ref(expr).is_some()
+        || is_process_uid_gid_call_expr(expr)
+        || is_process_chdir_call_expr(expr)
 }
 
 fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
@@ -3700,12 +3731,112 @@ fn is_process_platform_expr(expr: &JsExpr) -> bool {
     property == "platform" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
 }
 
+fn is_process_exec_path_expr(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "execPath" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn is_process_stdio_ref(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return None;
+    };
+    if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+        && matches!(property.as_str(), "stdin" | "stdout" | "stderr" | "channel")
+    {
+        return Some(property);
+    }
+    None
+}
+
+fn render_process_stdio_expr(expr: &JsExpr) -> Option<String> {
+    match is_process_stdio_ref(expr)? {
+        "stdin" => Some("os.Stdin".to_string()),
+        "stdout" => Some("os.Stdout".to_string()),
+        "stderr" => Some("os.Stderr".to_string()),
+        "channel" => Some("nil".to_string()),
+        _ => None,
+    }
+}
+
+fn render_process_stdio_bool_expr(expr: &JsExpr) -> Option<String> {
+    match is_process_stdio_ref(expr)? {
+        "stdin" | "stdout" | "stderr" => Some("true".to_string()),
+        "channel" => Some("false".to_string()),
+        _ => None,
+    }
+}
+
 fn is_process_cwd_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.is_empty() && is_process_cwd_ref(callee)
 }
 
 fn is_process_cwd_call_expr(expr: &JsExpr) -> bool {
     matches!(expr, JsExpr::Call { callee, args, .. } if is_process_cwd_call(callee, args))
+}
+
+fn is_process_uid_gid_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+                && matches!(property.as_str(), "getuid" | "getgid")
+        )
+}
+
+fn is_process_uid_gid_call_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_process_uid_gid_call(callee, args))
+}
+
+fn render_process_uid_gid_call(callee: &JsExpr, args: &[JsExpr]) -> Option<String> {
+    if !is_process_uid_gid_call(callee, args) {
+        return None;
+    }
+    match callee {
+        JsExpr::Member { property, .. } if property == "getuid" => {
+            Some("float64(os.Getuid())".to_string())
+        }
+        JsExpr::Member { property, .. } if property == "getgid" => {
+            Some("float64(os.Getgid())".to_string())
+        }
+        _ => None,
+    }
+}
+
+fn is_process_chdir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+                && property == "chdir"
+        )
+}
+
+fn is_process_chdir_call_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_process_chdir_call(callee, args))
 }
 
 fn is_string_function_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
@@ -3888,6 +4019,10 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     if is_json_stringify(callee) {
         let value = render_json_value_expr(args.first()?, state)?;
         return Some(format!("tsgodownJSONStringify({value})"));
+    }
+    if is_process_chdir_call(callee, args) {
+        let path = render_string_expr(args.first()?, state)?;
+        return Some(format!("tsgodownProcessChdir({path})"));
     }
     if let JsExpr::Member {
         object,
