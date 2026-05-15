@@ -1,4 +1,5 @@
 export {
+  CAPABILITY_BACKENDS,
   CAPABILITY_KEYS,
   CAPABILITY_MATRIX,
   CapabilityStatus,
@@ -9,6 +10,7 @@ export {
 export type {
   CapabilityCheckOptions,
   CapabilityCheckResult,
+  CapabilityBackend,
   CapabilityDiagnostic,
   CapabilityKey,
   CapabilityRequirement,

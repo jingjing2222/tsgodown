@@ -27,6 +27,25 @@ test("passes when only WIP-supported capabilities are required", () => {
   assert.equal(result.diagnostics.length, 0);
 });
 
+test("target backend selects backend-specific capability status", () => {
+  const ir = {
+    routes: [{ method: "GET", path: "/health", handlerRef: "h1" }],
+    modules: [],
+    handlers: [{ id: "h1", params: [], async: false }],
+    diagnostics: [],
+  };
+
+  const result = checkCapabilities(ir, {
+    allowWip: true,
+    targetBackend: "rust",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.diagnostics[0]?.backend, "rust");
+  assert.equal(result.diagnostics[0]?.capability, "route.basic");
+  assert.equal(result.diagnostics[0]?.status, CapabilityStatus.TODO);
+});
+
 test("collectRequiredCapabilities expands node/runtime feature detection from diagnostics", () => {
   const ir = {
     routes: [],

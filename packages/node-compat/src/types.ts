@@ -20,8 +20,10 @@ export const CAPABILITY_KEYS = [
   "node.buffer.basic",
 ] as const;
 
+export const CAPABILITY_BACKENDS = ["go", "rust", "cpp"] as const;
+
 export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
-export type CapabilityBackend = "go";
+export type CapabilityBackend = (typeof CAPABILITY_BACKENDS)[number];
 
 export interface CapabilityBackendRule {
   status: CapabilityStatus;

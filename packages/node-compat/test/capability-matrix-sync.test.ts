@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  CAPABILITY_BACKENDS,
   CAPABILITY_KEYS,
   CAPABILITY_MATRIX,
+  type CapabilityBackend,
   type CapabilityStatus,
 } from "../src/capability.ts";
 
@@ -13,8 +15,7 @@ interface MatrixRow {
   scope: string;
   status: string;
   strategy: string;
-  goStatus: string;
-  goStrategy: string;
+  backends: Record<CapabilityBackend, { status: string; strategy: string }>;
 }
 
 function parseCapabilityRows(markdown: string): MatrixRow[] {
@@ -28,18 +29,34 @@ function parseCapabilityRows(markdown: string): MatrixRow[] {
         .slice(1, -1)
         .map((cell) => cell.trim()),
     )
-    .filter((cells) => cells.length === 6)
+    .filter((cells) => cells.length === 10)
     .filter((cells) => cells[0] !== "Capability Key")
     .filter((cells) => !cells.every((cell) => /^-+$/.test(cell)));
 
-  return rows.map(([key, scope, status, strategy, goStatus, goStrategy]) => ({
-    key,
-    scope,
-    status,
-    strategy,
-    goStatus,
-    goStrategy,
-  }));
+  return rows.map(
+    ([
+      key,
+      scope,
+      status,
+      strategy,
+      goStatus,
+      goStrategy,
+      rustStatus,
+      rustStrategy,
+      cppStatus,
+      cppStrategy,
+    ]) => ({
+      key,
+      scope,
+      status,
+      strategy,
+      backends: {
+        go: { status: goStatus, strategy: goStrategy },
+        rust: { status: rustStatus, strategy: rustStrategy },
+        cpp: { status: cppStatus, strategy: cppStrategy },
+      },
+    }),
+  );
 }
 
 test("CAPABILITY_MATRIX keys are unique and internally consistent", () => {
@@ -51,6 +68,7 @@ test("CAPABILITY_MATRIX keys are unique and internally consistent", () => {
 
   for (const [key, rule] of matrixEntries) {
     assert.equal(rule.key, key);
+    assert.deepEqual(Object.keys(rule.backends), CAPABILITY_BACKENDS);
   }
 });
 
@@ -72,7 +90,15 @@ test("docs/specs/CAPABILITY_MATRIX.md stays 1:1 with implemented capability keys
     assert.equal(rule.scope, row.scope);
     assert.equal(rule.status, row.status as CapabilityStatus);
     assert.equal(rule.strategy, row.strategy);
-    assert.equal(rule.backends.go.status, row.goStatus as CapabilityStatus);
-    assert.equal(rule.backends.go.strategy, row.goStrategy);
+    for (const backend of CAPABILITY_BACKENDS) {
+      assert.equal(
+        rule.backends[backend].status,
+        row.backends[backend].status as CapabilityStatus,
+      );
+      assert.equal(
+        rule.backends[backend].strategy,
+        row.backends[backend].strategy,
+      );
+    }
   }
 });

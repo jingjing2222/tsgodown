@@ -1,6 +1,7 @@
 export { collectRequiredCapabilities } from "../collect.js";
 export { checkCapabilities } from "../check.js";
 export {
+  CAPABILITY_BACKENDS,
   CAPABILITY_KEYS,
   CAPABILITY_MATRIX,
   CapabilityStatus,
