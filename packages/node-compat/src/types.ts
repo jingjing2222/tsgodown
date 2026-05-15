@@ -21,12 +21,19 @@ export const CAPABILITY_KEYS = [
 ] as const;
 
 export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
+export type CapabilityBackend = "go";
+
+export interface CapabilityBackendRule {
+  status: CapabilityStatus;
+  strategy: string;
+}
 
 export interface CapabilityRule {
   key: CapabilityKey;
   scope: string;
   status: CapabilityStatus;
   strategy: string;
+  backends: Record<CapabilityBackend, CapabilityBackendRule>;
 }
 
 export interface CapabilitySource {
@@ -48,6 +55,7 @@ export interface CapabilityDiagnostic {
   message: string;
   capability: CapabilityKey;
   status: CapabilityStatus;
+  backend: CapabilityBackend;
   source?: CapabilitySource;
   cause?: string;
   guidance?: string;
@@ -56,6 +64,7 @@ export interface CapabilityDiagnostic {
 export interface CapabilityCheckOptions {
   allowWip?: boolean;
   failFast?: boolean;
+  targetBackend?: CapabilityBackend;
 }
 
 export interface CapabilityCheckResult {

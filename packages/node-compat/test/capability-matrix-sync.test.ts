@@ -13,6 +13,8 @@ interface MatrixRow {
   scope: string;
   status: string;
   strategy: string;
+  goStatus: string;
+  goStrategy: string;
 }
 
 function parseCapabilityRows(markdown: string): MatrixRow[] {
@@ -26,15 +28,17 @@ function parseCapabilityRows(markdown: string): MatrixRow[] {
         .slice(1, -1)
         .map((cell) => cell.trim()),
     )
-    .filter((cells) => cells.length === 4)
+    .filter((cells) => cells.length === 6)
     .filter((cells) => cells[0] !== "Capability Key")
     .filter((cells) => !cells.every((cell) => /^-+$/.test(cell)));
 
-  return rows.map(([key, scope, status, strategy]) => ({
+  return rows.map(([key, scope, status, strategy, goStatus, goStrategy]) => ({
     key,
     scope,
     status,
     strategy,
+    goStatus,
+    goStrategy,
   }));
 }
 
@@ -68,5 +72,7 @@ test("docs/specs/CAPABILITY_MATRIX.md stays 1:1 with implemented capability keys
     assert.equal(rule.scope, row.scope);
     assert.equal(rule.status, row.status as CapabilityStatus);
     assert.equal(rule.strategy, row.strategy);
+    assert.equal(rule.backends.go.status, row.goStatus as CapabilityStatus);
+    assert.equal(rule.backends.go.strategy, row.goStrategy);
   }
 });
