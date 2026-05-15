@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::analyze;
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
-    fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
+    fail_closed_report_version, unsupported_codegen_diagnostic, unsupported_executable_features,
+    ProgramPurpose,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,7 +64,6 @@ pub struct IrSnapshotRequest {
 pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     let analyzed = analyze(request.analyze);
     let mut diagnostics = analyzed.diagnostics.clone();
-    diagnostics.push(unsupported_codegen_diagnostic());
     let package_name = sanitize_package_name(request.package_name.as_deref().unwrap_or("main"));
     let module_path = sanitize_module_path(
         request
@@ -71,6 +71,13 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
             .as_deref()
             .unwrap_or("example.com/tsgodown-generated"),
     );
+    let unsupported_features = unsupported_executable_features(&analyzed.ir);
+    let can_emit_executable = diagnostics.is_empty()
+        && unsupported_features.is_empty()
+        && matches!(request.output_kind, EmitGoOutputKind::Main);
+    if !can_emit_executable {
+        diagnostics.push(unsupported_codegen_diagnostic());
+    }
     let mut files = vec![
         GeneratedFile {
             path: match request.output_kind {
@@ -78,12 +85,16 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
                 EmitGoOutputKind::VectorSuite => "vector_suite.go",
             }
             .to_string(),
-            contents: render_fail_closed_program(
-                &package_name,
-                &module_path,
-                &diagnostics,
-                request.output_kind.purpose(),
-            ),
+            contents: if can_emit_executable {
+                render_executable_program(&package_name, &module_path, &analyzed)
+            } else {
+                render_fail_closed_program(
+                    &package_name,
+                    &module_path,
+                    &diagnostics,
+                    request.output_kind.purpose(),
+                )
+            },
         },
         GeneratedFile {
             path: "go.mod".to_string(),
@@ -217,10 +228,44 @@ func main() {{
     )
 }
 
+fn render_executable_program(
+    package_name: &str,
+    module_path: &str,
+    analyzed: &AnalyzeResponse,
+) -> String {
+    let program_json = serde_json::to_string(&analyzed.ir).expect("analyzed IR should serialize");
+    format!(
+        r#"package {package_name}
+
+import (
+	"fmt"
+	"os"
+
+	"{module_path}/tsgodownrt"
+)
+
+func main() {{
+	if err := tsgodownrt.RunProgram({program_json:?}); err != nil {{
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}}
+}}
+"#
+    )
+}
+
 fn render_runtime_package() -> String {
     r#"package tsgodownrt
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"strconv"
+	"strings"
+)
 
 func FailClosedReport(version string, diagnostics json.RawMessage, extra map[string]any) map[string]any {
 	report := map[string]any{
@@ -232,6 +277,343 @@ func FailClosedReport(version string, diagnostics json.RawMessage, extra map[str
 		report[key] = value
 	}
 	return report
+}
+
+type Program struct {
+	Entry   string   `json:"entry"`
+	Modules []Module `json:"modules"`
+}
+
+type Module struct {
+	ID         string           `json:"id"`
+	SourcePath string           `json:"sourcePath"`
+	Executable ExecutableModule `json:"executable"`
+}
+
+type ExecutableModule struct {
+	Stmts []map[string]any `json:"stmts"`
+}
+
+type Env map[string]any
+
+func RunProgram(programJSON string) error {
+	var program Program
+	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
+		return err
+	}
+	module, ok := entryModule(program)
+	if !ok {
+		return errors.New("entry module not found")
+	}
+	env := Env{}
+	for _, stmt := range module.Executable.Stmts {
+		if err := evalStmt(stmt, env); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func entryModule(program Program) (Module, bool) {
+	for _, module := range program.Modules {
+		if module.SourcePath == program.Entry || module.ID == program.Entry {
+			return module, true
+		}
+	}
+	if len(program.Modules) > 0 {
+		return program.Modules[0], true
+	}
+	return Module{}, false
+}
+
+func evalStmt(stmt map[string]any, env Env) error {
+	switch stmt["kind"] {
+	case "expr":
+		_, err := evalExpr(asMap(stmt["expr"]), env)
+		return err
+	case "var-decl":
+		value := any(nil)
+		var err error
+		if init, ok := stmt["init"]; ok {
+			value, err = evalExpr(asMap(init), env)
+			if err != nil {
+				return err
+			}
+		}
+		env[asString(stmt["name"])] = value
+		return nil
+	default:
+		return fmt.Errorf("unsupported statement %v", stmt["kind"])
+	}
+}
+
+func evalExpr(expr map[string]any, env Env) (any, error) {
+	switch expr["kind"] {
+	case "value":
+		return evalValue(asMap(expr["value"]))
+	case "ident":
+		return env[asString(expr["name"])], nil
+	case "array":
+		out := []any{}
+		for _, item := range asSlice(expr["items"]) {
+			value, err := evalExpr(asMap(item), env)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, value)
+		}
+		return out, nil
+	case "object":
+		out := map[string]any{}
+		for _, prop := range asSlice(expr["props"]) {
+			propMap := asMap(prop)
+			value, err := evalExpr(asMap(propMap["value"]), env)
+			if err != nil {
+				return nil, err
+			}
+			out[asString(propMap["key"])] = value
+		}
+		return out, nil
+	case "unary":
+		arg, err := evalExpr(asMap(expr["arg"]), env)
+		if err != nil {
+			return nil, err
+		}
+		return evalUnary(asString(expr["op"]), arg)
+	case "binary":
+		left, err := evalExpr(asMap(expr["left"]), env)
+		if err != nil {
+			return nil, err
+		}
+		right, err := evalExpr(asMap(expr["right"]), env)
+		if err != nil {
+			return nil, err
+		}
+		return evalBinary(asString(expr["op"]), left, right)
+	case "conditional":
+		if truthy, err := evalExpr(asMap(expr["test"]), env); err != nil {
+			return nil, err
+		} else if isTruthy(truthy) {
+			return evalExpr(asMap(expr["consequent"]), env)
+		}
+		return evalExpr(asMap(expr["alternate"]), env)
+	case "call":
+		if isConsoleLog(asMap(expr["callee"])) {
+			parts := []string{}
+			for _, arg := range asSlice(expr["args"]) {
+				value, err := evalExpr(asMap(arg), env)
+				if err != nil {
+					return nil, err
+				}
+				parts = append(parts, jsString(value))
+			}
+			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
+			return nil, nil
+		}
+		return nil, errors.New("unsupported call")
+	case "member":
+		object, err := evalExpr(asMap(expr["object"]), env)
+		if err != nil {
+			return nil, err
+		}
+		if objectMap, ok := object.(map[string]any); ok {
+			return objectMap[asString(expr["property"])], nil
+		}
+		return nil, nil
+	case "template":
+		var out strings.Builder
+		quasis := asStringSlice(expr["quasis"])
+		exprs := asSlice(expr["exprs"])
+		for index, quasi := range quasis {
+			out.WriteString(quasi)
+			if index < len(exprs) {
+				value, err := evalExpr(asMap(exprs[index]), env)
+				if err != nil {
+					return nil, err
+				}
+				out.WriteString(jsString(value))
+			}
+		}
+		return out.String(), nil
+	case "sequence":
+		var value any
+		for _, entry := range asSlice(expr["exprs"]) {
+			next, err := evalExpr(asMap(entry), env)
+			if err != nil {
+				return nil, err
+			}
+			value = next
+		}
+		return value, nil
+	default:
+		return nil, fmt.Errorf("unsupported expression %v", expr["kind"])
+	}
+}
+
+func evalValue(value map[string]any) (any, error) {
+	switch value["kind"] {
+	case "undefined", "null":
+		return nil, nil
+	case "bool":
+		return value["value"] == true, nil
+	case "number":
+		number, err := strconv.ParseFloat(asString(value["value"]), 64)
+		if err != nil {
+			return nil, err
+		}
+		return number, nil
+	case "string", "bigint":
+		return asString(value["value"]), nil
+	default:
+		return nil, fmt.Errorf("unsupported value %v", value["kind"])
+	}
+}
+
+func evalUnary(op string, arg any) (any, error) {
+	switch op {
+	case "!":
+		return !isTruthy(arg), nil
+	case "+":
+		return toNumber(arg), nil
+	case "-":
+		return -toNumber(arg), nil
+	default:
+		return nil, fmt.Errorf("unsupported unary %s", op)
+	}
+}
+
+func evalBinary(op string, left any, right any) (any, error) {
+	switch op {
+	case "+":
+		if _, ok := left.(string); ok {
+			return jsString(left) + jsString(right), nil
+		}
+		if _, ok := right.(string); ok {
+			return jsString(left) + jsString(right), nil
+		}
+		return toNumber(left) + toNumber(right), nil
+	case "-":
+		return toNumber(left) - toNumber(right), nil
+	case "*":
+		return toNumber(left) * toNumber(right), nil
+	case "/":
+		return toNumber(left) / toNumber(right), nil
+	case "%":
+		return math.Mod(toNumber(left), toNumber(right)), nil
+	case "==", "===":
+		return fmt.Sprint(left) == fmt.Sprint(right), nil
+	case "!=", "!==":
+		return fmt.Sprint(left) != fmt.Sprint(right), nil
+	case "<":
+		return toNumber(left) < toNumber(right), nil
+	case "<=":
+		return toNumber(left) <= toNumber(right), nil
+	case ">":
+		return toNumber(left) > toNumber(right), nil
+	case ">=":
+		return toNumber(left) >= toNumber(right), nil
+	default:
+		return nil, fmt.Errorf("unsupported binary %s", op)
+	}
+}
+
+func isConsoleLog(callee map[string]any) bool {
+	if callee["kind"] != "member" || asString(callee["property"]) != "log" {
+		return false
+	}
+	object := asMap(callee["object"])
+	return object["kind"] == "ident" && asString(object["name"]) == "console"
+}
+
+func isTruthy(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return false
+	case bool:
+		return typed
+	case string:
+		return typed != ""
+	case float64:
+		return typed != 0 && !math.IsNaN(typed)
+	default:
+		return true
+	}
+}
+
+func toNumber(value any) float64 {
+	switch typed := value.(type) {
+	case nil:
+		return 0
+	case float64:
+		return typed
+	case bool:
+		if typed {
+			return 1
+		}
+		return 0
+	case string:
+		number, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return math.NaN()
+		}
+		return number
+	default:
+		return math.NaN()
+	}
+}
+
+func jsString(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return "undefined"
+	case string:
+		return typed
+	case float64:
+		if math.Trunc(typed) == typed {
+			return strconv.FormatInt(int64(typed), 10)
+		}
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	default:
+		bytes, err := json.Marshal(typed)
+		if err != nil {
+			return fmt.Sprint(typed)
+		}
+		return string(bytes)
+	}
+}
+
+func asMap(value any) map[string]any {
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	return map[string]any{}
+}
+
+func asSlice(value any) []any {
+	if typed, ok := value.([]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func asString(value any) string {
+	if typed, ok := value.(string); ok {
+		return typed
+	}
+	return ""
+}
+
+func asStringSlice(value any) []string {
+	out := []string{}
+	for _, item := range asSlice(value) {
+		out = append(out, asString(item))
+	}
+	return out
 }
 "#
     .to_string()
