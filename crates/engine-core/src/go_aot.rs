@@ -34,7 +34,9 @@ pub(crate) fn render_aot_executable_program(
     state.go_imports = collect_aot_imports(&analyzed.ir);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
-        if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. }) {
+        if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
+            || is_function_binding_stmt(stmt)
+        {
             continue;
         }
         body.push(render_stmt(stmt, &mut state)?);
@@ -198,20 +200,16 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
             continue;
         };
         for stmt in &executable.stmts {
-            if let JsStmt::FunctionDecl { name, params, .. } = stmt {
-                let go_name = if module.id == entry.id {
-                    sanitize_go_identifier(name)
-                } else {
-                    format!(
-                        "{}_{}",
-                        module_go_prefix(module),
-                        sanitize_go_identifier(name)
-                    )
-                };
+            if let Some(parts) = function_parts(stmt) {
+                let go_name = function_go_name(module, entry, parts.name);
                 functions.insert(
-                    (module.id.clone(), name.clone()),
+                    (module.id.clone(), parts.name.clone()),
                     AotFunction {
-                        params: params.clone(),
+                        params: parts.params.clone(),
+                        rest_param: parts.rest_param.clone(),
+                        r#async: *parts.r#async,
+                        generator: *parts.generator,
+                        body: parts.body.clone(),
                         go_name,
                     },
                 );
@@ -460,6 +458,9 @@ fn render_module_decls(
         }
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::VarDecl { name, .. } = stmt {
+                if module_functions.contains_key(&(module.id.clone(), name.clone())) {
+                    continue;
+                }
                 if !is_exported_name(module, name) {
                     continue;
                 }
@@ -471,9 +472,9 @@ fn render_module_decls(
             }
         }
         for stmt in &module.executable.as_ref()?.stmts {
-            if let JsStmt::FunctionDecl { name, .. } = stmt {
-                let function = module_functions.get(&(module.id.clone(), name.clone()))?;
-                declarations.push(render_function_decl(stmt, &state, &function.go_name)?);
+            if let Some(parts) = function_parts(stmt) {
+                let function = module_functions.get(&(module.id.clone(), parts.name.clone()))?;
+                declarations.push(render_function_decl(function, &state)?);
             }
         }
     }
@@ -491,9 +492,9 @@ fn module_aot_state(
 ) -> Option<AotState> {
     let mut state = AotState::default();
     for stmt in &module.executable.as_ref()?.stmts {
-        if let JsStmt::FunctionDecl { name, .. } = stmt {
-            let function = module_functions.get(&(module.id.clone(), name.clone()))?;
-            state.functions.insert(name.clone(), function.clone());
+        if let Some(parts) = function_parts(stmt) {
+            let function = module_functions.get(&(module.id.clone(), parts.name.clone()))?;
+            state.functions.insert(parts.name.clone(), function.clone());
         }
         if let JsStmt::VarDecl { name, .. } = stmt {
             if let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) {
@@ -613,6 +614,14 @@ fn module_go_prefix(module: &Module) -> String {
     }
 }
 
+fn function_go_name(module: &Module, entry: &Module, name: &str) -> String {
+    if module.id == entry.id {
+        sanitize_go_identifier(name)
+    } else {
+        module_member_go_name(module, name)
+    }
+}
+
 fn module_member_go_name(module: &Module, name: &str) -> String {
     format!(
         "{}_{}",
@@ -660,7 +669,20 @@ impl AotState {
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
+    rest_param: Option<String>,
+    r#async: bool,
+    generator: bool,
+    body: Vec<JsStmt>,
     go_name: String,
+}
+
+struct AotFunctionParts<'a> {
+    name: &'a String,
+    params: &'a Vec<String>,
+    rest_param: &'a Option<String>,
+    r#async: &'a bool,
+    generator: &'a bool,
+    body: &'a Vec<JsStmt>,
 }
 
 #[derive(Clone)]
@@ -721,6 +743,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::VarDecl { name, init } => {
             let ident = sanitize_go_identifier(name);
             if let Some(expr) = init {
+                if matches!(expr, JsExpr::Function { .. }) && state.functions.contains_key(name) {
+                    return Some(String::new());
+                }
                 if is_require_call(expr)
                     && (state.functions.contains_key(name)
                         || state.bindings.contains(name)
@@ -1014,19 +1039,8 @@ fn render_class_method_decl(
     ))
 }
 
-fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Option<String> {
-    let JsStmt::FunctionDecl {
-        name: _,
-        params,
-        rest_param,
-        r#async,
-        generator,
-        body,
-    } = stmt
-    else {
-        return None;
-    };
-    if rest_param.is_some() || *r#async || *generator {
+fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<String> {
+    if function.rest_param.is_some() || function.r#async || function.generator {
         return None;
     }
     let mut function_state = AotState {
@@ -1035,19 +1049,71 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Optio
         namespace_functions: state.namespace_functions.clone(),
         ..AotState::default()
     };
-    for param in params {
+    for param in &function.params {
         function_state.numeric_bindings.insert(param.clone());
     }
-    let rendered_params = params
+    let rendered_params = function
+        .params
         .iter()
         .map(|param| format!("{} float64", sanitize_go_identifier(param)))
         .collect::<Vec<_>>()
         .join(", ");
-    let function_body = render_function_body(body, &function_state)?;
+    let function_body = render_function_body(&function.body, &function_state)?;
     Some(format!(
-        "func {go_name}({rendered_params}) any {{\n{}\n}}",
+        "func {}({rendered_params}) any {{\n{}\n}}",
+        function.go_name,
         indent_lines(&function_body)
     ))
+}
+
+fn is_function_binding_stmt(stmt: &JsStmt) -> bool {
+    matches!(
+        stmt,
+        JsStmt::VarDecl {
+            init: Some(JsExpr::Function { .. }),
+            ..
+        }
+    )
+}
+
+fn function_parts(stmt: &JsStmt) -> Option<AotFunctionParts<'_>> {
+    match stmt {
+        JsStmt::FunctionDecl {
+            name,
+            params,
+            rest_param,
+            r#async,
+            generator,
+            body,
+        } => Some(AotFunctionParts {
+            name,
+            params,
+            rest_param,
+            r#async,
+            generator,
+            body,
+        }),
+        JsStmt::VarDecl {
+            name,
+            init:
+                Some(JsExpr::Function {
+                    params,
+                    rest_param,
+                    r#async,
+                    generator,
+                    body,
+                    ..
+                }),
+        } => Some(AotFunctionParts {
+            name,
+            params,
+            rest_param,
+            r#async,
+            generator,
+            body,
+        }),
+        _ => None,
+    }
 }
 
 fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
