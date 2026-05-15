@@ -54,7 +54,10 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     (stmt) => stmt?.kind === "function-decl" && stmt.name === "main",
   );
   const functionDecls = collectTopLevelFunctionDecls(stmts);
-  const classDecls = stmts.filter((stmt) => stmt?.kind === "class-decl");
+  const classDecls = [
+    ...stmts.filter((stmt) => stmt?.kind === "class-decl"),
+    ...collectClassAliases(stmts),
+  ];
   const classes = new Map(classDecls.map((stmt) => [stmt.name, stmt]));
   const ctx = {
     declared: new Set(),
@@ -110,6 +113,23 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\tfmt.Println(string(bytes))",
     "}",
     "",
+    'var jsModule = map[string]any{"exports": map[string]any{}}',
+    "",
+    "func jsRequire(name any) any {",
+    "\tswitch fmt.Sprint(name) {",
+    '\tcase "fs":',
+    '\t\treturn map[string]any{"readFileSync": jsReadFileSync, "writeFileSync": jsWriteFileSync, "mkdtempSync": jsMkdtempSync, "rmSync": jsRmSync}',
+    '\tcase "path":',
+    '\t\treturn map[string]any{"join": jsPathJoin, "dirname": jsPathDirname}',
+    '\tcase "os":',
+    '\t\treturn map[string]any{"tmpdir": jsTmpdir}',
+    '\tcase "crypto":',
+    "\t\treturn map[string]any{}",
+    "\tdefault:",
+    "\t\treturn map[string]any{}",
+    "\t}",
+    "}",
+    "",
     "func js_main() any {",
     body,
     "\treturn nil",
@@ -144,6 +164,32 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn fallback",
     "\t}",
     "\treturn value",
+    "}",
+    "",
+    "func jsLogicalAnd(left any, right any) any {",
+    "\tif !jsTruthy(left) {",
+    "\t\treturn left",
+    "\t}",
+    "\treturn right",
+    "}",
+    "",
+    "func jsLogicalOr(left any, right any) any {",
+    "\tif jsTruthy(left) {",
+    "\t\treturn left",
+    "\t}",
+    "\treturn right",
+    "}",
+    "",
+    "func jsVoid(value any) any {",
+    "\t_ = value",
+    "\treturn nil",
+    "}",
+    "",
+    "func jsSequence(values ...any) any {",
+    "\tif len(values) == 0 {",
+    "\t\treturn nil",
+    "\t}",
+    "\treturn values[len(values)-1]",
     "}",
     "",
     "func jsArg(args []any, index int) any {",
@@ -232,8 +278,81 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t}",
     "}",
     "",
+    "func jsBitwise(op string, left any, right any) any {",
+    "\tleftNumber := uint64(jsNumber(left))",
+    "\trightNumber := uint(jsNumber(right))",
+    "\tswitch op {",
+    '\tcase "&":',
+    "\t\treturn int64(leftNumber & uint64(jsNumber(right)))",
+    '\tcase "|":',
+    "\t\treturn int64(leftNumber | uint64(jsNumber(right)))",
+    '\tcase "^":',
+    "\t\treturn int64(leftNumber ^ uint64(jsNumber(right)))",
+    '\tcase "<<":',
+    "\t\treturn int64(leftNumber << rightNumber)",
+    '\tcase ">>", ">>>":',
+    "\t\treturn int64(leftNumber >> rightNumber)",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported bitwise operator %s", op))',
+    "\t}",
+    "}",
+    "",
     "func jsStrictEqual(left any, right any) bool {",
     "\treturn reflect.DeepEqual(left, right)",
+    "}",
+    "",
+    "func jsLooseEqual(left any, right any) bool {",
+    "\tif jsStrictEqual(left, right) {",
+    "\t\treturn true",
+    "\t}",
+    "\tif left == nil || right == nil {",
+    "\t\treturn left == nil && right == nil",
+    "\t}",
+    "\tif isJSNumberLike(left) || isJSNumberLike(right) {",
+    "\t\treturn jsNumber(left) == jsNumber(right)",
+    "\t}",
+    "\treturn fmt.Sprint(left) == fmt.Sprint(right)",
+    "}",
+    "",
+    "func isJSNumberLike(value any) bool {",
+    "\tswitch value.(type) {",
+    "\tcase int, int64, float64, bool:",
+    "\t\treturn true",
+    "\tdefault:",
+    "\t\treturn false",
+    "\t}",
+    "}",
+    "",
+    "func jsRelationalCompare(op string, left any, right any) bool {",
+    "\tleftNumber := jsNumber(left)",
+    "\trightNumber := jsNumber(right)",
+    "\tswitch op {",
+    '\tcase "<":',
+    "\t\treturn leftNumber < rightNumber",
+    '\tcase "<=":',
+    "\t\treturn leftNumber <= rightNumber",
+    '\tcase ">":',
+    "\t\treturn leftNumber > rightNumber",
+    '\tcase ">=":',
+    "\t\treturn leftNumber >= rightNumber",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("unsupported relational operator %s", op))',
+    "\t}",
+    "}",
+    "",
+    "func jsInstanceOf(left any, right any) bool {",
+    "\tinstance, ok := left.(*jsClassInstance)",
+    "\tif !ok {",
+    "\t\treturn false",
+    "\t}",
+    "\tswitch typed := right.(type) {",
+    "\tcase *jsClassValue:",
+    "\t\treturn instance.className == typed.name",
+    "\tcase string:",
+    "\t\treturn instance.className == typed",
+    "\tdefault:",
+    "\t\treturn false",
+    "\t}",
     "}",
     "",
     "func jsAwait(value any) any {",
@@ -352,6 +471,14 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn nil",
     "}",
     "",
+    "func jsReadFileSync(target any, args ...any) any {",
+    "\tbytes, err := os.ReadFile(fmt.Sprint(target))",
+    "\tif err != nil {",
+    "\t\tpanic(err)",
+    "\t}",
+    "\treturn string(bytes)",
+    "}",
+    "",
     "func jsStringSplit(value any, separator any) []any {",
     "\tparts := strings.Split(fmt.Sprint(value), fmt.Sprint(separator))",
     "\tout := make([]any, 0, len(parts))",
@@ -398,6 +525,27 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn true",
     "\t}",
     "\treturn false",
+    "}",
+    "",
+    "func jsHasProperty(value any, property any) bool {",
+    "\tkey := fmt.Sprint(property)",
+    "\tif instance, ok := value.(*jsClassInstance); ok {",
+    "\t\t_, exists := instance.fields[key]",
+    "\t\treturn exists",
+    "\t}",
+    "\tif object, ok := value.(map[string]any); ok {",
+    "\t\t_, exists := object[key]",
+    "\t\treturn exists",
+    "\t}",
+    "\treturn false",
+    "}",
+    "",
+    "func jsNullishAssignMember(value any, property string, next any) any {",
+    "\tcurrent := jsGet(value, property)",
+    "\tif current == nil {",
+    "\t\treturn jsSetMember(value, property, next)",
+    "\t}",
+    "\treturn current",
     "}",
     "",
     "func jsArrayJoin(value any, separator any) string {",
@@ -579,8 +727,27 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     '\treturn map[string]any{"name": name, "message": message}',
     "}",
     "",
+    "func jsConstructFunction(name string, constructor func(any, ...any) any, args ...any) any {",
+    "\tinstance := &jsClassInstance{className: name, fields: map[string]any{}}",
+    "\tresult := constructor(instance, args...)",
+    "\tif result != nil {",
+    "\t\treturn result",
+    "\t}",
+    "\treturn instance",
+    "}",
+    "",
+    "func jsNewOpaque(name string, args ...any) any {",
+    "\t_ = args",
+    "\treturn &jsClassInstance{className: name, fields: map[string]any{}}",
+    "}",
+    "",
     "func jsNewAbortController() any {",
     '\treturn map[string]any{"signal": map[string]any{"aborted": false}}',
+    "}",
+    "",
+    "func jsNewURL(args ...any) any {",
+    "\thref := fmt.Sprint(jsArg(args, 0))",
+    '\treturn map[string]any{"href": href, "pathname": href}',
     "}",
     "",
     "func jsNewUint8Array(args ...any) any {",
@@ -595,6 +762,16 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\t\treturn out",
     "\t}",
     "\treturn jsIterable(args[0])",
+    "}",
+    "",
+    "func jsNewArray(args ...any) any {",
+    "\tif len(args) == 1 {",
+    "\t\tif length := int(jsNumber(args[0])); length > 0 && fmt.Sprint(args[0]) == fmt.Sprint(length) {",
+    "\t\t\tout := make([]any, length)",
+    "\t\t\treturn out",
+    "\t\t}",
+    "\t}",
+    "\treturn append([]any{}, args...)",
     "}",
     "",
     "type jsTextEncoder struct{}",
@@ -649,6 +826,10 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "type jsClassInstance struct {",
     "\tclassName string",
     "\tfields map[string]any",
+    "}",
+    "",
+    "type jsControlFlow struct {",
+    "\tkind string",
     "}",
     "",
     "type jsClassValue struct {",
@@ -713,7 +894,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
 }
 
 function collectTopLevelFunctionDecls(stmts) {
-  return stmts
+  const decls = stmts
     .map((stmt) => {
       if (stmt?.kind === "function-decl") {
         return stmt;
@@ -730,6 +911,26 @@ function collectTopLevelFunctionDecls(stmts) {
       return null;
     })
     .filter(Boolean);
+  const known = new Set(decls.map((decl) => decl.name));
+  for (const stmt of stmts) {
+    if (
+      stmt?.kind === "var-decl" &&
+      stmt.init?.kind === "ident" &&
+      known.has(stmt.init.name) &&
+      !known.has(stmt.name)
+    ) {
+      decls.push({
+        kind: "function-decl",
+        name: stmt.name,
+        params: [],
+        async: false,
+        aliasTarget: stmt.init.name,
+        body: [],
+      });
+      known.add(stmt.name);
+    }
+  }
+  return decls;
 }
 
 function isTopLevelFunctionDecl(stmt) {
@@ -739,10 +940,61 @@ function isTopLevelFunctionDecl(stmt) {
   );
 }
 
+function collectClassAliases(stmts) {
+  const aliases = [];
+  const classes = new Map(
+    stmts
+      .filter((stmt) => stmt?.kind === "class-decl")
+      .map((stmt) => [stmt.name, stmt]),
+  );
+  const seen = new Set(classes.keys());
+  for (let index = 0; index < stmts.length - 1; index += 1) {
+    const current = stmts[index];
+    const next = stmts[index + 1];
+    if (
+      current?.kind === "var-decl" &&
+      !current.init &&
+      /^_[A-Za-z0-9]*$/.test(String(current.name)) &&
+      next?.kind === "class-decl" &&
+      !seen.has(current.name)
+    ) {
+      aliases.push({ ...next, name: current.name });
+      seen.add(current.name);
+    }
+    if (
+      current?.kind === "expr" &&
+      current.expr?.kind === "assign" &&
+      current.expr.op === "=" &&
+      current.expr.left?.kind === "ident" &&
+      current.expr.right?.kind === "ident" &&
+      classes.has(current.expr.right.name) &&
+      !seen.has(current.expr.left.name)
+    ) {
+      aliases.push({
+        ...classes.get(current.expr.right.name),
+        name: current.expr.left.name,
+      });
+      seen.add(current.expr.left.name);
+    }
+  }
+  return aliases;
+}
+
 function renderFunctionDecl(stmt, parentCtx) {
+  if (stmt.aliasTarget) {
+    return [
+      `func js_${goIdent(stmt.name)}(jsArgs ...any) any {`,
+      `\treturn js_${goIdent(stmt.aliasTarget)}(jsArgs...)`,
+      "}",
+      "",
+      `func js_${goIdent(stmt.name)}_this(jsThis any, jsArgs ...any) any {`,
+      `\treturn js_${goIdent(stmt.aliasTarget)}_this(jsThis, jsArgs...)`,
+      "}",
+    ].join("\n");
+  }
   const params = (stmt.params ?? []).map(goIdent);
   const ctx = {
-    declared: new Set(params),
+    declared: new Set(["jsThis", ...params]),
     arrays: new Set(),
     classes: parentCtx.classes,
     functions: parentCtx.functions,
@@ -750,9 +1002,17 @@ function renderFunctionDecl(stmt, parentCtx) {
     externalNamespaces: parentCtx.externalNamespaces,
     externalMembers: parentCtx.externalMembers,
     externalConstructors: parentCtx.externalConstructors,
+    thisName: "jsThis",
   };
   return [
     `func js_${goIdent(stmt.name)}(jsArgs ...any) any {`,
+    `\treturn js_${goIdent(stmt.name)}_this(nil, jsArgs...)`,
+    "}",
+    "",
+    `func js_${goIdent(stmt.name)}_this(jsThis any, jsArgs ...any) any {`,
+    "\tif jsThis == nil {",
+    "\t\tjsThis = map[string]any{}",
+    "\t}",
     ...params.map((param, index) => `\t${param} := jsArg(jsArgs, ${index})`),
     renderStmtBlock(stmt.body ?? [], ctx, 1),
     "\treturn nil",
@@ -846,6 +1106,39 @@ function renderStmtBlock(stmts, ctx, indentLevel) {
     .join("\n");
 }
 
+function renderLoopBody(stmts, ctx, indentLevel) {
+  const indent = "\t".repeat(indentLevel);
+  const bodyCtx = {
+    ...ctx,
+    declared: new Set(ctx.declared),
+    arrays: new Set(ctx.arrays),
+    controlAsPanic: true,
+  };
+  return [
+    `${indent}jsLoopControl := ""`,
+    `${indent}func() {`,
+    `${indent}\tdefer func() {`,
+    `${indent}\t\tif recovered := recover(); recovered != nil {`,
+    `${indent}\t\t\tif control, ok := recovered.(jsControlFlow); ok {`,
+    `${indent}\t\t\t\tjsLoopControl = control.kind`,
+    `${indent}\t\t\t\treturn`,
+    `${indent}\t\t\t}`,
+    `${indent}\t\t\tpanic(recovered)`,
+    `${indent}\t\t}`,
+    `${indent}\t}()`,
+    renderStmtBlock(stmts, bodyCtx, indentLevel + 1),
+    `${indent}}()`,
+    `${indent}if jsLoopControl == "break" {`,
+    `${indent}\tbreak`,
+    `${indent}}`,
+    `${indent}if jsLoopControl == "continue" {`,
+    `${indent}\tcontinue`,
+    `${indent}}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function renderStmt(stmt, ctx, indentLevel) {
   const indent = "\t".repeat(indentLevel);
   switch (stmt?.kind) {
@@ -869,12 +1162,17 @@ function renderStmt(stmt, ctx, indentLevel) {
       if (init === "nil") {
         return `${indent}var ${name} any = nil`;
       }
+      if (!isArrayInit) {
+        return `${indent}var ${name} any = ${init}`;
+      }
       return `${indent}${name} := ${init}`;
     }
     case "return":
       return `${indent}return ${stmt.value ? renderExpr(stmt.value, ctx) : "nil"}`;
     case "expr":
       return `${indent}${renderExpr(stmt.expr, ctx)}`;
+    case "function-decl":
+      return "";
     case "if": {
       const consequent = renderStmtBlock(
         stmt.consequent ?? [],
@@ -887,7 +1185,7 @@ function renderStmt(stmt, ctx, indentLevel) {
         indentLevel + 1,
       );
       const lines = [
-        `${indent}if ${renderExpr(stmt.test, ctx)} {`,
+        `${indent}if jsTruthy(${renderExpr(stmt.test, ctx)}) {`,
         consequent,
         `${indent}}`,
       ];
@@ -919,14 +1217,23 @@ function renderStmt(stmt, ctx, indentLevel) {
       return lines.filter(Boolean).join("\n");
     }
     case "for": {
-      const init = (stmt.init ?? [])
-        .map((child) => renderSimpleStmt(child, ctx))
-        .join(", ");
-      const test = stmt.test ? renderExpr(stmt.test, ctx) : "";
+      const initStmts = stmt.init ?? [];
+      const init =
+        initStmts.length === 1 && initStmts[0]?.kind !== "var-decl"
+          ? renderSimpleStmt(initStmts[0], ctx)
+          : "";
+      const test = stmt.test ? `jsTruthy(${renderExpr(stmt.test, ctx)})` : "";
       const update = stmt.update ? renderExpr(stmt.update, ctx) : "";
+      const prefix =
+        initStmts.length > 1 || initStmts[0]?.kind === "var-decl"
+          ? initStmts
+              .map((child) => renderStmt(child, ctx, indentLevel))
+              .filter(Boolean)
+          : [];
       return [
+        ...prefix,
         `${indent}for ${init}; ${test}; ${update} {`,
-        renderStmtBlock(stmt.body ?? [], ctx, indentLevel + 1),
+        renderLoopBody(stmt.body ?? [], ctx, indentLevel + 1),
         `${indent}}`,
       ]
         .filter(Boolean)
@@ -943,7 +1250,7 @@ function renderStmt(stmt, ctx, indentLevel) {
       ctx.declared.add(name);
       return [
         `${indent}for _, ${name} := range jsIterable(${right}) {`,
-        renderStmtBlock(stmt.body ?? [], bodyCtx, indentLevel + 1),
+        renderLoopBody(stmt.body ?? [], bodyCtx, indentLevel + 1),
         `${indent}}`,
       ]
         .filter(Boolean)
@@ -951,15 +1258,21 @@ function renderStmt(stmt, ctx, indentLevel) {
     }
     case "while":
       return [
-        `${indent}for ${renderExpr(stmt.test, ctx)} {`,
-        renderStmtBlock(stmt.body ?? [], ctx, indentLevel + 1),
+        `${indent}for jsTruthy(${renderExpr(stmt.test, ctx)}) {`,
+        renderLoopBody(stmt.body ?? [], ctx, indentLevel + 1),
         `${indent}}`,
       ]
         .filter(Boolean)
         .join("\n");
     case "break":
+      if (ctx.controlAsPanic) {
+        return `${indent}panic(jsControlFlow{kind: "break"})`;
+      }
       return `${indent}break`;
     case "continue":
+      if (ctx.controlAsPanic) {
+        return `${indent}panic(jsControlFlow{kind: "continue"})`;
+      }
       return `${indent}continue`;
     case "throw":
       return `${indent}panic(${renderExpr(stmt.value, ctx)})`;
@@ -984,6 +1297,9 @@ function renderStmt(stmt, ctx, indentLevel) {
         `${indent}func() {`,
         `${indent}\tdefer func() {`,
         `${indent}\t\tif recovered := recover(); recovered != nil {`,
+        `${indent}\t\t\tif control, ok := recovered.(jsControlFlow); ok {`,
+        `${indent}\t\t\t\tpanic(control)`,
+        `${indent}\t\t\t}`,
         `${indent}\t\t\t${catchParam} := jsRecoverValue(recovered)`,
         catchBody,
         `${indent}\t\t}`,
@@ -1023,6 +1339,9 @@ function renderSimpleStmt(stmt, ctx) {
       if (init === "nil") {
         return `var ${name} any = nil`;
       }
+      if (!isArrayInit) {
+        return `var ${name} any = ${init}`;
+      }
       return `${name} := ${init}`;
     }
     case "expr":
@@ -1043,6 +1362,12 @@ function renderExpr(expr, ctx) {
     case "ident":
       if (expr.name === "undefined") {
         return "nil";
+      }
+      if (expr.name === "require") {
+        return "jsRequire";
+      }
+      if (expr.name === "module") {
+        return "jsModule";
       }
       return goIdent(expr.name);
     case "array":
@@ -1074,6 +1399,10 @@ function renderExpr(expr, ctx) {
       return renderFunctionExpression(expr, ctx);
     case "class":
       return '&jsClassValue{name: ""}';
+    case "sequence":
+      return `jsSequence(${(expr.exprs ?? expr.items ?? [])
+        .map((item) => renderExpr(item, ctx))
+        .join(", ")})`;
     case "unary":
       if (expr.op === "!") {
         return `(!jsTruthy(${renderExpr(expr.arg, ctx)}))`;
@@ -1096,8 +1425,23 @@ function renderExpr(expr, ctx) {
         }
         return "true";
       }
+      if (expr.op === "void") {
+        return `jsVoid(${renderExpr(expr.arg, ctx)})`;
+      }
       throw new Error(`EXECUTABLE_IR_UNSUPPORTED_UNARY:${expr.op}`);
     case "binary":
+      if (expr.op === "&&") {
+        return `jsLogicalAnd(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
+      if (expr.op === "||") {
+        return `jsLogicalOr(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
       if (expr.op === "??") {
         return `jsNullish(${renderExpr(expr.left, ctx)}, ${renderExpr(
           expr.right,
@@ -1116,8 +1460,44 @@ function renderExpr(expr, ctx) {
           ctx,
         )}))`;
       }
+      if (expr.op === "==") {
+        return `jsLooseEqual(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
+      if (expr.op === "!=") {
+        return `(!jsLooseEqual(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )}))`;
+      }
       if (["+", "-", "*", "/", "%"].includes(expr.op)) {
         return `jsBinaryArithmetic(${JSON.stringify(expr.op)}, ${renderExpr(
+          expr.left,
+          ctx,
+        )}, ${renderExpr(expr.right, ctx)})`;
+      }
+      if (["&", "|", "^", "<<", ">>", ">>>"].includes(expr.op)) {
+        return `jsBitwise(${JSON.stringify(expr.op)}, ${renderExpr(
+          expr.left,
+          ctx,
+        )}, ${renderExpr(expr.right, ctx)})`;
+      }
+      if (expr.op === "instanceof") {
+        return `jsInstanceOf(${renderExpr(expr.left, ctx)}, ${renderExpr(
+          expr.right,
+          ctx,
+        )})`;
+      }
+      if (expr.op === "in") {
+        return `jsHasProperty(${renderExpr(expr.right, ctx)}, ${renderExpr(
+          expr.left,
+          ctx,
+        )})`;
+      }
+      if (["<", "<=", ">", ">="].includes(expr.op)) {
+        return `jsRelationalCompare(${JSON.stringify(expr.op)}, ${renderExpr(
           expr.left,
           ctx,
         )}, ${renderExpr(expr.right, ctx)})`;
@@ -1131,7 +1511,7 @@ function renderExpr(expr, ctx) {
       return `jsAwait(${renderExpr(expr.arg, ctx)})`;
     }
     case "conditional":
-      return `jsTernary(${renderExpr(expr.test, ctx)}, ${renderExpr(
+      return `jsTernary(jsTruthy(${renderExpr(expr.test, ctx)}), ${renderExpr(
         expr.consequent,
         ctx,
       )}, ${renderExpr(expr.alternate, ctx)})`;
@@ -1173,6 +1553,20 @@ function renderExpr(expr, ctx) {
         .join(", ")})`;
     }
     case "new":
+      if (expr.callee?.kind === "ident" && expr.callee.name === "URL") {
+        return `jsNewURL(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "Array") {
+        return `jsNewArray(${(expr.args ?? [])
+          .map((arg) => renderExpr(arg, ctx))
+          .join(", ")})`;
+      }
+      if (expr.callee?.kind === "ident" && expr.callee.name === "RegExp") {
+        const args = expr.args ?? [];
+        return `&jsRegExp{pattern: fmt.Sprint(${args[0] ? renderExpr(args[0], ctx) : '""'}), flags: fmt.Sprint(${args[1] ? renderExpr(args[1], ctx) : '""'})}`;
+      }
       if (expr.callee?.kind === "ident" && expr.callee.name === "Promise") {
         return `jsNewPromise(${(expr.args ?? [])
           .map((arg) => renderExpr(arg, ctx))
@@ -1223,6 +1617,20 @@ function renderExpr(expr, ctx) {
       if (expr.callee?.kind === "ident" && expr.callee.name === "TextDecoder") {
         return "&jsTextDecoder{}";
       }
+      if (
+        expr.callee?.kind === "ident" &&
+        ctx.functions.has(expr.callee.name)
+      ) {
+        return `jsConstructFunction(${JSON.stringify(
+          expr.callee.name,
+        )}, js_${goIdent(expr.callee.name)}_this${
+          (expr.args ?? []).length
+            ? `, ${(expr.args ?? [])
+                .map((arg) => renderExpr(arg, ctx))
+                .join(", ")}`
+            : ""
+        })`;
+      }
       if (expr.callee?.kind === "ident" && ctx.classes.has(expr.callee.name)) {
         return `js_new_${goIdent(expr.callee.name)}(${(expr.args ?? [])
           .map((arg) => renderExpr(arg, ctx))
@@ -1236,27 +1644,22 @@ function renderExpr(expr, ctx) {
           .map((arg) => renderExpr(arg, ctx))
           .join(", ")})`;
       }
+      if (expr.callee?.kind === "ident" && /^[A-Z]/.test(expr.callee.name)) {
+        return `jsNewOpaque(${JSON.stringify(expr.callee.name)}${
+          (expr.args ?? []).length
+            ? `, ${(expr.args ?? [])
+                .map((arg) => renderExpr(arg, ctx))
+                .join(", ")}`
+            : ""
+        })`;
+      }
       throw new Error(
         `EXECUTABLE_IR_UNSUPPORTED_NEW:${expr.callee?.name ?? "unknown"}`,
       );
     case "assign":
-      if (expr.op === "=" && expr.left?.kind === "member") {
-        return `jsSetMember(${renderExpr(
-          expr.left.object,
-          ctx,
-        )}, ${JSON.stringify(expr.left.property)}, ${renderExpr(
-          expr.right,
-          ctx,
-        )})`;
-      }
-      return `${renderExpr(expr.left, ctx)} ${expr.op} ${renderExpr(
-        expr.right,
-        ctx,
-      )}`;
-    case "update": {
-      const arg = renderExpr(expr.arg, ctx);
-      return expr.prefix ? `${expr.op}${arg}` : `${arg}${expr.op}`;
-    }
+      return renderAssignmentExpression(expr, ctx);
+    case "update":
+      return renderUpdateExpression(expr, ctx);
     case "member":
       if (expr.object?.kind === "ident") {
         const key = `${expr.object.name}.${expr.property}`;
@@ -1272,6 +1675,68 @@ function renderExpr(expr, ctx) {
         `EXECUTABLE_IR_UNSUPPORTED_EXPR:${expr?.kind ?? "unknown"}`,
       );
   }
+}
+
+function renderAssignmentExpression(expr, ctx) {
+  const right = renderExpr(expr.right, ctx);
+  if (expr.left?.kind === "ident") {
+    const name = goIdent(expr.left.name);
+    if (expr.op === "=") {
+      return `func() any { ${name} = ${right}; return ${name} }()`;
+    }
+    if (expr.op === "??=") {
+      return `func() any { if ${name} == nil { ${name} = ${right} }; return ${name} }()`;
+    }
+    const arithmeticOp = compoundArithmeticOperator(expr.op);
+    if (arithmeticOp) {
+      return `func() any { ${name} = jsBinaryArithmetic(${JSON.stringify(arithmeticOp)}, ${name}, ${right}); return ${name} }()`;
+    }
+  }
+  if (expr.left?.kind === "member") {
+    const object = renderExpr(expr.left.object, ctx);
+    const property = JSON.stringify(expr.left.property);
+    if (expr.op === "=") {
+      return `jsSetMember(${object}, ${property}, ${right})`;
+    }
+    if (expr.op === "??=") {
+      return `jsNullishAssignMember(${object}, ${property}, ${right})`;
+    }
+    const arithmeticOp = compoundArithmeticOperator(expr.op);
+    if (arithmeticOp) {
+      return `func() any { jsObject := ${object}; jsProperty := ${property}; jsNext := jsBinaryArithmetic(${JSON.stringify(arithmeticOp)}, jsGet(jsObject, jsProperty), ${right}); return jsSetMember(jsObject, jsProperty, jsNext) }()`;
+    }
+  }
+  throw new Error(`EXECUTABLE_IR_UNSUPPORTED_ASSIGN:${expr.op}`);
+}
+
+function renderUpdateExpression(expr, ctx) {
+  const delta = expr.op === "--" ? "-1" : "1";
+  if (expr.arg?.kind === "ident") {
+    const name = goIdent(expr.arg.name);
+    if (expr.prefix) {
+      return `func() any { ${name} = jsBinaryArithmetic("+", ${name}, ${delta}); return ${name} }()`;
+    }
+    return `func() any { jsOld := ${name}; ${name} = jsBinaryArithmetic("+", ${name}, ${delta}); return jsOld }()`;
+  }
+  if (expr.arg?.kind === "member") {
+    const object = renderExpr(expr.arg.object, ctx);
+    const property = JSON.stringify(expr.arg.property);
+    if (expr.prefix) {
+      return `func() any { jsObject := ${object}; jsProperty := ${property}; jsNext := jsBinaryArithmetic("+", jsGet(jsObject, jsProperty), ${delta}); jsSetMember(jsObject, jsProperty, jsNext); return jsNext }()`;
+    }
+    return `func() any { jsObject := ${object}; jsProperty := ${property}; jsOld := jsGet(jsObject, jsProperty); jsSetMember(jsObject, jsProperty, jsBinaryArithmetic("+", jsOld, ${delta})); return jsOld }()`;
+  }
+  throw new Error(`EXECUTABLE_IR_UNSUPPORTED_UPDATE:${expr.op}`);
+}
+
+function compoundArithmeticOperator(op) {
+  return {
+    "+=": "+",
+    "-=": "-",
+    "*=": "*",
+    "/=": "/",
+    "%=": "%",
+  }[op];
 }
 
 function renderFunctionExpression(expr, parentCtx) {

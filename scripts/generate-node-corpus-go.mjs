@@ -165,18 +165,143 @@ function buildMergedExecutableIr(analyzeJson) {
     : [];
   const entryId = analyzeJson?.ir?.entry;
   const entryModule = modules.find((module) => module.id === entryId);
-  const localExecutableModules = modules.filter(
-    (module) =>
-      module?.executable &&
-      (module.id === entryId || String(module.id).startsWith("tests/")),
-  );
+  const localExecutableModules = modules.filter((module) => module?.executable);
   const ordered = [
     ...localExecutableModules.filter((module) => module.id !== entryId),
     ...(entryModule?.executable ? [entryModule] : []),
   ];
+  const namespaced = namespaceDuplicateTopLevelBindings(ordered);
+  const aliases = buildRequireClassAliases(namespaced, modules);
   return {
-    stmts: ordered.flatMap((module) => module.executable?.stmts ?? []),
+    stmts: [
+      ...namespaced.flatMap((module) => module.executable?.stmts ?? []),
+      ...aliases,
+    ],
   };
+}
+
+function namespaceDuplicateTopLevelBindings(modules) {
+  const counts = new Map();
+  for (const module of modules) {
+    for (const stmt of module.executable?.stmts ?? []) {
+      if (isTopLevelBindingStmt(stmt)) {
+        counts.set(stmt.name, (counts.get(stmt.name) ?? 0) + 1);
+      }
+    }
+  }
+  return modules.map((module, index) => {
+    const rename = new Map();
+    for (const stmt of module.executable?.stmts ?? []) {
+      if (isTopLevelBindingStmt(stmt) && (counts.get(stmt.name) ?? 0) > 1) {
+        rename.set(
+          stmt.name,
+          `${stmt.name}__m${index}_${stableGoSuffix(module.id)}`,
+        );
+      }
+    }
+    if (rename.size === 0) {
+      return module;
+    }
+    return {
+      ...module,
+      executable: {
+        ...module.executable,
+        stmts: (module.executable?.stmts ?? []).map((stmt) =>
+          renameExecutableNode(stmt, rename),
+        ),
+      },
+    };
+  });
+}
+
+function isTopLevelBindingStmt(stmt) {
+  return ["function-decl", "class-decl", "var-decl"].includes(stmt?.kind);
+}
+
+function stableGoSuffix(value) {
+  return String(value)
+    .replace(/[^A-Za-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+}
+
+function renameExecutableNode(value, rename) {
+  if (Array.isArray(value)) {
+    return value.map((item) => renameExecutableNode(item, rename));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const next = { ...value };
+  if (
+    next.kind === "ident" &&
+    typeof next.name === "string" &&
+    rename.has(next.name)
+  ) {
+    next.name = rename.get(next.name);
+  }
+  if (
+    ["function-decl", "class-decl", "var-decl"].includes(next.kind) &&
+    typeof next.name === "string" &&
+    rename.has(next.name)
+  ) {
+    next.name = rename.get(next.name);
+  }
+  for (const [key, child] of Object.entries(next)) {
+    if (key === "kind" || key === "op") {
+      continue;
+    }
+    if (key === "name" || key === "property" || key === "key") {
+      continue;
+    }
+    if (key === "params" || key === "catchParam") {
+      continue;
+    }
+    next[key] = renameExecutableNode(child, rename);
+  }
+  return next;
+}
+
+function buildRequireClassAliases(orderedModules, allModules) {
+  const modulesById = new Map(allModules.map((module) => [module.id, module]));
+  const existingClasses = new Set(
+    allModules.flatMap((module) =>
+      (module.executable?.stmts ?? [])
+        .filter((stmt) => stmt?.kind === "class-decl")
+        .map((stmt) => stmt.name),
+    ),
+  );
+  const aliases = [];
+  const seen = new Set(existingClasses);
+  for (const module of orderedModules) {
+    for (const item of module.imports ?? []) {
+      if (!item.resolved) {
+        continue;
+      }
+      const requiredModule = modulesById.get(item.resolved);
+      const classDecls = (requiredModule?.executable?.stmts ?? []).filter(
+        (stmt) => stmt?.kind === "class-decl",
+      );
+      if (classDecls.length !== 1) {
+        continue;
+      }
+      for (const binding of item.bindings ?? []) {
+        if (
+          binding.kind !== "require" ||
+          !binding.local ||
+          seen.has(binding.local)
+        ) {
+          continue;
+        }
+        aliases.push({
+          ...classDecls[0],
+          name: binding.local,
+        });
+        seen.add(binding.local);
+      }
+    }
+  }
+  return aliases;
 }
 
 function renderUnsupportedVectorSuiteGo(testCase, vectorAnalyzeJson, error) {
