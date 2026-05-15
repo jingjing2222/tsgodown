@@ -1389,6 +1389,45 @@ console.log("unsupported", collect(["a"]).length)
     }
 
     #[test]
+    fn emit_go_reports_aot_unsupported_top_level_statement_details() {
+        let root = temp_project("engine-core-aot-unsupported-top-level-details");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const value = await Promise.resolve(1)
+console.log("unsupported", value)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-unsupported-top-level-details".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        let message = response
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED")
+            .map(|diagnostic| diagnostic.message.as_str())
+            .expect("expected fail-closed diagnostic");
+        assert!(message.contains("aot.statement.unsupported:src/index.js:var-decl"));
+        assert!(message.contains("aot.expression.unsupported:src/index.js:await"));
+        assert!(!message.contains("aot emission unsupported by Go backend"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
     fn emit_go_runs_aot_json_value_model_subset() {
         let root = temp_project("engine-core-aot-json-value-model");
         write(

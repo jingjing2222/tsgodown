@@ -144,6 +144,26 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                 }
             }
         }
+        if let Some(state) = state.as_ref() {
+            let mut render_state = clone_aot_state(state);
+            for stmt in &executable.stmts {
+                if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
+                    || is_function_binding_stmt(stmt)
+                {
+                    continue;
+                }
+                let mut next_state = clone_aot_state(&render_state);
+                if render_stmt(stmt, &mut next_state).is_none() {
+                    collect_aot_render_unsupported_stmt_features(
+                        stmt,
+                        &module.source_path,
+                        &mut features,
+                    );
+                } else {
+                    render_state = next_state;
+                }
+            }
+        }
         collect_builtin_usage_stmt_list_features(
             &executable.stmts,
             &mut features,
@@ -151,6 +171,308 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
         );
     }
     features.into_iter().collect()
+}
+
+fn collect_aot_render_unsupported_stmt_features(
+    stmt: &JsStmt,
+    source_path: &str,
+    features: &mut BTreeSet<String>,
+) {
+    features.insert(format!(
+        "aot.statement.unsupported:{source_path}:{}",
+        js_stmt_kind(stmt)
+    ));
+    match stmt {
+        JsStmt::Expr { expr } => {
+            collect_aot_render_unsupported_expr_features(expr, source_path, features);
+        }
+        JsStmt::FunctionDecl { body, .. } => {
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::ClassDecl {
+            super_class,
+            methods,
+            ..
+        } => {
+            if let Some(super_class) = super_class {
+                collect_aot_render_unsupported_expr_features(super_class, source_path, features);
+            }
+            for method in methods {
+                if method.kind != "constructor" && method.kind != "method" {
+                    features.insert(format!(
+                        "aot.class_method.unsupported:{source_path}:{}",
+                        method.kind
+                    ));
+                }
+                for stmt in &method.body {
+                    collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+                }
+            }
+        }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_aot_render_unsupported_expr_features(test, source_path, features);
+            for stmt in consequent {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+            for stmt in alternate {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            for stmt in init {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+            if let Some(test) = test {
+                collect_aot_render_unsupported_expr_features(test, source_path, features);
+            }
+            if let Some(update) = update {
+                collect_aot_render_unsupported_expr_features(update, source_path, features);
+            }
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::ForOf { right, body, .. } => {
+            collect_aot_render_unsupported_expr_features(right, source_path, features);
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            collect_aot_render_unsupported_expr_features(test, source_path, features);
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            collect_aot_render_unsupported_expr_features(discriminant, source_path, features);
+            for case in cases {
+                if let Some(test) = &case.test {
+                    collect_aot_render_unsupported_expr_features(test, source_path, features);
+                }
+                for stmt in &case.consequent {
+                    collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+                }
+            }
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+            for stmt in catch_body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+            for stmt in finally_body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::Label { body, .. } => {
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsStmt::Return { value: Some(expr) }
+        | JsStmt::Throw { value: expr }
+        | JsStmt::Yield {
+            value: Some(expr), ..
+        }
+        | JsStmt::VarDecl {
+            init: Some(expr), ..
+        } => {
+            collect_aot_render_unsupported_expr_features(expr, source_path, features);
+        }
+        JsStmt::Return { value: None }
+        | JsStmt::Yield { value: None, .. }
+        | JsStmt::VarDecl { init: None, .. }
+        | JsStmt::Break { .. }
+        | JsStmt::Continue { .. } => {}
+    }
+}
+
+fn collect_aot_render_unsupported_expr_features(
+    expr: &JsExpr,
+    source_path: &str,
+    features: &mut BTreeSet<String>,
+) {
+    let expr_kind = js_expr_kind(expr);
+    if is_diagnostic_expr_kind(expr_kind) {
+        features.insert(format!(
+            "aot.expression.unsupported:{source_path}:{expr_kind}"
+        ));
+    }
+    match expr {
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_aot_render_unsupported_expr_features(item, source_path, features);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            features.insert(format!("aot.expression.unsupported:{source_path}:spread"));
+            for item in items {
+                collect_aot_render_unsupported_expr_features(&item.value, source_path, features);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                if prop.spread {
+                    features.insert(format!(
+                        "aot.expression.unsupported:{source_path}:object-spread"
+                    ));
+                }
+                if let Some(key_expr) = &prop.key_expr {
+                    features.insert(format!(
+                        "aot.expression.unsupported:{source_path}:computed-key"
+                    ));
+                    collect_aot_render_unsupported_expr_features(key_expr, source_path, features);
+                }
+                collect_aot_render_unsupported_expr_features(&prop.value, source_path, features);
+            }
+        }
+        JsExpr::ObjectRest { object, .. }
+        | JsExpr::Unary { arg: object, .. }
+        | JsExpr::Await { arg: object }
+        | JsExpr::Update { arg: object, .. }
+        | JsExpr::Spread { arg: object } => {
+            collect_aot_render_unsupported_expr_features(object, source_path, features);
+        }
+        JsExpr::Function { body, .. } => {
+            for stmt in body {
+                collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+            }
+        }
+        JsExpr::Class {
+            super_class,
+            methods,
+        } => {
+            if let Some(super_class) = super_class {
+                collect_aot_render_unsupported_expr_features(super_class, source_path, features);
+            }
+            for method in methods {
+                if method.kind != "constructor" && method.kind != "method" {
+                    features.insert(format!(
+                        "aot.class_method.unsupported:{source_path}:{}",
+                        method.kind
+                    ));
+                }
+                for stmt in &method.body {
+                    collect_aot_render_unsupported_stmt_features(stmt, source_path, features);
+                }
+            }
+        }
+        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
+            collect_aot_render_unsupported_expr_features(left, source_path, features);
+            collect_aot_render_unsupported_expr_features(right, source_path, features);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_aot_render_unsupported_expr_features(test, source_path, features);
+            collect_aot_render_unsupported_expr_features(consequent, source_path, features);
+            collect_aot_render_unsupported_expr_features(alternate, source_path, features);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            collect_aot_render_unsupported_expr_features(callee, source_path, features);
+            for arg in args {
+                collect_aot_render_unsupported_expr_features(arg, source_path, features);
+            }
+        }
+        JsExpr::New { callee, args } => {
+            collect_aot_render_unsupported_expr_features(callee, source_path, features);
+            for arg in args {
+                collect_aot_render_unsupported_expr_features(arg, source_path, features);
+            }
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            collect_aot_render_unsupported_expr_features(object, source_path, features);
+            if let Some(property_expr) = property_expr {
+                collect_aot_render_unsupported_expr_features(property_expr, source_path, features);
+            }
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_aot_render_unsupported_expr_features(expr, source_path, features);
+            }
+        }
+        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => {}
+    }
+}
+
+fn is_diagnostic_expr_kind(kind: &str) -> bool {
+    !matches!(kind, "value" | "ident" | "this" | "super")
+}
+
+fn js_stmt_kind(stmt: &JsStmt) -> &'static str {
+    match stmt {
+        JsStmt::Expr { .. } => "expr",
+        JsStmt::FunctionDecl { .. } => "function-decl",
+        JsStmt::ClassDecl { .. } => "class-decl",
+        JsStmt::If { .. } => "if",
+        JsStmt::For { .. } => "for",
+        JsStmt::ForOf { .. } => "for-of",
+        JsStmt::While { .. } => "while",
+        JsStmt::DoWhile { .. } => "do-while",
+        JsStmt::Switch { .. } => "switch",
+        JsStmt::Try { .. } => "try",
+        JsStmt::Label { .. } => "label",
+        JsStmt::Break { .. } => "break",
+        JsStmt::Continue { .. } => "continue",
+        JsStmt::Return { .. } => "return",
+        JsStmt::Throw { .. } => "throw",
+        JsStmt::Yield { .. } => "yield",
+        JsStmt::VarDecl { .. } => "var-decl",
+    }
+}
+
+fn js_expr_kind(expr: &JsExpr) -> &'static str {
+    match expr {
+        JsExpr::Value { .. } => "value",
+        JsExpr::Ident { .. } => "ident",
+        JsExpr::This => "this",
+        JsExpr::Super => "super",
+        JsExpr::Array { .. } => "array",
+        JsExpr::ArraySpread { .. } => "array-spread",
+        JsExpr::Object { .. } => "object",
+        JsExpr::ObjectRest { .. } => "object-rest",
+        JsExpr::Function { .. } => "function",
+        JsExpr::Class { .. } => "class",
+        JsExpr::Unary { .. } => "unary",
+        JsExpr::Await { .. } => "await",
+        JsExpr::Binary { .. } => "binary",
+        JsExpr::Conditional { .. } => "conditional",
+        JsExpr::Assign { .. } => "assign",
+        JsExpr::Update { .. } => "update",
+        JsExpr::Call { .. } => "call",
+        JsExpr::Spread { .. } => "spread",
+        JsExpr::New { .. } => "new",
+        JsExpr::Member { .. } => "member",
+        JsExpr::Template { .. } => "template",
+        JsExpr::Sequence { .. } => "sequence",
+    }
 }
 
 fn collect_builtin_usage_stmt_list_features(
