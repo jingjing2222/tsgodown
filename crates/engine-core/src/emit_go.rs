@@ -349,6 +349,7 @@ type FunctionValue struct {
 	Env    Env
 	Props  map[string]any
 	LexicalThis bool
+	Async       bool
 	Generator   bool
 }
 
@@ -435,6 +436,7 @@ type moduleState struct {
 }
 
 var sharedProcess map[string]any
+var sharedGlobal map[string]any
 
 type jsThrow struct {
 	value any
@@ -450,6 +452,7 @@ func RunProgram(programJSON string) error {
 		return err
 	}
 	sharedProcess = processObject()
+	sharedGlobal = map[string]any{}
 	module, ok := entryModule(program)
 	if !ok {
 		return errors.New("entry module not found")
@@ -468,6 +471,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	exports := map[string]any{}
 	state := &moduleState{exports: exports, evaluating: true}
 	cache[module.SourcePath] = state
+	process := sharedProcess
 	env := Env{
 		"exports": exports,
 		"Error":   builtinErrorClass("Error"),
@@ -595,11 +599,14 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			return decoded, nil
 		}),
-		"process": sharedProcess,
+		"process": process,
+		"global":  sharedGlobal,
 		"module": map[string]any{
 			"exports": exports,
 		},
 	}
+	env["globalThis"] = sharedGlobal
+	sharedGlobal["process"] = process
 	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
 		if len(args) == 0 {
 			return nil, errors.New("require specifier is required")
@@ -616,6 +623,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			if !ok {
 				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
 			}
+			return executeModule(importedModule, program, cache)
+		}
+		if importedModule, ok := resolveBareModule(program, spec); ok {
 			return executeModule(importedModule, program, cache)
 		}
 		return nil, fmt.Errorf("module import %s is not resolved", spec)
@@ -656,6 +666,11 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	exported := currentModuleExports(env, exports)
 	if exportedMap, ok := exported.(map[string]any); ok {
 		for _, name := range module.Exports {
+			if name == "*" {
+				exportedMap["__cjs"] = true
+			}
+		}
+		for _, name := range module.Exports {
 			if value, ok := env[name]; ok {
 				exportedMap[name] = value
 			}
@@ -689,6 +704,29 @@ func entryModule(program Program) (Module, bool) {
 func moduleByID(program Program, id string) (Module, bool) {
 	for _, module := range program.Modules {
 		if module.SourcePath == id || module.ID == id {
+			return module, true
+		}
+	}
+	return Module{}, false
+}
+
+func resolveBareModule(program Program, spec string) (Module, bool) {
+	if strings.HasPrefix(spec, ".") || strings.HasPrefix(spec, "/") || strings.HasPrefix(spec, "node:") {
+		return Module{}, false
+	}
+	prefix := "node_modules/" + spec + "/"
+	preferred := []string{
+		prefix + "index.js",
+		prefix + filepath.Base(spec) + ".js",
+		prefix + filepath.Base(spec) + "/" + filepath.Base(spec) + ".js",
+	}
+	for _, candidate := range preferred {
+		if module, ok := moduleByID(program, candidate); ok {
+			return module, true
+		}
+	}
+	for _, module := range program.Modules {
+		if strings.HasPrefix(module.SourcePath, prefix) && strings.HasSuffix(module.SourcePath, ".js") {
 			return module, true
 		}
 	}
@@ -740,6 +778,12 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return exports, true
 	case "crypto", "node:crypto":
 		return cryptoModuleExports(), true
+	case "constants":
+		exports := constantsModuleExports()
+		exports["default"] = exports
+		return exports, true
+	case "stream", "node:stream":
+		return streamModuleExports(), true
 	case "fs", "node:fs":
 		return fsModuleExports(), true
 	case "node:module":
@@ -769,7 +813,7 @@ func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunct
 	}
 }
 
-func userFunctionValue(params []string, restParam string, body []map[string]any, env Env, lexicalThis bool, generator bool) FunctionValue {
+func userFunctionValue(params []string, restParam string, body []map[string]any, env Env, lexicalThis bool, async bool, generator bool) FunctionValue {
 	props := map[string]any{}
 	function := FunctionValue{
 		Params:      params,
@@ -778,6 +822,7 @@ func userFunctionValue(params []string, restParam string, body []map[string]any,
 		Env:         env,
 		Props:       props,
 		LexicalThis: lexicalThis,
+		Async:       async,
 		Generator:   generator,
 	}
 	if !lexicalThis {
@@ -828,7 +873,7 @@ func functionGlobal() map[string]any {
 	})
 	return map[string]any{
 		"__call": nativeFunction(func(args []any) (any, error) {
-			return userFunctionValue([]string{}, "", []map[string]any{}, Env{}, false, false), nil
+			return userFunctionValue([]string{}, "", []map[string]any{}, Env{}, false, false, false), nil
 		}),
 		"prototype": prototype,
 	}
@@ -1070,6 +1115,13 @@ func bufferGlobal() map[string]any {
 			}
 			return arrayFromBytes(bytesFromJSValue(args[0])), nil
 		}),
+		"isBuffer": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return false, nil
+			}
+			_, ok := args[0].(*ArrayValue)
+			return ok, nil
+		}),
 	}
 }
 
@@ -1182,27 +1234,27 @@ func dateGlobal() NativeFunctionValue {
 }
 
 func promiseGlobal() NativeFunctionValue {
-	return nativeFunction(func(args []any) (any, error) {
-		promise := map[string]any{
-			"then": nativeFunction(func(args []any) (any, error) {
-				if len(args) > 0 {
-					return callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined)
-				}
-				return jsUndefined, nil
-			}),
-			"catch": nativeFunction(func(args []any) (any, error) {
-				return jsUndefined, nil
-			}),
-		}
+	constructor := nativeFunction(func(args []any) (any, error) {
+		promise := promiseFulfilled(jsUndefined)
+		promise["state"] = "pending"
 		if len(args) > 0 {
 			resolve := nativeFunction(func(args []any) (any, error) {
+				value := any(jsUndefined)
+				if len(args) > 0 {
+					value = args[0]
+				}
+				promise["state"] = "fulfilled"
+				promise["value"] = value
 				return jsUndefined, nil
 			})
 			reject := nativeFunction(func(args []any) (any, error) {
+				value := any(jsUndefined)
 				if len(args) > 0 {
-					return nil, jsThrow{value: args[0]}
+					value = args[0]
 				}
-				return nil, jsThrow{value: jsUndefined}
+				promise["state"] = "rejected"
+				promise["value"] = value
+				return jsUndefined, nil
 			})
 			if _, err := callFunctionWithValues(args[0], []any{resolve, reject}, Env{}, jsUndefined); err != nil {
 				return nil, err
@@ -1210,6 +1262,99 @@ func promiseGlobal() NativeFunctionValue {
 		}
 		return promise, nil
 	})
+	constructor.Props["all"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseFulfilled(&ArrayValue{Items: []any{}}), nil
+		}
+		values := iterableValues(args[0])
+		out := []any{}
+		for _, value := range values {
+			next, err := awaitValue(value)
+			if err != nil {
+				return promiseRejected(err), nil
+			}
+			out = append(out, next)
+		}
+		return promiseFulfilled(&ArrayValue{Items: out}), nil
+	})
+	constructor.Props["resolve"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseFulfilled(jsUndefined), nil
+		}
+		return promiseFulfilled(args[0]), nil
+	})
+	constructor.Props["reject"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(jsUndefined), nil
+		}
+		return promiseRejected(args[0]), nil
+	})
+	return constructor
+}
+
+func promiseFulfilled(value any) map[string]any {
+	return promiseObject("fulfilled", value)
+}
+
+func promiseRejected(value any) map[string]any {
+	return promiseObject("rejected", value)
+}
+
+func promiseObject(state string, value any) map[string]any {
+	promise := map[string]any{
+		"__promise": true,
+		"state":     state,
+		"value":     value,
+	}
+	promise["then"] = nativeFunction(func(args []any) (any, error) {
+		if promise["state"] == "fulfilled" {
+			if len(args) > 0 && !isNullish(args[0]) {
+				next, err := callFunctionWithValues(args[0], []any{promise["value"]}, Env{}, jsUndefined)
+				if err != nil {
+					return promiseRejectedFromError(err), nil
+				}
+				return promiseFulfilled(next), nil
+			}
+			return promise, nil
+		}
+		if promise["state"] == "rejected" && len(args) > 1 && !isNullish(args[1]) {
+			next, err := callFunctionWithValues(args[1], []any{promise["value"]}, Env{}, jsUndefined)
+			if err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(next), nil
+		}
+		return promise, nil
+	})
+	promise["catch"] = nativeFunction(func(args []any) (any, error) {
+		if promise["state"] == "rejected" && len(args) > 0 && !isNullish(args[0]) {
+			next, err := callFunctionWithValues(args[0], []any{promise["value"]}, Env{}, jsUndefined)
+			if err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(next), nil
+		}
+		return promise, nil
+	})
+	return promise
+}
+
+func awaitValue(value any) (any, error) {
+	if promise, ok := value.(map[string]any); ok && promise["__promise"] == true {
+		if promise["state"] == "rejected" {
+			return nil, jsThrow{value: promise["value"]}
+		}
+		return promise["value"], nil
+	}
+	return value, nil
+}
+
+func promiseRejectedFromError(err error) map[string]any {
+	var thrown jsThrow
+	if errors.As(err, &thrown) {
+		return promiseRejected(thrown.value)
+	}
+	return promiseRejected(nodeError("ERR_PROMISE_REJECTION", err.Error()))
 }
 
 func objectGlobal() map[string]any {
@@ -1308,6 +1453,55 @@ func objectGlobal() map[string]any {
 				return jsUndefined, nil
 			}
 			return args[0], nil
+		}),
+		"getOwnPropertyNames": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			if object, ok := args[0].(map[string]any); ok {
+				out := []any{}
+				for _, key := range objectKeys(object) {
+					out = append(out, key)
+				}
+				return &ArrayValue{Items: out}, nil
+			}
+			return &ArrayValue{Items: []any{}}, nil
+		}),
+		"getOwnPropertyDescriptor": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return jsUndefined, nil
+			}
+			key := jsPropertyKey(args[1])
+			if object, ok := args[0].(map[string]any); ok {
+				if value, ok := lookupObjectProperty(object, key); ok {
+					return map[string]any{
+						"value":        value,
+						"enumerable":   true,
+						"configurable": true,
+						"writable":     true,
+					}, nil
+				}
+			}
+			return jsUndefined, nil
+		}),
+		"getPrototypeOf": nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				if object, ok := args[0].(map[string]any); ok {
+					if prototype, ok := object["__prototype"]; ok {
+						return prototype, nil
+					}
+				}
+			}
+			return jsNull, nil
+		}),
+		"setPrototypeOf": nativeFunction(func(args []any) (any, error) {
+			if len(args) >= 2 {
+				if object, ok := args[0].(map[string]any); ok {
+					object["__prototype"] = args[1]
+				}
+				return args[0], nil
+			}
+			return jsUndefined, nil
 		}),
 		"keys": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -2116,11 +2310,28 @@ func fsModuleExports() map[string]any {
 		return string(bytes), nil
 	})
 	exports["readFileSync"] = readFileSync
+	exports["readFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "readFile path is required"))
+		}
+		bytes, err := os.ReadFile(jsString(args[0]))
+		if err != nil {
+			return jsUndefined, nodeCallback(args, nodeFsError(err))
+		}
+		return jsUndefined, nodeCallback(args, nil, string(bytes))
+	})
 	exports["writeFileSync"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) < 2 {
 			return nil, errors.New("writeFileSync path and data are required")
 		}
 		return jsUndefined, os.WriteFile(jsString(args[0]), bytesFromJSValue(args[1]), 0o666)
+	})
+	exports["writeFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "writeFile path and data are required"))
+		}
+		err := os.WriteFile(jsString(args[0]), bytesFromJSValue(args[1]), 0o666)
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
 	})
 	exports["mkdtempSync"] = nativeFunction(func(args []any) (any, error) {
 		prefix := ""
@@ -2134,6 +2345,17 @@ func fsModuleExports() map[string]any {
 			return nil, err
 		}
 		return path, nil
+	})
+	exports["mkdtemp"] = nativeFunction(func(args []any) (any, error) {
+		prefix := ""
+		if len(args) > 0 {
+			prefix = jsString(args[0])
+		}
+		path, err := os.MkdirTemp(filepath.Dir(prefix), filepath.Base(prefix)+"*")
+		if err != nil {
+			return jsUndefined, nodeCallback(args, nodeFsError(err))
+		}
+		return jsUndefined, nodeCallback(args, nil, path)
 	})
 	exports["rmSync"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) == 0 {
@@ -2155,6 +2377,13 @@ func fsModuleExports() map[string]any {
 		}
 		return jsUndefined, err
 	})
+	exports["rm"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "rm path is required"))
+		}
+		err := os.RemoveAll(jsString(args[0]))
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
+	})
 	exports["existsSync"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) == 0 {
 			return false, nil
@@ -2162,8 +2391,294 @@ func fsModuleExports() map[string]any {
 		_, err := os.Stat(jsString(args[0]))
 		return err == nil, nil
 	})
+	exports["exists"] = nativeFunction(func(args []any) (any, error) {
+		ok := false
+		if len(args) > 0 {
+			_, err := os.Stat(jsString(args[0]))
+			ok = err == nil
+		}
+		if callback := lastCallback(args); callback != nil {
+			_, err := callFunctionWithValues(callback, []any{ok}, Env{}, jsUndefined)
+			return jsUndefined, err
+		}
+		return ok, nil
+	})
+	exports["access"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "access path is required"))
+		}
+		_, err := os.Stat(jsString(args[0]))
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
+	})
+	exports["accessSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("accessSync path is required")
+		}
+		_, err := os.Stat(jsString(args[0]))
+		if err != nil {
+			return nil, jsThrow{value: nodeFsError(err)}
+		}
+		return jsUndefined, nil
+	})
+	exports["mkdir"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "mkdir path is required"))
+		}
+		err := os.MkdirAll(jsString(args[0]), 0o777)
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
+	})
+	exports["mkdirSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("mkdirSync path is required")
+		}
+		return jsUndefined, os.MkdirAll(jsString(args[0]), 0o777)
+	})
+	exports["copyFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "copyFile source and destination are required"))
+		}
+		err := copyPath(jsString(args[0]), jsString(args[1]))
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
+	})
+	exports["copyFileSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return nil, errors.New("copyFileSync source and destination are required")
+		}
+		return jsUndefined, copyPath(jsString(args[0]), jsString(args[1]))
+	})
+	for _, name := range []string{"stat", "lstat"} {
+		current := name
+		exports[current] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", current+" path is required"))
+			}
+			info, err := os.Lstat(jsString(args[0]))
+			if err != nil {
+				return jsUndefined, nodeCallback(args, nodeFsError(err))
+			}
+			return jsUndefined, nodeCallback(args, nil, statObject(info))
+		})
+		exports[current+"Sync"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New(current + "Sync path is required")
+			}
+			info, err := os.Lstat(jsString(args[0]))
+			if err != nil {
+				return nil, jsThrow{value: nodeFsError(err)}
+			}
+			return statObject(info), nil
+		})
+	}
+	exports["chmod"] = nativeFunction(func(args []any) (any, error) {
+		var err error
+		if len(args) >= 2 {
+			err = os.Chmod(jsString(args[0]), os.FileMode(jsInteger(args[1])))
+		}
+		return jsUndefined, nodeCallback(args, nodeFsError(err))
+	})
+	exports["chmodSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) >= 2 {
+			return jsUndefined, os.Chmod(jsString(args[0]), os.FileMode(jsInteger(args[1])))
+		}
+		return jsUndefined, nil
+	})
+	exports["unlink"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "unlink path is required"))
+		}
+		return jsUndefined, nodeCallback(args, nodeFsError(os.Remove(jsString(args[0]))))
+	})
+	exports["unlinkSync"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("unlinkSync path is required")
+		}
+		return jsUndefined, os.Remove(jsString(args[0]))
+	})
+	exports["opendir"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "opendir path is required"))
+		}
+		entries, err := os.ReadDir(jsString(args[0]))
+		if err != nil {
+			return jsUndefined, nodeCallback(args, nodeFsError(err))
+		}
+		out := []any{}
+		for _, entry := range entries {
+			out = append(out, direntObject(entry))
+		}
+		return jsUndefined, nodeCallback(args, nil, &ArrayValue{Items: out})
+	})
+	exports["readdir"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "readdir path is required"))
+		}
+		entries, err := os.ReadDir(jsString(args[0]))
+		if err != nil {
+			return jsUndefined, nodeCallback(args, nodeFsError(err))
+		}
+		out := []any{}
+		for _, entry := range entries {
+			out = append(out, entry.Name())
+		}
+		return jsUndefined, nodeCallback(args, nil, &ArrayValue{Items: out})
+	})
+	realpath := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nodeCallback(args, nodeError("ERR_INVALID_ARG_TYPE", "realpath path is required"))
+		}
+		resolved, err := filepath.EvalSymlinks(jsString(args[0]))
+		if err != nil {
+			resolved = jsString(args[0])
+		}
+		return jsUndefined, nodeCallback(args, nil, resolved)
+	})
+	realpath.Props["native"] = realpath
+	exports["realpath"] = realpath
 	exports["default"] = exports
 	return exports
+}
+
+func constantsModuleExports() map[string]any {
+	return map[string]any{
+		"O_SYMLINK": float64(0),
+	}
+}
+
+func streamModuleExports() map[string]any {
+	stream := map[string]any{}
+	streamCtor := nativeFunction(func(args []any) (any, error) {
+		return map[string]any{}, nil
+	})
+	stream["Stream"] = streamCtor
+	stream["Readable"] = streamCtor
+	stream["Writable"] = streamCtor
+	stream["Duplex"] = streamCtor
+	stream["PassThrough"] = streamCtor
+	stream["default"] = stream
+	return stream
+}
+
+func lastCallback(args []any) any {
+	if len(args) == 0 {
+		return nil
+	}
+	last := args[len(args)-1]
+	switch last.(type) {
+	case FunctionValue, BoundFunctionValue, NativeFunctionValue:
+		return last
+	default:
+		return nil
+	}
+}
+
+func nodeCallback(args []any, err any, results ...any) error {
+	callback := lastCallback(args)
+	if callback == nil {
+		if !isNullish(err) {
+			return jsThrow{value: err}
+		}
+		return nil
+	}
+	callArgs := []any{jsNull}
+	if !isNullish(err) {
+		callArgs[0] = err
+	}
+	callArgs = append(callArgs, results...)
+	_, callErr := callFunctionWithValues(callback, callArgs, Env{}, jsUndefined)
+	return callErr
+}
+
+func nodeError(code string, message string) map[string]any {
+	return map[string]any{
+		"name":    "Error",
+		"message": message,
+		"code":    code,
+	}
+}
+
+func nodeFsError(err error) any {
+	if err == nil {
+		return jsNull
+	}
+	code := "EIO"
+	if os.IsNotExist(err) {
+		code = "ENOENT"
+	}
+	if os.IsExist(err) {
+		code = "EEXIST"
+	}
+	if os.IsPermission(err) {
+		code = "EACCES"
+	}
+	return nodeError(code, err.Error())
+}
+
+func statObject(info os.FileInfo) map[string]any {
+	mode := float64(info.Mode().Perm())
+	object := map[string]any{
+		"dev":   float64(0),
+		"ino":   float64(0),
+		"mode":  mode,
+		"size":  float64(info.Size()),
+		"mtime": float64(info.ModTime().UnixMilli()),
+		"atime": float64(info.ModTime().UnixMilli()),
+	}
+	object["isDirectory"] = nativeFunction(func(args []any) (any, error) { return info.IsDir(), nil })
+	object["isFile"] = nativeFunction(func(args []any) (any, error) { return info.Mode().IsRegular(), nil })
+	object["isCharacterDevice"] = nativeFunction(func(args []any) (any, error) { return false, nil })
+	object["isBlockDevice"] = nativeFunction(func(args []any) (any, error) { return false, nil })
+	object["isSymbolicLink"] = nativeFunction(func(args []any) (any, error) { return info.Mode()&os.ModeSymlink != 0, nil })
+	object["isSocket"] = nativeFunction(func(args []any) (any, error) { return info.Mode()&os.ModeSocket != 0, nil })
+	object["isFIFO"] = nativeFunction(func(args []any) (any, error) { return info.Mode()&os.ModeNamedPipe != 0, nil })
+	return object
+}
+
+func direntObject(entry os.DirEntry) map[string]any {
+	object := map[string]any{"name": entry.Name()}
+	object["isDirectory"] = nativeFunction(func(args []any) (any, error) { return entry.IsDir(), nil })
+	object["isFile"] = nativeFunction(func(args []any) (any, error) {
+		info, err := entry.Info()
+		return err == nil && info.Mode().IsRegular(), nil
+	})
+	return object
+}
+
+func copyPath(src string, dest string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(dest, info.Mode().Perm()); err != nil {
+			return err
+		}
+		return filepath.WalkDir(src, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			rel, err := filepath.Rel(src, path)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(dest, rel)
+			if entry.IsDir() {
+				return os.MkdirAll(target, 0o777)
+			}
+			return copyFileContents(path, target)
+		})
+	}
+	return copyFileContents(src, dest)
+}
+
+func copyFileContents(src string, dest string) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o777); err != nil {
+		return err
+	}
+	bytes, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dest, bytes, 0o666)
 }
 
 func moduleModuleExports() map[string]any {
@@ -2189,12 +2704,20 @@ func processObject() map[string]any {
 		"version":  "v20.0.0",
 		"versions": map[string]any{"node": "20.0.0"},
 		"platform": runtime.GOOS,
+		"arch":     runtime.GOARCH,
 		"cwd": nativeFunction(func(args []any) (any, error) {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return "", nil
 			}
 			return cwd, nil
+		}),
+		"nextTick": nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				_, err := callFunctionWithValues(args[0], args[1:], Env{}, jsUndefined)
+				return jsUndefined, err
+			}
+			return jsUndefined, nil
 		}),
 		"emitWarning": nativeFunction(func(args []any) (any, error) {
 			return jsUndefined, nil
@@ -2235,7 +2758,9 @@ func bindImport(env Env, importDecl Import, importedExports any) {
 		case "named":
 			env[binding.Local] = importedMap[binding.Imported]
 		case "default":
-			if value, ok := importedMap["default"]; ok {
+			if importedMap["__cjs"] == true {
+				env[binding.Local] = importedExports
+			} else if value, ok := importedMap["default"]; ok {
 				env[binding.Local] = value
 			} else {
 				env[binding.Local] = importedExports
@@ -2262,6 +2787,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 				asStmtSlice(stmt["body"]),
 				env,
 				false,
+				stmt["async"] == true,
 				stmt["generator"] == true,
 			)
 		return completion{}, nil
@@ -2524,6 +3050,7 @@ func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
 				asStmtSlice(stmt["body"]),
 				env,
 				false,
+				stmt["async"] == true,
 				stmt["generator"] == true,
 			)
 	}
@@ -2570,6 +3097,17 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			if err != nil {
 				return nil, err
 			}
+			if propMap["spread"] == true {
+				if source, ok := value.(map[string]any); ok {
+					for _, key := range objectKeys(source) {
+						if strings.HasPrefix(key, "__") {
+							continue
+						}
+						setObjectProperty(out, key, source[key])
+					}
+				}
+				continue
+			}
 			key := asString(propMap["key"])
 			if rawKeyExpr, ok := propMap["keyExpr"]; ok {
 				keyValue, err := evalExpr(asMap(rawKeyExpr), env)
@@ -2578,7 +3116,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				}
 				key = jsPropertyKey(keyValue)
 			}
-				setObjectProperty(out, key, value)
+			setObjectProperty(out, key, value)
 		}
 		return out, nil
 	case "function":
@@ -2588,6 +3126,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				asStmtSlice(expr["body"]),
 				env,
 				expr["lexicalThis"] == true,
+				expr["async"] == true,
 				expr["generator"] == true,
 			), nil
 	case "class":
@@ -2602,7 +3141,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		}
 		return evalUnary(asString(expr["op"]), arg)
 	case "await":
-		return evalExpr(asMap(expr["arg"]), env)
+		value, err := evalExpr(asMap(expr["arg"]), env)
+		if err != nil {
+			return nil, err
+		}
+		return awaitValue(value)
 	case "binary":
 		left, err := evalExpr(asMap(expr["left"]), env)
 		if err != nil {
@@ -2676,10 +3219,10 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				result, err := callFunctionWithValues(value, args, env, object)
-				if err != nil {
-					return nil, fmt.Errorf("member call %s failed: %w", property, err)
-				}
+			result, err := callFunctionWithValues(value, args, env, object)
+			if err != nil {
+				return nil, fmt.Errorf("member call %s on %s failed: %w", property, jsInspect(object), err)
+			}
 			return result, nil
 		}
 		value, err := evalExpr(asMap(expr["callee"]), env)
@@ -2831,6 +3374,15 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 		}
 		if value, ok := lookupObjectProperty(objectMap, property); ok {
 			return object, property, value, nil
+		}
+		if property == "hasOwnProperty" {
+			return object, property, nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return false, nil
+				}
+				_, exists := objectMap[jsPropertyKey(args[0])]
+				return exists, nil
+			}), nil
 		}
 		return object, property, jsUndefined, nil
 	}
@@ -3742,6 +4294,20 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 			}
 			return strings.Join(parts, separator), nil
 		}), true
+	case "toString":
+		return nativeFunction(func(args []any) (any, error) {
+			bytes := bytesFromJSValue(value)
+			return string(bytes), nil
+		}), true
+	case "replace":
+		return nativeFunction(func(args []any) (any, error) {
+			text := string(bytesFromJSValue(value))
+			member, ok := stringMember(text, "replace", env)
+			if !ok {
+				return text, nil
+			}
+			return callFunctionWithValues(member, args, env, text)
+		}), true
 	case "map":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -4435,6 +5001,7 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 				RestParam: asString(method["restParam"]),
 				Body:      asStmtSlice(method["body"]),
 				Env:       env,
+				Async:     method["async"] == true,
 				Generator: method["generator"] == true,
 			}
 		name := asString(method["name"])
@@ -4636,6 +5203,7 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 		effectiveThis = lookupEnv(function.Env, "this")
 	}
 	child := Env{"__parent": function.Env, "this": effectiveThis}
+	child["arguments"] = &ArrayValue{Items: append([]any{}, args...)}
 	for index, param := range function.Params {
 		value := any(jsUndefined)
 		if index < len(args) {
@@ -4652,10 +5220,19 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 	}
 	result, err := evalStmtList(function.Body, child)
 	if err != nil {
+		if function.Async {
+			return promiseRejectedFromError(err), nil
+		}
 		return nil, err
 	}
 	if function.Generator {
 		return &IteratorValue{Values: result.yields}, nil
+	}
+	if function.Async {
+		if result.returned {
+			return promiseFulfilled(result.value), nil
+		}
+		return promiseFulfilled(jsUndefined), nil
 	}
 	if result.returned {
 		return result.value, nil

@@ -211,6 +211,7 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
                     key: prop.key,
                     key_expr: prop.key_expr.map(map_js_expr),
                     value: map_js_expr(prop.value),
+                    spread: prop.spread,
                 })
                 .collect(),
         },

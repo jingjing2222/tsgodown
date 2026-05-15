@@ -283,6 +283,8 @@ pub struct JsObjectProp {
     #[serde(skip_serializing_if = "Option::is_none", rename = "keyExpr")]
     pub key_expr: Option<JsExpr>,
     pub value: JsExpr,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub spread: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

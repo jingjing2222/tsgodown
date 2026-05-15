@@ -252,6 +252,7 @@ pub struct JsObjectPropIR {
     pub key: String,
     pub key_expr: Option<JsExprIR>,
     pub value: JsExprIR,
+    pub spread: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

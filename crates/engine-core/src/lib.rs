@@ -3119,6 +3119,80 @@ console.log("fs-module", Number("20") >= 20, typeof process.cwd(), left, right)
         );
     }
 
+    #[test]
+    fn emit_go_runs_callback_promise_await_subset() {
+        let root = temp_project("engine-core-callback-promise-await");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function fromCallback(fn) {
+  return function (...args) {
+    return new Promise((resolve, reject) => {
+      args.push((err, res) => err != null ? reject(err) : resolve(res))
+      fn.apply(this, args)
+    })
+  }
+}
+const read = (file, options, callback) => callback(null, "ok:" + file)
+async function main() {
+  const value = await fromCallback(read)("file", {})
+  console.log("callback-promise", value)
+}
+main()
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/callback-promise-await".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "callback-promise ok:file\n"
+        );
+    }
+
     fn write(root: &std::path::Path, rel: &str, source: &str) {
         let path = root.join(rel);
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");

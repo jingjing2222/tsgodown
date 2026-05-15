@@ -1187,6 +1187,14 @@ fn lower_call_args(args: &[swc_ecma_ast::ExprOrSpread]) -> Vec<JsExprIR> {
 
 fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
     let PropOrSpread::Prop(prop) = prop else {
+        if let PropOrSpread::Spread(spread) = prop {
+            return Some(JsObjectPropIR {
+                key: String::new(),
+                key_expr: None,
+                value: lower_js_expr(&spread.expr)?,
+                spread: true,
+            });
+        }
         return None;
     };
 
@@ -1195,6 +1203,7 @@ fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
             key: ident.sym.to_string(),
             key_expr: None,
             value: JsExprIR::Ident(ident.sym.to_string()),
+            spread: false,
         }),
         Prop::KeyValue(kv) => {
             let (key, key_expr) = lower_object_key(&kv.key)?;
@@ -1202,12 +1211,14 @@ fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
                 key,
                 key_expr,
                 value: lower_js_expr(&kv.value)?,
+                spread: false,
             })
         }
         Prop::Assign(assign) => Some(JsObjectPropIR {
             key: assign.key.sym.to_string(),
             key_expr: None,
             value: lower_js_expr(&assign.value)?,
+            spread: false,
         }),
         Prop::Getter(_) | Prop::Setter(_) | Prop::Method(_) => None,
     }
