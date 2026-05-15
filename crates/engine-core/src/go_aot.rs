@@ -477,6 +477,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_node_fs_exists_sync_call(callee, args) {
                 imports.insert("os");
             }
+            if is_node_fs_stat_sync_call(callee, args) {
+                imports.insert("os");
+            }
             if is_node_buffer_from_call(callee, args) {
                 imports.insert("encoding/base64");
                 imports.insert("encoding/hex");
@@ -1448,6 +1451,7 @@ impl AotState {
             AotSlotKind::Bytes => {
                 self.bytes_bindings.insert(name.to_string());
             }
+            AotSlotKind::BoolFunction => {}
             AotSlotKind::StringFunction => {
                 self.string_function_bindings.insert(name.to_string());
             }
@@ -1549,6 +1553,7 @@ enum AotSlotKind {
     Bytes,
     Number,
     String,
+    BoolFunction,
     StringFunction,
 }
 
@@ -1559,6 +1564,7 @@ fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
         AotSlotKind::Bytes => "[]byte",
         AotSlotKind::Number => "float64",
         AotSlotKind::String => "string",
+        AotSlotKind::BoolFunction => "func() bool",
         AotSlotKind::StringFunction => "func() string",
     }
 }
@@ -1620,6 +1626,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     return Some(format!("var {ident} = {value}"));
                 }
                 if let Some((value, object)) = render_node_path_parse_object(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.object_bindings.insert(name.clone(), object);
+                    return Some(format!("var {ident} = {value}"));
+                }
+                if let Some((value, object)) = render_node_fs_stat_sync_object(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.object_bindings.insert(name.clone(), object);
@@ -2408,6 +2420,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_regexp_test_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
+            .or_else(|| render_bool_function_call(callee, args, state))
             .or_else(|| render_string_bool_method_call(callee, args, state))
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
@@ -3042,6 +3055,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_bytes_expr(expr, state) {
         return Some((AotSlotKind::Bytes, value, "[]byte"));
     }
+    if let Some(value) = render_bool_function_expr(expr, state) {
+        return Some((AotSlotKind::BoolFunction, value, "func() bool"));
+    }
     if let Some(value) = render_string_function_expr(expr) {
         return Some((AotSlotKind::StringFunction, value, "func() string"));
     }
@@ -3269,6 +3285,7 @@ fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
             if is_node_path_string_call(callee, args)
                 || is_node_os_homedir_call(callee, args)
                 || is_node_fs_exists_sync_call(callee, args)
+                || is_node_fs_stat_sync_call(callee, args)
                 || is_node_buffer_from_call(callee, args)
                 || is_node_buffer_alloc_call(callee, args)
                 || is_node_buffer_is_buffer_call(callee, args)
@@ -3558,6 +3575,50 @@ fn render_node_fs_exists_sync_call(
     }
     let path = render_string_expr(args.first()?, state)?;
     Some(format!("tsgodownFsExistsSync({path})"))
+}
+
+fn is_node_fs_stat_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "statSync"
+        )
+}
+
+fn render_node_fs_stat_sync_object(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    let JsExpr::Member { object, .. } = callee.as_ref() else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.builtin_bindings.contains(name) || !is_node_fs_stat_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    let fields = [
+        ("mode".to_string(), AotSlotKind::Number),
+        ("isFile".to_string(), AotSlotKind::BoolFunction),
+        ("isDirectory".to_string(), AotSlotKind::BoolFunction),
+        ("isSymbolicLink".to_string(), AotSlotKind::BoolFunction),
+    ]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+    Some((
+        format!(
+            "func() struct {{ mode float64; isFile func() bool; isDirectory func() bool; isSymbolicLink func() bool }} {{ info, err := os.Stat({path}); if err != nil {{ return struct {{ mode float64; isFile func() bool; isDirectory func() bool; isSymbolicLink func() bool }}{{mode: 0, isFile: func() bool {{ return false }}, isDirectory: func() bool {{ return false }}, isSymbolicLink: func() bool {{ return false }}}} }}; mode := float64(info.Mode().Perm()); return struct {{ mode float64; isFile func() bool; isDirectory func() bool; isSymbolicLink func() bool }}{{mode: mode, isFile: func() bool {{ return info.Mode().IsRegular() }}, isDirectory: func() bool {{ return info.IsDir() }}, isSymbolicLink: func() bool {{ return info.Mode()&os.ModeSymlink != 0 }}}} }}()"
+        ),
+        AotObject { fields },
+    ))
 }
 
 fn is_node_buffer_from_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -3950,6 +4011,38 @@ fn is_string_function_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
     }
 }
 
+fn render_bool_function_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !args.is_empty() {
+        return None;
+    }
+    match callee {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::BoolFunction) => {
+            let function = render_static_member_expr(object, property, state)?;
+            Some(format!("{function}()"))
+        }
+        _ => None,
+    }
+}
+
+fn render_bool_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::BoolFunction) => {
+            render_static_member_expr(object, property, state)
+        }
+        _ => None,
+    }
+}
+
 fn render_string_function_expr(expr: &JsExpr) -> Option<String> {
     if is_process_cwd_ref(expr) {
         return Some("tsgodownProcessCwd".to_string());
@@ -4200,6 +4293,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::Bytes => render_bytes_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
         AotSlotKind::String => render_string_expr(expr, state),
+        AotSlotKind::BoolFunction => render_bool_function_expr(expr, state),
         AotSlotKind::StringFunction => render_string_function_expr(expr),
     }
 }

@@ -4016,7 +4016,9 @@ console.log("path-os", path.join("a", "b", "..", "c"), path.resolve("file").leng
             "src/index.js",
             r#"
 const fs = require("fs")
-console.log("fs", fs.existsSync("present.txt"), fs.existsSync("missing.txt"))
+const file = fs.statSync("present.txt")
+const dir = fs.statSync(".")
+console.log("fs", fs.existsSync("present.txt"), fs.existsSync("missing.txt"), file.isFile(), file.isDirectory(), file.mode >= 0, dir.isDirectory(), file.isSymbolicLink())
 "#,
         );
 
@@ -4070,7 +4072,10 @@ console.log("fs", fs.existsSync("present.txt"), fs.existsSync("missing.txt"))
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "fs true false\n");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "fs true false true false true true false\n"
+        );
     }
 
     #[test]
