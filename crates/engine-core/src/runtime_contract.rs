@@ -53,7 +53,7 @@ pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
 fn is_supported_builtin_import(spec: &str) -> bool {
     matches!(
         spec,
-        "util" | "node:util" | "path" | "node:path" | "os" | "node:os"
+        "util" | "node:util" | "path" | "node:path" | "os" | "node:os" | "node:diagnostics_channel"
     )
 }
 

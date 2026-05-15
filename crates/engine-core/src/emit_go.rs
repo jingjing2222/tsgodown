@@ -413,6 +413,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		}
 		return nil, fmt.Errorf("module import %s is not resolved", spec)
 	}}
+	env["import"] = NativeFunctionValue{Call: func(args []any) (any, error) {
+		return dynamicImportThenable(), nil
+	}}
 	for _, importDecl := range module.Imports {
 		importedExports, ok := builtinModuleExports(importDecl.Spec)
 		if !ok {
@@ -498,6 +501,8 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return pathModuleExports(), true
 	case "os", "node:os":
 		return osModuleExports(), true
+	case "node:diagnostics_channel":
+		return diagnosticsChannelModuleExports(), true
 	default:
 		return nil, false
 	}
@@ -616,6 +621,32 @@ func osModuleExports() map[string]any {
 	})
 	exports["default"] = exports
 	return exports
+}
+
+func diagnosticsChannelModuleExports() map[string]any {
+	exports := map[string]any{}
+	channel := nativeFunction(func(args []any) (any, error) {
+		return map[string]any{"hasSubscribers": false}, nil
+	})
+	exports["channel"] = channel
+	exports["tracingChannel"] = channel
+	exports["default"] = exports
+	return exports
+}
+
+func dynamicImportThenable() map[string]any {
+	thenable := map[string]any{}
+	thenable["then"] = nativeFunction(func(args []any) (any, error) {
+		return map[string]any{
+			"catch": nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			}),
+		}, nil
+	})
+	thenable["catch"] = nativeFunction(func(args []any) (any, error) {
+		return jsUndefined, nil
+	})
+	return thenable
 }
 
 func bindImport(env Env, importDecl Import, importedExports map[string]any) {
