@@ -709,6 +709,74 @@ console.log("array-more", seen.join(","), result)
     }
 
     #[test]
+    fn emit_go_runs_array_member_assignment_subset() {
+        let root = temp_project("engine-core-array-member-assignment");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const values = []
+values[0] = "a"
+values[2] = "c"
+values[1] = "b"
+values.length = 2
+const nested = { items: [] }
+nested.items[0] = values.join("")
+console.log("array-assign", values.length, values.join(","), nested.items[0])
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/array-member-assignment".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-assign 2 a,b ab\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_string_search_and_slice_methods_subset() {
         let root = temp_project("engine-core-string-search-slice");
         write(
@@ -1977,6 +2045,70 @@ console.log("fnexpr", multiply(4), add(5, 7), immediate)
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(String::from_utf8_lossy(&output.stdout), "fnexpr 12 12 9\n");
+    }
+
+    #[test]
+    fn emit_go_runs_function_object_properties_subset() {
+        let root = temp_project("engine-core-function-object-properties");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function tag(value) {
+  return tag.prefix + value
+}
+tag.prefix = "id:"
+tag.count = 1
+tag.count += 2
+console.log("fn-props", tag("7"), tag.count)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/function-object-properties".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "fn-props id:7 3\n");
     }
 
     #[test]

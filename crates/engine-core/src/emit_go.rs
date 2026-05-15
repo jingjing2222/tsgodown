@@ -333,6 +333,7 @@ type FunctionValue struct {
 	Params []string
 	Body   []map[string]any
 	Env    Env
+	Props  map[string]any
 }
 
 type ClassValue struct {
@@ -1712,19 +1713,60 @@ func assignTarget(target map[string]any, value any, env Env) error {
 		assignEnv(env, asString(target["name"]), value)
 		return nil
 	case "member":
-		object, err := evalExpr(asMap(target["object"]), env)
+		objectExpr := asMap(target["object"])
+		object, err := evalExpr(objectExpr, env)
 		if err != nil {
 			return err
 		}
+		property := asString(target["property"])
 		objectMap, ok := object.(map[string]any)
-		if !ok {
-			return errors.New("member assignment target is not object")
+		if ok {
+			objectMap[property] = value
+			return nil
 		}
-		objectMap[asString(target["property"])] = value
-		return nil
+		if function, ok := object.(FunctionValue); ok {
+			if function.Props == nil {
+				function.Props = map[string]any{}
+			}
+			function.Props[property] = value
+			return assignTarget(objectExpr, function, env)
+		}
+		if objectArray, ok := object.([]any); ok {
+			nextArray, handled := assignArrayMember(objectArray, property, value)
+			if !handled {
+				return fmt.Errorf("member assignment target array property %s is not assignable", property)
+			}
+			return assignTarget(objectExpr, nextArray, env)
+		}
+		return fmt.Errorf("member assignment target is not object: %T %s", object, jsInspect(object))
 	default:
 		return fmt.Errorf("unsupported assignment target %v", target["kind"])
 	}
+}
+
+func assignArrayMember(array []any, property string, value any) ([]any, bool) {
+	if property == "length" {
+		nextLength := jsInteger(value)
+		if nextLength < 0 {
+			nextLength = 0
+		}
+		if nextLength < len(array) {
+			return array[:nextLength], true
+		}
+		for len(array) < nextLength {
+			array = append(array, jsUndefined)
+		}
+		return array, true
+	}
+	index, err := strconv.ParseInt(property, 0, 64)
+	if err != nil || index < 0 {
+		return array, false
+	}
+	for int64(len(array)) <= index {
+		array = append(array, jsUndefined)
+	}
+	array[int(index)] = value
+	return array, true
 }
 
 func readTarget(target map[string]any, env Env) (any, error) {
@@ -1906,6 +1948,11 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 }
 
 func functionMember(function FunctionValue, property string) (any, bool) {
+	if function.Props != nil {
+		if value, ok := function.Props[property]; ok {
+			return value, true
+		}
+	}
 	switch property {
 	case "call":
 		return nativeFunction(func(args []any) (any, error) {
@@ -3487,12 +3534,32 @@ func jsString(value any) string {
 			return "true"
 		}
 		return "false"
-	default:
-		bytes, err := json.Marshal(typed)
-		if err != nil {
-			return fmt.Sprint(typed)
+	case []any:
+		parts := []string{}
+		for _, item := range typed {
+			if isNullish(item) {
+				parts = append(parts, "")
+			} else {
+				parts = append(parts, jsString(item))
+			}
 		}
-		return string(bytes)
+		return strings.Join(parts, ",")
+	case map[string]any:
+		return objectTag(typed)
+	case *RegExpValue:
+		return "/" + typed.Pattern + "/" + typed.Flags
+	case *MapValue:
+		return "[object Map]"
+	case *SetValue:
+		return "[object Set]"
+	case *IteratorValue:
+		return "[object Iterator]"
+	case FunctionValue, BoundFunctionValue, NativeFunctionValue:
+		return "function"
+	case *ClassValue:
+		return "class"
+	default:
+		return "[object Object]"
 	}
 }
 
