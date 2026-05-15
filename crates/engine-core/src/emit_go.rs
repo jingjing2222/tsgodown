@@ -987,6 +987,16 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 			return nil, evalErr
 		}
 		value, err = evalBinary("-", current, right)
+	case "*=":
+		current, readErr := readTarget(left, env)
+		if readErr != nil {
+			return nil, readErr
+		}
+		right, evalErr := evalExpr(rightExpr, env)
+		if evalErr != nil {
+			return nil, evalErr
+		}
+		value, err = evalBinary("*", current, right)
 	case "|=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
@@ -1315,6 +1325,8 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return toNumber(left) - toNumber(right), nil
 	case "*":
 		return toNumber(left) * toNumber(right), nil
+	case "**":
+		return math.Pow(toNumber(left), toNumber(right)), nil
 	case "/":
 		return toNumber(left) / toNumber(right), nil
 	case "%":

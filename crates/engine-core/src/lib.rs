@@ -771,10 +771,12 @@ let fallback = null
 fallback ??= "set"
 count += 5
 count |= 2
+count *= 3
 const mask = (5 & 3) | (1 << 4)
+const power = 2 ** 5
 const shifted = -8 >> 1
 const unsigned = -1 >>> 31
-console.log("ops", before, after, count, fallback, mask, shifted, unsigned, ~0, void count)
+console.log("ops", before, after, count, fallback, mask, power, shifted, unsigned, ~0, void count)
 "#,
         );
 
@@ -824,7 +826,7 @@ console.log("ops", before, after, count, fallback, mask, shifted, unsigned, ~0, 
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "ops 1 3 10 set 17 -4 1 -1 undefined\n"
+            "ops 1 3 30 set 17 32 -4 1 -1 undefined\n"
         );
     }
 
