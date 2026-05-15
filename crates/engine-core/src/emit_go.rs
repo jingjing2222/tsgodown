@@ -562,6 +562,12 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			}
 			return evalExpr(asMap(expr["right"]), env)
 		}
+		if op == "??" {
+			if !isNullish(left) {
+				return left, nil
+			}
+			return evalExpr(asMap(expr["right"]), env)
+		}
 		right, err := evalExpr(asMap(expr["right"]), env)
 		if err != nil {
 			return nil, err
@@ -575,17 +581,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		}
 		return evalExpr(asMap(expr["alternate"]), env)
 	case "assign":
-		if asString(expr["op"]) != "=" {
-			return nil, errors.New("unsupported assignment operator")
-		}
-		value, err := evalExpr(asMap(expr["right"]), env)
-		if err != nil {
-			return nil, err
-		}
-		if err := assignTarget(asMap(expr["left"]), value, env); err != nil {
-			return nil, err
-		}
-		return value, nil
+		return evalAssign(expr, env)
+	case "update":
+		return evalUpdate(expr, env)
 	case "call":
 		if isConsoleLog(asMap(expr["callee"])) {
 			parts := []string{}
@@ -676,6 +674,82 @@ func assignTarget(target map[string]any, value any, env Env) error {
 	}
 }
 
+func readTarget(target map[string]any, env Env) (any, error) {
+	switch target["kind"] {
+	case "ident":
+		return env[asString(target["name"])], nil
+	case "member":
+		return evalExpr(target, env)
+	default:
+		return nil, fmt.Errorf("unsupported assignment target %v", target["kind"])
+	}
+}
+
+func evalAssign(expr map[string]any, env Env) (any, error) {
+	op := asString(expr["op"])
+	left := asMap(expr["left"])
+	rightExpr := asMap(expr["right"])
+	var value any
+	var err error
+	switch op {
+	case "=":
+		value, err = evalExpr(rightExpr, env)
+	case "+=":
+		current, readErr := readTarget(left, env)
+		if readErr != nil {
+			return nil, readErr
+		}
+		right, evalErr := evalExpr(rightExpr, env)
+		if evalErr != nil {
+			return nil, evalErr
+		}
+		value, err = evalBinary("+", current, right)
+	case "??=":
+		current, readErr := readTarget(left, env)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if !isNullish(current) {
+			return current, nil
+		}
+		value, err = evalExpr(rightExpr, env)
+	default:
+		return nil, errors.New("unsupported assignment operator")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := assignTarget(left, value, env); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func evalUpdate(expr map[string]any, env Env) (any, error) {
+	target := asMap(expr["arg"])
+	current, err := readTarget(target, env)
+	if err != nil {
+		return nil, err
+	}
+	oldNumber := toNumber(current)
+	nextNumber := oldNumber
+	switch asString(expr["op"]) {
+	case "++":
+		nextNumber++
+	case "--":
+		nextNumber--
+	default:
+		return nil, errors.New("unsupported update operator")
+	}
+	if err := assignTarget(target, nextNumber, env); err != nil {
+		return nil, err
+	}
+	if expr["prefix"] == true {
+		return nextNumber, nil
+	}
+	return oldNumber, nil
+}
+
 func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	objectExpr := asMap(callee["object"])
 	current, err := evalExpr(objectExpr, env)
@@ -762,6 +836,8 @@ func evalUnary(op string, arg any) (any, error) {
 		return -toNumber(arg), nil
 	case "typeof":
 		return jsTypeof(arg), nil
+	case "void":
+		return jsUndefined, nil
 	default:
 		return nil, fmt.Errorf("unsupported unary %s", op)
 	}
@@ -785,6 +861,16 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return toNumber(left) / toNumber(right), nil
 	case "%":
 		return math.Mod(toNumber(left), toNumber(right)), nil
+	case "&":
+		return float64(toInt32(left) & toInt32(right)), nil
+	case "|":
+		return float64(toInt32(left) | toInt32(right)), nil
+	case "<<":
+		return float64(toInt32(left) << (toUint32(right) & 31)), nil
+	case ">>":
+		return float64(toInt32(left) >> (toUint32(right) & 31)), nil
+	case ">>>":
+		return float64(toUint32(left) >> (toUint32(right) & 31)), nil
 	case "==", "===":
 		return fmt.Sprint(left) == fmt.Sprint(right), nil
 	case "!=", "!==":
@@ -844,6 +930,15 @@ func isTruthy(value any) bool {
 	}
 }
 
+func isNullish(value any) bool {
+	switch value.(type) {
+	case nil, UndefinedValue, NullValue:
+		return true
+	default:
+		return false
+	}
+}
+
 func toNumber(value any) float64 {
 	switch typed := value.(type) {
 	case nil, NullValue:
@@ -866,6 +961,18 @@ func toNumber(value any) float64 {
 	default:
 		return math.NaN()
 	}
+}
+
+func toInt32(value any) int32 {
+	return int32(toUint32(value))
+}
+
+func toUint32(value any) uint32 {
+	number := toNumber(value)
+	if math.IsNaN(number) || math.IsInf(number, 0) || number == 0 {
+		return 0
+	}
+	return uint32(int64(number))
 }
 
 func jsString(value any) string {

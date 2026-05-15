@@ -158,7 +158,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             }
         }
         JsExpr::Unary { op, arg } => {
-            if !matches!(op.as_str(), "!" | "+" | "-" | "typeof") {
+            if !matches!(op.as_str(), "!" | "+" | "-" | "typeof" | "void") {
                 unsupported.push(format!("unary {op}"));
             }
             collect_unsupported_expr(arg, unsupported);
@@ -180,6 +180,12 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                     | ">="
                     | "&&"
                     | "||"
+                    | "??"
+                    | "&"
+                    | "|"
+                    | "<<"
+                    | ">>"
+                    | ">>>"
             ) {
                 unsupported.push(format!("binary {op}"));
             }
@@ -219,7 +225,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         JsExpr::Class { .. } => unsupported.push("class expressions".to_string()),
         JsExpr::Await { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Assign { op, left, right } => {
-            if op != "=" {
+            if !matches!(op.as_str(), "=" | "+=" | "??=") {
                 unsupported.push(format!("assignment {op}"));
             }
             if !matches!(left.as_ref(), JsExpr::Ident { .. } | JsExpr::Member { .. }) {
@@ -228,7 +234,12 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(left, unsupported);
             collect_unsupported_expr(right, unsupported);
         }
-        JsExpr::Update { .. } => unsupported.push("updates".to_string()),
+        JsExpr::Update { arg, .. } => {
+            if !matches!(arg.as_ref(), JsExpr::Ident { .. } | JsExpr::Member { .. }) {
+                unsupported.push("update targets".to_string());
+            }
+            collect_unsupported_expr(arg, unsupported);
+        }
         JsExpr::New { .. } => unsupported.push("new expressions".to_string()),
     }
 }
