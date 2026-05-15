@@ -246,6 +246,12 @@ pub(crate) fn sanitize_go_identifier(value: &str) -> String {
     match cleaned.as_str() {
         "" => "irSnapshotJSON".to_string(),
         _ if cleaned.starts_with(|ch: char| ch.is_ascii_digit()) => format!("ir_{cleaned}"),
+        "any" | "bool" | "break" | "case" | "chan" | "const" | "continue" | "default" | "defer"
+        | "else" | "fallthrough" | "float32" | "float64" | "for" | "func" | "go" | "goto"
+        | "if" | "import" | "int" | "int64" | "interface" | "map" | "nil" | "package" | "range"
+        | "return" | "select" | "string" | "struct" | "switch" | "type" | "uint" | "var" => {
+            format!("{cleaned}_")
+        }
         _ => cleaned,
     }
 }

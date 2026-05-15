@@ -650,6 +650,27 @@ func tsgodownStringSlice(value string, start float64, endValues ...float64) stri
 	}
 	return string(chars[from:to])
 }
+
+func tsgodownStrictEqual(left any, right any) bool {
+	switch leftValue := left.(type) {
+	case nil:
+		return right == nil
+	case bool:
+		rightValue, ok := right.(bool)
+		return ok && leftValue == rightValue
+	case float64:
+		return leftValue == tsgodownToFloat64(right)
+	case int:
+		return float64(leftValue) == tsgodownToFloat64(right)
+	case int64:
+		return float64(leftValue) == tsgodownToFloat64(right)
+	case string:
+		rightValue, ok := right.(string)
+		return ok && leftValue == rightValue
+	default:
+		return left == right
+	}
+}
 "#
         .to_string(),
     ];
@@ -718,6 +739,32 @@ func tsgodownBufferIsBuffer(value any) bool {
 		return value
 	default:
 		return "[object Object]"
+	}
+}
+
+func tsgodownToFloat64(value any) float64 {
+	switch value := value.(type) {
+	case nil:
+		return 0
+	case bool:
+		if value {
+			return 1
+		}
+		return 0
+	case float64:
+		return value
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case string:
+		number, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return 0
+		}
+		return number
+	default:
+		return 0
 	}
 }
 
@@ -1869,23 +1916,35 @@ fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option
 }
 
 fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
-    let JsStmt::VarDecl {
-        name,
-        init: Some(init),
-    } = stmt
-    else {
-        return None;
-    };
-    let value = render_numeric_expr(init, state)?;
-    state.bindings.insert(name.clone());
-    state
-        .binding_refs
-        .insert(name.clone(), sanitize_go_identifier(name));
-    state.numeric_bindings.insert(name.clone());
-    Some(format!(
-        "{} := float64({value})",
-        sanitize_go_identifier(name)
-    ))
+    match stmt {
+        JsStmt::VarDecl {
+            name,
+            init: Some(init),
+        } => {
+            let value = render_numeric_expr(init, state)?;
+            state.bind_slot(name, sanitize_go_identifier(name), AotSlotKind::Number);
+            Some(format!(
+                "{} := float64({value})",
+                sanitize_go_identifier(name)
+            ))
+        }
+        JsStmt::Expr {
+            expr: JsExpr::Assign { op, left, right },
+        } if op == "=" => {
+            let JsExpr::Ident { name } = left.as_ref() else {
+                return None;
+            };
+            if !state.bindings.contains(name) {
+                return None;
+            }
+            let value = render_numeric_expr(right, state)?;
+            Some(format!(
+                "{} = float64({value})",
+                go_binding_ref(name, state)
+            ))
+        }
+        _ => None,
+    }
 }
 
 fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -1903,11 +1962,19 @@ fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
             let JsExpr::Ident { name } = left.as_ref() else {
                 return None;
             };
-            if !state.numeric_bindings.contains(name) {
+            if state.numeric_bindings.contains(name) {
+                let right = render_numeric_expr(right, state)?;
+                return Some(format!("{} {} {right}", go_binding_ref(name, state), op));
+            }
+            if !is_any_binding(name, state) {
                 return None;
             }
             let right = render_numeric_expr(right, state)?;
-            Some(format!("{} {} {right}", sanitize_go_identifier(name), op))
+            let value = go_binding_ref(name, state);
+            let operator = op.trim_end_matches('=');
+            Some(format!(
+                "{value} = tsgodownToFloat64({value}) {operator} {right}"
+            ))
         }
         _ => None,
     }
@@ -2067,7 +2134,60 @@ fn infer_function_param_kinds(params: &[String], body: &[JsStmt]) -> Vec<AotSlot
     for stmt in body {
         infer_stmt_param_kinds(stmt, &param_index, &mut kinds);
     }
+    mark_string_accumulator_params(body, &param_index, &mut kinds, &mut BTreeSet::new());
     kinds
+}
+
+fn mark_string_accumulator_params(
+    body: &[JsStmt],
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+    string_locals: &mut BTreeSet<String>,
+) {
+    for stmt in body {
+        match stmt {
+            JsStmt::VarDecl {
+                name,
+                init: Some(expr),
+            } if is_string_literal_like(expr) => {
+                string_locals.insert(name.clone());
+            }
+            JsStmt::Expr {
+                expr: JsExpr::Assign { op, left, right },
+            } if op == "+=" => {
+                if matches!(left.as_ref(), JsExpr::Ident { name } if string_locals.contains(name)) {
+                    mark_ident_param_kind(right, param_index, kinds, AotSlotKind::String);
+                }
+            }
+            JsStmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                let mut consequent_locals = string_locals.clone();
+                mark_string_accumulator_params(
+                    consequent,
+                    param_index,
+                    kinds,
+                    &mut consequent_locals,
+                );
+                let mut alternate_locals = string_locals.clone();
+                mark_string_accumulator_params(
+                    alternate,
+                    param_index,
+                    kinds,
+                    &mut alternate_locals,
+                );
+            }
+            JsStmt::For { body, .. }
+            | JsStmt::While { body, .. }
+            | JsStmt::DoWhile { body, .. } => {
+                let mut scoped = string_locals.clone();
+                mark_string_accumulator_params(body, param_index, kinds, &mut scoped);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn infer_stmt_param_kinds(
@@ -2940,6 +3060,10 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Ident { name } if is_any_binding(name, state) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("tsgodownToFloat64({value})"))
+        }
         JsExpr::Member {
             object,
             property,
@@ -3306,6 +3430,9 @@ fn render_comparison_expr(
     if let Some(value) = render_nullish_comparison_expr(op, left, right, state) {
         return Some(value);
     }
+    if let Some(value) = render_any_equality_expr(op, left, right, state) {
+        return Some(value);
+    }
     if let (Some(left), Some(right)) = (
         render_numeric_expr(left, state),
         render_numeric_expr(right, state),
@@ -3327,6 +3454,31 @@ fn render_comparison_expr(
         }
     }
     None
+}
+
+fn render_any_equality_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if !matches!(op, "==" | "!=")
+        || !expr_uses_any_binding(left, state) && !expr_uses_any_binding(right, state)
+    {
+        return None;
+    }
+    let left = render_expr(left, state)?;
+    let right = render_expr(right, state)?;
+    let comparison = format!("tsgodownStrictEqual({left}, {right})");
+    if op == "!=" {
+        Some(format!("(!{comparison})"))
+    } else {
+        Some(comparison)
+    }
+}
+
+fn expr_uses_any_binding(expr: &JsExpr, state: &AotState) -> bool {
+    matches!(expr, JsExpr::Ident { name } if is_any_binding(name, state))
 }
 
 fn render_nullish_comparison_expr(
