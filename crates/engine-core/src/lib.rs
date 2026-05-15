@@ -811,7 +811,7 @@ console.log("array-assign", values.length, values.join(","), nested.items[0], pr
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "array-assign 4 a,b,c, abce bc e xy role|user 0|1|extra true z\n"
+            "array-assign 4 a,b,c, abce bc e xy user|role 0|1|extra true z\n"
         );
     }
 
@@ -1078,12 +1078,13 @@ console.log("string-more", result)
 const target = Object.assign(Object.create(null), { b: 2 }, { a: 1 })
 const keys = Object.keys(target).sort().join(",")
 const entries = Object.entries(target).map((entry) => entry.join(":")).sort().join("|")
+const order = Object.keys({ name: "x", enabled: true, count: 2 }).join(",")
 const has = Object.prototype.hasOwnProperty.call(target, "a")
-const tag = Object.prototype.toString.call(/x/)
+const tag = [Object.prototype.toString.call(/x/), Object.prototype.toString.call("x"), Object.prototype.toString.call(1), Object.prototype.toString.call(false)].join(",")
 const isArray = Array.isArray([1])
 const bools = [Boolean(0), Boolean("x")].join(",")
 const numbers = [Number.isFinite(3), Number.isInteger(3.2), Number.isSafeInteger(Math.floor(parseFloat("42")))].join(",")
-console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools, numbers)
+console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Math.min(3, 1), Math.max(3, 1), Math.floor(1.9), bools, numbers)
 "#,
         );
 
@@ -1133,7 +1134,7 @@ console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "builtins 12 a,b a:1|b:2 true [object RegExp] true 1 3 1 false,true true,false,true\n"
+            "builtins 12 a,b a:1|b:2 name,enabled,count true [object RegExp],[object String],[object Number],[object Boolean] true 1 3 1 false,true true,false,true\n"
         );
     }
 
@@ -2293,10 +2294,21 @@ console.log("fnexpr", multiply(4), add(5, 7), immediate)
 function tag(value) {
   return tag.prefix + value
 }
+function Box(value) {
+  this.value = value
+}
 tag.prefix = "id:"
 tag.count = 1
 tag.count += 2
-console.log("fn-props", tag("7"), tag.count)
+tag.prototype.kind = "tag"
+Box.prototype.read = function () {
+  return this.value
+}
+const box = new Box("ok")
+const child = Object.create({ inherited: "yes" })
+const sized = new Array(3)
+sized[1] = "x"
+console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1])
 "#,
         );
 
@@ -2344,7 +2356,10 @@ console.log("fn-props", tag("7"), tag.count)
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "fn-props id:7 3\n");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "fn-props id:7 3 object tag ok yes true true false 3 x\n"
+        );
     }
 
     #[test]
@@ -2581,7 +2596,16 @@ function risky(value) {
     cleanup += 1
   }
 }
-console.log("try", risky(1), risky(3), cleanup)
+function explode() {
+  throw "wrapped"
+}
+let wrapped = "none"
+try {
+  explode()
+} catch (error) {
+  wrapped = `wrapped:${error}`
+}
+console.log("try", risky(1), risky(3), cleanup, wrapped)
 "#,
         );
 
@@ -2631,7 +2655,7 @@ console.log("try", risky(1), risky(3), cleanup)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "try 1 caught:too-big 2\n"
+            "try 1 caught:too-big 2 wrapped:wrapped\n"
         );
     }
 

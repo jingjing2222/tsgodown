@@ -353,6 +353,7 @@ type ClassValue struct {
 	Static      map[string]FunctionValue
 	StaticGetters map[string]FunctionValue
 	Super       *ClassValue
+	Callable    bool
 }
 
 type BoundFunctionValue struct {
@@ -715,6 +716,32 @@ func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunct
 	}
 }
 
+func userFunctionValue(params []string, restParam string, body []map[string]any, env Env, lexicalThis bool) FunctionValue {
+	props := map[string]any{}
+	function := FunctionValue{
+		Params:      params,
+		RestParam:   restParam,
+		Body:        body,
+		Env:         env,
+		Props:       props,
+		LexicalThis: lexicalThis,
+	}
+	if !lexicalThis {
+		prototype := map[string]any{}
+		prototype["constructor"] = function
+		props["prototype"] = prototype
+	}
+	return function
+}
+
+func objectWithPrototype(prototype any) map[string]any {
+	object := map[string]any{}
+	if !isNullish(prototype) {
+		object["__prototype"] = prototype
+	}
+	return object
+}
+
 func functionGlobal() map[string]any {
 	prototype := map[string]any{}
 	prototype["call"] = nativeMethod(func(thisValue any, args []any) (any, error) {
@@ -747,7 +774,7 @@ func functionGlobal() map[string]any {
 	})
 	return map[string]any{
 		"__call": nativeFunction(func(args []any) (any, error) {
-			return FunctionValue{Params: []string{}, Body: []map[string]any{}, Env: Env{}, Props: map[string]any{}}, nil
+			return userFunctionValue([]string{}, "", []map[string]any{}, Env{}, false), nil
 		}),
 		"prototype": prototype,
 	}
@@ -884,12 +911,24 @@ func arrayGlobal() map[string]any {
 			}
 			return callFunctionWithValues(member, args, Env{}, thisValue)
 		})
-	}
-	return map[string]any{
-		"isArray": nativeFunction(func(args []any) (any, error) {
-			if len(args) == 0 {
-				return false, nil
-			}
+		}
+		return map[string]any{
+			"__call": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 1 {
+					if length, ok := args[0].(float64); ok {
+						items := []any{}
+						for index := 0; index < int(length); index++ {
+							items = append(items, jsUndefined)
+						}
+						return &ArrayValue{Items: items}, nil
+					}
+				}
+				return &ArrayValue{Items: append([]any{}, args...)}, nil
+			}),
+			"isArray": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return false, nil
+				}
 			_, ok := args[0].(*ArrayValue)
 			return ok, nil
 		}),
@@ -933,24 +972,27 @@ func objectGlobal() map[string]any {
 		if !ok {
 			target = map[string]any{}
 		}
-		for _, source := range args[1:] {
-			if sourceMap, ok := source.(map[string]any); ok {
-				for key, value := range sourceMap {
-					if strings.HasPrefix(key, "__") {
-						continue
+				for _, source := range args[1:] {
+					if sourceMap, ok := source.(map[string]any); ok {
+						for key, value := range sourceMap {
+							if strings.HasPrefix(key, "__") {
+								continue
+							}
+							setObjectProperty(target, key, value)
+						}
 					}
-					target[key] = value
 				}
-			}
-		}
 		return target, nil
 	})
 	return map[string]any{
-		"assign": assign,
-		"create": nativeFunction(func(args []any) (any, error) {
-			return map[string]any{}, nil
-		}),
-		"defineProperty": nativeFunction(func(args []any) (any, error) {
+			"assign": assign,
+			"create": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 || isNullish(args[0]) {
+					return map[string]any{}, nil
+				}
+				return objectWithPrototype(args[0]), nil
+			}),
+			"defineProperty": nativeFunction(func(args []any) (any, error) {
 			if len(args) < 3 {
 				return jsUndefined, nil
 			}
@@ -1230,21 +1272,45 @@ func setGlobal() NativeFunctionValue {
 }
 
 func objectKeys(object map[string]any) []string {
+	seen := map[string]bool{}
 	keys := []string{}
+	if ordered, ok := object["__keys"].([]string); ok {
+		for _, key := range ordered {
+			if strings.HasPrefix(key, "__") || seen[key] {
+				continue
+			}
+			if _, exists := object[key]; exists {
+				keys = append(keys, key)
+				seen[key] = true
+			}
+		}
+	}
+	unordered := []string{}
 	for key := range object {
-		if strings.HasPrefix(key, "__") {
+		if strings.HasPrefix(key, "__") || seen[key] {
 			continue
 		}
-		keys = append(keys, key)
+		unordered = append(unordered, key)
 	}
-	sort.Strings(keys)
+	sort.Strings(unordered)
+	keys = append(keys, unordered...)
 	return keys
+}
+
+func setObjectProperty(object map[string]any, key string, value any) {
+	if !strings.HasPrefix(key, "__") {
+		if _, exists := object[key]; !exists {
+			keys, _ := object["__keys"].([]string)
+			object["__keys"] = append(keys, key)
+		}
+	}
+	object[key] = value
 }
 
 func setDynamicProperty(target any, property string, value any) bool {
 	switch typed := target.(type) {
 	case map[string]any:
-		typed[property] = value
+		setObjectProperty(typed, property, value)
 		return true
 	case *RegExpValue:
 		if property == "lastIndex" {
@@ -1350,6 +1416,12 @@ func jsValueFromJSON(value any) any {
 
 func objectTag(value any) string {
 	switch value.(type) {
+	case string:
+		return "[object String]"
+	case float64:
+		return "[object Number]"
+	case bool:
+		return "[object Boolean]"
 	case *ArrayValue:
 		return "[object Array]"
 	case *RegExpValue:
@@ -1364,6 +1436,8 @@ func objectTag(value any) string {
 		return "[object Null]"
 	case UndefinedValue:
 		return "[object Undefined]"
+	case FunctionValue, BoundFunctionValue, NativeFunctionValue:
+		return "[object Function]"
 	default:
 		return "[object Object]"
 	}
@@ -1812,12 +1886,13 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		_, err := evalExpr(asMap(stmt["expr"]), env)
 		return completion{}, err
 	case "function-decl":
-		env[asString(stmt["name"])] = FunctionValue{
-			Params:    asStringSlice(stmt["params"]),
-			RestParam: asString(stmt["restParam"]),
-			Body:      asStmtSlice(stmt["body"]),
-			Env:       env,
-		}
+		env[asString(stmt["name"])] = userFunctionValue(
+			asStringSlice(stmt["params"]),
+			asString(stmt["restParam"]),
+			asStmtSlice(stmt["body"]),
+			env,
+			false,
+		)
 		return completion{}, nil
 	case "class-decl":
 		classValue, err := evalClass(optionalExpr(stmt, "superClass"), asSlice(stmt["methods"]), env)
@@ -2011,7 +2086,8 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 	case "try":
 		result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
 		if err != nil {
-			if thrown, ok := err.(jsThrow); ok {
+			var thrown jsThrow
+			if errors.As(err, &thrown) {
 				if catchParam := asString(stmt["catchParam"]); catchParam != "" {
 					env[catchParam] = thrown.value
 				}
@@ -2073,12 +2149,13 @@ func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
 		if stmt["kind"] != "function-decl" {
 			continue
 		}
-		env[asString(stmt["name"])] = FunctionValue{
-			Params:    asStringSlice(stmt["params"]),
-			RestParam: asString(stmt["restParam"]),
-			Body:      asStmtSlice(stmt["body"]),
-			Env:       env,
-		}
+		env[asString(stmt["name"])] = userFunctionValue(
+			asStringSlice(stmt["params"]),
+			asString(stmt["restParam"]),
+			asStmtSlice(stmt["body"]),
+			env,
+			false,
+		)
 	}
 }
 
@@ -2131,17 +2208,17 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				}
 				key = jsPropertyKey(keyValue)
 			}
-			out[key] = value
+				setObjectProperty(out, key, value)
 		}
 		return out, nil
 	case "function":
-		return FunctionValue{
-			Params:      asStringSlice(expr["params"]),
-			RestParam:   asString(expr["restParam"]),
-			Body:        asStmtSlice(expr["body"]),
-			Env:         env,
-			LexicalThis: expr["lexicalThis"] == true,
-		}, nil
+		return userFunctionValue(
+			asStringSlice(expr["params"]),
+			asString(expr["restParam"]),
+			asStmtSlice(expr["body"]),
+			env,
+			expr["lexicalThis"] == true,
+		), nil
 	case "class":
 		return evalClass(optionalExpr(expr, "superClass"), asSlice(expr["methods"]), env)
 	case "unary":
@@ -2215,17 +2292,20 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return nil, fmt.Errorf("identifier call %s failed: %w", name, err)
 			}
 			return result, nil
-		}
-		if callee := asMap(expr["callee"]); callee["kind"] == "member" {
-			property := asString(callee["property"])
-			value, err := evalExpr(callee, env)
-			if err != nil {
-				return nil, err
 			}
-			result, err := callFunction(value, asSlice(expr["args"]), env)
-			if err != nil {
-				return nil, fmt.Errorf("member call %s failed: %w", property, err)
-			}
+			if callee := asMap(expr["callee"]); callee["kind"] == "member" {
+				object, property, value, err := evalMemberAccess(callee, env)
+				if err != nil {
+					return nil, err
+				}
+				args, err := evalCallArgs(asSlice(expr["args"]), env)
+				if err != nil {
+					return nil, err
+				}
+				result, err := callFunctionWithValues(value, args, env, object)
+				if err != nil {
+					return nil, fmt.Errorf("member call %s failed: %w", property, err)
+				}
 			return result, nil
 		}
 		value, err := evalExpr(asMap(expr["callee"]), env)
@@ -2239,95 +2319,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return nil, err
 		}
 		return constructValue(callee, asSlice(expr["args"]), env)
-	case "spread":
-		return evalExpr(asMap(expr["arg"]), env)
-	case "member":
-		object, err := evalExpr(asMap(expr["object"]), env)
-		if err != nil {
-			return nil, err
-		}
-		property, err := evalMemberProperty(expr, env)
-		if err != nil {
-			return nil, err
-		}
-		if objectMap, ok := object.(map[string]any); ok {
-			if classValue, ok := objectMap["__class"].(*ClassValue); ok {
-				if getter, ok := lookupGetter(classValue, property); ok {
-					return callFunctionWithThis(getter, nil, env, objectMap)
-				}
-				if method, ok := lookupMethod(classValue, property); ok {
-					return BoundFunctionValue{Function: method, This: objectMap}, nil
-				}
-			}
-			if value, ok := objectMap[property]; ok {
-				return value, nil
-			}
-			return jsUndefined, nil
-		}
-		if classValue, ok := object.(*ClassValue); ok {
-			if getter, ok := classValue.StaticGetters[property]; ok {
-				return callFunctionWithThis(getter, nil, env, classValue)
-			}
-			if method, ok := classValue.Static[property]; ok {
-				return BoundFunctionValue{Function: method, This: classValue}, nil
-			}
-		}
-		if function, ok := object.(NativeFunctionValue); ok {
-			if member, ok := nativeFunctionMember(function, property); ok {
-				return member, nil
-			}
-		}
-		if function, ok := object.(FunctionValue); ok {
-			if member, ok := functionMember(function, property); ok {
-				return member, nil
-			}
-		}
-		if function, ok := object.(BoundFunctionValue); ok {
-			if member, ok := boundFunctionMember(function, property); ok {
-				return member, nil
-			}
-		}
-		if numberValue, ok := object.(float64); ok {
-			if member, ok := numberMember(numberValue, property); ok {
-				return member, nil
-			}
-		}
-		if stringValue, ok := object.(string); ok {
-			if member, ok := stringMember(stringValue, property, env); ok {
-				return member, nil
-			}
-		}
-		if symbolValue, ok := object.(*SymbolValue); ok {
-			if member, ok := symbolMember(symbolValue, property); ok {
-				return member, nil
-			}
-		}
-		if regExpValue, ok := object.(*RegExpValue); ok {
-			if member, ok := regexpMember(regExpValue, property); ok {
-				return member, nil
-			}
-		}
-		if mapValue, ok := object.(*MapValue); ok {
-			if member, ok := mapMember(mapValue, property); ok {
-				return member, nil
-			}
-		}
-		if setValue, ok := object.(*SetValue); ok {
-			if member, ok := setMember(setValue, property); ok {
-				return member, nil
-			}
-		}
-		if iteratorValue, ok := object.(*IteratorValue); ok {
-			if member, ok := iteratorMember(iteratorValue, property); ok {
-				return member, nil
-			}
-		}
-		if objectArray, ok := object.(*ArrayValue); ok {
-			if member, ok := arrayMember(objectArray, property, env); ok {
-				return member, nil
-			}
-		}
-		return jsUndefined, nil
+		case "spread":
+			return evalExpr(asMap(expr["arg"]), env)
+		case "member":
+			_, _, value, err := evalMemberAccess(expr, env)
+			return value, err
 	case "template":
 		var out strings.Builder
 		quasis := asStringSlice(expr["quasis"])
@@ -2375,7 +2371,7 @@ func assignTarget(target map[string]any, value any, env Env) error {
 		}
 		objectMap, ok := object.(map[string]any)
 		if ok {
-			objectMap[property] = value
+			setObjectProperty(objectMap, property, value)
 			return nil
 		}
 		if function, ok := object.(FunctionValue); ok {
@@ -2425,6 +2421,138 @@ func evalMemberProperty(member map[string]any, env Env) (string, error) {
 		return jsPropertyKey(value), nil
 	}
 	return asString(member["property"]), nil
+}
+
+func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
+	object, err := evalExpr(asMap(expr["object"]), env)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	property, err := evalMemberProperty(expr, env)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if objectMap, ok := object.(map[string]any); ok {
+		if classValue, ok := objectMap["__class"].(*ClassValue); ok {
+			if getter, ok := lookupGetter(classValue, property); ok {
+				value, err := callFunctionWithThis(getter, nil, env, objectMap)
+				return object, property, value, err
+			}
+			if method, ok := lookupMethod(classValue, property); ok {
+				return object, property, BoundFunctionValue{Function: method, This: objectMap}, nil
+			}
+		}
+		if value, ok := lookupObjectProperty(objectMap, property); ok {
+			return object, property, value, nil
+		}
+		return object, property, jsUndefined, nil
+	}
+	if classValue, ok := object.(*ClassValue); ok {
+		if property == "call" && classValue.Callable {
+			return object, property, nativeFunction(func(args []any) (any, error) {
+				thisValue := any(jsUndefined)
+				callArgs := []any{}
+				if len(args) > 0 {
+					thisValue = args[0]
+					callArgs = append(callArgs, args[1:]...)
+				}
+				if classValue.Constructor == nil {
+					return thisValue, nil
+				}
+				_, err := callFunctionWithThisValues(*classValue.Constructor, callArgs, thisValue)
+				if err != nil {
+					return nil, err
+				}
+				return thisValue, nil
+			}), nil
+		}
+		if getter, ok := classValue.StaticGetters[property]; ok {
+			value, err := callFunctionWithThis(getter, nil, env, classValue)
+			return object, property, value, err
+		}
+		if method, ok := classValue.Static[property]; ok {
+			return object, property, BoundFunctionValue{Function: method, This: classValue}, nil
+		}
+	}
+	if function, ok := object.(NativeFunctionValue); ok {
+		if member, ok := nativeFunctionMember(function, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if function, ok := object.(FunctionValue); ok {
+		if member, ok := functionMember(function, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if function, ok := object.(BoundFunctionValue); ok {
+		if member, ok := boundFunctionMember(function, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if numberValue, ok := object.(float64); ok {
+		if member, ok := numberMember(numberValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if stringValue, ok := object.(string); ok {
+		if member, ok := stringMember(stringValue, property, env); ok {
+			return object, property, member, nil
+		}
+	}
+	if symbolValue, ok := object.(*SymbolValue); ok {
+		if member, ok := symbolMember(symbolValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if regExpValue, ok := object.(*RegExpValue); ok {
+		if member, ok := regexpMember(regExpValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if mapValue, ok := object.(*MapValue); ok {
+		if member, ok := mapMember(mapValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if setValue, ok := object.(*SetValue); ok {
+		if member, ok := setMember(setValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if iteratorValue, ok := object.(*IteratorValue); ok {
+		if member, ok := iteratorMember(iteratorValue, property); ok {
+			return object, property, member, nil
+		}
+	}
+	if objectArray, ok := object.(*ArrayValue); ok {
+		if member, ok := arrayMember(objectArray, property, env); ok {
+			return object, property, member, nil
+		}
+	}
+	return object, property, jsUndefined, nil
+}
+
+func lookupObjectProperty(object map[string]any, property string) (any, bool) {
+	if value, ok := object[property]; ok {
+		return value, true
+	}
+	if prototype, ok := object["__prototype"]; ok {
+		return lookupPrototypeProperty(prototype, property)
+	}
+	return nil, false
+}
+
+func lookupPrototypeProperty(prototype any, property string) (any, bool) {
+	switch typed := prototype.(type) {
+	case map[string]any:
+		return lookupObjectProperty(typed, property)
+	case FunctionValue:
+		return functionMember(typed, property)
+	case NativeFunctionValue:
+		return nativeFunctionMember(typed, property)
+	default:
+		return nil, false
+	}
 }
 
 func assignArrayMember(array *ArrayValue, property string, value any) bool {
@@ -3893,7 +4021,7 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	classValue, ok := raw.(*ClassValue)
 	if !ok {
 		if function, functionOk := raw.(FunctionValue); functionOk {
-			instance := map[string]any{}
+			instance := objectWithPrototype(function.Props["prototype"])
 			result, err := callFunctionWithThis(function, rawArgs, callerEnv, instance)
 			if err != nil {
 				return nil, err
@@ -3904,7 +4032,7 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 			return instance, nil
 		}
 		if bound, boundOk := raw.(BoundFunctionValue); boundOk {
-			instance := map[string]any{}
+			instance := objectWithPrototype(bound.Function.Props["prototype"])
 			args := append([]any{}, bound.Args...)
 			callArgs, err := evalCallArgs(rawArgs, callerEnv)
 			if err != nil {
@@ -3922,6 +4050,11 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 		if _, nativeOk := raw.(NativeFunctionValue); nativeOk {
 			return callFunction(raw, rawArgs, callerEnv)
+		}
+		if object, objectOk := raw.(map[string]any); objectOk {
+			if callable, callableOk := object["__call"]; callableOk {
+				return callFunction(callable, rawArgs, callerEnv)
+			}
 		}
 		return nil, fmt.Errorf("constructor is not callable: %T %s", raw, jsInspect(raw))
 	}
@@ -4095,6 +4228,7 @@ func builtinErrorClass(name string) *ClassValue {
 		Getters:     map[string]FunctionValue{},
 		Static:      map[string]FunctionValue{},
 		StaticGetters: map[string]FunctionValue{},
+		Callable:    true,
 	}
 }
 
@@ -4383,7 +4517,7 @@ func jsPropertyKey(value any) string {
 func hasProperty(value any, key string) bool {
 	switch typed := value.(type) {
 	case map[string]any:
-		_, ok := typed[key]
+		_, ok := lookupObjectProperty(typed, key)
 		return ok
 	case *ArrayValue:
 		if key == "length" {
@@ -4424,22 +4558,42 @@ func hasProperty(value any, key string) bool {
 }
 
 func jsInstanceOf(value any, constructor any) bool {
-	classValue, ok := constructor.(*ClassValue)
-	if !ok {
+	if classValue, ok := constructor.(*ClassValue); ok {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return false
+		}
+		instanceClass, ok := object["__class"].(*ClassValue)
+		if !ok {
+			return false
+		}
+		for current := instanceClass; current != nil; current = current.Super {
+			if current == classValue {
+				return true
+			}
+		}
 		return false
 	}
+	if function, ok := constructor.(FunctionValue); ok {
+		return objectHasPrototype(value, function.Props["prototype"])
+	}
+	return false
+}
+
+func objectHasPrototype(value any, prototype any) bool {
 	object, ok := value.(map[string]any)
-	if !ok {
+	if !ok || isNullish(prototype) {
 		return false
 	}
-	instanceClass, ok := object["__class"].(*ClassValue)
-	if !ok {
-		return false
-	}
-	for current := instanceClass; current != nil; current = current.Super {
-		if current == classValue {
+	for current, ok := object["__prototype"]; ok; {
+		if jsSameValue(current, prototype) {
 			return true
 		}
+		currentObject, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current, ok = currentObject["__prototype"]
 	}
 	return false
 }
