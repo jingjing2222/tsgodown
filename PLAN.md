@@ -73,6 +73,32 @@ surfaces with partial behavior. It means every input shape and runtime feature
 has an explicit contract row: `DONE` with parity evidence, or `FAIL_CLOSED` /
 `BLOCKED` with diagnostics and no generated wrong Go.
 
+### Non-negotiable parity policy
+
+Getting generated Go to compile is not success by itself. `go build` is only one
+gate before runtime parity. Any implementation that hardcodes output only to
+make compilation pass is invalid, even if every generated project builds.
+
+Forbidden implementation patterns:
+
+- corpus-name, package-name, fixture-name, file-path, or test-id branches in
+  compiler, runtime, or codegen
+- codegen that recognizes known probes and emits precomputed answers
+- runtime helpers that special-case selected npm packages instead of Node.js
+  semantics
+- fallback to Node.js, V8, Node-API, N-API, native addons, shelling out to
+  `node`, or embedding package-specific helper binaries
+- marking a capability `DONE` because one corpus passes without a general
+  semantic contract and holdout/differential evidence
+
+Required implementation pattern:
+
+- implement JavaScript, TypeScript artifact, module, and Node.js LTS semantics
+  generically in analyzer/IR/runtime contract/backend provider boundaries
+- prove behavior with Node.js-vs-generated-Go differential tests
+- use corpus tests as evidence, not as codegen templates
+- fail closed with deterministic diagnostics when semantics are unsupported
+
 ### Required contracts before completion
 
 | Contract | Completion requirement | Gate |

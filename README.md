@@ -56,6 +56,12 @@ Node-API/N-API, or load native addon fallback paths.
 When a source program uses unsupported behavior, `tsgodown` must fail closed
 with deterministic diagnostics instead of generating wrong Go.
 
+`go build` passing is not enough. Generated Go must match Node.js behavior.
+Compiler/runtime/codegen changes must not hardcode corpus packages, fixture
+names, known probe inputs, or precomputed answers just to make compilation pass.
+Corpus tests are evidence for generic Node.js semantics, not templates for
+special-case codegen.
+
 ## Status
 
 Current green phase:
