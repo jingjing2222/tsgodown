@@ -693,6 +693,12 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			out[asString(propMap["key"])] = value
 		}
 		return out, nil
+	case "function":
+		return FunctionValue{
+			Params: asStringSlice(expr["params"]),
+			Body:   asStmtSlice(expr["body"]),
+			Env:    env,
+		}, nil
 	case "unary":
 		arg, err := evalExpr(asMap(expr["arg"]), env)
 		if err != nil {

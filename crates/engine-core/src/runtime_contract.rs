@@ -290,7 +290,9 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                 collect_unsupported_expr(expr, unsupported);
             }
         }
-        JsExpr::Function { .. } => unsupported.push("function expressions".to_string()),
+        JsExpr::Function { body, .. } => {
+            collect_unsupported_stmt_list(body, true, unsupported);
+        }
         JsExpr::Class { .. } => unsupported.push("class expressions".to_string()),
         JsExpr::Await { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Assign { op, left, right } => {
