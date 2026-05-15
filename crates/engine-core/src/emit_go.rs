@@ -146,7 +146,11 @@ pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitRespons
         },
         GeneratedFile {
             path: "tsgodownrt/runtime.go".to_string(),
-            contents: render_runtime_package(),
+            contents: if request.allow_ir_interpreter {
+                render_runtime_package()
+            } else {
+                render_fail_closed_runtime_package()
+            },
         },
     ];
 
@@ -9530,6 +9534,29 @@ func asStringSlice(value any) []string {
             render_runtime_contract_go_metadata()
         ),
         1,
+    )
+}
+
+fn render_fail_closed_runtime_package() -> String {
+    format!(
+        r#"package tsgodownrt
+
+import "encoding/json"
+
+{}
+func FailClosedReport(version string, diagnostics json.RawMessage, extra map[string]any) map[string]any {{
+	report := map[string]any{{
+		"version":     version,
+		"unsupported": true,
+		"diagnostics": diagnostics,
+	}}
+	for key, value := range extra {{
+		report[key] = value
+	}}
+	return report
+}}
+"#,
+        render_runtime_contract_go_metadata()
     )
 }
 

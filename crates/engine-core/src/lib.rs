@@ -407,6 +407,12 @@ console.log("still executable");
             .contents
             .contains(fail_closed_report_version(ProgramPurpose::Main)));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        let runtime = response
+            .files
+            .iter()
+            .find(|file| file.path == "tsgodownrt/runtime.go")
+            .expect("runtime file");
+        assert!(!runtime.contents.contains("func RunProgram"));
     }
 
     #[test]
