@@ -18,7 +18,8 @@
       "artifacts/**",
       "target/**",
       "test-corpus/node-real/generated-go/**",
-      "test-corpus/node-real/packages/**"
+      "test-corpus/node-real/packages/**",
+      "test-corpus/node-large/packages/**"
     ]
   }
 }

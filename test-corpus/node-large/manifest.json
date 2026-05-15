@@ -5,7 +5,7 @@
     "vectorsPerEntry": 100,
     "allowPackageSpecificCompilerBranches": false,
     "allowNodeFallback": false,
-    "status": "skeleton"
+    "status": "vendored"
   },
   "entries": [
     {
@@ -27,7 +27,26 @@
         "stderr",
         "async-order"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "expressjs/express",
+      "declarationSource": "not-bundled",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/express",
+      "packageMetadataPath": "packages/express/package.json",
+      "entry": "packages/express/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "express",
+        "version": "5.2.1",
+        "files": 10
+      }
     },
     {
       "id": "nestjs-app",
@@ -47,7 +66,26 @@
         "error-shape",
         "async-order"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/nestjs/nest.git",
+      "declarationSource": "packages/nestjs-core/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/nestjs-core",
+      "packageMetadataPath": "packages/nestjs-core/package.json",
+      "entry": "packages/nestjs-core/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "@nestjs/core",
+        "version": "11.1.21",
+        "files": 369
+      }
     },
     {
       "id": "fastify-app",
@@ -62,7 +100,26 @@
       "comparator": "http-json-headers-order",
       "vectorFocus": "plugin registration, schemas, hooks, encapsulation, route params",
       "parityDimensions": ["status", "body", "headers", "plugin-order"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/fastify/fastify.git",
+      "declarationSource": "packages/fastify/fastify.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/fastify",
+      "packageMetadataPath": "packages/fastify/package.json",
+      "entry": "packages/fastify/fastify.js",
+      "vendored": {
+        "source": "npm",
+        "package": "fastify",
+        "version": "5.8.5",
+        "files": 355
+      }
     },
     {
       "id": "koa-app",
@@ -77,7 +134,26 @@
       "comparator": "http-json-side-effects",
       "vectorFocus": "onion middleware order, context mutation, thrown errors, async compose",
       "parityDimensions": ["body", "status", "side-effects", "async-order"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "koajs/koa",
+      "declarationSource": "not-bundled",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/koa",
+      "packageMetadataPath": "packages/koa/package.json",
+      "entry": "packages/koa/lib/application.js",
+      "vendored": {
+        "source": "npm",
+        "package": "koa",
+        "version": "3.2.0",
+        "files": 11
+      }
     },
     {
       "id": "hapi-app",
@@ -92,7 +168,26 @@
       "comparator": "http-json-lifecycle",
       "vectorFocus": "route config, validation hooks, lifecycle extensions, response toolkit",
       "parityDimensions": ["status", "body", "headers", "lifecycle-order"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git://github.com/hapijs/hapi",
+      "declarationSource": "packages/hapi-hapi/lib/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/hapi-hapi",
+      "packageMetadataPath": "packages/hapi-hapi/package.json",
+      "entry": "packages/hapi-hapi/lib/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "@hapi/hapi",
+        "version": "21.4.9",
+        "files": 41
+      }
     },
     {
       "id": "vite-build",
@@ -113,7 +208,26 @@
         "exit-code",
         "plugin-order"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/vitejs/vite.git",
+      "declarationSource": "packages/vite/dist/node/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/vite",
+      "packageMetadataPath": "packages/vite/package.json",
+      "entry": "packages/vite/dist/node/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "vite",
+        "version": "8.0.13",
+        "files": 36
+      }
     },
     {
       "id": "rollup-build",
@@ -128,7 +242,26 @@
       "comparator": "files-warnings-sourcemaps",
       "vectorFocus": "plugin pipeline, tree-shaking, chunk graph, sourcemaps",
       "parityDimensions": ["chunks", "warnings", "sourcemaps", "exit-code"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/rollup/rollup.git",
+      "declarationSource": "packages/rollup/dist/rollup.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/rollup",
+      "packageMetadataPath": "packages/rollup/package.json",
+      "entry": "packages/rollup/dist/es/rollup.js",
+      "vendored": {
+        "source": "npm",
+        "package": "rollup",
+        "version": "4.60.4",
+        "files": 27
+      }
     },
     {
       "id": "webpack-build",
@@ -143,7 +276,26 @@
       "comparator": "assets-stats-warnings-errors",
       "vectorFocus": "loaders/plugins, resolver, asset graph, code splitting",
       "parityDimensions": ["assets", "stats-json", "warnings", "errors"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/webpack/webpack.git",
+      "declarationSource": "packages/webpack/types.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/webpack",
+      "packageMetadataPath": "packages/webpack/package.json",
+      "entry": "packages/webpack/lib/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "webpack",
+        "version": "5.106.2",
+        "files": 711
+      }
     },
     {
       "id": "next-app",
@@ -158,7 +310,26 @@
       "comparator": "files-http-stdout-stderr",
       "vectorFocus": "config load, file routes, server rendering probes, build output metadata",
       "parityDimensions": ["stdout", "stderr", "files", "http-render-output"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "vercel/next.js",
+      "declarationSource": "packages/next/dist/server/next.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/next",
+      "packageMetadataPath": "packages/next/package.json",
+      "entry": "packages/next/dist/server/next.js",
+      "vendored": {
+        "source": "npm",
+        "package": "next",
+        "version": "16.2.6",
+        "files": 8070
+      }
     },
     {
       "id": "nuxt-app",
@@ -173,7 +344,26 @@
       "comparator": "files-http-hooks",
       "vectorFocus": "config/modules, Nitro server output, route rendering probes",
       "parityDimensions": ["output-files", "http-render-output", "hooks"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/nuxt/nuxt.git",
+      "declarationSource": "packages/nuxt/dist/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/nuxt",
+      "packageMetadataPath": "packages/nuxt/package.json",
+      "entry": "packages/nuxt/dist/index.mjs",
+      "vendored": {
+        "source": "npm",
+        "package": "nuxt",
+        "version": "4.4.5",
+        "files": 245
+      }
     },
     {
       "id": "astro-app",
@@ -188,7 +378,26 @@
       "comparator": "files-html-diagnostics",
       "vectorFocus": "content collections, integrations, build output, server render probes",
       "parityDimensions": ["output-files", "html", "diagnostics"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/withastro/astro.git",
+      "declarationSource": "packages/astro/dist/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/astro",
+      "packageMetadataPath": "packages/astro/package.json",
+      "entry": "packages/astro/dist/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "astro",
+        "version": "6.3.3",
+        "files": 1281
+      }
     },
     {
       "id": "remix-app",
@@ -203,7 +412,26 @@
       "comparator": "http-data-files-errors",
       "vectorFocus": "route modules, loaders/actions, build output, server adapter probes",
       "parityDimensions": ["http", "data-responses", "files", "errors"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/remix-run/remix",
+      "declarationSource": "packages/remix/dist/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/remix",
+      "packageMetadataPath": "packages/remix/package.json",
+      "entry": "packages/remix/dist/esm/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "remix",
+        "version": "2.17.4",
+        "files": 7
+      }
     },
     {
       "id": "eslint-engine",
@@ -218,7 +446,26 @@
       "comparator": "json-stdout-stderr-exit",
       "vectorFocus": "config resolution, parser services boundary, rules, formatters",
       "parityDimensions": ["result-json", "stdout", "stderr", "exit-code"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "eslint/eslint",
+      "declarationSource": "packages/eslint/lib/types/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/eslint",
+      "packageMetadataPath": "packages/eslint/package.json",
+      "entry": "packages/eslint/lib/api.js",
+      "vendored": {
+        "source": "npm",
+        "package": "eslint",
+        "version": "10.3.0",
+        "files": 419
+      }
     },
     {
       "id": "prettier-engine",
@@ -237,7 +484,26 @@
         "diagnostics",
         "async-plugin-order"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "prettier/prettier",
+      "declarationSource": "packages/prettier/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/prettier",
+      "packageMetadataPath": "packages/prettier/package.json",
+      "entry": "packages/prettier/index.mjs",
+      "vendored": {
+        "source": "npm",
+        "package": "prettier",
+        "version": "3.8.3",
+        "files": 56
+      }
     },
     {
       "id": "babel-core",
@@ -252,7 +518,26 @@
       "comparator": "code-sourcemaps-diagnostics",
       "vectorFocus": "parser/traverse/generator, plugins, presets, sourcemaps",
       "parityDimensions": ["generated-code", "sourcemaps", "diagnostics"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/babel/babel.git",
+      "declarationSource": "not-bundled",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/babel-core",
+      "packageMetadataPath": "packages/babel-core/package.json",
+      "entry": "packages/babel-core/lib/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "@babel/core",
+        "version": "7.29.0",
+        "files": 119
+      }
     },
     {
       "id": "typescript-compiler",
@@ -272,7 +557,26 @@
         "diagnostic-shape",
         "exit-code"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/microsoft/TypeScript.git",
+      "declarationSource": "packages/typescript/lib/typescript.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/typescript",
+      "packageMetadataPath": "packages/typescript/package.json",
+      "entry": "packages/typescript/lib/typescript.js",
+      "vendored": {
+        "source": "npm",
+        "package": "typescript",
+        "version": "6.0.3",
+        "files": 140
+      }
     },
     {
       "id": "graphql-engine",
@@ -287,7 +591,26 @@
       "comparator": "json-errors-async",
       "vectorFocus": "schema build, validation, execution, subscriptions subset",
       "parityDimensions": ["result-json", "error-shape", "async-order"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/graphql/graphql-js.git",
+      "declarationSource": "packages/graphql/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/graphql",
+      "packageMetadataPath": "packages/graphql/package.json",
+      "entry": "packages/graphql/index.mjs",
+      "vendored": {
+        "source": "npm",
+        "package": "graphql",
+        "version": "16.14.0",
+        "files": 397
+      }
     },
     {
       "id": "apollo-server-app",
@@ -302,7 +625,26 @@
       "comparator": "json-http-plugin-order",
       "vectorFocus": "schema/resolvers/plugins, context, errors, local HTTP execution",
       "parityDimensions": ["json-result", "http-status", "plugin-order"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/apollographql/apollo-server.git",
+      "declarationSource": "packages/apollo-server/dist/esm/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/apollo-server",
+      "packageMetadataPath": "packages/apollo-server/package.json",
+      "entry": "packages/apollo-server/dist/esm/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "@apollo/server",
+        "version": "5.5.1",
+        "files": 556
+      }
     },
     {
       "id": "socketio-app",
@@ -322,7 +664,26 @@
         "close-shape",
         "error-shape"
       ],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "git+https://github.com/socketio/socket.io.git",
+      "declarationSource": "packages/socket.io/dist/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/socket.io",
+      "packageMetadataPath": "packages/socket.io/package.json",
+      "entry": "packages/socket.io/dist/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "socket.io",
+        "version": "4.8.3",
+        "files": 30
+      }
     },
     {
       "id": "typeorm-app",
@@ -337,7 +698,26 @@
       "comparator": "sql-json-logs-errors",
       "vectorFocus": "metadata, entity manager, query builder, transaction API with deterministic local driver",
       "parityDimensions": ["sql", "log-output", "result-json", "error-shape"],
-      "vectors": { "expected": 100, "status": "pending-vendor" }
+      "vectors": {
+        "expected": 100,
+        "status": "pending-vectors"
+      },
+      "source": "https://github.com/typeorm/typeorm.git",
+      "declarationSource": "packages/typeorm/index.d.ts",
+      "packageManager": {
+        "name": "npm",
+        "lockfile": "package-lock.json",
+        "installedWith": "npm ci --ignore-scripts"
+      },
+      "packagePath": "packages/typeorm",
+      "packageMetadataPath": "packages/typeorm/package.json",
+      "entry": "packages/typeorm/index.js",
+      "vendored": {
+        "source": "npm",
+        "package": "typeorm",
+        "version": "0.3.29",
+        "files": 3068
+      }
     }
   ]
 }

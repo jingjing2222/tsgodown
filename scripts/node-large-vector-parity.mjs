@@ -16,7 +16,7 @@ const cases = manifest.entries.map((entry) => ({
     status: "blocked",
     vectors: 0,
     requiredVectors: entry.vectors.expected,
-    reason: "100 Vitest vectors not vendored yet",
+    reason: "100 Vitest vectors not implemented yet",
   },
   go: {
     build: { status: "blocked", reason: "generated Go vector suite missing" },

@@ -6,6 +6,8 @@ artifacts/
 examples/**/dist-go/
 examples/**/artifacts/
 test-corpus/node-real/generated-go/
+test-corpus/node-large/generated-go/
+test-corpus/node-large/node_modules/
 .DS_Store
 *.log
 target/

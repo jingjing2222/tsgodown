@@ -12,6 +12,7 @@ describe("large Node corpus manifest", () => {
     expect(manifest.version).toBe("node-large-corpus.v1");
     expect(manifest.nodeLts).toBe("24.15.0");
     expect(manifest.policy.vectorsPerEntry).toBe(100);
+    expect(manifest.policy.status).toBe("vendored");
     expect(manifest.entries).toHaveLength(20);
   });
 
@@ -22,8 +23,31 @@ describe("large Node corpus manifest", () => {
       expect(entry.package).toBeTypeOf("string");
       expect(entry.version).toMatch(/^\d+\.\d+\.\d+/);
       expect(entry.license).toBeTypeOf("string");
+      expect(entry.source).toBeTypeOf("string");
       expect(entry.sourceLanguage).toMatch(/^(javascript|typescript)$/);
       expect(entry.moduleFormat).toMatch(/^(cjs|esm|esm-cjs)$/);
+      expect(entry.declarationSource).toBeTypeOf("string");
+      expect(entry.packageManager).toEqual({
+        name: "npm",
+        lockfile: "package-lock.json",
+        installedWith: "npm ci --ignore-scripts",
+      });
+      expect(entry.packagePath).toMatch(/^packages\//);
+      expect(entry.packageMetadataPath).toBe(
+        `${entry.packagePath}/package.json`,
+      );
+      expect(entry.entry).toMatch(/^packages\//);
+      expect(entry.entry.startsWith(entry.packagePath)).toBe(true);
+      expect(
+        fs.existsSync(path.join(corpusRoot, entry.packageMetadataPath)),
+      ).toBe(true);
+      expect(fs.existsSync(path.join(corpusRoot, entry.entry))).toBe(true);
+      expect(entry.vendored).toMatchObject({
+        source: "npm",
+        package: entry.package,
+        version: entry.version,
+      });
+      expect(entry.vendored.files).toBeGreaterThan(0);
       expect(entry.nativeOrExternalDependencyStatus).toBeTypeOf("string");
       expect(entry.probeCommand).toMatch(/^npm run --silent probe:/);
       expect(entry.comparator).toBeTypeOf("string");
@@ -31,7 +55,7 @@ describe("large Node corpus manifest", () => {
       expect(entry.parityDimensions.length).toBeGreaterThan(0);
       expect(entry.vectors).toEqual({
         expected: 100,
-        status: "pending-vendor",
+        status: "pending-vectors",
       });
     },
   );

@@ -13,7 +13,10 @@ const cases = manifest.entries.map((entry) => ({
   id: entry.id,
   package: entry.package,
   version: entry.version,
-  node: { status: "blocked", reason: "large corpus package not vendored yet" },
+  node: {
+    status: "blocked",
+    reason: "100-vector Node probe suite not implemented yet",
+  },
   go: {
     build: {
       status: "blocked",
@@ -23,7 +26,7 @@ const cases = manifest.entries.map((entry) => ({
   },
   parity: {
     status: "blocked",
-    reason: "100-vector parity suite not vendored yet",
+    reason: "100-vector parity suite not implemented yet",
   },
 }));
 
