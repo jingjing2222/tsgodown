@@ -107,11 +107,94 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 "if {test} {{\n{consequent}\n}} else {{\n{alternate}\n}}"
             ))
         }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
+        _ => None,
+    }
+}
+
+fn render_for_stmt(
+    init: &[JsStmt],
+    test: Option<&JsExpr>,
+    update: Option<&JsExpr>,
+    body: &[JsStmt],
+    state: &AotState,
+) -> Option<String> {
+    if init.len() > 1 {
+        return None;
+    }
+    let mut loop_state = AotState {
+        bindings: state.bindings.clone(),
+        numeric_bindings: state.numeric_bindings.clone(),
+        functions: state.functions.clone(),
+    };
+    let init = init
+        .first()
+        .map(|stmt| render_for_init(stmt, &mut loop_state))
+        .unwrap_or_else(|| Some(String::new()))?;
+    let test = test
+        .map(|expr| render_bool_expr(expr, &loop_state))
+        .unwrap_or_else(|| Some(String::new()))?;
+    let update = update
+        .map(|expr| render_for_update(expr, &loop_state))
+        .unwrap_or_else(|| Some(String::new()))?;
+    let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+    Some(format!("for {init}; {test}; {update} {{\n{body}\n}}"))
+}
+
+fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
+    let JsStmt::VarDecl {
+        name,
+        init: Some(init),
+    } = stmt
+    else {
+        return None;
+    };
+    let value = render_numeric_expr(init, state)?;
+    state.bindings.insert(name.clone());
+    state.numeric_bindings.insert(name.clone());
+    Some(format!("{} := {value}", sanitize_go_identifier(name)))
+}
+
+fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Update { op, arg, .. } if matches!(op.as_str(), "++" | "--") => {
+            let JsExpr::Ident { name } = arg.as_ref() else {
+                return None;
+            };
+            if !state.numeric_bindings.contains(name) {
+                return None;
+            }
+            Some(format!("{}{}", sanitize_go_identifier(name), op))
+        }
+        JsExpr::Assign { op, left, right } if matches!(op.as_str(), "+=" | "-=") => {
+            let JsExpr::Ident { name } = left.as_ref() else {
+                return None;
+            };
+            if !state.numeric_bindings.contains(name) {
+                return None;
+            }
+            let right = render_numeric_expr(right, state)?;
+            Some(format!("{} {} {right}", sanitize_go_identifier(name), op))
+        }
         _ => None,
     }
 }
 
 fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
+    let block_state = AotState {
+        bindings: state.bindings.clone(),
+        numeric_bindings: state.numeric_bindings.clone(),
+        functions: state.functions.clone(),
+    };
+    render_stmt_block_with_state(stmts, &block_state)
+}
+
+fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let mut block_state = AotState {
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),

@@ -15,7 +15,7 @@ semantics. Corpus success does not count if codegen emits
 | aot.scope.lexical_slots | Lexical slots | WIP | WIP | AOT_LEXICAL_SLOT_UNSUPPORTED | focused unit tests | Top-level bindings and function params work for small numeric subset. TDZ and block scope pending. |
 | aot.scope.captured_slots | Captured slots and closures | TODO | TODO | AOT_CAPTURED_SLOT_UNSUPPORTED | planned | Need closure environment structs and mutation semantics. |
 | aot.control.if_return | Native if and return control flow | WIP | WIP | AOT_CONTROL_IF_RETURN_UNSUPPORTED | focused unit tests | Top-level `if` and function-local `if` plus `return` emit native Go control flow for numeric predicates. |
-| aot.control.loops | Native loop control flow | TODO | TODO | AOT_LOOP_UNSUPPORTED | planned | Need `for`, `while`, `for-of`, break/continue labels, iterator closing. |
+| aot.control.loops | Native loop control flow | WIP | WIP | AOT_LOOP_UNSUPPORTED | focused unit tests | Simple top-level numeric `for` loops emit native Go control flow. `while`, `for-of`, labels, and iterator closing pending. |
 | aot.expr.numeric | Numeric expressions | WIP | WIP | AOT_NUMERIC_EXPR_UNSUPPORTED | focused unit tests | Numeric literals, arithmetic, comparisons, and strict equality for number subset. JS coercion matrix pending. |
 | aot.expr.boolean | Boolean expressions | WIP | WIP | AOT_BOOLEAN_EXPR_UNSUPPORTED | focused unit tests | Boolean literals, comparison predicates, logical-not, logical-and, logical-or for bool subset. Truthiness pending. |
 | aot.property.static | Static property access | TODO | TODO | AOT_STATIC_PROPERTY_UNSUPPORTED | planned | Need contract ops for object/array/string/module property lookup. |
