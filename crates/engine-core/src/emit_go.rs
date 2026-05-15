@@ -397,8 +397,10 @@ type ClassValue struct {
 	Constructor *FunctionValue
 	Methods     map[string]FunctionValue
 	Getters     map[string]FunctionValue
+	Setters     map[string]FunctionValue
 	Static      map[string]FunctionValue
 	StaticGetters map[string]FunctionValue
+	StaticSetters map[string]FunctionValue
 	Super       *ClassValue
 	SuperCtor   any
 	Callable    bool
@@ -4908,6 +4910,12 @@ func assignTarget(target map[string]any, value any, env Env) error {
 		}
 		objectMap, ok := object.(map[string]any)
 		if ok {
+			if classValue, ok := objectMap["__class"].(*ClassValue); ok {
+				if setter, ok := lookupSetter(classValue, property); ok {
+					_, err := callFunctionWithThisValues(setter, []any{value}, objectMap)
+					return err
+				}
+			}
 			setObjectProperty(objectMap, property, value)
 			return nil
 		}
@@ -4937,6 +4945,10 @@ func assignTarget(target map[string]any, value any, env Env) error {
 			return nil
 		}
 		if classValue, ok := object.(*ClassValue); ok {
+			if setter, ok := lookupStaticSetter(classValue, property); ok {
+				_, err := callFunctionWithThisValues(setter, []any{value}, classValue)
+				return err
+			}
 			if classValue.Props == nil {
 				classValue.Props = map[string]any{}
 			}
@@ -6703,8 +6715,10 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 	classValue := &ClassValue{
 		Methods:       map[string]FunctionValue{},
 		Getters:       map[string]FunctionValue{},
+		Setters:       map[string]FunctionValue{},
 		Static:        map[string]FunctionValue{},
 		StaticGetters: map[string]FunctionValue{},
+		StaticSetters: map[string]FunctionValue{},
 		Props:         map[string]any{},
 	}
 		if len(superExpr) > 0 {
@@ -6745,6 +6759,12 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 				classValue.StaticGetters[name] = function
 			} else {
 				classValue.Getters[name] = function
+			}
+		case "setter":
+			if method["isStatic"] == true {
+				classValue.StaticSetters[name] = function
+			} else {
+				classValue.Setters[name] = function
 			}
 		default:
 			return nil, fmt.Errorf("unsupported class method %s", asString(method["kind"]))
@@ -7038,8 +7058,10 @@ func builtinErrorClass(name string) *ClassValue {
 		Constructor: &constructor,
 		Methods:     map[string]FunctionValue{},
 		Getters:     map[string]FunctionValue{},
+		Setters:     map[string]FunctionValue{},
 		Static:      map[string]FunctionValue{},
 		StaticGetters: map[string]FunctionValue{},
+		StaticSetters: map[string]FunctionValue{},
 		Callable:    true,
 		Props:       map[string]any{},
 	}
@@ -7058,6 +7080,24 @@ func lookupGetter(classValue *ClassValue, property string) (FunctionValue, bool)
 	for current := classValue; current != nil; current = current.Super {
 		if getter, ok := current.Getters[property]; ok {
 			return getter, true
+		}
+	}
+	return FunctionValue{}, false
+}
+
+func lookupSetter(classValue *ClassValue, property string) (FunctionValue, bool) {
+	for current := classValue; current != nil; current = current.Super {
+		if setter, ok := current.Setters[property]; ok {
+			return setter, true
+		}
+	}
+	return FunctionValue{}, false
+}
+
+func lookupStaticSetter(classValue *ClassValue, property string) (FunctionValue, bool) {
+	for current := classValue; current != nil; current = current.Super {
+		if setter, ok := current.StaticSetters[property]; ok {
+			return setter, true
 		}
 	}
 	return FunctionValue{}, false

@@ -3204,6 +3204,14 @@ console.log("try", risky(1), risky(3), cleanup, wrapped)
             "src/index.js",
             r#"
 class Counter {
+  static get label() {
+    return this._label
+  }
+
+  static set label(value) {
+    this._label = value
+  }
+
   static get ANY() {
     return "*"
   }
@@ -3217,6 +3225,10 @@ class Counter {
 
   get current() {
     return this.value
+  }
+
+  set current(value) {
+    this.value = value * 2
   }
 
   inc(step) {
@@ -3264,7 +3276,10 @@ arrayChild.fill("q")
 const error = new CustomError("boom")
 const privateCounter = new PrivateCounter()
 StaticPrivate.open()
-console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, typeof ArrayChild, arrayChild.length, arrayChild.join(""), error instanceof Error, error.message, reused === counter, reused.current, privateCounter.next(), PrivateCounter.read(), StaticPrivate.read())
+counter.current = 7
+Counter.label = "C"
+derived.current = 6
+console.log("class", counter.current, Counter.label, Counter.ANY, derived.current, derived instanceof Counter, typeof ArrayChild, arrayChild.length, arrayChild.join(""), error instanceof Error, error.message, reused === counter, reused.current, privateCounter.next(), PrivateCounter.read(), StaticPrivate.read())
 "#,
         );
 
@@ -3314,7 +3329,7 @@ console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "class 5 5 * 5 true function 2 qq true boom true 5 3 4 true\n"
+            "class 14 C * 12 true function 2 qq true boom true 14 3 4 true\n"
         );
     }
 

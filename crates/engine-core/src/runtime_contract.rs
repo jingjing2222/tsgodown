@@ -541,7 +541,11 @@ fn collect_unsupported_class(
         collect_unsupported_expr(super_class, unsupported);
     }
     for method in methods {
-        if method.kind != "constructor" && method.kind != "method" && method.kind != "getter" {
+        if method.kind != "constructor"
+            && method.kind != "method"
+            && method.kind != "getter"
+            && method.kind != "setter"
+        {
             unsupported.push(format!("class {} methods", method.kind));
         }
         collect_unsupported_stmt_list(&method.body, true, unsupported);
