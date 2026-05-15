@@ -95,7 +95,11 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/config: {}
+  packages/config:
+    dependencies:
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(typescript@5.9.3)
 
   packages/core:
     dependencies:
@@ -142,6 +146,9 @@ importers:
 
   packages/tsdown-driver:
     dependencies:
+      '@tsgodown/config':
+        specifier: workspace:*
+        version: link:../config
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)

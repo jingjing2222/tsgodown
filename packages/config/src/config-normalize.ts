@@ -1,18 +1,25 @@
-import type { UserConfig, UserConfigExport } from "./types.js";
+import type { UserConfig, UserConfigExport, UserConfigFn } from "./types.js";
 
-function buildConfigEnv(): { mode: string } {
-  return {
-    mode: process.env.NODE_ENV || "development",
-  };
+function buildTsdownFunctionArgs(): Parameters<UserConfigFn> {
+  return [{}, { ci: process.env.CI === "true" }];
+}
+
+function normalizeArrayableConfig(
+  value: UserConfig | UserConfig[],
+): UserConfig[] {
+  return Array.isArray(value) ? value : [value];
 }
 
 export async function normalizeUserConfigExport(
   exported: UserConfigExport,
 ): Promise<UserConfig[]> {
-  if (typeof exported === "function") {
-    const resolved = await exported(buildConfigEnv());
-    return [resolved];
+  const resolvedExport = await exported;
+
+  if (typeof resolvedExport === "function") {
+    const [inlineConfig, context] = buildTsdownFunctionArgs();
+    const resolved = await resolvedExport(inlineConfig, context);
+    return normalizeArrayableConfig(resolved);
   }
 
-  return Array.isArray(exported) ? exported : [exported];
+  return normalizeArrayableConfig(resolvedExport);
 }

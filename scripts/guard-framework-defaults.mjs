@@ -3,6 +3,17 @@ import fs from "node:fs";
 
 const RULES = [
   {
+    file: "packages/config/src/types.ts",
+    forbidden: [/(?:^|\n)\s*(fastify|hono|express|koa|nestjs?)\??\s*:/i],
+    reason:
+      "defineConfig surface must stay tsdown-compatible and framework-free",
+  },
+  {
+    file: "examples/fastify-scaffold-real/tsgodown.config.ts",
+    forbidden: [/(?:^|\n)\s*(fastify|hono|express|koa|nestjs?)\s*:/i],
+    reason: "example configs must use tsdown-compatible compiler options only",
+  },
+  {
     file: "scripts/rust-engine-launcher.mjs",
     forbidden: [
       /framework\s*:\s*["'`](fastify|hono|express|koa|nestjs?)["'`]/i,

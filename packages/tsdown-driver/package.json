@@ -10,6 +10,7 @@
     "test": "node --import tsx --test test/**/*.test.ts"
   },
   "dependencies": {
+    "@tsgodown/config": "workspace:*",
     "tsdown": "^0.20.3"
   },
   "exports": {
