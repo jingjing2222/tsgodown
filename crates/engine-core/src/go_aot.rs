@@ -1749,6 +1749,16 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(left, param_index, kinds);
             infer_expr_param_kinds(right, param_index, kinds);
         }
+        JsExpr::Binary { op, left, right } if op == "||" => {
+            if is_string_literal_like(right) {
+                mark_ident_param_kind(left, param_index, kinds, AotSlotKind::String);
+            }
+            if is_string_literal_like(left) {
+                mark_ident_param_kind(right, param_index, kinds, AotSlotKind::String);
+            }
+            infer_expr_param_kinds(left, param_index, kinds);
+            infer_expr_param_kinds(right, param_index, kinds);
+        }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             infer_comparison_param_kind(left, right, param_index, kinds);
             infer_comparison_param_kind(right, left, param_index, kinds);
@@ -2398,6 +2408,13 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_string_expr(right, state)?;
             Some(format!("({left} + {right})"))
         }
+        JsExpr::Binary { op, left, right } if op == "||" => {
+            let left = render_string_expr(left, state)?;
+            let right = render_string_expr(right, state)?;
+            Some(format!(
+                "func() string {{ value := {left}; if value != \"\" {{ return value }}; return {right} }}()"
+            ))
+        }
         JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
@@ -2459,6 +2476,7 @@ fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<S
         } if static_member_kind(object, property, state) == Some(AotSlotKind::String) => {
             render_static_member_expr(object, property, state)
         }
+        JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         _ => None,
     }
 }
@@ -2708,7 +2726,7 @@ fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Opti
 fn call_uses_strings_import(callee: &JsExpr) -> bool {
     matches!(
         string_method_name(callee),
-        Some("toLowerCase" | "trim" | "includes" | "indexOf")
+        Some("toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf")
     )
 }
 
@@ -2723,7 +2741,9 @@ fn string_method_name(callee: &JsExpr) -> Option<&str> {
         return None;
     };
     match property.as_str() {
-        "toLowerCase" | "trim" | "includes" | "indexOf" => Some(property.as_str()),
+        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt" => {
+            Some(property.as_str())
+        }
         _ => None,
     }
 }
@@ -2741,8 +2761,9 @@ fn string_method_receiver<'a>(
         return None;
     };
     match method {
-        "toLowerCase" | "trim" if args.is_empty() => {}
+        "toLowerCase" | "toUpperCase" | "trim" if args.is_empty() => {}
         "includes" | "indexOf" if args.len() == 1 => {}
+        "charAt" if args.len() == 1 => {}
         _ => return None,
     }
     render_string_expr(object, state)?;
@@ -2758,9 +2779,20 @@ fn render_string_string_method_call(
         let object = render_string_expr(object, state)?;
         return Some(format!("strings.ToLower({object})"));
     }
+    if let Some(object) = string_method_receiver(callee, "toUpperCase", args, state) {
+        let object = render_string_expr(object, state)?;
+        return Some(format!("strings.ToUpper({object})"));
+    }
     if let Some(object) = string_method_receiver(callee, "trim", args, state) {
         let object = render_string_expr(object, state)?;
         return Some(format!("strings.TrimSpace({object})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "charAt", args, state) {
+        let object = render_string_expr(object, state)?;
+        let index = render_numeric_expr(args.first()?, state)?;
+        return Some(format!(
+            "func() string {{ chars := []rune({object}); index := int({index}); if index < 0 || index >= len(chars) {{ return \"\" }}; return string(chars[index]) }}()"
+        ));
     }
     None
 }
