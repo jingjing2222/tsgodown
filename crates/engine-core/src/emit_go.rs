@@ -389,6 +389,13 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	env := Env{
 		"exports": exports,
 		"Error":   builtinErrorClass(),
+		"Number": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return float64(0), nil
+			}
+			return toNumber(args[0]), nil
+		}),
+		"process": processObject(),
 		"module": map[string]any{
 			"exports": exports,
 		},
@@ -503,6 +510,10 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return osModuleExports(), true
 	case "node:diagnostics_channel":
 		return diagnosticsChannelModuleExports(), true
+	case "fs", "node:fs":
+		return fsModuleExports(), true
+	case "node:module":
+		return moduleModuleExports(), true
 	default:
 		return nil, false
 	}
@@ -621,6 +632,59 @@ func osModuleExports() map[string]any {
 	})
 	exports["default"] = exports
 	return exports
+}
+
+func fsModuleExports() map[string]any {
+	exports := map[string]any{}
+	readFileSync := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("readFileSync path is required")
+		}
+		bytes, err := os.ReadFile(jsString(args[0]))
+		if err != nil {
+			return nil, err
+		}
+		return string(bytes), nil
+	})
+	exports["readFileSync"] = readFileSync
+	exports["default"] = exports
+	return exports
+}
+
+func moduleModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["createRequire"] = nativeFunction(func(args []any) (any, error) {
+		return NativeFunctionValue{Call: func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("require specifier is required")
+			}
+			if exports, ok := builtinModuleExports(jsString(args[0])); ok {
+				return exports, nil
+			}
+			return nil, fmt.Errorf("module import %s is not resolved", jsString(args[0]))
+		}}, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func processObject() map[string]any {
+	return map[string]any{
+		"env":      map[string]any{},
+		"version":  "v20.0.0",
+		"versions": map[string]any{"node": "20.0.0"},
+		"platform": runtime.GOOS,
+		"cwd": nativeFunction(func(args []any) (any, error) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", nil
+			}
+			return cwd, nil
+		}),
+		"emitWarning": nativeFunction(func(args []any) (any, error) {
+			return jsUndefined, nil
+		}),
+	}
 }
 
 func diagnosticsChannelModuleExports() map[string]any {
