@@ -1,5 +1,6 @@
 mod analyze;
 mod contract;
+mod emit_go;
 
 pub use analyze::analyze;
 pub use contract::{
@@ -7,6 +8,7 @@ pub use contract::{
     ExecutableModule, Import, InputManifest, IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue,
     Module, Route,
 };
+pub use emit_go::{emit_go, EmitGoRequest, EmitGoResponse, GeneratedFile};
 
 #[cfg(test)]
 mod tests {
@@ -170,6 +172,38 @@ export { value };
                 }),
             }]
         );
+    }
+
+    #[test]
+    fn emit_go_returns_fail_closed_generated_file() {
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/server.ts".to_string(),
+                    framework: Some("compiler".to_string()),
+                },
+                cwd: None,
+                config: AnalyzeConfig::default(),
+            },
+            package_name: Some("9-bad package".to_string()),
+        });
+
+        assert_eq!(response.version, "engine-core.emit-go.v1");
+        assert_eq!(response.target_backend, "go");
+        assert_eq!(response.files.len(), 1);
+        assert_eq!(response.files[0].path, "main.go");
+        assert!(response.files[0]
+            .contents
+            .contains("package pkg_9badpackage"));
+        assert!(response.files[0]
+            .contents
+            .contains("engine-core.emit-go.fail-closed.v1"));
+        assert!(response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "GO_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("node --"));
+        assert!(!response.files[0].contents.contains("exec.Command"));
     }
 
     fn write(root: &std::path::Path, rel: &str, source: &str) {
