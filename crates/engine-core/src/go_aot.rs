@@ -1565,6 +1565,12 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 "if {test} {{\n{consequent}\n}} else {{\n{alternate}\n}}"
             ))
         }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
         _ => None,
     }
 }
