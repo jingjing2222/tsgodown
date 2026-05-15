@@ -1267,6 +1267,85 @@ module.exports.label = label
     }
 
     #[test]
+    fn emit_go_runs_aot_basic_class_instance_subset() {
+        let root = temp_project("engine-core-aot-basic-class-instance");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+class Box {
+  constructor(label, count) {
+    this.label = label
+    this.count = count
+  }
+  name() {
+    return this.label
+  }
+  size() {
+    return this.count
+  }
+}
+const item = new Box("crate", 3)
+console.log("aot-class", item.name(), item.size())
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-basic-class-instance".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("type Box struct"));
+        assert!(response.files[0]
+            .contents
+            .contains("func (self *Box) name() any"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "aot-class crate 3\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_top_level_numeric_if_subset() {
         let root = temp_project("engine-core-aot-top-level-if");
         write(

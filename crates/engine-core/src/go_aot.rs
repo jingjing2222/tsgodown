@@ -12,14 +12,21 @@ pub(crate) fn render_aot_executable_program(
         return None;
     }
     let module_functions = collect_module_functions(&analyzed.ir);
+    let module_classes = collect_module_classes(&analyzed.ir);
     let module_default_exports = collect_module_default_exports(&analyzed.ir, &module_functions);
     let module_named_exports = collect_module_named_exports(&analyzed.ir, &module_functions);
     let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
-    let declarations = render_module_decls(&analyzed.ir, &module_functions, &module_slots)?;
+    let declarations = render_module_decls(
+        &analyzed.ir,
+        &module_functions,
+        &module_classes,
+        &module_slots,
+    )?;
     let mut state = module_aot_state(
         module,
         &analyzed.ir,
         &module_functions,
+        &module_classes,
         &module_default_exports,
         &module_named_exports,
         &module_slots,
@@ -27,7 +34,7 @@ pub(crate) fn render_aot_executable_program(
     state.go_imports = collect_aot_imports(&analyzed.ir);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
-        if let JsStmt::FunctionDecl { .. } = stmt {
+        if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. }) {
             continue;
         }
         body.push(render_stmt(stmt, &mut state)?);
@@ -214,6 +221,106 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
     functions
 }
 
+fn collect_module_classes(ir: &IrDocument) -> BTreeMap<(String, String), AotClass> {
+    let mut classes = BTreeMap::new();
+    let Some(entry) = entry_module(ir) else {
+        return classes;
+    };
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            if let Some(class) = collect_class(module, entry, stmt) {
+                classes.insert((module.id.clone(), class.name.clone()), class);
+            }
+        }
+    }
+    classes
+}
+
+fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotClass> {
+    let JsStmt::ClassDecl {
+        name,
+        super_class,
+        methods,
+    } = stmt
+    else {
+        return None;
+    };
+    if super_class.is_some() {
+        return None;
+    }
+    let go_name = if module.id == entry.id {
+        sanitize_go_identifier(name)
+    } else {
+        module_member_go_name(module, name)
+    };
+    let mut fields = BTreeMap::new();
+    let mut constructor_params = Vec::new();
+    let mut constructor_values = Vec::new();
+    let mut class_methods = BTreeMap::new();
+    for method in methods {
+        if method.r#async || method.generator || method.rest_param.is_some() || method.is_static {
+            return None;
+        }
+        if method.kind == "constructor" {
+            for param in &method.params {
+                constructor_params.push(param.clone());
+            }
+            for stmt in &method.body {
+                let JsStmt::Expr { expr } = stmt else {
+                    return None;
+                };
+                let JsExpr::Assign { op, left, right } = expr else {
+                    return None;
+                };
+                if op != "=" {
+                    return None;
+                }
+                let property = this_member_property(left)?;
+                let kind = match right.as_ref() {
+                    JsExpr::Value {
+                        value: JsValue::String { .. },
+                    } => AotSlotKind::String,
+                    JsExpr::Value {
+                        value: JsValue::Number { .. },
+                    } => AotSlotKind::Number,
+                    JsExpr::Value {
+                        value: JsValue::Bool { .. },
+                    } => AotSlotKind::Bool,
+                    JsExpr::Ident { name } if method.params.contains(name) => AotSlotKind::Any,
+                    _ => return None,
+                };
+                fields.insert(property.clone(), kind);
+                constructor_values.push((property, right.as_ref().clone()));
+            }
+            continue;
+        }
+        if method.kind != "method" || method.body.len() != 1 {
+            return None;
+        }
+        let JsStmt::Return { value: Some(value) } = &method.body[0] else {
+            return None;
+        };
+        class_methods.insert(
+            method.name.clone(),
+            AotMethod {
+                params: method.params.clone(),
+                return_expr: value.clone(),
+            },
+        );
+    }
+    Some(AotClass {
+        name: name.clone(),
+        go_name,
+        fields,
+        constructor_params,
+        constructor_values,
+        methods: class_methods,
+    })
+}
+
 fn collect_module_default_exports(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
@@ -297,6 +404,7 @@ fn collect_module_slots(
             &BTreeMap::new(),
             &BTreeMap::new(),
             &BTreeMap::new(),
+            &BTreeMap::new(),
         ) else {
             continue;
         };
@@ -328,6 +436,7 @@ fn collect_module_slots(
 fn render_module_decls(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_classes: &BTreeMap<(String, String), AotClass>,
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<Vec<String>> {
     let mut declarations = Vec::new();
@@ -338,10 +447,17 @@ fn render_module_decls(
             module,
             ir,
             module_functions,
+            module_classes,
             &module_default_exports,
             &module_named_exports,
             module_slots,
         )?;
+        for stmt in &module.executable.as_ref()?.stmts {
+            if let JsStmt::ClassDecl { name, .. } = stmt {
+                let class = module_classes.get(&(module.id.clone(), name.clone()))?;
+                declarations.push(render_class_decl(class)?);
+            }
+        }
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::VarDecl { name, .. } = stmt {
                 if !is_exported_name(module, name) {
@@ -368,6 +484,7 @@ fn module_aot_state(
     module: &Module,
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
+    module_classes: &BTreeMap<(String, String), AotClass>,
     module_default_exports: &BTreeMap<String, AotFunction>,
     module_named_exports: &BTreeMap<String, BTreeMap<String, AotFunction>>,
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
@@ -382,6 +499,10 @@ fn module_aot_state(
             if let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) {
                 state.bind_slot(name, slot.go_name.clone(), slot.kind);
             }
+        }
+        if let JsStmt::ClassDecl { name, .. } = stmt {
+            let class = module_classes.get(&(module.id.clone(), name.clone()))?;
+            state.classes.insert(name.clone(), class.clone());
         }
     }
     for import in &module.imports {
@@ -455,6 +576,23 @@ fn cjs_named_export_property(expr: &JsExpr) -> Option<String> {
     }
 }
 
+fn this_member_property(expr: &JsExpr) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if matches!(object.as_ref(), JsExpr::This) {
+        Some(property.clone())
+    } else {
+        None
+    }
+}
+
 fn module_go_prefix(module: &Module) -> String {
     let raw = module
         .source_path
@@ -486,7 +624,11 @@ struct AotState {
     string_bindings: BTreeSet<String>,
     bool_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
+    class_instance_bindings: BTreeMap<String, String>,
+    current_receiver: Option<String>,
+    current_fields: BTreeMap<String, AotSlotKind>,
     functions: BTreeMap<String, AotFunction>,
+    classes: BTreeMap<String, AotClass>,
     namespace_functions: BTreeMap<(String, String), AotFunction>,
 }
 
@@ -495,6 +637,7 @@ impl AotState {
         self.bindings.insert(name.to_string());
         self.binding_refs.insert(name.to_string(), go_ref);
         match kind {
+            AotSlotKind::Any => {}
             AotSlotKind::Bool => {
                 self.bool_bindings.insert(name.to_string());
             }
@@ -515,6 +658,22 @@ struct AotFunction {
 }
 
 #[derive(Clone)]
+struct AotClass {
+    name: String,
+    go_name: String,
+    fields: BTreeMap<String, AotSlotKind>,
+    constructor_params: Vec<String>,
+    constructor_values: Vec<(String, JsExpr)>,
+    methods: BTreeMap<String, AotMethod>,
+}
+
+#[derive(Clone)]
+struct AotMethod {
+    params: Vec<String>,
+    return_expr: JsExpr,
+}
+
+#[derive(Clone)]
 struct AotModuleSlot {
     kind: AotSlotKind,
     go_name: String,
@@ -529,9 +688,19 @@ struct AotObject {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AotSlotKind {
+    Any,
     Bool,
     Number,
     String,
+}
+
+fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
+    match kind {
+        AotSlotKind::Any => "any",
+        AotSlotKind::Bool => "bool",
+        AotSlotKind::Number => "float64",
+        AotSlotKind::String => "string",
+    }
 }
 
 fn entry_module(ir: &IrDocument) -> Option<&Module> {
@@ -572,6 +741,14 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.object_bindings.insert(name.clone(), object);
+                    return Some(format!("var {ident} = {value}"));
+                }
+                if let Some((class_name, value)) = render_new_class_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state
+                        .class_instance_bindings
+                        .insert(name.clone(), class_name);
                     return Some(format!("var {ident} = {value}"));
                 }
                 if let Some(value) = render_json_value_expr(expr, state) {
@@ -632,7 +809,11 @@ fn render_for_stmt(
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
+        class_instance_bindings: state.class_instance_bindings.clone(),
+        current_receiver: state.current_receiver.clone(),
+        current_fields: state.current_fields.clone(),
         functions: state.functions.clone(),
+        classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
     };
     let init = init
@@ -703,7 +884,11 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
+        class_instance_bindings: state.class_instance_bindings.clone(),
+        current_receiver: state.current_receiver.clone(),
+        current_fields: state.current_fields.clone(),
         functions: state.functions.clone(),
+        classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
@@ -718,7 +903,11 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
+        class_instance_bindings: state.class_instance_bindings.clone(),
+        current_receiver: state.current_receiver.clone(),
+        current_fields: state.current_fields.clone(),
         functions: state.functions.clone(),
+        classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
     };
     stmts
@@ -726,6 +915,97 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         .map(|stmt| render_stmt(stmt, &mut block_state))
         .collect::<Option<Vec<_>>>()
         .map(|stmts| stmts.join("\n"))
+}
+
+fn render_class_decl(class: &AotClass) -> Option<String> {
+    let fields = class
+        .fields
+        .iter()
+        .map(|(name, kind)| {
+            format!(
+                "{} {}",
+                sanitize_go_identifier(name),
+                go_type_for_slot(*kind)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let params = class
+        .constructor_params
+        .iter()
+        .map(|param| {
+            let kind = class
+                .constructor_values
+                .iter()
+                .find_map(|(_, expr)| match expr {
+                    JsExpr::Ident { name } if name == param => Some(AotSlotKind::Any),
+                    _ => None,
+                })
+                .unwrap_or(AotSlotKind::Any);
+            format!(
+                "{} {}",
+                sanitize_go_identifier(param),
+                go_type_for_slot(kind)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let constructor_fields = class
+        .constructor_values
+        .iter()
+        .map(|(field, value)| {
+            let rendered = render_class_constructor_value(value)?;
+            Some(format!("{}: {rendered}", sanitize_go_identifier(field)))
+        })
+        .collect::<Option<Vec<_>>>()?
+        .join(", ");
+    let mut out = vec![format!(
+        "type {} struct {{\n{}\n}}\n\nfunc new_{}({params}) *{} {{\n\treturn &{}{{{constructor_fields}}}\n}}",
+        class.go_name,
+        indent_lines(&fields),
+        class.go_name,
+        class.go_name,
+        class.go_name
+    )];
+    for (method_name, method) in &class.methods {
+        out.push(render_class_method_decl(class, method_name, method)?);
+    }
+    Some(out.join("\n\n"))
+}
+
+fn render_class_constructor_value(expr: &JsExpr) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } => Some(sanitize_go_identifier(name)),
+        JsExpr::Value { value } => render_value(value),
+        _ => None,
+    }
+}
+
+fn render_class_method_decl(
+    class: &AotClass,
+    method_name: &str,
+    method: &AotMethod,
+) -> Option<String> {
+    let mut state = AotState {
+        current_receiver: Some("self".to_string()),
+        current_fields: class.fields.clone(),
+        ..AotState::default()
+    };
+    for param in &method.params {
+        state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    let params = method
+        .params
+        .iter()
+        .map(|param| format!("{} any", sanitize_go_identifier(param)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let returned = render_expr(&method.return_expr, &state)?;
+    Some(format!(
+        "func (self *{}) {}({params}) any {{\n\treturn {returned}\n}}",
+        class.go_name,
+        sanitize_go_identifier(method_name)
+    ))
 }
 
 fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Option<String> {
@@ -745,6 +1025,7 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Optio
     }
     let mut function_state = AotState {
         functions: state.functions.clone(),
+        classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         ..AotState::default()
     };
@@ -876,6 +1157,27 @@ fn render_update_stmt(op: &str, arg: &JsExpr, state: &AotState) -> Option<String
     Some(format!("{}{}", sanitize_go_identifier(name), op))
 }
 
+fn render_new_class_expr(expr: &JsExpr, state: &AotState) -> Option<(String, String)> {
+    let JsExpr::New { callee, args } = expr else {
+        return None;
+    };
+    let JsExpr::Ident { name } = callee.as_ref() else {
+        return None;
+    };
+    let class = state.classes.get(name)?;
+    if class.constructor_params.len() != args.len() {
+        return None;
+    }
+    let rendered_args = args
+        .iter()
+        .map(|arg| render_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    Some((
+        name.clone(),
+        format!("new_{}({})", class.go_name, rendered_args.join(", ")),
+    ))
+}
+
 fn is_console_log(expr: &JsExpr) -> bool {
     matches!(
         expr,
@@ -915,6 +1217,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("({left} {op} {right})"))
         }
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
+        JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         JsExpr::Member {
             object,
             property,
@@ -1026,6 +1329,10 @@ fn render_typed_slot_expr(
 
 fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) -> Option<String> {
     static_member_kind(object, property, state)?;
+    if matches!(object, JsExpr::This) {
+        let receiver = state.current_receiver.as_ref()?;
+        return Some(format!("{}.{}", receiver, sanitize_go_identifier(property)));
+    }
     let JsExpr::Ident { name } = object else {
         return None;
     };
@@ -1037,6 +1344,9 @@ fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) 
 }
 
 fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Option<AotSlotKind> {
+    if matches!(object, JsExpr::This) {
+        return state.current_fields.get(property).copied();
+    }
     let JsExpr::Ident { name } = object else {
         return None;
     };
@@ -1059,6 +1369,23 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         let JsExpr::Ident { name } = object.as_ref() else {
             return None;
         };
+        if let Some(class_name) = state.class_instance_bindings.get(name) {
+            let class = state.classes.get(class_name)?;
+            let method = class.methods.get(property)?;
+            if method.params.len() != args.len() {
+                return None;
+            }
+            let rendered_args = args
+                .iter()
+                .map(|arg| render_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            return Some(format!(
+                "{}.{}({})",
+                go_binding_ref(name, state),
+                sanitize_go_identifier(property),
+                rendered_args.join(", ")
+            ));
+        }
         let function = state
             .namespace_functions
             .get(&(name.clone(), property.clone()))?;
