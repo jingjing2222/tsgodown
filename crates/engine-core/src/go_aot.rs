@@ -78,16 +78,50 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
     match stmt {
         JsStmt::VarDecl { name, init } => {
             let ident = sanitize_go_identifier(name);
+            if let Some(expr) = init {
+                if let Some(value) = render_numeric_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.numeric_bindings.insert(name.clone());
+                    return Some(format!("var {ident} float64 = {value}"));
+                }
+                let value = render_expr(expr, state)?;
+                state.bindings.insert(name.clone());
+                return Some(format!("var {ident} any = {value}"));
+            }
             state.bindings.insert(name.clone());
-            let value = init
-                .as_ref()
-                .map(|expr| render_expr(expr, state))
-                .unwrap_or_else(|| Some("nil".to_string()))?;
-            Some(format!("var {ident} any = {value}"))
+            Some(format!("var {ident} any = nil"))
         }
         JsStmt::Expr { expr } => render_expr_stmt(expr, state),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            let test = render_bool_expr(test, state)?;
+            let consequent = indent_lines(&render_stmt_block(consequent, state)?);
+            if alternate.is_empty() {
+                return Some(format!("if {test} {{\n{consequent}\n}}"));
+            }
+            let alternate = indent_lines(&render_stmt_block(alternate, state)?);
+            Some(format!(
+                "if {test} {{\n{consequent}\n}} else {{\n{alternate}\n}}"
+            ))
+        }
         _ => None,
     }
+}
+
+fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
+    let mut block_state = AotState {
+        bindings: state.bindings.clone(),
+        numeric_bindings: state.numeric_bindings.clone(),
+        functions: state.functions.clone(),
+    };
+    stmts
+        .iter()
+        .map(|stmt| render_stmt(stmt, &mut block_state))
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
 }
 
 fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
@@ -231,9 +265,6 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::Number { value },
         } => number_literal(value),
-        JsExpr::Ident { name } if state.bindings.contains(name) => {
-            Some(sanitize_go_identifier(name))
-        }
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
             Some(sanitize_go_identifier(name))
         }
