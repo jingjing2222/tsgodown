@@ -232,6 +232,9 @@ fn collect_builtin_usage_expr_features(
     if is_process_supported_builtin_expr(expr) || is_supported_node_builtin_call_expr(expr) {
         return;
     }
+    if is_node_path_static_string_expr(expr) {
+        return;
+    }
     match expr {
         JsExpr::Call { callee, args, .. } => {
             if let JsExpr::Member {
@@ -422,6 +425,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             }
             if is_node_path_string_call(callee, args) {
                 imports.insert("path/filepath");
+                if is_node_path_basename_call(callee, args) {
+                    imports.insert("strings");
+                }
             }
             if is_node_os_homedir_call(callee, args) {
                 imports.insert("os");
@@ -479,6 +485,12 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             imports.insert("os");
         }
         expr if is_process_platform_expr(expr) => {
+            imports.insert("runtime");
+        }
+        expr if is_node_path_sep_expr(expr) => {
+            imports.insert("os");
+        }
+        expr if is_node_path_delimiter_expr(expr) => {
             imports.insert("runtime");
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
@@ -619,6 +631,13 @@ func tsgodownFsExistsSync(path string) bool {
 		return "win32"
 	}
 	return runtime.GOOS
+}
+
+func tsgodownPathDelimiter() string {
+	if runtime.GOOS == "windows" {
+		return ";"
+	}
+	return ":"
 }
 "#
             .to_string(),
@@ -2593,6 +2612,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(go_binding_ref(name, state))
         }
         expr if process_env_lookup_name(expr).is_some() => render_process_env_lookup(expr),
+        expr if is_node_path_static_string_expr(expr) => render_node_path_static_string_expr(expr),
         JsExpr::Member {
             object,
             property,
@@ -3156,9 +3176,23 @@ fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             property,
             property_expr: None,
             optional: false,
-        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
-            && matches!(property.as_str(), "join" | "resolve")
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+            && matches!(property.as_str(), "basename" | "join" | "normalize" | "resolve")
     )
+}
+
+fn is_node_path_basename_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                && property == "basename"
+        )
 }
 
 fn render_node_path_string_call(
@@ -3186,13 +3220,89 @@ fn render_node_path_string_call(
         .map(|arg| render_string_expr(arg, state))
         .collect::<Option<Vec<_>>>()?;
     match property.as_str() {
+        "basename" if rendered_args.len() == 1 => Some(format!("filepath.Base({})", rendered_args[0])),
+        "basename" if rendered_args.len() == 2 => Some(format!(
+            "func() string {{ base := filepath.Base({}); ext := {}; if strings.HasSuffix(base, ext) {{ return strings.TrimSuffix(base, ext) }}; return base }}()",
+            rendered_args[0], rendered_args[1]
+        )),
         "join" => Some(format!("filepath.Join({})", rendered_args.join(", "))),
+        "normalize" if rendered_args.len() == 1 => Some(format!("filepath.Clean({})", rendered_args[0])),
         "resolve" => Some(format!(
             "func() string {{ value, err := filepath.Abs(filepath.Join({})); if err != nil {{ return \"\" }}; return value }}()",
             rendered_args.join(", ")
         )),
         _ => None,
     }
+}
+
+fn is_node_path_static_string_expr(expr: &JsExpr) -> bool {
+    is_node_path_sep_expr(expr)
+        || is_node_path_delimiter_expr(expr)
+        || matches!(expr, JsExpr::Member { object, property, property_expr: None, optional: false }
+        if property == "sep" && matches!(
+            object.as_ref(),
+            JsExpr::Member { object, property, property_expr: None, optional: false }
+                if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                    && matches!(property.as_str(), "posix" | "win32")
+        ))
+}
+
+fn render_node_path_static_string_expr(expr: &JsExpr) -> Option<String> {
+    if is_node_path_sep_expr(expr) {
+        return Some("string(os.PathSeparator)".to_string());
+    }
+    if is_node_path_delimiter_expr(expr) {
+        return Some("tsgodownPathDelimiter()".to_string());
+    }
+    match expr {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "sep" => match object.as_ref() {
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path") => {
+                match property.as_str() {
+                    "posix" => Some(go_string_literal("/")),
+                    "win32" => Some(go_string_literal("\\")),
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn is_node_path_sep_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+            && property == "sep"
+    )
+}
+
+fn is_node_path_delimiter_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+            && property == "delimiter"
+    )
 }
 
 fn is_node_os_homedir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {

@@ -44,7 +44,7 @@ diagnostics. `TODO` and `WIP` rows are allowed during development only.
 | node.typescript | Modules: TypeScript | stable | TODO | TODO | NODE_TYPESCRIPT_MODULE_UNSUPPORTED | planned | Node LTS TypeScript module handling and tsdown artifact mapping. |
 | node.net | Net | stable | TODO | TODO | NODE_NET_UNSUPPORTED | planned | TCP/IPC sockets. |
 | node.os | OS | stable | WIP | WIP | NODE_OS_UNSUPPORTED | focused AOT subset | `os.homedir` lowers to a Go helper; broader OS info and platform differences pending. |
-| node.path | Path | stable | WIP | WIP | NODE_PATH_UNSUPPORTED | corpus subset | `path.join` and `path.resolve` lower for string-path subsets; POSIX/win32 edge cases pending. |
+| node.path | Path | stable | WIP | WIP | NODE_PATH_UNSUPPORTED | corpus subset | `path.basename`, `path.delimiter`, `path.join`, `path.normalize`, `path.resolve`, `path.sep`, `path.posix.sep`, and `path.win32.sep` lower for string-path subsets; full POSIX/win32 edge cases pending. |
 | node.perf_hooks | Performance hooks | stable | TODO | TODO | NODE_PERF_HOOKS_UNSUPPORTED | planned | Performance timeline/observer. |
 | node.permissions | Permissions | experimental | TODO | TODO | NODE_PERMISSIONS_UNSUPPORTED | planned | Permission model decisions required. |
 | node.process | Process | stable | WIP | WIP | NODE_PROCESS_UNSUPPORTED | corpus argv/env/cwd subset | `process.env`, `process.cwd`, `process.cwd()`, `process.version`, `process.versions`, `process.versions.node`, and `process.platform` have focused AOT coverage for the Node.js 24.15.0 LTS target; signals, lifecycle, stdin, and broader process object behavior pending. |
