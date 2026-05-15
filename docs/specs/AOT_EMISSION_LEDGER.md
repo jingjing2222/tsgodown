@@ -8,7 +8,7 @@ semantics. Corpus success does not count if codegen emits
 | Key | Area | Contract Status | Go Status | Diagnostic | Evidence | Notes |
 |---|---|---|---|---|---|---|
 | aot.entry.module | Entry module emission | WIP | WIP | AOT_ENTRY_MODULE_UNSUPPORTED | focused unit tests | Import-free entry module can emit direct `main`; multi-module entry still falls back. |
-| aot.module.registry | Module registry | TODO | TODO | AOT_MODULE_REGISTRY_UNSUPPORTED | planned | Need backend-neutral module records and direct Go package/module registry. |
+| aot.module.registry | Module registry | WIP | WIP | AOT_MODULE_REGISTRY_UNSUPPORTED | focused unit tests | Local ESM named function imports can bind to direct Go functions without `RunProgram`; value exports, CJS, default interop, cache records pending. |
 | aot.module.init_order | Module init and cache order | TODO | TODO | AOT_MODULE_INIT_ORDER_UNSUPPORTED | planned | Need CJS/ESM evaluation order, cache, and circular dependency parity. |
 | aot.function.decl | Function declarations | WIP | WIP | AOT_FUNCTION_DECL_UNSUPPORTED | focused unit tests | Simple numeric functions emit direct Go functions. Closures, `this`, rest, async, generator pending. |
 | aot.function.call | Function calls | WIP | WIP | AOT_FUNCTION_CALL_UNSUPPORTED | focused unit tests | Direct calls to known AOT functions work for numeric arguments. Dynamic call/callable object pending. |
@@ -24,7 +24,7 @@ semantics. Corpus success does not count if codegen emits
 | aot.node.builtins | Node builtin helpers | TODO | TODO | AOT_NODE_BUILTIN_UNSUPPORTED | planned | Builtins must render generic Node LTS helpers, not package branches. |
 | aot.async.promise_timer | Promise and timer ordering | TODO | TODO | AOT_ASYNC_UNSUPPORTED | planned | Need direct async contract ops for Promise jobs, nextTick, timers, immediates. |
 | aot.diagnostics.fail_closed | Deterministic fail-closed diagnostics | WIP | WIP | AOT_UNSUPPORTED_SEMANTIC | runtime contract tests | Unsupported AOT semantics must fail before wrong Go output when interpreter fallback is removed. |
-| aot.no_ir_json_interpreter | No IR JSON interpreter in generated Go | WIP | WIP | AOT_IR_JSON_INTERPRETER_FORBIDDEN | focused unit tests | Simple console/function/control-flow cases assert no `RunProgram`; global gate pending. |
+| aot.no_ir_json_interpreter | No IR JSON interpreter in generated Go | WIP | WIP | AOT_IR_JSON_INTERPRETER_FORBIDDEN | focused unit tests | Simple console/function/control-flow and local ESM named function import cases assert no `RunProgram`; global gate pending. |
 | aot.holdout.parity | Holdout parity beyond corpus names | TODO | TODO | AOT_HOLDOUT_PARITY_UNSUPPORTED | planned | Need syntax/API holdouts proving no corpus/test-id hardcode. |
 | aot.benchmarks | AOT runtime benchmarks | TODO | TODO | AOT_BENCHMARK_UNTRACKED | planned | Need benchmarks proving direct code path, with execa shortcut excluded from score. |
 

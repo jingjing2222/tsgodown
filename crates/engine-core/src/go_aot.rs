@@ -8,34 +8,15 @@ pub(crate) fn render_aot_executable_program(
     analyzed: &AnalyzeResponse,
 ) -> Option<String> {
     let module = entry_module(&analyzed.ir)?;
-    if !module.imports.is_empty() {
+    if !can_aot_module_graph(&analyzed.ir) {
         return None;
     }
-    if analyzed
-        .ir
-        .modules
-        .iter()
-        .any(|candidate| !candidate.imports.is_empty())
-    {
-        return None;
-    }
-    let executable = module.executable.as_ref()?;
-    let mut state = AotState::default();
-    for stmt in &executable.stmts {
-        if let JsStmt::FunctionDecl { name, params, .. } = stmt {
-            state.functions.insert(
-                name.clone(),
-                AotFunction {
-                    params: params.clone(),
-                },
-            );
-        }
-    }
-    let mut declarations = Vec::new();
+    let module_functions = collect_module_functions(&analyzed.ir);
+    let declarations = render_module_function_decls(&analyzed.ir, &module_functions)?;
+    let mut state = module_aot_state(module, &analyzed.ir, &module_functions)?;
     let mut body = Vec::new();
-    for stmt in &executable.stmts {
+    for stmt in &module.executable.as_ref()?.stmts {
         if let JsStmt::FunctionDecl { .. } = stmt {
-            declarations.push(render_function_decl(stmt, &state)?);
             continue;
         }
         body.push(render_stmt(stmt, &mut state)?);
@@ -55,6 +36,110 @@ func main() {{
     ))
 }
 
+fn can_aot_module_graph(ir: &IrDocument) -> bool {
+    ir.modules.iter().all(|module| {
+        module.executable.is_some()
+            && module
+                .imports
+                .iter()
+                .all(|import| import.kind == "esm" && import.resolved.is_some())
+    })
+}
+
+fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFunction> {
+    let mut functions = BTreeMap::new();
+    let Some(entry) = entry_module(ir) else {
+        return functions;
+    };
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            if let JsStmt::FunctionDecl { name, params, .. } = stmt {
+                let go_name = if module.id == entry.id {
+                    sanitize_go_identifier(name)
+                } else {
+                    format!(
+                        "{}_{}",
+                        module_go_prefix(module),
+                        sanitize_go_identifier(name)
+                    )
+                };
+                functions.insert(
+                    (module.id.clone(), name.clone()),
+                    AotFunction {
+                        params: params.clone(),
+                        go_name,
+                    },
+                );
+            }
+        }
+    }
+    functions
+}
+
+fn render_module_function_decls(
+    ir: &IrDocument,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+) -> Option<Vec<String>> {
+    let mut declarations = Vec::new();
+    for module in &ir.modules {
+        let state = module_aot_state(module, ir, module_functions)?;
+        for stmt in &module.executable.as_ref()?.stmts {
+            if let JsStmt::FunctionDecl { name, .. } = stmt {
+                let function = module_functions.get(&(module.id.clone(), name.clone()))?;
+                declarations.push(render_function_decl(stmt, &state, &function.go_name)?);
+            }
+        }
+    }
+    Some(declarations)
+}
+
+fn module_aot_state(
+    module: &Module,
+    ir: &IrDocument,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+) -> Option<AotState> {
+    let mut state = AotState::default();
+    for stmt in &module.executable.as_ref()?.stmts {
+        if let JsStmt::FunctionDecl { name, .. } = stmt {
+            let function = module_functions.get(&(module.id.clone(), name.clone()))?;
+            state.functions.insert(name.clone(), function.clone());
+        }
+    }
+    for import in &module.imports {
+        let resolved = import.resolved.as_ref()?;
+        let imported_module = ir
+            .modules
+            .iter()
+            .find(|candidate| &candidate.id == resolved)?;
+        for binding in &import.bindings {
+            let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+            let function =
+                module_functions.get(&(imported_module.id.clone(), imported.to_string()))?;
+            state
+                .functions
+                .insert(binding.local.clone(), function.clone());
+        }
+    }
+    Some(state)
+}
+
+fn module_go_prefix(module: &Module) -> String {
+    let raw = module
+        .source_path
+        .replace(['/', '.', '-'], "_")
+        .trim_matches('_')
+        .to_string();
+    let sanitized = sanitize_go_identifier(&raw);
+    if sanitized == "irSnapshotJSON" {
+        "module".to_string()
+    } else {
+        sanitized
+    }
+}
+
 #[derive(Default)]
 struct AotState {
     bindings: BTreeSet<String>,
@@ -68,6 +153,7 @@ struct AotState {
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
+    go_name: String,
 }
 
 #[derive(Clone)]
@@ -249,9 +335,9 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         .map(|stmts| stmts.join("\n"))
 }
 
-fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
+fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Option<String> {
     let JsStmt::FunctionDecl {
-        name,
+        name: _,
         params,
         rest_param,
         r#async,
@@ -278,8 +364,7 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState) -> Option<String> {
         .join(", ");
     let function_body = render_function_body(body, &function_state)?;
     Some(format!(
-        "func {}({rendered_params}) any {{\n{}\n}}",
-        sanitize_go_identifier(name),
+        "func {go_name}({rendered_params}) any {{\n{}\n}}",
         indent_lines(&function_body)
     ))
 }
@@ -565,7 +650,7 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         .collect::<Option<Vec<_>>>()?;
     Some(format!(
         "{}({})",
-        sanitize_go_identifier(name),
+        function.go_name,
         rendered_args.join(", ")
     ))
 }
