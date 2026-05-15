@@ -55,6 +55,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
   const functionDecls = stmts.filter((stmt) => stmt?.kind === "function-decl");
   const ctx = {
     declared: new Set(),
+    arrays: new Set(),
     functions: new Set([
       ...functionDecls.map((stmt) => stmt.name),
       ...externalFunctions,
@@ -130,6 +131,62 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn value",
     "}",
     "",
+    "func jsTruthy(value any) bool {",
+    "\tswitch typed := value.(type) {",
+    "\tcase nil:",
+    "\t\treturn false",
+    "\tcase bool:",
+    "\t\treturn typed",
+    "\tcase int:",
+    "\t\treturn typed != 0",
+    "\tcase int64:",
+    "\t\treturn typed != 0",
+    "\tcase float64:",
+    "\t\treturn typed != 0",
+    "\tcase string:",
+    '\t\treturn typed != ""',
+    "\tdefault:",
+    "\t\treturn true",
+    "\t}",
+    "}",
+    "",
+    "func jsTypeof(value any) string {",
+    "\tswitch value.(type) {",
+    "\tcase nil:",
+    '\t\treturn "undefined"',
+    "\tcase bool:",
+    '\t\treturn "boolean"',
+    "\tcase int, int64, float64:",
+    '\t\treturn "number"',
+    "\tcase string:",
+    '\t\treturn "string"',
+    "\tdefault:",
+    '\t\treturn "object"',
+    "\t}",
+    "}",
+    "",
+    "func jsNumber(value any) float64 {",
+    "\tswitch typed := value.(type) {",
+    "\tcase int:",
+    "\t\treturn float64(typed)",
+    "\tcase int64:",
+    "\t\treturn float64(typed)",
+    "\tcase float64:",
+    "\t\treturn typed",
+    "\tcase bool:",
+    "\t\tif typed {",
+    "\t\t\treturn 1",
+    "\t\t}",
+    "\t\treturn 0",
+    "\tcase string:",
+    "\t\tparsed, err := strconv.ParseFloat(typed, 64)",
+    "\t\tif err == nil {",
+    "\t\t\treturn parsed",
+    "\t\t}",
+    "\t}",
+    "\treturn 0",
+    "}",
+    "",
     "func jsStrictEqual(left any, right any) bool {",
     "\treturn reflect.DeepEqual(left, right)",
     "}",
@@ -199,6 +256,21 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn out",
     "}",
     "",
+    "func jsIterable(value any) []any {",
+    "\tswitch typed := value.(type) {",
+    "\tcase []any:",
+    "\t\treturn typed",
+    "\tcase string:",
+    "\t\tout := make([]any, 0, len(typed))",
+    "\t\tfor _, char := range typed {",
+    "\t\t\tout = append(out, string(char))",
+    "\t\t}",
+    "\t\treturn out",
+    "\tdefault:",
+    '\t\tpanic(fmt.Sprintf("value is not iterable: %T", value))',
+    "\t}",
+    "}",
+    "",
     "func jsRecoverValue(value any) any {",
     "\treturn value",
     "}",
@@ -265,6 +337,11 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "\treturn out",
     "}",
     "",
+    "func jsArrayPush(target *[]any, values ...any) any {",
+    "\t*target = append(*target, values...)",
+    "\treturn len(*target)",
+    "}",
+    "",
     "type jsMemberCallable interface {",
     "\tjsCallMember(property string, args ...any) any",
     "}",
@@ -309,6 +386,7 @@ function renderFunctionDecl(stmt, parentCtx) {
   const params = (stmt.params ?? []).map(goIdent);
   const ctx = {
     declared: new Set(params),
+    arrays: new Set(),
     functions: parentCtx.functions,
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,
@@ -339,10 +417,20 @@ function renderStmt(stmt, ctx, indentLevel) {
     case "var-decl": {
       const name = goIdent(stmt.name);
       const init = stmt.init ? renderExpr(stmt.init, ctx) : "nil";
+      const isArrayInit =
+        stmt.init?.kind === "array" || stmt.init?.kind === "array-spread";
       if (ctx.declared.has(name)) {
+        if (isArrayInit) {
+          ctx.arrays.add(name);
+        } else {
+          ctx.arrays.delete(name);
+        }
         return `${indent}${name} = ${init}`;
       }
       ctx.declared.add(name);
+      if (isArrayInit) {
+        ctx.arrays.add(name);
+      }
       if (init === "nil") {
         return `${indent}var ${name} any = nil`;
       }
@@ -388,6 +476,23 @@ function renderStmt(stmt, ctx, indentLevel) {
         .filter(Boolean)
         .join("\n");
     }
+    case "for-of": {
+      const name = goIdent(stmt.left);
+      const right = renderExpr(stmt.right, ctx);
+      const bodyCtx = {
+        ...ctx,
+        declared: new Set([...ctx.declared, name]),
+        arrays: new Set(ctx.arrays),
+      };
+      ctx.declared.add(name);
+      return [
+        `${indent}for _, ${name} := range jsIterable(${right}) {`,
+        renderStmtBlock(stmt.body ?? [], bodyCtx, indentLevel + 1),
+        `${indent}}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
     case "while":
       return [
         `${indent}for ${renderExpr(stmt.test, ctx)} {`,
@@ -407,6 +512,7 @@ function renderStmt(stmt, ctx, indentLevel) {
       const catchCtx = {
         ...ctx,
         declared: new Set([...ctx.declared, catchParam]),
+        arrays: new Set(ctx.arrays),
       };
       const catchBody = renderStmtBlock(
         stmt.catchBody ?? [],
@@ -444,10 +550,20 @@ function renderSimpleStmt(stmt, ctx) {
     case "var-decl": {
       const name = goIdent(stmt.name);
       const init = stmt.init ? renderExpr(stmt.init, ctx) : "nil";
+      const isArrayInit =
+        stmt.init?.kind === "array" || stmt.init?.kind === "array-spread";
       if (ctx.declared.has(name)) {
+        if (isArrayInit) {
+          ctx.arrays.add(name);
+        } else {
+          ctx.arrays.delete(name);
+        }
         return `${name} = ${init}`;
       }
       ctx.declared.add(name);
+      if (isArrayInit) {
+        ctx.arrays.add(name);
+      }
       if (init === "nil") {
         return `var ${name} any = nil`;
       }
@@ -496,6 +612,20 @@ function renderExpr(expr, ctx) {
         .join(", ")}}, []any{${(expr.exprs ?? [])
         .map((child) => renderExpr(child, ctx))
         .join(", ")}})`;
+    case "unary":
+      if (expr.op === "!") {
+        return `(!jsTruthy(${renderExpr(expr.arg, ctx)}))`;
+      }
+      if (expr.op === "typeof") {
+        return `jsTypeof(${renderExpr(expr.arg, ctx)})`;
+      }
+      if (expr.op === "+") {
+        return `jsNumber(${renderExpr(expr.arg, ctx)})`;
+      }
+      if (expr.op === "-") {
+        return `(-jsNumber(${renderExpr(expr.arg, ctx)}))`;
+      }
+      throw new Error(`EXECUTABLE_IR_UNSUPPORTED_UNARY:${expr.op}`);
     case "binary":
       if (expr.op === "??") {
         return `jsNullish(${renderExpr(expr.left, ctx)}, ${renderExpr(
@@ -535,6 +665,15 @@ function renderExpr(expr, ctx) {
       }
       if (expr.callee?.kind === "member") {
         const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx));
+        if (
+          expr.callee.property === "push" &&
+          expr.callee.object?.kind === "ident" &&
+          ctx.arrays.has(goIdent(expr.callee.object.name))
+        ) {
+          return `jsArrayPush(&${goIdent(expr.callee.object.name)}, ${args.join(
+            ", ",
+          )})`;
+        }
         return `jsCallMember(${renderExpr(
           expr.callee.object,
           ctx,
@@ -719,6 +858,7 @@ function renderMapperFunction(expr, parentCtx) {
   const params = expr.params ?? [];
   const ctx = {
     declared: new Set(params.map(goIdent)),
+    arrays: new Set(),
     functions: parentCtx.functions,
     externalFunctions: parentCtx.externalFunctions,
     externalNamespaces: parentCtx.externalNamespaces,

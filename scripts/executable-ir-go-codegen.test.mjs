@@ -605,6 +605,139 @@ test("renders constructors, member calls, array spread, nullish, and timer await
   });
 });
 
+test("renders executable unary expressions with JS truthiness", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "function-decl",
+        name: "main",
+        params: [],
+        async: false,
+        body: [
+          {
+            kind: "return",
+            value: {
+              kind: "object",
+              props: [
+                {
+                  key: "notEmpty",
+                  value: {
+                    kind: "unary",
+                    op: "!",
+                    arg: {
+                      kind: "value",
+                      value: { kind: "string", value: "value" },
+                    },
+                  },
+                },
+                {
+                  key: "notEmptyString",
+                  value: {
+                    kind: "unary",
+                    op: "!",
+                    arg: {
+                      kind: "value",
+                      value: { kind: "string", value: "" },
+                    },
+                  },
+                },
+                {
+                  key: "typeString",
+                  value: {
+                    kind: "unary",
+                    op: "typeof",
+                    arg: {
+                      kind: "value",
+                      value: { kind: "string", value: "value" },
+                    },
+                  },
+                },
+                {
+                  key: "negated",
+                  value: {
+                    kind: "unary",
+                    op: "-",
+                    arg: {
+                      kind: "value",
+                      value: { kind: "number", value: "3" },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), {
+    negated: -3,
+    notEmpty: false,
+    notEmptyString: true,
+    typeString: "string",
+  });
+});
+
+test("renders executable for-of loops over arrays", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "function-decl",
+        name: "main",
+        params: [],
+        async: false,
+        body: [
+          {
+            kind: "var-decl",
+            name: "items",
+            init: {
+              kind: "array",
+              items: [
+                { kind: "value", value: { kind: "number", value: "1" } },
+                { kind: "value", value: { kind: "number", value: "2" } },
+                { kind: "value", value: { kind: "number", value: "3" } },
+              ],
+            },
+          },
+          {
+            kind: "var-decl",
+            name: "seen",
+            init: { kind: "array", items: [] },
+          },
+          {
+            kind: "for-of",
+            left: "item",
+            right: { kind: "ident", name: "items" },
+            body: [
+              {
+                kind: "expr",
+                expr: {
+                  kind: "call",
+                  callee: {
+                    kind: "member",
+                    object: { kind: "ident", name: "seen" },
+                    property: "push",
+                  },
+                  args: [{ kind: "ident", name: "item" }],
+                },
+              },
+            ],
+          },
+          {
+            kind: "return",
+            value: { kind: "ident", name: "seen" },
+          },
+        ],
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), [1, 2, 3]);
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
