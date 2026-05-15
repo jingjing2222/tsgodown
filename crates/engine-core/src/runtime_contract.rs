@@ -32,7 +32,7 @@ pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
     let mut unsupported = Vec::new();
     for module in &ir.modules {
         for import in &module.imports {
-            if import.resolved.is_none() {
+            if import.resolved.is_none() && !is_supported_builtin_import(&import.spec) {
                 unsupported.push(format!("external module import {}", import.spec));
             }
         }
@@ -48,6 +48,10 @@ pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
     unsupported.sort();
     unsupported.dedup();
     unsupported
+}
+
+fn is_supported_builtin_import(spec: &str) -> bool {
+    matches!(spec, "util" | "node:util")
 }
 
 fn entry_module(ir: &IrDocument) -> Option<&Module> {

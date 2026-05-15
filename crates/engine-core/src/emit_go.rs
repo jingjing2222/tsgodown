@@ -329,6 +329,10 @@ type BoundFunctionValue struct {
 	This     any
 }
 
+type NativeFunctionValue struct {
+	Call func(args []any) (any, error)
+}
+
 type UndefinedValue struct{}
 
 type NullValue struct{}
@@ -387,14 +391,38 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			"exports": exports,
 		},
 	}
-	for _, importDecl := range module.Imports {
-		importedModule, ok := moduleByID(program, importDecl.Resolved)
-		if !ok {
-			return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
+	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
+		if len(args) == 0 {
+			return nil, errors.New("require specifier is required")
 		}
-		importedExports, err := executeModule(importedModule, program, cache)
-		if err != nil {
-			return nil, err
+		spec := jsString(args[0])
+		if exports, ok := builtinModuleExports(spec); ok {
+			return exports, nil
+		}
+		for _, importDecl := range module.Imports {
+			if importDecl.Spec != spec {
+				continue
+			}
+			importedModule, ok := moduleByID(program, importDecl.Resolved)
+			if !ok {
+				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
+			}
+			return executeModule(importedModule, program, cache)
+		}
+		return nil, fmt.Errorf("module import %s is not resolved", spec)
+	}}
+	for _, importDecl := range module.Imports {
+		importedExports, ok := builtinModuleExports(importDecl.Spec)
+		if !ok {
+			importedModule, moduleOk := moduleByID(program, importDecl.Resolved)
+			if !moduleOk {
+				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
+			}
+			var err error
+			importedExports, err = executeModule(importedModule, program, cache)
+			if err != nil {
+				return nil, err
+			}
 		}
 		bindImport(env, importDecl, importedExports)
 	}
@@ -444,6 +472,31 @@ func moduleByID(program Program, id string) (Module, bool) {
 	return Module{}, false
 }
 
+func builtinModuleExports(spec string) (map[string]any, bool) {
+	switch spec {
+	case "util", "node:util":
+		exports := map[string]any{}
+		inspect := NativeFunctionValue{Call: func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "undefined", nil
+			}
+			return jsInspect(args[0]), nil
+		}}
+		format := NativeFunctionValue{Call: func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			return jsFormat(args), nil
+		}}
+		exports["inspect"] = inspect
+		exports["format"] = format
+		exports["default"] = exports
+		return exports, true
+	default:
+		return nil, false
+	}
+}
+
 func bindImport(env Env, importDecl Import, importedExports map[string]any) {
 	for _, binding := range importDecl.Bindings {
 		switch binding.Kind {
@@ -457,6 +510,10 @@ func bindImport(env Env, importDecl Import, importedExports map[string]any) {
 			}
 		case "namespace":
 			env[binding.Local] = importedExports
+		case "require":
+			env[binding.Local] = importedExports
+		case "destructure":
+			env[binding.Local] = importedExports[binding.Imported]
 		}
 	}
 }
@@ -1162,6 +1219,16 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		return callFunctionWithThis(function, rawArgs, callerEnv, jsUndefined)
 	case BoundFunctionValue:
 		return callFunctionWithThis(function.Function, rawArgs, callerEnv, function.This)
+	case NativeFunctionValue:
+		args := []any{}
+		for _, rawArg := range rawArgs {
+			value, err := evalExpr(asMap(rawArg), callerEnv)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, value)
+		}
+		return function.Call(args)
 	default:
 		return nil, errors.New("callee is not callable")
 	}
@@ -1539,6 +1606,68 @@ func jsString(value any) string {
 	}
 }
 
+func jsInspect(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strconv.Quote(typed)
+	case UndefinedValue:
+		return "undefined"
+	case NullValue:
+		return "null"
+	default:
+		return jsString(typed)
+	}
+}
+
+func jsFormat(args []any) string {
+	format, ok := args[0].(string)
+	if !ok {
+		parts := []string{}
+		for _, arg := range args {
+			parts = append(parts, jsInspect(arg))
+		}
+		return strings.Join(parts, " ")
+	}
+	out := strings.Builder{}
+	argIndex := 1
+	for index := 0; index < len(format); index++ {
+		if format[index] != '%' || index+1 >= len(format) {
+			out.WriteByte(format[index])
+			continue
+		}
+		verb := format[index+1]
+		if verb == '%' {
+			out.WriteByte('%')
+			index++
+			continue
+		}
+		if argIndex >= len(args) {
+			out.WriteByte(format[index])
+			continue
+		}
+		arg := args[argIndex]
+		argIndex++
+		switch verb {
+		case 's':
+			out.WriteString(jsString(arg))
+		case 'd', 'i', 'f':
+			out.WriteString(jsString(toNumber(arg)))
+		case 'j', 'o', 'O':
+			out.WriteString(jsInspect(arg))
+		default:
+			out.WriteByte(format[index])
+			argIndex--
+			continue
+		}
+		index++
+	}
+	for ; argIndex < len(args); argIndex++ {
+		out.WriteByte(' ')
+		out.WriteString(jsInspect(args[argIndex]))
+	}
+	return out.String()
+}
+
 func jsTypeof(value any) string {
 	switch value.(type) {
 	case nil, UndefinedValue:
@@ -1551,7 +1680,7 @@ func jsTypeof(value any) string {
 		return "number"
 	case string:
 		return "string"
-	case FunctionValue, BoundFunctionValue, *ClassValue:
+	case FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
 		return "function"
 	default:
 		return "object"
