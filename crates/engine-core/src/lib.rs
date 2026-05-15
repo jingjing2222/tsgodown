@@ -1291,6 +1291,47 @@ console.log("unsupported", Box.make())
     }
 
     #[test]
+    fn emit_go_does_not_report_shadowed_builtin_names_as_node_builtins() {
+        let root = temp_project("engine-core-aot-shadowed-builtin-name");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function acceptsPath(path) {
+  return path.match(/x/)
+}
+console.log(acceptsPath("x"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-shadowed-builtin-name".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        let message = response
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED")
+            .map(|diagnostic| diagnostic.message.as_str())
+            .expect("expected fail-closed diagnostic");
+        assert!(message.contains("aot.function.unsupported_body:src/index.js:acceptsPath"));
+        assert!(!message.contains("aot.node.builtin_operation:path.match"));
+        assert!(!message.contains("aot.node.builtin_property:path.match"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
     fn emit_go_reports_aot_unsupported_function_body_details() {
         let root = temp_project("engine-core-aot-unsupported-function-details");
         write(
