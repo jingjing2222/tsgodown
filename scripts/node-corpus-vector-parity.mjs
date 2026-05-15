@@ -102,9 +102,11 @@ function runGoVectorSuite(testCase) {
   const outDir = path.join(buildRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
   const binaryPath = path.join(outDir, "vector-suite");
-  const build = run("go", ["build", "-o", binaryPath, "."], { cwd: goDir });
+  const build = run("go", ["build", "-o", binaryPath, "vector_suite.go"], {
+    cwd: goDir,
+  });
   const buildReport = {
-    command: `go build -o ${path.relative(repoRoot, binaryPath)} .`,
+    command: `go build -o ${path.relative(repoRoot, binaryPath)} vector_suite.go`,
     cwd: path.relative(repoRoot, goDir),
     status: build.status === 0 ? "passed" : "failed",
     exitCode: build.status,

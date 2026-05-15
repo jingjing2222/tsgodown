@@ -147,6 +147,86 @@ function renderGoMain(testCase, analyzeJson, probeAnalyzeJson) {
   ].join("\n");
 }
 
+function renderVectorSuiteGo(testCase, vectorAnalyzeJson) {
+  const merged = buildMergedExecutableIr(vectorAnalyzeJson);
+  if (merged.stmts.length > 0) {
+    try {
+      return renderExecutableIrGoProgram(merged);
+    } catch (error) {
+      return renderUnsupportedVectorSuiteGo(testCase, vectorAnalyzeJson, error);
+    }
+  }
+  return renderUnsupportedVectorSuiteGo(testCase, vectorAnalyzeJson);
+}
+
+function buildMergedExecutableIr(analyzeJson) {
+  const modules = Array.isArray(analyzeJson?.ir?.modules)
+    ? analyzeJson.ir.modules
+    : [];
+  const entryId = analyzeJson?.ir?.entry;
+  const entryModule = modules.find((module) => module.id === entryId);
+  const localExecutableModules = modules.filter(
+    (module) =>
+      module?.executable &&
+      (module.id === entryId || String(module.id).startsWith("tests/")),
+  );
+  const ordered = [
+    ...localExecutableModules.filter((module) => module.id !== entryId),
+    ...(entryModule?.executable ? [entryModule] : []),
+  ];
+  return {
+    stmts: ordered.flatMap((module) => module.executable?.stmts ?? []),
+  };
+}
+
+function renderUnsupportedVectorSuiteGo(testCase, vectorAnalyzeJson, error) {
+  const diagnostics = [
+    ...(Array.isArray(vectorAnalyzeJson?.diagnostics)
+      ? vectorAnalyzeJson.diagnostics
+      : []),
+    {
+      code: "VECTOR_SUITE_EXECUTABLE_IR_UNSUPPORTED",
+      message:
+        error instanceof Error
+          ? error.message
+          : "vector suite executable IR is not supported yet",
+    },
+  ];
+  const diagnosticJson = JSON.stringify(diagnostics);
+  return [
+    "package main",
+    "",
+    "import (",
+    '\t"encoding/json"',
+    '\t"fmt"',
+    '\t"os"',
+    ")",
+    "",
+    "func main() {",
+    '\tcorpus := ""',
+    "\tif len(os.Args) > 1 {",
+    "\t\tcorpus = os.Args[1]",
+    "\t}",
+    `\tdiagnostics := json.RawMessage(${goString(diagnosticJson)})`,
+    "\treport := map[string]any{",
+    '\t\t"version": "node-corpus-vector-suite-result.v1",',
+    '\t\t"corpus": corpus,',
+    '\t\t"total": 0,',
+    '\t\t"results": []any{},',
+    '\t\t"unsupported": true,',
+    '\t\t"diagnostics": diagnostics,',
+    "\t}",
+    "\tbytes, err := json.Marshal(report)",
+    "\tif err != nil {",
+    "\t\tfmt.Fprintln(os.Stderr, err)",
+    "\t\tos.Exit(1)",
+    "\t}",
+    "\tfmt.Println(string(bytes))",
+    "}",
+    "",
+  ].join("\n");
+}
+
 function buildIrDrivenMain(testCase, probeAnalyzeJson) {
   if (testCase.id !== "qs") {
     if (testCase.id !== "yargs-parser") {
@@ -1289,6 +1369,10 @@ function generateCase(testCase) {
 
   const analyzeJson = analyzeEntry(testCase, testCase.entry);
   const probeAnalyzeJson = analyzeEntry(testCase, testCase.probe);
+  const vectorAnalyzeJson = analyzeEntry(
+    testCase,
+    "tests/vector-suite-entry.mjs",
+  );
   const outDir = path.join(generatedRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, "go.mod"), renderGoMod(testCase), "utf8");
@@ -1307,6 +1391,11 @@ function generateCase(testCase) {
     renderProbeIrGo(probeAnalyzeJson),
     "utf8",
   );
+  fs.writeFileSync(
+    path.join(outDir, "vector_suite.go"),
+    renderVectorSuiteGo(testCase, vectorAnalyzeJson),
+    "utf8",
+  );
 
   return {
     id: testCase.id,
@@ -1315,6 +1404,7 @@ function generateCase(testCase) {
     diagnostics: analyzeJson?.diagnostics?.length ?? 0,
     executableIr: executableIrStats(analyzeJson),
     probeExecutableIr: executableIrStats(probeAnalyzeJson),
+    vectorExecutableIr: executableIrStats(vectorAnalyzeJson),
   };
 }
 
