@@ -439,6 +439,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("encoding/base64");
                 imports.insert("encoding/hex");
             }
+            if is_node_buffer_is_buffer_call(callee, args) {
+                imports.insert("encoding/base64");
+                imports.insert("encoding/hex");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -548,6 +552,11 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
 	default:
 		return []byte(value)
 	}
+}
+
+func tsgodownBufferIsBuffer(value any) bool {
+	_, ok := value.([]byte)
+	return ok
 }
 "#
             .to_string(),
@@ -2259,6 +2268,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_node_fs_exists_sync_call(callee, args) => {
             render_node_fs_exists_sync_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_node_buffer_is_buffer_call(callee, args) => {
+            render_node_buffer_is_buffer_call(callee, args, state)
+        }
         expr if process_env_lookup_name(expr).is_some() => {
             let value = render_process_env_lookup(expr)?;
             Some(format!("({value} != \"\")"))
@@ -2985,6 +2997,9 @@ fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_node_buffer_from_call(callee, args) => {
             render_node_buffer_from_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_node_buffer_alloc_call(callee, args) => {
+            render_node_buffer_alloc_call(callee, args, state)
+        }
         _ => None,
     }
 }
@@ -3162,6 +3177,8 @@ fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
                 || is_node_os_homedir_call(callee, args)
                 || is_node_fs_exists_sync_call(callee, args)
                 || is_node_buffer_from_call(callee, args)
+                || is_node_buffer_alloc_call(callee, args)
+                || is_node_buffer_is_buffer_call(callee, args)
     )
 }
 
@@ -3380,6 +3397,67 @@ fn is_node_buffer_from_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Buffer")
                 && property == "from"
         )
+}
+
+fn is_node_buffer_alloc_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Buffer")
+                && property == "alloc"
+        )
+}
+
+fn render_node_buffer_alloc_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_node_buffer_alloc_call(callee, args) {
+        return None;
+    }
+    let size = render_numeric_expr(args.first()?, state)?;
+    if let Some(fill) = args.get(1) {
+        let fill = render_numeric_expr(fill, state)?;
+        return Some(format!(
+            "func() []byte {{ value := make([]byte, int({size})); for index := range value {{ value[index] = byte({fill}) }}; return value }}()"
+        ));
+    }
+    Some(format!("make([]byte, int({size}))"))
+}
+
+fn is_node_buffer_is_buffer_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Buffer")
+                && property == "isBuffer"
+        )
+}
+
+fn render_node_buffer_is_buffer_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_node_buffer_is_buffer_call(callee, args) {
+        return None;
+    }
+    if render_bytes_expr(args.first()?, state).is_some() {
+        return Some("true".to_string());
+    }
+    let value = render_expr(args.first()?, state)?;
+    Some(format!("tsgodownBufferIsBuffer({value})"))
 }
 
 fn render_node_buffer_from_call(

@@ -4068,7 +4068,9 @@ const utf8 = Buffer.from("abc", "utf8")
 const hex = Buffer.from("ff", "hex")
 const base64 = Buffer.from("YQ==", "base64")
 const array = Buffer.from([65, 66])
-console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1])
+const empty = Buffer.alloc(2)
+const filled = Buffer.alloc(2, 7)
+console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1], empty.length, filled[0], Buffer.isBuffer(filled), Buffer.isBuffer("x"))
 "#,
         );
 
@@ -4123,7 +4125,7 @@ console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1])
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "buffer 3 255 97 2 66\n"
+            "buffer 3 255 97 2 66 2 7 true false\n"
         );
     }
 
