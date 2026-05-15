@@ -24,6 +24,9 @@
     "gate:node-corpus-parity:node": "node scripts/node-corpus-parity.mjs --node-only",
     "gate:node-corpus-parity:generate": "node scripts/generate-node-corpus-go.mjs",
     "gate:node-corpus-compiler-audit": "node scripts/audit-node-corpus-compiler-completion.mjs",
+    "node-corpus:vectors:generate": "node scripts/generate-node-corpus-vectors.mjs",
+    "test:node-corpus:vitest": "vitest run test-corpus/node-real/tests/node-corpus.test.mjs",
+    "gate:node-corpus-general-compiler": "node scripts/audit-node-corpus-general-compiler.mjs",
     "test:ir-go-codegen": "node --test scripts/executable-ir-go-codegen.test.mjs",
     "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path && pnpm run guard:framework-defaults",
     "perf:baseline": "tsx scripts/perf-baseline.ts",
@@ -43,6 +46,7 @@
     "@types/node": "^24.3.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^1.9.4",
+    "vitest": "^3.2.4"
   }
 }

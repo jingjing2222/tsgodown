@@ -1,0 +1,486 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "uuid",
+  "cases": [
+    {
+      "id": "uuid-001",
+      "op": "validate",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-002",
+      "op": "version",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-003",
+      "op": "roundTrip",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-004",
+      "op": "v5",
+      "name": "tsgodown-3"
+    },
+    {
+      "id": "uuid-005",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-006",
+      "op": "validate",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-007",
+      "op": "version",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-008",
+      "op": "roundTrip",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-009",
+      "op": "v5",
+      "name": "tsgodown-8"
+    },
+    {
+      "id": "uuid-010",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-011",
+      "op": "validate",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-012",
+      "op": "version",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-013",
+      "op": "roundTrip",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-014",
+      "op": "v5",
+      "name": "tsgodown-13"
+    },
+    {
+      "id": "uuid-015",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-016",
+      "op": "validate",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-017",
+      "op": "version",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-018",
+      "op": "roundTrip",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-019",
+      "op": "v5",
+      "name": "tsgodown-18"
+    },
+    {
+      "id": "uuid-020",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-021",
+      "op": "validate",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-022",
+      "op": "version",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-023",
+      "op": "roundTrip",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-024",
+      "op": "v5",
+      "name": "tsgodown-23"
+    },
+    {
+      "id": "uuid-025",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-026",
+      "op": "validate",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-027",
+      "op": "version",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-028",
+      "op": "roundTrip",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-029",
+      "op": "v5",
+      "name": "tsgodown-28"
+    },
+    {
+      "id": "uuid-030",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-031",
+      "op": "validate",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-032",
+      "op": "version",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-033",
+      "op": "roundTrip",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-034",
+      "op": "v5",
+      "name": "tsgodown-33"
+    },
+    {
+      "id": "uuid-035",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-036",
+      "op": "validate",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-037",
+      "op": "version",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-038",
+      "op": "roundTrip",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-039",
+      "op": "v5",
+      "name": "tsgodown-38"
+    },
+    {
+      "id": "uuid-040",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-041",
+      "op": "validate",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-042",
+      "op": "version",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-043",
+      "op": "roundTrip",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-044",
+      "op": "v5",
+      "name": "tsgodown-43"
+    },
+    {
+      "id": "uuid-045",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-046",
+      "op": "validate",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-047",
+      "op": "version",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-048",
+      "op": "roundTrip",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-049",
+      "op": "v5",
+      "name": "tsgodown-48"
+    },
+    {
+      "id": "uuid-050",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-051",
+      "op": "validate",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-052",
+      "op": "version",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-053",
+      "op": "roundTrip",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-054",
+      "op": "v5",
+      "name": "tsgodown-53"
+    },
+    {
+      "id": "uuid-055",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-056",
+      "op": "validate",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-057",
+      "op": "version",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-058",
+      "op": "roundTrip",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-059",
+      "op": "v5",
+      "name": "tsgodown-58"
+    },
+    {
+      "id": "uuid-060",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-061",
+      "op": "validate",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-062",
+      "op": "version",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-063",
+      "op": "roundTrip",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-064",
+      "op": "v5",
+      "name": "tsgodown-63"
+    },
+    {
+      "id": "uuid-065",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-066",
+      "op": "validate",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-067",
+      "op": "version",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-068",
+      "op": "roundTrip",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-069",
+      "op": "v5",
+      "name": "tsgodown-68"
+    },
+    {
+      "id": "uuid-070",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-071",
+      "op": "validate",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-072",
+      "op": "version",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-073",
+      "op": "roundTrip",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-074",
+      "op": "v5",
+      "name": "tsgodown-73"
+    },
+    {
+      "id": "uuid-075",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-076",
+      "op": "validate",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-077",
+      "op": "version",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-078",
+      "op": "roundTrip",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-079",
+      "op": "v5",
+      "name": "tsgodown-78"
+    },
+    {
+      "id": "uuid-080",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-081",
+      "op": "validate",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-082",
+      "op": "version",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-083",
+      "op": "roundTrip",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-084",
+      "op": "v5",
+      "name": "tsgodown-83"
+    },
+    {
+      "id": "uuid-085",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-086",
+      "op": "validate",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-087",
+      "op": "version",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-088",
+      "op": "roundTrip",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-089",
+      "op": "v5",
+      "name": "tsgodown-88"
+    },
+    {
+      "id": "uuid-090",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-091",
+      "op": "validate",
+      "value": "not-a-uuid"
+    },
+    {
+      "id": "uuid-092",
+      "op": "version",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-093",
+      "op": "roundTrip",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-094",
+      "op": "v5",
+      "name": "tsgodown-93"
+    },
+    {
+      "id": "uuid-095",
+      "op": "v4Shape"
+    },
+    {
+      "id": "uuid-096",
+      "op": "validate",
+      "value": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "id": "uuid-097",
+      "op": "version",
+      "value": "6fa459ea-ee8a-3ca4-894e-db77e160355e"
+    },
+    {
+      "id": "uuid-098",
+      "op": "roundTrip",
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "uuid-099",
+      "op": "v5",
+      "name": "tsgodown-98"
+    },
+    {
+      "id": "uuid-100",
+      "op": "v4Shape"
+    }
+  ]
+}

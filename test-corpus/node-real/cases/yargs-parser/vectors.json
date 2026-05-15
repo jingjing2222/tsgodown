@@ -1,0 +1,1277 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "yargs-parser",
+  "cases": [
+    {
+      "id": "yargs-parser-001",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-002",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-003",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-004",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-005",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-006",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-007",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-008",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-009",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-010",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-011",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-012",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-013",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-014",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-015",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-016",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-017",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-018",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-019",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-020",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-021",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-022",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-023",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-024",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-025",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-026",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-027",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-028",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-029",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-030",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-031",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-032",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-033",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-034",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-035",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-036",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-037",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-038",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-039",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-040",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-041",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-042",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-043",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-044",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-045",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-046",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-047",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-048",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-049",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-050",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-051",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-052",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-053",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-054",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-055",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-056",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-057",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-058",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-059",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-060",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-061",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-062",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-063",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-064",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-065",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-066",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-067",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-068",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-069",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-070",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-071",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-072",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-073",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-074",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-075",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-076",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-077",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-078",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-079",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-080",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-081",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-082",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-083",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-084",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-085",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-086",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-087",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-088",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-089",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-090",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-091",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-092",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-093",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-094",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-095",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-096",
+      "op": "parse",
+      "argv": ["--name", "kim", "-abc", "--count", "3", "pos1"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-097",
+      "op": "parse",
+      "argv": ["--tag", "red", "--tag", "green", "--no-cache"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-098",
+      "op": "parse",
+      "argv": ["--", "--literal", "value"],
+      "options": {
+        "array": ["arr", "tag"],
+        "boolean": ["flag", "cache"],
+        "number": ["x", "y"]
+      }
+    },
+    {
+      "id": "yargs-parser-099",
+      "op": "parse",
+      "argv": ["-x", "1", "-y", "2", "--flag"],
+      "options": {
+        "configuration": {
+          "dot-notation": true,
+          "populate--": true
+        }
+      }
+    },
+    {
+      "id": "yargs-parser-100",
+      "op": "parse",
+      "argv": ["--nested.value", "ok", "--arr", "a", "--arr", "b"],
+      "options": {
+        "alias": {
+          "name": ["n"]
+        },
+        "array": ["tag"],
+        "boolean": ["cache", "a", "b", "c"],
+        "number": ["count"],
+        "configuration": {
+          "populate--": true,
+          "strip-aliased": true
+        }
+      }
+    }
+  ]
+}

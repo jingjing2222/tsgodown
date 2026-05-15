@@ -1,0 +1,556 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "semver",
+  "cases": [
+    {
+      "id": "semver-001",
+      "op": "valid",
+      "value": "0.0.0"
+    },
+    {
+      "id": "semver-002",
+      "op": "compare",
+      "left": "1.0.0",
+      "right": "1.2.3-beta.10"
+    },
+    {
+      "id": "semver-003",
+      "op": "satisfies",
+      "value": "1.2.3-beta.2",
+      "range": ">=1.0.0 <2"
+    },
+    {
+      "id": "semver-004",
+      "op": "sort",
+      "values": ["1.2.3", "1.2.3-beta.2", "1.2.3-beta.10", "1.10.0"]
+    },
+    {
+      "id": "semver-005",
+      "op": "valid",
+      "value": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-006",
+      "op": "compare",
+      "left": "1.10.0",
+      "right": "0.0.0"
+    },
+    {
+      "id": "semver-007",
+      "op": "satisfies",
+      "value": "10.4.3",
+      "range": "~1.2.0"
+    },
+    {
+      "id": "semver-008",
+      "op": "sort",
+      "values": ["2.0.0", "10.4.3", "0.0.0", "0.1.0"]
+    },
+    {
+      "id": "semver-009",
+      "op": "valid",
+      "value": "10.4.3"
+    },
+    {
+      "id": "semver-010",
+      "op": "compare",
+      "left": "0.1.0",
+      "right": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-011",
+      "op": "satisfies",
+      "value": "1.0.0",
+      "range": "^1.2.0"
+    },
+    {
+      "id": "semver-012",
+      "op": "sort",
+      "values": ["1.0.0", "1.2.3", "1.2.3-beta.2", "1.2.3-beta.10"]
+    },
+    {
+      "id": "semver-013",
+      "op": "valid",
+      "value": "1.0.0"
+    },
+    {
+      "id": "semver-014",
+      "op": "compare",
+      "left": "1.2.3-beta.10",
+      "right": "10.4.3"
+    },
+    {
+      "id": "semver-015",
+      "op": "satisfies",
+      "value": "1.10.0",
+      "range": ">=2"
+    },
+    {
+      "id": "semver-016",
+      "op": "sort",
+      "values": ["1.10.0", "2.0.0", "10.4.3", "0.0.0"]
+    },
+    {
+      "id": "semver-017",
+      "op": "valid",
+      "value": "1.10.0"
+    },
+    {
+      "id": "semver-018",
+      "op": "compare",
+      "left": "0.0.0",
+      "right": "1.2.3"
+    },
+    {
+      "id": "semver-019",
+      "op": "satisfies",
+      "value": "0.0.0",
+      "range": "*"
+    },
+    {
+      "id": "semver-020",
+      "op": "sort",
+      "values": ["0.1.0", "1.0.0", "1.2.3", "1.2.3-beta.2"]
+    },
+    {
+      "id": "semver-021",
+      "op": "valid",
+      "value": "0.0.0"
+    },
+    {
+      "id": "semver-022",
+      "op": "compare",
+      "left": "1.2.3-beta.2",
+      "right": "2.0.0"
+    },
+    {
+      "id": "semver-023",
+      "op": "satisfies",
+      "value": "1.2.3-beta.2",
+      "range": ">=1.0.0 <2"
+    },
+    {
+      "id": "semver-024",
+      "op": "sort",
+      "values": ["1.2.3-beta.10", "1.10.0", "2.0.0", "10.4.3"]
+    },
+    {
+      "id": "semver-025",
+      "op": "valid",
+      "value": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-026",
+      "op": "compare",
+      "left": "10.4.3",
+      "right": "1.0.0"
+    },
+    {
+      "id": "semver-027",
+      "op": "satisfies",
+      "value": "10.4.3",
+      "range": "~1.2.0"
+    },
+    {
+      "id": "semver-028",
+      "op": "sort",
+      "values": ["0.0.0", "0.1.0", "1.0.0", "1.2.3"]
+    },
+    {
+      "id": "semver-029",
+      "op": "valid",
+      "value": "10.4.3"
+    },
+    {
+      "id": "semver-030",
+      "op": "compare",
+      "left": "1.2.3",
+      "right": "1.10.0"
+    },
+    {
+      "id": "semver-031",
+      "op": "satisfies",
+      "value": "1.0.0",
+      "range": "^1.2.0"
+    },
+    {
+      "id": "semver-032",
+      "op": "sort",
+      "values": ["1.2.3-beta.2", "1.2.3-beta.10", "1.10.0", "2.0.0"]
+    },
+    {
+      "id": "semver-033",
+      "op": "valid",
+      "value": "1.0.0"
+    },
+    {
+      "id": "semver-034",
+      "op": "compare",
+      "left": "2.0.0",
+      "right": "0.1.0"
+    },
+    {
+      "id": "semver-035",
+      "op": "satisfies",
+      "value": "1.10.0",
+      "range": ">=2"
+    },
+    {
+      "id": "semver-036",
+      "op": "sort",
+      "values": ["10.4.3", "0.0.0", "0.1.0", "1.0.0"]
+    },
+    {
+      "id": "semver-037",
+      "op": "valid",
+      "value": "1.10.0"
+    },
+    {
+      "id": "semver-038",
+      "op": "compare",
+      "left": "1.0.0",
+      "right": "1.2.3-beta.10"
+    },
+    {
+      "id": "semver-039",
+      "op": "satisfies",
+      "value": "0.0.0",
+      "range": "*"
+    },
+    {
+      "id": "semver-040",
+      "op": "sort",
+      "values": ["1.2.3", "1.2.3-beta.2", "1.2.3-beta.10", "1.10.0"]
+    },
+    {
+      "id": "semver-041",
+      "op": "valid",
+      "value": "0.0.0"
+    },
+    {
+      "id": "semver-042",
+      "op": "compare",
+      "left": "1.10.0",
+      "right": "0.0.0"
+    },
+    {
+      "id": "semver-043",
+      "op": "satisfies",
+      "value": "1.2.3-beta.2",
+      "range": ">=1.0.0 <2"
+    },
+    {
+      "id": "semver-044",
+      "op": "sort",
+      "values": ["2.0.0", "10.4.3", "0.0.0", "0.1.0"]
+    },
+    {
+      "id": "semver-045",
+      "op": "valid",
+      "value": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-046",
+      "op": "compare",
+      "left": "0.1.0",
+      "right": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-047",
+      "op": "satisfies",
+      "value": "10.4.3",
+      "range": "~1.2.0"
+    },
+    {
+      "id": "semver-048",
+      "op": "sort",
+      "values": ["1.0.0", "1.2.3", "1.2.3-beta.2", "1.2.3-beta.10"]
+    },
+    {
+      "id": "semver-049",
+      "op": "valid",
+      "value": "10.4.3"
+    },
+    {
+      "id": "semver-050",
+      "op": "compare",
+      "left": "1.2.3-beta.10",
+      "right": "10.4.3"
+    },
+    {
+      "id": "semver-051",
+      "op": "satisfies",
+      "value": "1.0.0",
+      "range": "^1.2.0"
+    },
+    {
+      "id": "semver-052",
+      "op": "sort",
+      "values": ["1.10.0", "2.0.0", "10.4.3", "0.0.0"]
+    },
+    {
+      "id": "semver-053",
+      "op": "valid",
+      "value": "1.0.0"
+    },
+    {
+      "id": "semver-054",
+      "op": "compare",
+      "left": "0.0.0",
+      "right": "1.2.3"
+    },
+    {
+      "id": "semver-055",
+      "op": "satisfies",
+      "value": "1.10.0",
+      "range": ">=2"
+    },
+    {
+      "id": "semver-056",
+      "op": "sort",
+      "values": ["0.1.0", "1.0.0", "1.2.3", "1.2.3-beta.2"]
+    },
+    {
+      "id": "semver-057",
+      "op": "valid",
+      "value": "1.10.0"
+    },
+    {
+      "id": "semver-058",
+      "op": "compare",
+      "left": "1.2.3-beta.2",
+      "right": "2.0.0"
+    },
+    {
+      "id": "semver-059",
+      "op": "satisfies",
+      "value": "0.0.0",
+      "range": "*"
+    },
+    {
+      "id": "semver-060",
+      "op": "sort",
+      "values": ["1.2.3-beta.10", "1.10.0", "2.0.0", "10.4.3"]
+    },
+    {
+      "id": "semver-061",
+      "op": "valid",
+      "value": "0.0.0"
+    },
+    {
+      "id": "semver-062",
+      "op": "compare",
+      "left": "10.4.3",
+      "right": "1.0.0"
+    },
+    {
+      "id": "semver-063",
+      "op": "satisfies",
+      "value": "1.2.3-beta.2",
+      "range": ">=1.0.0 <2"
+    },
+    {
+      "id": "semver-064",
+      "op": "sort",
+      "values": ["0.0.0", "0.1.0", "1.0.0", "1.2.3"]
+    },
+    {
+      "id": "semver-065",
+      "op": "valid",
+      "value": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-066",
+      "op": "compare",
+      "left": "1.2.3",
+      "right": "1.10.0"
+    },
+    {
+      "id": "semver-067",
+      "op": "satisfies",
+      "value": "10.4.3",
+      "range": "~1.2.0"
+    },
+    {
+      "id": "semver-068",
+      "op": "sort",
+      "values": ["1.2.3-beta.2", "1.2.3-beta.10", "1.10.0", "2.0.0"]
+    },
+    {
+      "id": "semver-069",
+      "op": "valid",
+      "value": "10.4.3"
+    },
+    {
+      "id": "semver-070",
+      "op": "compare",
+      "left": "2.0.0",
+      "right": "0.1.0"
+    },
+    {
+      "id": "semver-071",
+      "op": "satisfies",
+      "value": "1.0.0",
+      "range": "^1.2.0"
+    },
+    {
+      "id": "semver-072",
+      "op": "sort",
+      "values": ["10.4.3", "0.0.0", "0.1.0", "1.0.0"]
+    },
+    {
+      "id": "semver-073",
+      "op": "valid",
+      "value": "1.0.0"
+    },
+    {
+      "id": "semver-074",
+      "op": "compare",
+      "left": "1.0.0",
+      "right": "1.2.3-beta.10"
+    },
+    {
+      "id": "semver-075",
+      "op": "satisfies",
+      "value": "1.10.0",
+      "range": ">=2"
+    },
+    {
+      "id": "semver-076",
+      "op": "sort",
+      "values": ["1.2.3", "1.2.3-beta.2", "1.2.3-beta.10", "1.10.0"]
+    },
+    {
+      "id": "semver-077",
+      "op": "valid",
+      "value": "1.10.0"
+    },
+    {
+      "id": "semver-078",
+      "op": "compare",
+      "left": "1.10.0",
+      "right": "0.0.0"
+    },
+    {
+      "id": "semver-079",
+      "op": "satisfies",
+      "value": "0.0.0",
+      "range": "*"
+    },
+    {
+      "id": "semver-080",
+      "op": "sort",
+      "values": ["2.0.0", "10.4.3", "0.0.0", "0.1.0"]
+    },
+    {
+      "id": "semver-081",
+      "op": "valid",
+      "value": "0.0.0"
+    },
+    {
+      "id": "semver-082",
+      "op": "compare",
+      "left": "0.1.0",
+      "right": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-083",
+      "op": "satisfies",
+      "value": "1.2.3-beta.2",
+      "range": ">=1.0.0 <2"
+    },
+    {
+      "id": "semver-084",
+      "op": "sort",
+      "values": ["1.0.0", "1.2.3", "1.2.3-beta.2", "1.2.3-beta.10"]
+    },
+    {
+      "id": "semver-085",
+      "op": "valid",
+      "value": "1.2.3-beta.2"
+    },
+    {
+      "id": "semver-086",
+      "op": "compare",
+      "left": "1.2.3-beta.10",
+      "right": "10.4.3"
+    },
+    {
+      "id": "semver-087",
+      "op": "satisfies",
+      "value": "10.4.3",
+      "range": "~1.2.0"
+    },
+    {
+      "id": "semver-088",
+      "op": "sort",
+      "values": ["1.10.0", "2.0.0", "10.4.3", "0.0.0"]
+    },
+    {
+      "id": "semver-089",
+      "op": "valid",
+      "value": "10.4.3"
+    },
+    {
+      "id": "semver-090",
+      "op": "compare",
+      "left": "0.0.0",
+      "right": "1.2.3"
+    },
+    {
+      "id": "semver-091",
+      "op": "satisfies",
+      "value": "1.0.0",
+      "range": "^1.2.0"
+    },
+    {
+      "id": "semver-092",
+      "op": "sort",
+      "values": ["0.1.0", "1.0.0", "1.2.3", "1.2.3-beta.2"]
+    },
+    {
+      "id": "semver-093",
+      "op": "valid",
+      "value": "1.0.0"
+    },
+    {
+      "id": "semver-094",
+      "op": "compare",
+      "left": "1.2.3-beta.2",
+      "right": "2.0.0"
+    },
+    {
+      "id": "semver-095",
+      "op": "satisfies",
+      "value": "1.10.0",
+      "range": ">=2"
+    },
+    {
+      "id": "semver-096",
+      "op": "sort",
+      "values": ["1.2.3-beta.10", "1.10.0", "2.0.0", "10.4.3"]
+    },
+    {
+      "id": "semver-097",
+      "op": "valid",
+      "value": "1.10.0"
+    },
+    {
+      "id": "semver-098",
+      "op": "compare",
+      "left": "10.4.3",
+      "right": "1.0.0"
+    },
+    {
+      "id": "semver-099",
+      "op": "satisfies",
+      "value": "0.0.0",
+      "range": "*"
+    },
+    {
+      "id": "semver-100",
+      "op": "sort",
+      "values": ["0.0.0", "0.1.0", "1.0.0", "1.2.3"]
+    }
+  ]
+}

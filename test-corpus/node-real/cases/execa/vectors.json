@@ -1,0 +1,1006 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "execa",
+  "cases": [
+    {
+      "id": "execa-001",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-0\"); process.exit(1)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-0"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-002",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-1"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-1"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-003",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-2"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-2"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-004",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-3"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-3"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-005",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-4"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-4"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-006",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-5\"); process.exit(6)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-5"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-007",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-6"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-6"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-008",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-7"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-7"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-009",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-8"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-8"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-010",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-9"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-9"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-011",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-10\"); process.exit(4)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-10"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-012",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-11"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-11"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-013",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-12"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-12"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-014",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-13"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-13"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-015",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-14"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-14"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-016",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-15\"); process.exit(2)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-15"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-017",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-16"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-16"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-018",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-17"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-17"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-019",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-18"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-18"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-020",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-19"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-19"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-021",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-20\"); process.exit(7)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-20"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-022",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-21"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-21"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-023",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-22"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-22"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-024",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-23"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-23"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-025",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-24"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-24"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-026",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-25\"); process.exit(5)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-25"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-027",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-26"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-26"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-028",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-27"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-27"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-029",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-28"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-28"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-030",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-29"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-29"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-031",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-30\"); process.exit(3)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-30"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-032",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-31"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-31"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-033",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-32"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-32"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-034",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-33"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-33"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-035",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-34"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-34"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-036",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-35\"); process.exit(1)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-35"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-037",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-36"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-36"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-038",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-37"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-37"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-039",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-38"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-38"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-040",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-39"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-39"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-041",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-40\"); process.exit(6)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-40"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-042",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-41"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-41"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-043",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-42"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-42"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-044",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-43"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-43"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-045",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-44"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-44"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-046",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-45\"); process.exit(4)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-45"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-047",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-46"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-46"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-048",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-47"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-47"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-049",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-48"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-48"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-050",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-49"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-49"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-051",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-50\"); process.exit(2)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-50"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-052",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-51"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-51"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-053",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-52"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-52"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-054",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-53"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-53"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-055",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-54"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-54"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-056",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-55\"); process.exit(7)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-55"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-057",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-56"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-56"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-058",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-57"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-57"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-059",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-58"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-58"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-060",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-59"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-59"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-061",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-60\"); process.exit(5)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-60"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-062",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-61"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-61"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-063",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-62"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-62"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-064",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-63"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-63"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-065",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-64"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-64"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-066",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-65\"); process.exit(3)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-65"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-067",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-66"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-66"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-068",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-67"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-67"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-069",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-68"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-68"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-070",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-69"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-69"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-071",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-70\"); process.exit(1)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-70"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-072",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-71"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-71"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-073",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-72"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-72"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-074",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-73"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-73"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-075",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-74"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-74"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-076",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-75\"); process.exit(6)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-75"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-077",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-76"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-76"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-078",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-77"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-77"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-079",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-78"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-78"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-080",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-79"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-79"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-081",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-80\"); process.exit(4)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-80"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-082",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-81"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-81"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-083",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-82"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-82"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-084",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-83"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-83"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-085",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-84"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-84"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-086",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-85\"); process.exit(2)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-85"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-087",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-86"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-86"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-088",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-87"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-87"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-089",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-88"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-88"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-090",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-89"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-89"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-091",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-90\"); process.exit(7)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-90"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-092",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-91"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-91"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-093",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-92"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-92"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-094",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-93"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-93"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-095",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-94"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-94"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-096",
+      "op": "nodeEval",
+      "code": "console.error(\"bad-95\"); process.exit(5)",
+      "args": [],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-95"
+      },
+      "expectFailure": true
+    },
+    {
+      "id": "execa-097",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-96"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-96"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-098",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-97"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-97"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-099",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-98"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-98"
+      },
+      "expectFailure": false
+    },
+    {
+      "id": "execa-100",
+      "op": "nodeEval",
+      "code": "console.log((process.env.TSGODOWN_VECTOR || \"\") + \":\" + process.argv[1])",
+      "args": ["argv-99"],
+      "env": {
+        "TSGODOWN_VECTOR": "ok-99"
+      },
+      "expectFailure": false
+    }
+  ]
+}

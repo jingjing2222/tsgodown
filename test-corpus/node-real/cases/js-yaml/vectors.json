@@ -1,0 +1,602 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "js-yaml",
+  "cases": [
+    {
+      "id": "js-yaml-001",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-002",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-003",
+      "op": "invalid",
+      "source": "key: [unterminated-2"
+    },
+    {
+      "id": "js-yaml-004",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-005",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-006",
+      "op": "invalid",
+      "source": "key: [unterminated-5"
+    },
+    {
+      "id": "js-yaml-007",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-008",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-009",
+      "op": "invalid",
+      "source": "key: [unterminated-8"
+    },
+    {
+      "id": "js-yaml-010",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-011",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-012",
+      "op": "invalid",
+      "source": "key: [unterminated-11"
+    },
+    {
+      "id": "js-yaml-013",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-014",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-015",
+      "op": "invalid",
+      "source": "key: [unterminated-14"
+    },
+    {
+      "id": "js-yaml-016",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-017",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-018",
+      "op": "invalid",
+      "source": "key: [unterminated-17"
+    },
+    {
+      "id": "js-yaml-019",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-020",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-021",
+      "op": "invalid",
+      "source": "key: [unterminated-20"
+    },
+    {
+      "id": "js-yaml-022",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-023",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-024",
+      "op": "invalid",
+      "source": "key: [unterminated-23"
+    },
+    {
+      "id": "js-yaml-025",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-026",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-027",
+      "op": "invalid",
+      "source": "key: [unterminated-26"
+    },
+    {
+      "id": "js-yaml-028",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-029",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-030",
+      "op": "invalid",
+      "source": "key: [unterminated-29"
+    },
+    {
+      "id": "js-yaml-031",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-032",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-033",
+      "op": "invalid",
+      "source": "key: [unterminated-32"
+    },
+    {
+      "id": "js-yaml-034",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-035",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-036",
+      "op": "invalid",
+      "source": "key: [unterminated-35"
+    },
+    {
+      "id": "js-yaml-037",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-038",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-039",
+      "op": "invalid",
+      "source": "key: [unterminated-38"
+    },
+    {
+      "id": "js-yaml-040",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-041",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-042",
+      "op": "invalid",
+      "source": "key: [unterminated-41"
+    },
+    {
+      "id": "js-yaml-043",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-044",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-045",
+      "op": "invalid",
+      "source": "key: [unterminated-44"
+    },
+    {
+      "id": "js-yaml-046",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-047",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-048",
+      "op": "invalid",
+      "source": "key: [unterminated-47"
+    },
+    {
+      "id": "js-yaml-049",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-050",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-051",
+      "op": "invalid",
+      "source": "key: [unterminated-50"
+    },
+    {
+      "id": "js-yaml-052",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-053",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-054",
+      "op": "invalid",
+      "source": "key: [unterminated-53"
+    },
+    {
+      "id": "js-yaml-055",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-056",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-057",
+      "op": "invalid",
+      "source": "key: [unterminated-56"
+    },
+    {
+      "id": "js-yaml-058",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-059",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-060",
+      "op": "invalid",
+      "source": "key: [unterminated-59"
+    },
+    {
+      "id": "js-yaml-061",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-062",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-063",
+      "op": "invalid",
+      "source": "key: [unterminated-62"
+    },
+    {
+      "id": "js-yaml-064",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-065",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-066",
+      "op": "invalid",
+      "source": "key: [unterminated-65"
+    },
+    {
+      "id": "js-yaml-067",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-068",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-069",
+      "op": "invalid",
+      "source": "key: [unterminated-68"
+    },
+    {
+      "id": "js-yaml-070",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-071",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-072",
+      "op": "invalid",
+      "source": "key: [unterminated-71"
+    },
+    {
+      "id": "js-yaml-073",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-074",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-075",
+      "op": "invalid",
+      "source": "key: [unterminated-74"
+    },
+    {
+      "id": "js-yaml-076",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-077",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-078",
+      "op": "invalid",
+      "source": "key: [unterminated-77"
+    },
+    {
+      "id": "js-yaml-079",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-080",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-081",
+      "op": "invalid",
+      "source": "key: [unterminated-80"
+    },
+    {
+      "id": "js-yaml-082",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-083",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-084",
+      "op": "invalid",
+      "source": "key: [unterminated-83"
+    },
+    {
+      "id": "js-yaml-085",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    },
+    {
+      "id": "js-yaml-086",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-087",
+      "op": "invalid",
+      "source": "key: [unterminated-86"
+    },
+    {
+      "id": "js-yaml-088",
+      "op": "load",
+      "source": "nested:\n  value: hello\n  count: 2"
+    },
+    {
+      "id": "js-yaml-089",
+      "op": "dump",
+      "value": {
+        "name": "tsgodown",
+        "enabled": true,
+        "count": 2
+      }
+    },
+    {
+      "id": "js-yaml-090",
+      "op": "invalid",
+      "source": "key: [unterminated-89"
+    },
+    {
+      "id": "js-yaml-091",
+      "op": "load",
+      "source": "name: tsgodown\nitems:\n  - id: 1\n    ok: true"
+    },
+    {
+      "id": "js-yaml-092",
+      "op": "dump",
+      "value": {
+        "quoted": "hello world",
+        "empty": null
+      }
+    },
+    {
+      "id": "js-yaml-093",
+      "op": "invalid",
+      "source": "key: [unterminated-92"
+    },
+    {
+      "id": "js-yaml-094",
+      "op": "load",
+      "source": "quoted: \"hello world\"\nempty: null"
+    },
+    {
+      "id": "js-yaml-095",
+      "op": "dump",
+      "value": {
+        "nested": {
+          "value": "hello",
+          "count": 2
+        }
+      }
+    },
+    {
+      "id": "js-yaml-096",
+      "op": "invalid",
+      "source": "key: [unterminated-95"
+    },
+    {
+      "id": "js-yaml-097",
+      "op": "load",
+      "source": "- a\n- b\n- c"
+    },
+    {
+      "id": "js-yaml-098",
+      "op": "dump",
+      "value": ["a", "b", "c"]
+    },
+    {
+      "id": "js-yaml-099",
+      "op": "invalid",
+      "source": "key: [unterminated-98"
+    },
+    {
+      "id": "js-yaml-100",
+      "op": "load",
+      "source": "date: 2026-05-15\nnum: 42"
+    }
+  ]
+}
