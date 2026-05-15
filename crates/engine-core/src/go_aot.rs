@@ -381,6 +381,9 @@ fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
             }
         }
     }
+    if imports.contains("regexp") {
+        imports.insert("strings");
+    }
     imports
 }
 
@@ -550,6 +553,11 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         JsExpr::Object { props } => {
             for prop in props {
                 collect_expr_imports(&prop.value, imports);
+            }
+        }
+        JsExpr::Function { body, .. } => {
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
             }
         }
         JsExpr::Binary { left, right, .. } => {
@@ -812,6 +820,41 @@ func tsgodownToFloat64(value any) float64 {
 	}
 }
 
+func tsgodownToBool(value any) bool {
+	switch value := value.(type) {
+	case nil:
+		return false
+	case bool:
+		return value
+	case float64:
+		return value != 0
+	case int:
+		return value != 0
+	case int64:
+		return value != 0
+	case string:
+		return value != ""
+	default:
+		return true
+	}
+}
+
+func tsgodownObjectFromAny(value any) map[string]any {
+	switch value := value.(type) {
+	case nil:
+		return map[string]any{}
+	case map[string]any:
+		return value
+	default:
+		return map[string]any{}
+	}
+}
+
+func tsgodownObjectProp(value any, key string) any {
+	object := tsgodownObjectFromAny(value)
+	return object[key]
+}
+
 func tsgodownStringArrayFromAny(value any) []string {
 	switch value := value.(type) {
 	case []string:
@@ -844,6 +887,7 @@ func tsgodownStringArrayFromAny(value any) []string {
 
 func tsgodownRegexpReplace(value string, pattern string, replacement string, global bool) string {
 	re := regexp.MustCompile(pattern)
+	replacement = strings.ReplaceAll(replacement, "$&", "$0")
 	if global {
 		return re.ReplaceAllString(value, replacement)
 	}
@@ -1646,6 +1690,7 @@ struct AotState {
     bytes_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
+    dynamic_object_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     class_instance_bindings: BTreeMap<String, String>,
     current_receiver: Option<String>,
@@ -1696,6 +1741,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         bytes_bindings: state.bytes_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -1858,6 +1904,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.object_bindings.insert(name.clone(), object);
                     return Some(format!("var {ident} = {value}"));
                 }
+                if let Some(value) = render_object_map_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.dynamic_object_bindings.insert(name.clone());
+                    return Some(format!("var {ident} map[string]any = {value}"));
+                }
                 if let Some((value, object)) = render_node_path_parse_object(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -1943,6 +1995,7 @@ fn render_for_stmt(
         bytes_bindings: state.bytes_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -2049,6 +2102,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         bytes_bindings: state.bytes_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -2072,6 +2126,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         bytes_bindings: state.bytes_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -2792,6 +2847,15 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } if static_member_kind(object, property, state) == Some(AotSlotKind::Bool) => {
             render_static_member_expr(object, property, state)
         }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if render_dynamic_object_member_expr(object, property, state).is_some() => {
+            let value = render_dynamic_object_member_expr(object, property, state)?;
+            Some(format!("tsgodownToBool({value})"))
+        }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             render_comparison_expr(op, left, right, state)
         }
@@ -3053,6 +3117,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Array { .. } => {
             render_string_array_expr(expr, state).or_else(|| render_json_value_expr(expr, state))
         }
+        JsExpr::Object { .. } => render_object_map_expr(expr, state),
         JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state).or_else(|| {
             let JsExpr::Binary { left, right, .. } = expr else {
                 return None;
@@ -3114,7 +3179,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_string_expr(expr, state)
+        } => render_dynamic_object_member_expr(object, property, state)
+            .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_static_member_expr(object, property, state)),
@@ -3151,6 +3217,15 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } if static_member_kind(object, property, state) == Some(AotSlotKind::Number) => {
             render_static_member_expr(object, property, state)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if render_dynamic_object_member_expr(object, property, state).is_some() => {
+            let value = render_dynamic_object_member_expr(object, property, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
         }
         JsExpr::Member {
             object,
@@ -3260,6 +3335,15 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } if static_member_kind(object, property, state) == Some(AotSlotKind::String) => {
             render_static_member_expr(object, property, state)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if render_dynamic_object_member_expr(object, property, state).is_some() => {
+            let value = render_dynamic_object_member_expr(object, property, state)?;
+            Some(format!("tsgodownToString({value})"))
         }
         JsExpr::Binary { op, left, right } if op == "+" => {
             let left = render_string_expr(left, state)?;
@@ -3638,6 +3722,60 @@ fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, Aot
             indent_lines(&value_fields.join(",\n"))
         ),
         AotObject { fields },
+    ))
+}
+
+fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Object { props } => {
+            let mut fields = Vec::new();
+            for prop in props {
+                if prop.spread || prop.key_expr.is_some() {
+                    return None;
+                }
+                let value = render_json_value_expr(&prop.value, state)?;
+                fields.push(format!("{}: {value}", go_string_literal(&prop.key)));
+            }
+            Some(format!("map[string]any{{{}}}", fields.join(", ")))
+        }
+        JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("tsgodownObjectFromAny({value})"))
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            let test = render_bool_expr(test, state)?;
+            let consequent = render_object_map_expr(consequent, state)?;
+            let alternate = render_object_map_expr(alternate, state)?;
+            Some(format!(
+                "func() map[string]any {{ if {test} {{ return {consequent} }}; return {alternate} }}()"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn render_dynamic_object_member_expr(
+    object: &JsExpr,
+    property: &str,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Ident { name } = object else {
+        return None;
+    };
+    if !state.dynamic_object_bindings.contains(name) {
+        return None;
+    }
+    let object = go_binding_ref(name, state);
+    Some(format!(
+        "tsgodownObjectProp({object}, {})",
+        go_string_literal(property)
     ))
 }
 
@@ -5229,14 +5367,7 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
             .namespace_functions
             .get(&(name.clone(), property.clone()))
         {
-            if function.params.len() != args.len() {
-                return None;
-            }
-            let rendered_args = args
-                .iter()
-                .zip(function.param_kinds.iter())
-                .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
-                .collect::<Option<Vec<_>>>()?;
+            let rendered_args = render_call_args(args, &function.param_kinds, state)?;
             return Some(format!(
                 "{}({})",
                 function.go_name,
@@ -5257,19 +5388,33 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return Some(format!("{}()", go_binding_ref(name, state)));
     }
     let function = state.functions.get(name)?;
-    if function.params.len() != args.len() {
-        return None;
-    }
-    let rendered_args = args
-        .iter()
-        .zip(function.param_kinds.iter())
-        .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
-        .collect::<Option<Vec<_>>>()?;
+    let rendered_args = render_call_args(args, &function.param_kinds, state)?;
     Some(format!(
         "{}({})",
         function.go_name,
         rendered_args.join(", ")
     ))
+}
+
+fn render_call_args(
+    args: &[JsExpr],
+    param_kinds: &[AotSlotKind],
+    state: &AotState,
+) -> Option<Vec<String>> {
+    if args.len() > param_kinds.len() {
+        return None;
+    }
+    let mut rendered = Vec::new();
+    for (index, kind) in param_kinds.iter().enumerate() {
+        if let Some(arg) = args.get(index) {
+            rendered.push(render_arg_for_kind(arg, *kind, state)?);
+        } else if *kind == AotSlotKind::Any {
+            rendered.push("nil".to_string());
+        } else {
+            return None;
+        }
+    }
+    Some(rendered)
 }
 
 fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Option<String> {
