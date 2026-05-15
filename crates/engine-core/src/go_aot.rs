@@ -193,7 +193,8 @@ fn can_aot_module_graph(ir: &IrDocument) -> bool {
     ir.modules.iter().all(|module| {
         module.executable.is_some()
             && module.imports.iter().all(|import| {
-                matches!(import.kind.as_str(), "esm" | "cjs") && import.resolved.is_some()
+                matches!(import.kind.as_str(), "esm" | "cjs")
+                    && (import.resolved.is_some() || is_node_builtin_spec(&import.spec))
             })
     })
 }
@@ -626,6 +627,12 @@ fn module_aot_state(
         }
     }
     for import in &module.imports {
+        if import.resolved.is_none() && is_node_builtin_spec(&import.spec) {
+            for binding in &import.bindings {
+                state.builtin_bindings.insert(binding.local.clone());
+            }
+            continue;
+        }
         let resolved = import.resolved.as_ref()?;
         let imported_module = ir
             .modules
@@ -772,6 +779,7 @@ struct AotState {
     functions: BTreeMap<String, AotFunction>,
     classes: BTreeMap<String, AotClass>,
     namespace_functions: BTreeMap<(String, String), AotFunction>,
+    builtin_bindings: BTreeSet<String>,
 }
 
 impl AotState {
@@ -886,6 +894,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     && (state.functions.contains_key(name)
                         || state.bindings.contains(name)
                         || state.classes.contains_key(name)
+                        || state.builtin_bindings.contains(name)
                         || state
                             .namespace_functions
                             .keys()
@@ -983,6 +992,7 @@ fn render_for_stmt(
         functions: state.functions.clone(),
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
     };
     let init = init
         .first()
@@ -1058,6 +1068,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         functions: state.functions.clone(),
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
 }
@@ -1077,6 +1088,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         functions: state.functions.clone(),
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
     };
     stmts
         .iter()
@@ -1184,6 +1196,7 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         functions: state.functions.clone(),
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
         ..AotState::default()
     };
     for param in &function.params {
@@ -1403,6 +1416,37 @@ fn is_require_call(expr: &JsExpr) -> bool {
     matches!(
         expr,
         JsExpr::Call { callee, .. } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "require")
+    )
+}
+
+fn is_node_builtin_spec(spec: &str) -> bool {
+    let spec = spec.strip_prefix("node:").unwrap_or(spec);
+    matches!(
+        spec,
+        "assert"
+            | "assert/strict"
+            | "async_hooks"
+            | "buffer"
+            | "child_process"
+            | "crypto"
+            | "events"
+            | "fs"
+            | "fs/promises"
+            | "module"
+            | "os"
+            | "path"
+            | "path/posix"
+            | "path/win32"
+            | "perf_hooks"
+            | "process"
+            | "querystring"
+            | "stream"
+            | "stream/promises"
+            | "timers"
+            | "timers/promises"
+            | "url"
+            | "util"
+            | "zlib"
     )
 }
 
