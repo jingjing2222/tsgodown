@@ -1,59 +1,62 @@
 # tsgodown
 
-## Primary goal (direction lock)
+## What it does
 
-`tsgodown` is a **compiler-mode pipeline for tsdown-bundleable
-TypeScript/JavaScript Node.js code**.
+`tsgodown` aims to compile Node.js projects that `tsdown` can bundle into
+standalone Go projects.
 
-The primary goal is fixed as:
+You give it TypeScript or JavaScript Node.js source. It uses the same kind of
+bundle artifacts you already get from `tsdown`: bundled JavaScript, sourcemaps,
+declaration files, and package metadata. The output should be a Go project that
+passes `go build` and runs without Node.js.
 
-1. **Everything `tsdown` can bundle is in scope**
-   - the compiler input is the `tsdown` bundle plus sourcemap, `.d.ts`, and
-     package metadata
-   - applications, CLIs, libraries, frameworks, build tools, compilers, ORMs,
-     and servers are all target workloads
-   - Express, NestJS, Vite, Rollup, Webpack, Next, Nuxt, Astro, ESLint,
-     Prettier, Babel, TypeScript, GraphQL, Apollo, Socket.IO, and ORM packages
-     are validation corpus, not special cases
-2. **Rust owns compiler semantics**
-   - Rust parses/analyzes JavaScript and TypeScript artifacts, resolves modules,
-     lowers executable IR, enforces diagnostics, and emits backend output
-   - TypeScript/JavaScript in this repo owns CLI/config/tsdown orchestration,
-     corpus gates, and UX only
-3. **Go output is standalone**
-   - generated output must compile as a normal Go project/binary using the Go
-     toolchain
-   - generated Go must not embed or shell out to Node, V8, Node-API, N-API, or
-     native addon fallback paths
-4. **Node.js 26 observable parity**
-   - target behavior is Node.js 26 parity for every supported language/runtime
-     capability
-   - observable parity means matching stdout, stderr, exit code, JSON/library
-     results, env, argv, cwd, filesystem side effects, async order, and observed
-     error shape
-   - unsupported or blocked surfaces must fail closed with deterministic
-     diagnostics instead of silently generating wrong Go
-5. **Backend-neutral compiler architecture**
-   - IR and runtime contracts must not encode Go-specific concepts
-   - Go is the first backend implementation, not the shape of the compiler
-   - future Rust/C++/other backends should plug into the same backend interface
+The target user outcome:
 
-This repository remains intentionally strict: when code is outside the
-implemented semantic envelope or cannot be extracted deterministically, the
-compiler must emit explicit diagnostics and fail closed instead of silently
-guessing.
+- build a TypeScript/JavaScript package with `tsgodown` instead of `tsdown`
+- get a standalone Go project or binary
+- run that Go binary and observe the same behavior as the original Node.js
+  program
+- use real Node workloads, not framework-specific demos
 
-Core execution path guardrail: framework-name branching/adapters are disallowed in `packages/core/src`, `packages/pipeline/src`, and `packages/cli/src/commands` (check with `pnpm run guard:core-path`).
+Target workloads include CLIs, libraries, HTTP frameworks, build tools,
+compilers, ORMs, GraphQL servers, and full-stack frameworks. Express, NestJS,
+Vite, Rollup, Webpack, Next, Nuxt, Astro, ESLint, Prettier, Babel, TypeScript,
+GraphQL, Apollo, Socket.IO, and ORM packages are validation targets, not
+special cases.
 
-Canonical compiler input contract (framework-agnostic): `tsdown` bundled JS +
-sourcemap + `.d.ts` + package metadata are the source of truth for analysis and
-Go emission. Framework fixtures are validation samples, not compiler-mode scope
-boundaries.
+## Compatibility Target
 
-## Current status
+The runtime baseline is the latest active Node.js LTS line. This repository pins
+that local development environment with `mise`:
 
-The long-term target is **all tsdown-bundleable Node.js 26 code**. Current
-implementation is not there yet.
+```bash
+mise install
+mise exec -- node --version
+mise exec -- pnpm --version
+```
+
+Current pin:
+
+- Node.js `24.15.0`
+- pnpm `10.22.0`
+
+Observable parity means the generated Go output matches the original Node.js
+program for:
+
+- stdout, stderr, and exit code
+- returned JSON/library results
+- environment variables, argv, and cwd
+- filesystem side effects
+- async completion order
+- observed error shape
+
+Generated Go must not embed Node.js, shell out to Node.js, use V8, rely on
+Node-API/N-API, or load native addon fallback paths.
+
+When a source program uses unsupported behavior, `tsgodown` must fail closed
+with deterministic diagnostics instead of generating wrong Go.
+
+## Status
 
 Current green phase:
 
@@ -62,22 +65,20 @@ Current green phase:
 - Node execution, generated Go build/run, and Node/Go vector parity are green
   for that phase.
 
-Current gaps:
+Not done yet:
 
-- Node.js 26 full API coverage ledger is planned but not complete.
-- Large package/application corpus is planned but not implemented.
-- Backend-neutral interface and Go backend plugin split need hardening.
-- Some runtime semantics still live inside Go emitter templates and must move
-  behind runtime contracts.
-- Route/Fastify-era docs and fixtures are legacy validation samples, not final
-  product scope.
+- full latest-LTS Node.js API coverage ledger
+- large package/application corpus
+- complete backend-neutral plugin boundary
+- runtime contract cleanup
+- removal of remaining route-era implementation assumptions
 
-Next target corpus tiers:
+Next corpus tiers:
 
 - `test-corpus/node-real/`: 10 utility/library corpus entries, 100 vectors each.
 - `test-corpus/node-large/`: planned 20 framework/tooling/application corpus
   entries, 100 vectors each.
-- Every corpus must prove the same thing: original Node.js 26 behavior equals
+- Every corpus must prove the same thing: original Node.js LTS behavior equals
   generated standalone Go behavior, with no corpus-specific compiler hacks.
 
 ## Milestone lock (execution sequence)
