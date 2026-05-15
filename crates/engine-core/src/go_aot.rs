@@ -405,6 +405,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_node_os_homedir_call(callee, args) {
                 imports.insert("os");
             }
+            if is_node_fs_exists_sync_call(callee, args) {
+                imports.insert("os");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -548,6 +551,11 @@ func tsgodownOsHomedir() string {
 		return ""
 	}
 	return home
+}
+
+func tsgodownFsExistsSync(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 "#
             .to_string(),
@@ -2164,6 +2172,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Bool { value },
         } => Some(value.to_string()),
         expr if is_process_stdout_is_tty(expr) => Some("tsgodownStdoutIsTTY()".to_string()),
+        JsExpr::Call { callee, args, .. } if is_node_fs_exists_sync_call(callee, args) => {
+            render_node_fs_exists_sync_call(callee, args, state)
+        }
         expr if process_env_lookup_name(expr).is_some() => {
             let value = render_process_env_lookup(expr)?;
             Some(format!("({value} != \"\")"))
@@ -3016,7 +3027,7 @@ fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
 }
 
 fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
-    matches!(expr, JsExpr::Call { callee, args, .. } if is_node_path_string_call(callee, args) || is_node_os_homedir_call(callee, args))
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_node_path_string_call(callee, args) || is_node_os_homedir_call(callee, args) || is_node_fs_exists_sync_call(callee, args))
 }
 
 fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -3098,6 +3109,38 @@ fn render_node_os_homedir_call(
         return Some("tsgodownOsHomedir()".to_string());
     }
     None
+}
+
+fn is_node_fs_exists_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "existsSync"
+        )
+}
+
+fn render_node_fs_exists_sync_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.builtin_bindings.contains(name) || !is_node_fs_exists_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownFsExistsSync({path})"))
 }
 
 fn render_string_numeric_method_call(
