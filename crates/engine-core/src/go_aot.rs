@@ -4,6 +4,8 @@ use crate::contract::{AnalyzeResponse, IrDocument, JsExpr, JsStmt, JsValue, Modu
 use crate::emit_go::{go_string_literal, sanitize_go_identifier};
 
 const CJS_DEFAULT_EXPORT_FUNCTION: &str = "__cjs_default_export";
+const NODE_LTS_VERSION: &str = "24.15.0";
+const NODE_LTS_VERSION_WITH_PREFIX: &str = "v24.15.0";
 
 pub(crate) fn render_aot_executable_program(
     package_name: &str,
@@ -213,7 +215,7 @@ fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>
 }
 
 fn collect_builtin_usage_expr_features(expr: &JsExpr, features: &mut BTreeSet<String>) {
-    if is_process_stdout_is_tty(expr) || process_env_lookup_name(expr).is_some() {
+    if is_process_supported_builtin_expr(expr) {
         return;
     }
     match expr {
@@ -378,6 +380,9 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
 fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
     match expr {
         JsExpr::Call { callee, args, .. } => {
+            if is_process_cwd_call(callee, args) {
+                imports.insert("os");
+            }
             if is_console_log(callee) {
                 imports.insert("fmt");
             }
@@ -431,6 +436,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             collect_expr_imports(alternate, imports);
         }
         expr if is_process_stdout_is_tty(expr) || process_env_lookup_name(expr).is_some() => {
+            imports.insert("os");
+        }
+        expr if is_process_cwd_ref(expr) => {
             imports.insert("os");
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
@@ -499,6 +507,14 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
             r#"func tsgodownStdoutIsTTY() bool {
 	info, err := os.Stdout.Stat()
 	return err == nil && (info.Mode()&os.ModeCharDevice) != 0
+}
+
+func tsgodownProcessCwd() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
 }
 "#
             .to_string(),
@@ -1201,6 +1217,7 @@ struct AotState {
     numeric_bindings: BTreeSet<String>,
     string_bindings: BTreeSet<String>,
     bool_bindings: BTreeSet<String>,
+    string_function_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     class_instance_bindings: BTreeMap<String, String>,
     current_receiver: Option<String>,
@@ -1226,6 +1243,9 @@ impl AotState {
             AotSlotKind::String => {
                 self.string_bindings.insert(name.to_string());
             }
+            AotSlotKind::StringFunction => {
+                self.string_function_bindings.insert(name.to_string());
+            }
         }
     }
 }
@@ -1238,6 +1258,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -1321,6 +1342,7 @@ enum AotSlotKind {
     Bool,
     Number,
     String,
+    StringFunction,
 }
 
 fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
@@ -1329,6 +1351,7 @@ fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
         AotSlotKind::Bool => "bool",
         AotSlotKind::Number => "float64",
         AotSlotKind::String => "string",
+        AotSlotKind::StringFunction => "func() string",
     }
 }
 
@@ -1373,6 +1396,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if let Some(value) = render_bool_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Bool);
                     return Some(format!("var {ident} bool = {value}"));
+                }
+                if let Some(value) = render_string_function_expr(expr) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::StringFunction);
+                    return Some(format!("var {ident} func() string = {value}"));
                 }
                 if let Some((value, object)) = render_object_literal(expr, state) {
                     state.bindings.insert(name.clone());
@@ -1450,6 +1477,7 @@ fn render_for_stmt(
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -1533,6 +1561,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -1553,6 +1582,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -2320,6 +2350,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
+            render_bool_expr(expr, state)
+        }
         JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
             render_bool_expr(expr, state)
         }
@@ -2336,6 +2369,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
+        expr if is_process_version_expr(expr) => render_process_version_expr(expr),
+        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
         JsExpr::Member {
             object,
             property,
@@ -2434,6 +2469,13 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
         }
+        JsExpr::Call { callee, args, .. } if is_process_cwd_call(callee, args) => {
+            Some("tsgodownProcessCwd()".to_string())
+        }
+        JsExpr::Call { callee, args, .. } if is_string_function_call(callee, args, state) => {
+            render_call_expr(callee, args, state)
+        }
+        expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
@@ -2482,6 +2524,7 @@ fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<S
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         JsExpr::Member {
             object,
             property,
@@ -2707,6 +2750,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_bool_expr(expr, state) {
         return Some((AotSlotKind::Bool, value, "bool"));
     }
+    if let Some(value) = render_string_function_expr(expr) {
+        return Some((AotSlotKind::StringFunction, value, "func() string"));
+    }
     None
 }
 
@@ -2921,6 +2967,14 @@ fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Boolean")
 }
 
+fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
+    is_process_stdout_is_tty(expr)
+        || process_env_lookup_name(expr).is_some()
+        || is_process_cwd_ref(expr)
+        || is_process_cwd_call_expr(expr)
+        || is_process_version_expr(expr)
+}
+
 fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
     let JsExpr::Member {
         object,
@@ -2943,6 +2997,105 @@ fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
             optional: false,
         } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "process") && property == "stdout"
     )
+}
+
+fn is_process_cwd_ref(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "cwd" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn is_process_cwd_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty() && is_process_cwd_ref(callee)
+}
+
+fn is_process_cwd_call_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_process_cwd_call(callee, args))
+}
+
+fn is_string_function_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if !args.is_empty() {
+        return false;
+    }
+    match callee {
+        JsExpr::Ident { name } => state.string_function_bindings.contains(name),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } => static_member_kind(object, property, state) == Some(AotSlotKind::StringFunction),
+        _ => false,
+    }
+}
+
+fn render_string_function_expr(expr: &JsExpr) -> Option<String> {
+    if is_process_cwd_ref(expr) {
+        return Some("tsgodownProcessCwd".to_string());
+    }
+    None
+}
+
+fn is_process_version_expr(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: _,
+        } if property == "version"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process") =>
+        {
+            true
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: _,
+        } if property == "node" => matches!(
+            object.as_ref(),
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: _,
+            } if property == "versions"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+        ),
+        _ => false,
+    }
+}
+
+fn render_process_version_expr(expr: &JsExpr) -> Option<String> {
+    match expr {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: _,
+        } if property == "version"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process") =>
+        {
+            Some(go_string_literal(NODE_LTS_VERSION_WITH_PREFIX))
+        }
+        JsExpr::Member {
+            property,
+            property_expr: None,
+            optional: _,
+            ..
+        } if property == "node" && is_process_version_expr(expr) => {
+            Some(go_string_literal(NODE_LTS_VERSION))
+        }
+        _ => None,
+    }
 }
 
 fn process_env_lookup_name(expr: &JsExpr) -> Option<&str> {
@@ -3075,26 +3228,37 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
                 rendered_args.join(", ")
             ));
         }
-        let function = state
+        if let Some(function) = state
             .namespace_functions
-            .get(&(name.clone(), property.clone()))?;
-        if function.params.len() != args.len() {
-            return None;
+            .get(&(name.clone(), property.clone()))
+        {
+            if function.params.len() != args.len() {
+                return None;
+            }
+            let rendered_args = args
+                .iter()
+                .zip(function.param_kinds.iter())
+                .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
+                .collect::<Option<Vec<_>>>()?;
+            return Some(format!(
+                "{}({})",
+                function.go_name,
+                rendered_args.join(", ")
+            ));
         }
-        let rendered_args = args
-            .iter()
-            .zip(function.param_kinds.iter())
-            .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
-            .collect::<Option<Vec<_>>>()?;
-        return Some(format!(
-            "{}({})",
-            function.go_name,
-            rendered_args.join(", ")
-        ));
+        if args.is_empty()
+            && static_member_kind(object, property, state) == Some(AotSlotKind::StringFunction)
+        {
+            let function = render_static_member_expr(object, property, state)?;
+            return Some(format!("{function}()"));
+        }
     }
     let JsExpr::Ident { name } = callee else {
         return None;
     };
+    if args.is_empty() && state.string_function_bindings.contains(name) {
+        return Some(format!("{}()", go_binding_ref(name, state)));
+    }
     let function = state.functions.get(name)?;
     if function.params.len() != args.len() {
         return None;
@@ -3117,6 +3281,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::Bool => render_bool_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
         AotSlotKind::String => render_string_expr(expr, state),
+        AotSlotKind::StringFunction => render_string_function_expr(expr),
     }
 }
 
@@ -3157,6 +3322,8 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
+        expr if is_process_version_expr(expr) => render_process_version_expr(expr),
+        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Member {
             object,
