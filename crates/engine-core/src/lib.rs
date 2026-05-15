@@ -1308,8 +1308,16 @@ console.log("try", risky(1), risky(3), cleanup)
             "src/index.js",
             r#"
 class Counter {
+  static get ANY() {
+    return "*"
+  }
+
   constructor(start) {
     this.value = start
+  }
+
+  get current() {
+    return this.value
   }
 
   inc(step) {
@@ -1318,8 +1326,12 @@ class Counter {
   }
 }
 
+class DerivedCounter extends Counter {}
+class CustomError extends Error {}
 const counter = new Counter(2)
-console.log("class", counter.inc(3), counter instanceof Counter, "value" in counter)
+const derived = new DerivedCounter(4)
+const error = new CustomError("boom")
+console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message)
 "#,
         );
 
@@ -1369,7 +1381,7 @@ console.log("class", counter.inc(3), counter instanceof Counter, "value" in coun
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "class 5 true true\n"
+            "class 5 5 * 5 true true boom\n"
         );
     }
 

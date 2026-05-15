@@ -318,6 +318,10 @@ type FunctionValue struct {
 type ClassValue struct {
 	Constructor *FunctionValue
 	Methods     map[string]FunctionValue
+	Getters     map[string]FunctionValue
+	Static      map[string]FunctionValue
+	StaticGetters map[string]FunctionValue
+	Super       *ClassValue
 }
 
 type BoundFunctionValue struct {
@@ -378,6 +382,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	cache[module.SourcePath] = state
 	env := Env{
 		"exports": exports,
+		"Error":   builtinErrorClass(),
 		"module": map[string]any{
 			"exports": exports,
 		},
@@ -469,7 +474,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		}
 		return completion{}, nil
 	case "class-decl":
-		classValue, err := evalClass(asSlice(stmt["methods"]), env)
+		classValue, err := evalClass(optionalExpr(stmt, "superClass"), asSlice(stmt["methods"]), env)
 		if err != nil {
 			return completion{}, err
 		}
@@ -767,7 +772,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			Env:    env,
 		}, nil
 	case "class":
-		return evalClass(asSlice(expr["methods"]), env)
+		return evalClass(optionalExpr(expr, "superClass"), asSlice(expr["methods"]), env)
 	case "unary":
 		if asString(expr["op"]) == "delete" {
 			return evalDelete(asMap(expr["arg"]), env)
@@ -864,11 +869,22 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		property := asString(expr["property"])
 		if objectMap, ok := object.(map[string]any); ok {
 			if classValue, ok := objectMap["__class"].(*ClassValue); ok {
-				if method, ok := classValue.Methods[property]; ok {
+				if getter, ok := lookupGetter(classValue, property); ok {
+					return callFunctionWithThis(getter, nil, env, objectMap)
+				}
+				if method, ok := lookupMethod(classValue, property); ok {
 					return BoundFunctionValue{Function: method, This: objectMap}, nil
 				}
 			}
 			return objectMap[property], nil
+		}
+		if classValue, ok := object.(*ClassValue); ok {
+			if getter, ok := classValue.StaticGetters[property]; ok {
+				return callFunctionWithThis(getter, nil, env, classValue)
+			}
+			if method, ok := classValue.Static[property]; ok {
+				return BoundFunctionValue{Function: method, This: classValue}, nil
+			}
 		}
 		if objectArray, ok := object.([]any); ok {
 			if property == "length" {
@@ -1064,8 +1080,24 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	return float64(len(array)), nil
 }
 
-func evalClass(rawMethods []any, env Env) (*ClassValue, error) {
-	classValue := &ClassValue{Methods: map[string]FunctionValue{}}
+func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue, error) {
+	classValue := &ClassValue{
+		Methods:       map[string]FunctionValue{},
+		Getters:       map[string]FunctionValue{},
+		Static:        map[string]FunctionValue{},
+		StaticGetters: map[string]FunctionValue{},
+	}
+	if len(superExpr) > 0 {
+		superValue, err := evalExpr(superExpr, env)
+		if err != nil {
+			return nil, err
+		}
+		superClass, ok := superValue.(*ClassValue)
+		if !ok {
+			return nil, errors.New("class extends target is not constructable")
+		}
+		classValue.Super = superClass
+	}
 	for _, rawMethod := range rawMethods {
 		method := asMap(rawMethod)
 		function := FunctionValue{
@@ -1079,9 +1111,16 @@ func evalClass(rawMethods []any, env Env) (*ClassValue, error) {
 			classValue.Constructor = &function
 		case "method":
 			if method["isStatic"] == true {
-				return nil, errors.New("static class methods are not supported")
+				classValue.Static[name] = function
+			} else {
+				classValue.Methods[name] = function
 			}
-			classValue.Methods[name] = function
+		case "getter":
+			if method["isStatic"] == true {
+				classValue.StaticGetters[name] = function
+			} else {
+				classValue.Getters[name] = function
+			}
 		default:
 			return nil, fmt.Errorf("unsupported class method %s", asString(method["kind"]))
 		}
@@ -1097,6 +1136,10 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	instance := map[string]any{"__class": classValue}
 	if classValue.Constructor != nil {
 		if _, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance); err != nil {
+			return nil, err
+		}
+	} else if classValue.Super != nil && classValue.Super.Constructor != nil {
+		if _, err := callFunctionWithThis(*classValue.Super.Constructor, rawArgs, callerEnv, instance); err != nil {
 			return nil, err
 		}
 	}
@@ -1137,6 +1180,53 @@ func callFunctionWithThis(function FunctionValue, rawArgs []any, callerEnv Env, 
 		}
 	}
 	return nil, nil
+}
+
+func builtinErrorClass() *ClassValue {
+	constructor := FunctionValue{
+		Params: []string{"message"},
+		Body: []map[string]any{
+			{
+				"kind": "expr",
+				"expr": map[string]any{
+					"kind": "assign",
+					"op":   "=",
+					"left": map[string]any{
+						"kind":     "member",
+						"object":   map[string]any{"kind": "this"},
+						"property": "message",
+					},
+					"right": map[string]any{"kind": "ident", "name": "message"},
+				},
+			},
+		},
+		Env: Env{},
+	}
+	return &ClassValue{
+		Constructor: &constructor,
+		Methods:     map[string]FunctionValue{},
+		Getters:     map[string]FunctionValue{},
+		Static:      map[string]FunctionValue{},
+		StaticGetters: map[string]FunctionValue{},
+	}
+}
+
+func lookupMethod(classValue *ClassValue, property string) (FunctionValue, bool) {
+	for current := classValue; current != nil; current = current.Super {
+		if method, ok := current.Methods[property]; ok {
+			return method, true
+		}
+	}
+	return FunctionValue{}, false
+}
+
+func lookupGetter(classValue *ClassValue, property string) (FunctionValue, bool) {
+	for current := classValue; current != nil; current = current.Super {
+		if getter, ok := current.Getters[property]; ok {
+			return getter, true
+		}
+	}
+	return FunctionValue{}, false
 }
 
 func lookupEnv(env Env, name string) any {
@@ -1362,7 +1452,16 @@ func jsInstanceOf(value any, constructor any) bool {
 	if !ok {
 		return false
 	}
-	return object["__class"] == classValue
+	instanceClass, ok := object["__class"].(*ClassValue)
+	if !ok {
+		return false
+	}
+	for current := instanceClass; current != nil; current = current.Super {
+		if current == classValue {
+			return true
+		}
+	}
+	return false
 }
 
 func toNumber(value any) float64 {
@@ -1440,7 +1539,7 @@ func jsTypeof(value any) string {
 		return "number"
 	case string:
 		return "string"
-	case FunctionValue:
+	case FunctionValue, BoundFunctionValue, *ClassValue:
 		return "function"
 	default:
 		return "object"
@@ -1450,6 +1549,13 @@ func jsTypeof(value any) string {
 func asMap(value any) map[string]any {
 	if typed, ok := value.(map[string]any); ok {
 		return typed
+	}
+	return map[string]any{}
+}
+
+func optionalExpr(source map[string]any, key string) map[string]any {
+	if raw, ok := source[key]; ok {
+		return asMap(raw)
 	}
 	return map[string]any{}
 }

@@ -358,14 +358,10 @@ fn collect_unsupported_class(
     unsupported: &mut Vec<String>,
 ) {
     if let Some(super_class) = super_class {
-        unsupported.push("class extends".to_string());
         collect_unsupported_expr(super_class, unsupported);
     }
     for method in methods {
-        if method.is_static {
-            unsupported.push("static class methods".to_string());
-        }
-        if method.kind != "constructor" && method.kind != "method" {
+        if method.kind != "constructor" && method.kind != "method" && method.kind != "getter" {
             unsupported.push(format!("class {} methods", method.kind));
         }
         collect_unsupported_stmt_list(&method.body, true, unsupported);
