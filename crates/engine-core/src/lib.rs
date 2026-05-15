@@ -4017,6 +4017,76 @@ console.log("fs", fs.existsSync("present.txt"), fs.existsSync("missing.txt"))
     }
 
     #[test]
+    fn emit_go_runs_aot_buffer_from_subset() {
+        let root = temp_project("engine-core-aot-buffer-from");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const utf8 = Buffer.from("abc", "utf8")
+const hex = Buffer.from("ff", "hex")
+const base64 = Buffer.from("YQ==", "base64")
+const array = Buffer.from([65, 66])
+console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1])
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-buffer-from".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "buffer 3 255 97 2 66\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(

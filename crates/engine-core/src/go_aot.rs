@@ -408,6 +408,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_node_fs_exists_sync_call(callee, args) {
                 imports.insert("os");
             }
+            if is_node_buffer_from_call(callee, args) {
+                imports.insert("encoding/base64");
+                imports.insert("encoding/hex");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -485,6 +489,32 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
 		return ""
 	}
 	return string(bytes)
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("encoding/base64") || imports.contains("encoding/hex") {
+        helpers.push(
+            r#"func tsgodownBufferFromString(value string, encoding string) []byte {
+	switch encoding {
+	case "", "utf8", "utf-8":
+		return []byte(value)
+	case "hex":
+		decoded, err := hex.DecodeString(value)
+		if err != nil {
+			return []byte{}
+		}
+		return decoded
+	case "base64":
+		decoded, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return []byte{}
+		}
+		return decoded
+	default:
+		return []byte(value)
+	}
 }
 "#
             .to_string(),
@@ -1270,6 +1300,7 @@ struct AotState {
     numeric_bindings: BTreeSet<String>,
     string_bindings: BTreeSet<String>,
     bool_bindings: BTreeSet<String>,
+    bytes_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     class_instance_bindings: BTreeMap<String, String>,
@@ -1296,6 +1327,9 @@ impl AotState {
             AotSlotKind::String => {
                 self.string_bindings.insert(name.to_string());
             }
+            AotSlotKind::Bytes => {
+                self.bytes_bindings.insert(name.to_string());
+            }
             AotSlotKind::StringFunction => {
                 self.string_function_bindings.insert(name.to_string());
             }
@@ -1311,6 +1345,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        bytes_bindings: state.bytes_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -1393,6 +1428,7 @@ struct AotObject {
 enum AotSlotKind {
     Any,
     Bool,
+    Bytes,
     Number,
     String,
     StringFunction,
@@ -1402,6 +1438,7 @@ fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
     match kind {
         AotSlotKind::Any => "any",
         AotSlotKind::Bool => "bool",
+        AotSlotKind::Bytes => "[]byte",
         AotSlotKind::Number => "float64",
         AotSlotKind::String => "string",
         AotSlotKind::StringFunction => "func() string",
@@ -1449,6 +1486,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if let Some(value) = render_bool_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Bool);
                     return Some(format!("var {ident} bool = {value}"));
+                }
+                if let Some(value) = render_bytes_expr(expr, state) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
+                    return Some(format!("var {ident} []byte = {value}"));
                 }
                 if let Some(value) = render_string_function_expr(expr) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringFunction);
@@ -1530,6 +1571,7 @@ fn render_for_stmt(
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        bytes_bindings: state.bytes_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -1614,6 +1656,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        bytes_bindings: state.bytes_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -1635,6 +1678,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
         bool_bindings: state.bool_bindings.clone(),
+        bytes_bindings: state.bytes_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -2427,6 +2471,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state))
+            .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
@@ -2440,6 +2485,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr: None,
             optional: false,
         } => render_string_expr(expr, state)
+            .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_static_member_expr(object, property, state)),
         JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
@@ -2468,9 +2514,28 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
+        } if property == "length" && render_bytes_expr(object, state).is_some() => {
+            let object = render_bytes_expr(object, state)?;
+            Some(format!("float64(len({object}))"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
         } if property == "length" => {
             let object = render_string_expr(object, state)?;
             Some(format!("float64(len({object}))"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property.parse::<usize>().is_ok() && render_bytes_expr(object, state).is_some() => {
+            let object = render_bytes_expr(object, state)?;
+            let index = property.parse::<usize>().ok()?;
+            Some(format!("float64({object}[{index}])"))
         }
         JsExpr::Unary { op, arg } if op == "-" => {
             let arg = render_numeric_expr(arg, state)?;
@@ -2828,6 +2893,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_bool_expr(expr, state) {
         return Some((AotSlotKind::Bool, value, "bool"));
     }
+    if let Some(value) = render_bytes_expr(expr, state) {
+        return Some((AotSlotKind::Bytes, value, "[]byte"));
+    }
     if let Some(value) = render_string_function_expr(expr) {
         return Some((AotSlotKind::StringFunction, value, "func() string"));
     }
@@ -2859,6 +2927,25 @@ fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Opti
     };
     let object = state.object_bindings.get(name)?;
     object.fields.get(property).copied()
+}
+
+fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.bytes_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Array { items } => {
+            let bytes = items
+                .iter()
+                .map(|item| render_numeric_expr(item, state).map(|value| format!("byte({value})")))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]byte{{{}}}", bytes.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_node_buffer_from_call(callee, args) => {
+            render_node_buffer_from_call(callee, args, state)
+        }
+        _ => None,
+    }
 }
 
 fn call_uses_strings_import(callee: &JsExpr) -> bool {
@@ -3027,7 +3114,14 @@ fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
 }
 
 fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
-    matches!(expr, JsExpr::Call { callee, args, .. } if is_node_path_string_call(callee, args) || is_node_os_homedir_call(callee, args) || is_node_fs_exists_sync_call(callee, args))
+    matches!(
+        expr,
+        JsExpr::Call { callee, args, .. }
+            if is_node_path_string_call(callee, args)
+                || is_node_os_homedir_call(callee, args)
+                || is_node_fs_exists_sync_call(callee, args)
+                || is_node_buffer_from_call(callee, args)
+    )
 }
 
 fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -3141,6 +3235,48 @@ fn render_node_fs_exists_sync_call(
     }
     let path = render_string_expr(args.first()?, state)?;
     Some(format!("tsgodownFsExistsSync({path})"))
+}
+
+fn is_node_buffer_from_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Buffer")
+                && property == "from"
+        )
+}
+
+fn render_node_buffer_from_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_node_buffer_from_call(callee, args) {
+        return None;
+    }
+    match args.first()? {
+        JsExpr::Array { .. } => render_bytes_expr(args.first()?, state),
+        expr if render_bytes_expr(expr, state).is_some() && args.len() == 1 => {
+            let value = render_bytes_expr(expr, state)?;
+            Some(format!("append([]byte(nil), {value}...)"))
+        }
+        expr => {
+            let value = render_string_expr(expr, state)?;
+            let encoding = args
+                .get(1)
+                .and_then(string_literal_value)
+                .unwrap_or_else(|| "utf8".to_string());
+            Some(format!(
+                "tsgodownBufferFromString({value}, {})",
+                go_string_literal(&encoding)
+            ))
+        }
+    }
 }
 
 fn render_string_numeric_method_call(
@@ -3523,6 +3659,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
     match kind {
         AotSlotKind::Any => render_expr(expr, state),
         AotSlotKind::Bool => render_bool_expr(expr, state),
+        AotSlotKind::Bytes => render_bytes_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
         AotSlotKind::String => render_string_expr(expr, state),
         AotSlotKind::StringFunction => render_string_function_expr(expr),

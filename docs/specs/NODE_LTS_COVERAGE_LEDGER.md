@@ -13,7 +13,7 @@ diagnostics. `TODO` and `WIP` rows are allowed during development only.
 | node.assert | Assertion testing | stable | TODO | TODO | NODE_ASSERT_UNSUPPORTED | planned | Assert API and assertion error shapes. |
 | node.async_context | Asynchronous context tracking | stable | TODO | TODO | NODE_ASYNC_CONTEXT_UNSUPPORTED | planned | AsyncLocalStorage and async resource propagation. |
 | node.async_hooks | Async hooks | stable | TODO | TODO | NODE_ASYNC_HOOKS_UNSUPPORTED | planned | Hook lifecycle and async resource IDs. |
-| node.buffer | Buffer | stable | TODO | TODO | NODE_BUFFER_UNSUPPORTED | planned | Buffer, Blob, encodings, byte-level parity. |
+| node.buffer | Buffer | stable | WIP | WIP | NODE_BUFFER_UNSUPPORTED | focused AOT subset | `Buffer.from` lowers for string inputs with `utf8`, `hex`, and `base64` encodings plus numeric arrays; Blob, full encodings, mutation, typed-array interop, and byte-level parity pending. |
 | node.addons_cpp | C++ addons | native | BLOCKED | BLOCKED | NODE_CPP_ADDON_BLOCKED | fail-closed planned | Native addon loading conflicts with no native fallback. |
 | node.addons_node_api | C/C++ addons with Node-API | native | BLOCKED | BLOCKED | NODE_API_ADDON_BLOCKED | fail-closed planned | Node-API/N-API fallback forbidden. |
 | node.embedder_api | C++ embedder API | embedder | BLOCKED | BLOCKED | NODE_EMBEDDER_API_BLOCKED | fail-closed planned | Embedding Node/V8 is forbidden. |
