@@ -700,6 +700,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			Env:    env,
 		}, nil
 	case "unary":
+		if asString(expr["op"]) == "delete" {
+			return evalDelete(asMap(expr["arg"]), env)
+		}
 		arg, err := evalExpr(asMap(expr["arg"]), env)
 		if err != nil {
 			return nil, err
@@ -867,6 +870,16 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 			return nil, evalErr
 		}
 		value, err = evalBinary("+", current, right)
+	case "-=":
+		current, readErr := readTarget(left, env)
+		if readErr != nil {
+			return nil, readErr
+		}
+		right, evalErr := evalExpr(rightExpr, env)
+		if evalErr != nil {
+			return nil, evalErr
+		}
+		value, err = evalBinary("-", current, right)
 	case "??=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
@@ -886,6 +899,20 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 		return nil, err
 	}
 	return value, nil
+}
+
+func evalDelete(target map[string]any, env Env) (any, error) {
+	if target["kind"] != "member" {
+		return true, nil
+	}
+	object, err := evalExpr(asMap(target["object"]), env)
+	if err != nil {
+		return nil, err
+	}
+	if objectMap, ok := object.(map[string]any); ok {
+		delete(objectMap, asString(target["property"]))
+	}
+	return true, nil
 }
 
 func evalUpdate(expr map[string]any, env Env) (any, error) {
