@@ -13,6 +13,7 @@ pub(crate) fn render_aot_executable_program(
     }
     let module_functions = collect_module_functions(&analyzed.ir);
     let module_default_exports = collect_module_default_exports(&analyzed.ir, &module_functions);
+    let module_named_exports = collect_module_named_exports(&analyzed.ir, &module_functions);
     let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
     let declarations = render_module_decls(&analyzed.ir, &module_functions, &module_slots)?;
     let mut state = module_aot_state(
@@ -20,6 +21,7 @@ pub(crate) fn render_aot_executable_program(
         &analyzed.ir,
         &module_functions,
         &module_default_exports,
+        &module_named_exports,
         &module_slots,
     )?;
     state.go_imports = collect_aot_imports(&analyzed.ir);
@@ -242,6 +244,43 @@ fn collect_module_default_exports(
     exports
 }
 
+fn collect_module_named_exports(
+    ir: &IrDocument,
+    module_functions: &BTreeMap<(String, String), AotFunction>,
+) -> BTreeMap<String, BTreeMap<String, AotFunction>> {
+    let mut exports = BTreeMap::new();
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            let JsStmt::Expr { expr } = stmt else {
+                continue;
+            };
+            let JsExpr::Assign { op, left, right } = expr else {
+                continue;
+            };
+            if op != "=" {
+                continue;
+            }
+            let Some(exported_name) = cjs_named_export_property(left) else {
+                continue;
+            };
+            let JsExpr::Ident { name } = right.as_ref() else {
+                continue;
+            };
+            let Some(function) = module_functions.get(&(module.id.clone(), name.clone())) else {
+                continue;
+            };
+            exports
+                .entry(module.id.clone())
+                .or_insert_with(BTreeMap::new)
+                .insert(exported_name, function.clone());
+        }
+    }
+    exports
+}
+
 fn collect_module_slots(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
@@ -255,6 +294,7 @@ fn collect_module_slots(
             module,
             ir,
             module_functions,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &BTreeMap::new(),
         ) else {
@@ -292,12 +332,14 @@ fn render_module_decls(
 ) -> Option<Vec<String>> {
     let mut declarations = Vec::new();
     let module_default_exports = collect_module_default_exports(ir, module_functions);
+    let module_named_exports = collect_module_named_exports(ir, module_functions);
     for module in &ir.modules {
         let state = module_aot_state(
             module,
             ir,
             module_functions,
             &module_default_exports,
+            &module_named_exports,
             module_slots,
         )?;
         for stmt in &module.executable.as_ref()?.stmts {
@@ -327,6 +369,7 @@ fn module_aot_state(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
     module_default_exports: &BTreeMap<String, AotFunction>,
+    module_named_exports: &BTreeMap<String, BTreeMap<String, AotFunction>>,
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<AotState> {
     let mut state = AotState::default();
@@ -349,10 +392,18 @@ fn module_aot_state(
             .find(|candidate| &candidate.id == resolved)?;
         for binding in &import.bindings {
             if import.kind == "cjs" {
-                let function = module_default_exports.get(&imported_module.id)?;
-                state
-                    .functions
-                    .insert(binding.local.clone(), function.clone());
+                if let Some(function) = module_default_exports.get(&imported_module.id) {
+                    state
+                        .functions
+                        .insert(binding.local.clone(), function.clone());
+                    continue;
+                }
+                let named = module_named_exports.get(&imported_module.id)?;
+                for (property, function) in named {
+                    state
+                        .namespace_functions
+                        .insert((binding.local.clone(), property.clone()), function.clone());
+                }
                 continue;
             }
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
@@ -387,6 +438,23 @@ fn is_module_exports_member(expr: &JsExpr) -> bool {
     )
 }
 
+fn cjs_named_export_property(expr: &JsExpr) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    match object.as_ref() {
+        JsExpr::Ident { name } if name == "exports" => Some(property.clone()),
+        object if is_module_exports_member(object) => Some(property.clone()),
+        _ => None,
+    }
+}
+
 fn module_go_prefix(module: &Module) -> String {
     let raw = module
         .source_path
@@ -419,6 +487,7 @@ struct AotState {
     bool_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     functions: BTreeMap<String, AotFunction>,
+    namespace_functions: BTreeMap<(String, String), AotFunction>,
 }
 
 impl AotState {
@@ -478,7 +547,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             let ident = sanitize_go_identifier(name);
             if let Some(expr) = init {
                 if is_require_call(expr)
-                    && (state.functions.contains_key(name) || state.bindings.contains(name))
+                    && (state.functions.contains_key(name)
+                        || state.bindings.contains(name)
+                        || state
+                            .namespace_functions
+                            .keys()
+                            .any(|(namespace, _)| namespace == name))
                 {
                     return Some(String::new());
                 }
@@ -559,6 +633,7 @@ fn render_for_stmt(
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
+        namespace_functions: state.namespace_functions.clone(),
     };
     let init = init
         .first()
@@ -629,6 +704,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
+        namespace_functions: state.namespace_functions.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
 }
@@ -643,6 +719,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         bool_bindings: state.bool_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         functions: state.functions.clone(),
+        namespace_functions: state.namespace_functions.clone(),
     };
     stmts
         .iter()
@@ -668,6 +745,7 @@ fn render_function_decl(stmt: &JsStmt, state: &AotState, go_name: &str) -> Optio
     }
     let mut function_state = AotState {
         functions: state.functions.clone(),
+        namespace_functions: state.namespace_functions.clone(),
         ..AotState::default()
     };
     for param in params {
@@ -970,6 +1048,32 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     if is_json_stringify(callee) {
         let value = render_json_value_expr(args.first()?, state)?;
         return Some(format!("tsgodownJSONStringify({value})"));
+    }
+    if let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    {
+        let JsExpr::Ident { name } = object.as_ref() else {
+            return None;
+        };
+        let function = state
+            .namespace_functions
+            .get(&(name.clone(), property.clone()))?;
+        if function.params.len() != args.len() {
+            return None;
+        }
+        let rendered_args = args
+            .iter()
+            .map(|arg| render_numeric_expr(arg, state))
+            .collect::<Option<Vec<_>>>()?;
+        return Some(format!(
+            "{}({})",
+            function.go_name,
+            rendered_args.join(", ")
+        ));
     }
     let JsExpr::Ident { name } = callee else {
         return None;
