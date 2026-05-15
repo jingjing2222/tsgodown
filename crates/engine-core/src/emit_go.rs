@@ -811,9 +811,11 @@ func resolveRelativeModuleAtRuntime(program Program, fromModule string, spec str
 		base + ".js",
 		base + ".mjs",
 		base + ".cjs",
+		base + ".json",
 		filepath.ToSlash(filepath.Join(base, "index.js")),
 		filepath.ToSlash(filepath.Join(base, "index.mjs")),
 		filepath.ToSlash(filepath.Join(base, "index.cjs")),
+		filepath.ToSlash(filepath.Join(base, "index.json")),
 	}
 	for _, candidate := range candidates {
 		if module, ok := moduleByID(program, candidate); ok {
@@ -830,8 +832,11 @@ func resolveBareModule(program Program, spec string) (Module, bool) {
 	prefix := "node_modules/" + spec + "/"
 	preferred := []string{
 		prefix + "index.js",
+		prefix + "index.json",
 		prefix + filepath.Base(spec) + ".js",
+		prefix + filepath.Base(spec) + ".json",
 		prefix + filepath.Base(spec) + "/" + filepath.Base(spec) + ".js",
+		prefix + filepath.Base(spec) + "/" + filepath.Base(spec) + ".json",
 	}
 	for _, candidate := range preferred {
 		if module, ok := moduleByID(program, candidate); ok {

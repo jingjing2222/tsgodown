@@ -4,7 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{builder::build_program_ir, DiagnosticIR, DiagnosticSourceIR, ProgramIR};
+use crate::{
+    builder::build_program_ir, DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, ImportIR,
+    JsArrayElementIR, JsExprIR, JsObjectPropIR, JsStmtIR, JsValueIR, ModuleIR, ProgramIR,
+};
 
 pub fn build_program_graph(root: &Path, entry: &str) -> ProgramIR {
     let root = root.to_path_buf();
@@ -35,7 +38,11 @@ pub fn build_program_graph(root: &Path, entry: &str) -> ProgramIR {
             }
         };
 
-        let mut ir = build_program_ir(&module_path, &source);
+        let mut ir = if module_path.ends_with(".json") {
+            build_json_program_ir(&module_path, &source)
+        } else {
+            build_program_ir(&module_path, &source)
+        };
         for module in &mut ir.modules {
             for import in &mut module.imports {
                 let resolved = if is_relative_spec(&import.spec) {
@@ -192,18 +199,21 @@ fn resolve_file_or_directory(root: &Path, base: &Path) -> Option<String> {
         append_extension(base, "js"),
         append_extension(base, "mjs"),
         append_extension(base, "cjs"),
+        append_extension(base, "json"),
         append_extension(base, "jsx"),
         with_extension(base, "ts"),
         with_extension(base, "tsx"),
         with_extension(base, "js"),
         with_extension(base, "mjs"),
         with_extension(base, "cjs"),
+        with_extension(base, "json"),
         with_extension(base, "jsx"),
         base_path.join("index.ts"),
         base_path.join("index.tsx"),
         base_path.join("index.js"),
         base_path.join("index.mjs"),
         base_path.join("index.cjs"),
+        base_path.join("index.json"),
         base_path.join("index.jsx"),
     ];
 
@@ -301,6 +311,81 @@ fn to_posix_path(path: PathBuf) -> String {
         .map(|component| component.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn build_json_program_ir(file: &str, source: &str) -> ProgramIR {
+    match serde_json::from_str::<serde_json::Value>(source) {
+        Ok(value) => ProgramIR {
+            modules: vec![ModuleIR {
+                id: file.to_string(),
+                source_path: file.to_string(),
+                exports: vec!["*".to_string()],
+                imports: Vec::<ImportIR>::new(),
+                executable: Some(ExecutableModuleIR {
+                    stmts: vec![JsStmtIR::Expr(JsExprIR::Assign {
+                        op: "=".to_string(),
+                        left: Box::new(JsExprIR::Member {
+                            object: Box::new(JsExprIR::Ident("module".to_string())),
+                            property: "exports".to_string(),
+                            computed: None,
+                            optional: false,
+                        }),
+                        right: Box::new(json_value_to_expr(&value)),
+                    })],
+                }),
+            }],
+            routes: vec![],
+            handlers: vec![],
+            diagnostics: vec![],
+        },
+        Err(error) => ProgramIR {
+            modules: vec![ModuleIR {
+                id: file.to_string(),
+                source_path: file.to_string(),
+                exports: vec![],
+                imports: vec![],
+                executable: Some(ExecutableModuleIR { stmts: vec![] }),
+            }],
+            routes: vec![],
+            handlers: vec![],
+            diagnostics: vec![diag(
+                "JSON_PARSE_ERROR",
+                &format!("failed to parse JSON module {file}: {error}"),
+                file,
+            )],
+        },
+    }
+}
+
+fn json_value_to_expr(value: &serde_json::Value) -> JsExprIR {
+    match value {
+        serde_json::Value::Null => JsExprIR::Value(JsValueIR::Null),
+        serde_json::Value::Bool(value) => JsExprIR::Value(JsValueIR::Bool(*value)),
+        serde_json::Value::Number(value) => JsExprIR::Value(JsValueIR::Number(value.to_string())),
+        serde_json::Value::String(value) => JsExprIR::Value(JsValueIR::String(value.clone())),
+        serde_json::Value::Array(items) => JsExprIR::ArraySpread(
+            items
+                .iter()
+                .map(|item| JsArrayElementIR {
+                    spread: false,
+                    value: json_value_to_expr(item),
+                })
+                .collect(),
+        ),
+        serde_json::Value::Object(map) => {
+            let mut props = map
+                .iter()
+                .map(|(key, value)| JsObjectPropIR {
+                    key: key.clone(),
+                    key_expr: None,
+                    value: json_value_to_expr(value),
+                    spread: false,
+                })
+                .collect::<Vec<_>>();
+            props.sort_by(|a, b| a.key.cmp(&b.key));
+            JsExprIR::Object(props)
+        }
+    }
 }
 
 fn diag(code: &str, message: &str, file: &str) -> DiagnosticIR {

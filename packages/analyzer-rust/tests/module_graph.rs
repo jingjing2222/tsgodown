@@ -111,6 +111,39 @@ module.exports = { value: 1 };
 }
 
 #[test]
+fn resolves_and_lowers_json_modules_without_js_parser_errors() {
+    let root = temp_project("module-graph-json-module");
+    write(
+        &root,
+        "src/index.js",
+        r#"
+const data = require("./data.json");
+export const value = data.nested.ok;
+"#,
+    );
+    write(
+        &root,
+        "src/data.json",
+        r#"{ "name": "json-fixture", "nested": { "ok": true }, "items": [1, 2] }"#,
+    );
+
+    let ir = analyze_compiler_project(&root, "src/index.js");
+
+    assert_eq!(ir.diagnostics, vec![]);
+    assert!(ir.modules.iter().any(|module| {
+        module.source_path == "src/data.json"
+            && module.exports == vec!["*".to_string()]
+            && module.executable.is_some()
+    }));
+    assert!(ir.modules.iter().any(|module| {
+        module.source_path == "src/index.js"
+            && module.imports.iter().any(|import| {
+                import.spec == "./data.json" && import.resolved.as_deref() == Some("src/data.json")
+            })
+    }));
+}
+
+#[test]
 fn reports_unresolved_relative_import_without_silent_compile() {
     let root = temp_project("module-graph-unresolved");
     write(
