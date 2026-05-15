@@ -738,7 +738,14 @@ const nested = { items: [] }
 nested.items[0] = values.join("")
 const protoSlice = Array.prototype.slice.call(values, 1, 3).join("")
 const popped = values.pop()
-console.log("array-assign", values.length, values.join(","), nested.items[0], protoSlice, popped)
+const applied = []
+Array.prototype.push.apply(applied, ["x", "y"])
+const keyedArray = ["m", "n"]
+keyedArray.extra = "z"
+const objectKeys = Object.keys({ user: 1, role: 2 }).join("|")
+const arrayKeys = Object.keys(keyedArray).join("|")
+const arrayHas = Object.prototype.hasOwnProperty.call(keyedArray, "extra")
+console.log("array-assign", values.length, values.join(","), nested.items[0], protoSlice, popped, applied.join(""), objectKeys, arrayKeys, arrayHas, keyedArray.extra)
 "#,
         );
 
@@ -788,7 +795,183 @@ console.log("array-assign", values.length, values.join(","), nested.items[0], pr
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "array-assign 4 a,b,c, abce bc e\n"
+            "array-assign 4 a,b,c, abce bc e xy role|user 0|1|extra true z\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_recursive_array_push_apply_subset() {
+        let root = temp_project("engine-core-recursive-array-push-apply");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function pushToArray(arr, valueOrArray) {
+  Array.prototype.push.apply(arr, Array.isArray(valueOrArray) ? valueOrArray : [valueOrArray])
+}
+function stringify(obj, prefix) {
+  const keys = []
+  const objKeys = Object.keys(obj)
+  for (let j = 0; j < objKeys.length; ++j) {
+    const key = objKeys[j]
+    const value = obj[key]
+    const nextPrefix = Array.isArray(obj) ? prefix + "[" + key + "]" : (prefix ? prefix + "[" + key + "]" : key)
+    pushToArray(keys, typeof value === "object" ? stringify(value, nextPrefix) : [nextPrefix + "=" + value])
+  }
+  return keys
+}
+console.log("stringify-like", stringify({ user: { name: "kim", roles: ["admin", "ops"] } }, "").join("&"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/recursive-array-push-apply".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "stringify-like user[name]=kim&user[roles][0]=admin&user[roles][1]=ops\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_object_in_and_option_normalization_subset() {
+        let root = temp_project("engine-core-object-in-option-normalization");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const arrayPrefixGenerators = {
+  brackets: function brackets(prefix) { return prefix + "[]" },
+  comma: "comma",
+  indices: function indices(prefix, key) { return prefix + "[" + key + "]" },
+  repeat: function repeat(prefix) { return prefix }
+}
+const defaults = { arrayFormat: "indices", indices: false }
+function normalize(opts) {
+  let arrayFormat
+  if (opts.arrayFormat in arrayPrefixGenerators) {
+    arrayFormat = opts.arrayFormat
+  } else if ("indices" in opts) {
+    arrayFormat = opts.indices ? "indices" : "repeat"
+  } else {
+    arrayFormat = defaults.arrayFormat
+  }
+  return {
+    arrayFormat: arrayFormat,
+    generator: arrayPrefixGenerators[arrayFormat]
+  }
+}
+const repeated = normalize({ arrayFormat: "repeat" })
+const defaulted = normalize({ encodeValuesOnly: true })
+const weak = new WeakMap()
+const weakKey = {}
+WeakMap.prototype.set.call(weak, weakKey, 7)
+console.log(
+  "normalize",
+  repeated.arrayFormat,
+  repeated.generator("tag", "0"),
+  repeated.generator === "comma",
+  defaulted.arrayFormat,
+  defaulted.generator("tag", "0"),
+  defaulted.generator === "comma",
+  "arrayFormat" in { arrayFormat: "repeat" },
+  "missing" in { arrayFormat: "repeat" },
+  "prototype" in String,
+  "indexOf" in String.prototype,
+  "prototype" in WeakMap,
+  WeakMap.prototype.get.call(weak, weakKey)
+)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/object-in-option-normalization".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "normalize repeat tag false indices tag[0] false true false true true true 7\n"
         );
     }
 
@@ -2144,7 +2327,7 @@ const re = /x/
 Reflect.defineProperty(re, "test", { value: function (value) { return value === "ok" } })
 const encoded = encodeURIComponent("a b/[]")
 const decoded = decodeURIComponent(encoded)
-const json = JSON.stringify({ direct, applied, bound: bound(9), ok: re.test("ok"), decoded })
+const json = JSON.stringify({ direct, applied, bound: bound(9), ok: re.test("ok"), decoded, amp: "a&b" })
 console.log("intrinsics", json)
 "#,
         );
@@ -2195,7 +2378,7 @@ console.log("intrinsics", json)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "intrinsics {\"applied\":15,\"bound\":24,\"decoded\":\"a b/[]\",\"direct\":6,\"ok\":true}\n"
+            "intrinsics {\"amp\":\"a&b\",\"applied\":15,\"bound\":24,\"decoded\":\"a b/[]\",\"direct\":6,\"ok\":true}\n"
         );
     }
 

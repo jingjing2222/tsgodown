@@ -274,6 +274,7 @@ fn render_runtime_package() -> String {
     r#"package tsgodownrt
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -362,6 +363,11 @@ type NativeFunctionValue struct {
 	Call         func(args []any) (any, error)
 	CallWithThis func(thisValue any, args []any) (any, error)
 	Props        map[string]any
+}
+
+type ArrayValue struct {
+	Items []any
+	Props map[string]any
 }
 
 type RegExpValue struct {
@@ -811,12 +817,12 @@ func stringGlobal() NativeFunctionValue {
 func arrayGlobal() map[string]any {
 	prototype := map[string]any{
 		"push": nativeMethod(func(thisValue any, args []any) (any, error) {
-			array, ok := thisValue.([]any)
+			array, ok := thisValue.(*ArrayValue)
 			if !ok {
 				return nil, errors.New("push receiver is not array")
 			}
-			array = append(array, args...)
-			return float64(len(array)), nil
+			array.Items = append(array.Items, args...)
+			return float64(len(array.Items)), nil
 		}),
 	}
 	for _, property := range []string{
@@ -825,7 +831,7 @@ func arrayGlobal() map[string]any {
 	} {
 		current := property
 		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
-			array, ok := thisValue.([]any)
+			array, ok := thisValue.(*ArrayValue)
 			if !ok {
 				return jsUndefined, nil
 			}
@@ -841,7 +847,7 @@ func arrayGlobal() map[string]any {
 			if len(args) == 0 {
 				return false, nil
 			}
-			_, ok := args[0].([]any)
+			_, ok := args[0].(*ArrayValue)
 			return ok, nil
 		}),
 		"prototype": prototype,
@@ -853,6 +859,18 @@ func objectGlobal() map[string]any {
 	prototype["hasOwnProperty"] = nativeMethod(func(thisValue any, args []any) (any, error) {
 		if len(args) == 0 {
 			return false, nil
+		}
+		if array, ok := thisValue.(*ArrayValue); ok {
+			key := jsPropertyKey(args[0])
+			if key == "length" {
+				return true, nil
+			}
+			index, err := strconv.Atoi(key)
+			if err == nil && index >= 0 && index < len(array.Items) {
+				return true, nil
+			}
+			_, exists := array.Props[key]
+			return exists, nil
 		}
 		object, ok := thisValue.(map[string]any)
 		if !ok {
@@ -901,18 +919,28 @@ func objectGlobal() map[string]any {
 		}),
 		"entries": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
-				return []any{}, nil
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			if array, ok := args[0].(*ArrayValue); ok {
+				result := []any{}
+				for index, item := range array.Items {
+					result = append(result, &ArrayValue{Items: []any{strconv.Itoa(index), item}})
+				}
+				for _, key := range objectKeys(array.Props) {
+					result = append(result, &ArrayValue{Items: []any{key, array.Props[key]}})
+				}
+				return &ArrayValue{Items: result}, nil
 			}
 			object, ok := args[0].(map[string]any)
 			if !ok {
-				return []any{}, nil
+				return &ArrayValue{Items: []any{}}, nil
 			}
 			keys := objectKeys(object)
 			result := []any{}
 			for _, key := range keys {
-				result = append(result, []any{key, object[key]})
+				result = append(result, &ArrayValue{Items: []any{key, object[key]}})
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}),
 		"freeze": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -922,18 +950,28 @@ func objectGlobal() map[string]any {
 		}),
 		"keys": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
-				return []any{}, nil
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			if array, ok := args[0].(*ArrayValue); ok {
+				result := []any{}
+				for index := range array.Items {
+					result = append(result, strconv.Itoa(index))
+				}
+				for _, key := range objectKeys(array.Props) {
+					result = append(result, key)
+				}
+				return &ArrayValue{Items: result}, nil
 			}
 			object, ok := args[0].(map[string]any)
 			if !ok {
-				return []any{}, nil
+				return &ArrayValue{Items: []any{}}, nil
 			}
 			keys := objectKeys(object)
 			result := []any{}
 			for _, key := range keys {
 				result = append(result, key)
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}),
 		"prototype": prototype,
 	}
@@ -974,11 +1012,13 @@ func jsonGlobal() map[string]any {
 			if len(args) == 0 {
 				return jsUndefined, nil
 			}
-			bytes, err := json.Marshal(jsonCompatible(args[0], map[uintptr]bool{}))
-			if err != nil {
+			var out bytes.Buffer
+			encoder := json.NewEncoder(&out)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(jsonCompatible(args[0], map[uintptr]bool{})); err != nil {
 				return nil, err
 			}
-			return string(bytes), nil
+			return strings.TrimSuffix(out.String(), "\n"), nil
 		}),
 		"parse": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -1087,21 +1127,38 @@ func symbolGlobal() map[string]any {
 }
 
 func mapGlobal() NativeFunctionValue {
-	return nativeFunction(func(args []any) (any, error) {
+	constructor := nativeFunction(func(args []any) (any, error) {
 		value := &MapValue{Entries: []MapEntry{}}
 		if len(args) > 0 {
 			for _, entry := range iterableValues(args[0]) {
-				if pair, ok := entry.([]any); ok && len(pair) >= 2 {
-					mapSet(value, pair[0], pair[1])
+				if pair, ok := entry.(*ArrayValue); ok && len(pair.Items) >= 2 {
+					mapSet(value, pair.Items[0], pair.Items[1])
 				}
 			}
 		}
 		return value, nil
 	})
+	prototype := map[string]any{}
+	for _, property := range []string{"get", "set", "has", "delete", "clear", "keys", "values", "entries"} {
+		current := property
+		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			value, ok := thisValue.(*MapValue)
+			if !ok {
+				return jsUndefined, nil
+			}
+			member, ok := mapMember(value, current)
+			if !ok {
+				return jsUndefined, nil
+			}
+			return callFunctionWithValues(member, args, Env{}, thisValue)
+		})
+	}
+	constructor.Props["prototype"] = prototype
+	return constructor
 }
 
 func setGlobal() NativeFunctionValue {
-	return nativeFunction(func(args []any) (any, error) {
+	constructor := nativeFunction(func(args []any) (any, error) {
 		value := &SetValue{Values: []any{}}
 		if len(args) > 0 {
 			for _, item := range iterableValues(args[0]) {
@@ -1110,6 +1167,23 @@ func setGlobal() NativeFunctionValue {
 		}
 		return value, nil
 	})
+	prototype := map[string]any{}
+	for _, property := range []string{"add", "has", "delete", "clear", "keys", "values", "entries"} {
+		current := property
+		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			value, ok := thisValue.(*SetValue)
+			if !ok {
+				return jsUndefined, nil
+			}
+			member, ok := setMember(value, current)
+			if !ok {
+				return jsUndefined, nil
+			}
+			return callFunctionWithValues(member, args, Env{}, thisValue)
+		})
+	}
+	constructor.Props["prototype"] = prototype
+	return constructor
 }
 
 func objectKeys(object map[string]any) []string {
@@ -1139,9 +1213,8 @@ func setDynamicProperty(target any, property string, value any) bool {
 		}
 		typed.Props[property] = value
 		return true
-	case []any:
-		_, ok := assignArrayMember(typed, property, value)
-		return ok
+	case *ArrayValue:
+		return assignArrayMember(typed, property, value)
 	case FunctionValue:
 		if typed.Props == nil {
 			typed.Props = map[string]any{}
@@ -1167,7 +1240,7 @@ func jsonCompatible(value any, seen map[uintptr]bool) any {
 		return typed
 	case *SymbolValue, FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
 		return nil
-	case []any:
+	case *ArrayValue:
 		id := referenceIdentity(typed)
 		if id != 0 {
 			if seen[id] {
@@ -1177,7 +1250,7 @@ func jsonCompatible(value any, seen map[uintptr]bool) any {
 			defer delete(seen, id)
 		}
 		out := []any{}
-		for _, item := range typed {
+		for _, item := range typed.Items {
 			out = append(out, jsonCompatible(item, seen))
 		}
 		return out
@@ -1220,7 +1293,7 @@ func jsValueFromJSON(value any) any {
 		for _, item := range typed {
 			out = append(out, jsValueFromJSON(item))
 		}
-		return out
+		return &ArrayValue{Items: out}
 	case map[string]any:
 		out := map[string]any{}
 		for key, item := range typed {
@@ -1234,7 +1307,7 @@ func jsValueFromJSON(value any) any {
 
 func objectTag(value any) string {
 	switch value.(type) {
-	case []any:
+	case *ArrayValue:
 		return "[object Array]"
 	case *RegExpValue:
 		return "[object RegExp]"
@@ -1301,7 +1374,7 @@ func regexpMatches(value *RegExpValue, text string) any {
 		for _, match := range matches {
 			result = append(result, match.Groups[0])
 		}
-		return result
+		return &ArrayValue{Items: result}
 	}
 	match, err := regexpFindFirst(value, text)
 	if err != nil || match == nil {
@@ -1315,7 +1388,7 @@ func regexpMatches(value *RegExpValue, text string) any {
 			result = append(result, group)
 		}
 	}
-	return result
+	return &ArrayValue{Items: result}
 }
 
 func regexpExec(value *RegExpValue, text string) any {
@@ -1333,16 +1406,18 @@ func regexpExec(value *RegExpValue, text string) any {
 	if value.Global {
 		value.LastIndex = match.Index[1]
 	}
-	result := map[string]any{
-		"length": float64(len(match.Groups)),
-		"index":  float64(match.Index[0]),
-		"input":  text,
+	result := &ArrayValue{
+		Items: []any{},
+		Props: map[string]any{
+			"index": float64(match.Index[0]),
+			"input": text,
+		},
 	}
-	for index, group := range match.Groups {
+	for _, group := range match.Groups {
 		if group == "" {
-			result[strconv.Itoa(index)] = jsUndefined
+			result.Items = append(result.Items, jsUndefined)
 		} else {
-			result[strconv.Itoa(index)] = group
+			result.Items = append(result.Items, group)
 		}
 	}
 	return result
@@ -1979,7 +2054,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			}
 			out = append(out, value)
 		}
-		return out, nil
+		return &ArrayValue{Items: out}, nil
 	case "array-spread":
 		out := []any{}
 		for _, rawItem := range asSlice(expr["items"]) {
@@ -1994,7 +2069,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				out = append(out, value)
 			}
 		}
-		return out, nil
+		return &ArrayValue{Items: out}, nil
 	case "object":
 		out := map[string]any{}
 		for _, prop := range asSlice(expr["props"]) {
@@ -2193,7 +2268,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return member, nil
 			}
 		}
-		if objectArray, ok := object.([]any); ok {
+		if objectArray, ok := object.(*ArrayValue); ok {
 			if member, ok := arrayMember(objectArray, property, env); ok {
 				return member, nil
 			}
@@ -2274,12 +2349,12 @@ func assignTarget(target map[string]any, value any, env Env) error {
 			regExpValue.Props[property] = value
 			return nil
 		}
-		if objectArray, ok := object.([]any); ok {
-			nextArray, handled := assignArrayMember(objectArray, property, value)
+		if objectArray, ok := object.(*ArrayValue); ok {
+			handled := assignArrayMember(objectArray, property, value)
 			if !handled {
 				return fmt.Errorf("member assignment target array property %s is not assignable", property)
 			}
-			return assignTarget(objectExpr, nextArray, env)
+			return nil
 		}
 		return fmt.Errorf("member assignment target is not object: %T %s", object, jsInspect(object))
 	default:
@@ -2298,29 +2373,34 @@ func evalMemberProperty(member map[string]any, env Env) (string, error) {
 	return asString(member["property"]), nil
 }
 
-func assignArrayMember(array []any, property string, value any) ([]any, bool) {
+func assignArrayMember(array *ArrayValue, property string, value any) bool {
 	if property == "length" {
 		nextLength := jsInteger(value)
 		if nextLength < 0 {
 			nextLength = 0
 		}
-		if nextLength < len(array) {
-			return array[:nextLength], true
+		if nextLength < len(array.Items) {
+			array.Items = array.Items[:nextLength]
+			return true
 		}
-		for len(array) < nextLength {
-			array = append(array, jsUndefined)
+		for len(array.Items) < nextLength {
+			array.Items = append(array.Items, jsUndefined)
 		}
-		return array, true
+		return true
 	}
 	index, err := strconv.ParseInt(property, 0, 64)
 	if err != nil || index < 0 {
-		return array, false
+		if array.Props == nil {
+			array.Props = map[string]any{}
+		}
+		array.Props[property] = value
+		return true
 	}
-	for int64(len(array)) <= index {
-		array = append(array, jsUndefined)
+	for int64(len(array.Items)) <= index {
+		array.Items = append(array.Items, jsUndefined)
 	}
-	array[int(index)] = value
-	return array, true
+	array.Items[int(index)] = value
+	return true
 }
 
 func readTarget(target map[string]any, env Env) (any, error) {
@@ -2449,7 +2529,7 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	array, ok := current.([]any)
+	array, ok := current.(*ArrayValue)
 	if !ok {
 		return nil, errors.New("push receiver is not array")
 	}
@@ -2458,12 +2538,9 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		array = append(array, value)
+		array.Items = append(array.Items, value)
 	}
-	if err := assignTarget(objectExpr, array, env); err != nil {
-		return nil, err
-	}
-	return float64(len(array)), nil
+	return float64(len(array.Items)), nil
 }
 
 func callArrayPop(callee map[string]any, env Env) (any, error) {
@@ -2472,18 +2549,15 @@ func callArrayPop(callee map[string]any, env Env) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	array, ok := current.([]any)
+	array, ok := current.(*ArrayValue)
 	if !ok {
 		return nil, errors.New("pop receiver is not array")
 	}
-	if len(array) == 0 {
+	if len(array.Items) == 0 {
 		return jsUndefined, nil
 	}
-	value := array[len(array)-1]
-	array = array[:len(array)-1]
-	if err := assignTarget(objectExpr, array, env); err != nil {
-		return nil, err
-	}
+	value := array.Items[len(array.Items)-1]
+	array.Items = array.Items[:len(array.Items)-1]
 	return value, nil
 }
 
@@ -2514,9 +2588,7 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 				thisValue = args[0]
 			}
 			if len(args) > 1 {
-				if arrayArgs, ok := args[1].([]any); ok {
-					callArgs = arrayArgs
-				}
+				callArgs = iterableValues(args[1])
 			}
 			if function.CallWithThis != nil {
 				return function.CallWithThis(thisValue, callArgs)
@@ -2694,14 +2766,14 @@ func stringMember(value string, property string, env Env) (any, bool) {
 	case "split":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 || isNullish(args[0]) {
-				return []any{value}, nil
+				return &ArrayValue{Items: []any{value}}, nil
 			}
 			if separator, ok := args[0].(*RegExpValue); ok {
 				result := []any{}
 				for _, part := range regexpSplit(separator, value) {
 					result = append(result, part)
 				}
-				return result, nil
+				return &ArrayValue{Items: result}, nil
 			}
 			separator := jsString(args[0])
 			result := []any{}
@@ -2709,12 +2781,12 @@ func stringMember(value string, property string, env Env) (any, bool) {
 				for _, char := range value {
 					result = append(result, string(char))
 				}
-				return result, nil
+				return &ArrayValue{Items: result}, nil
 			}
 			for _, part := range strings.Split(value, separator) {
 				result = append(result, part)
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}), true
 	case "replace":
 		return nativeFunction(func(args []any) (any, error) {
@@ -2957,10 +3029,21 @@ func regexpMember(value *RegExpValue, property string) (any, bool) {
 	return nil, false
 }
 
-func arrayMember(value []any, property string, env Env) (any, bool) {
+func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 	switch property {
 	case "length":
-		return float64(len(value)), true
+		return float64(len(value.Items)), true
+	}
+	index, err := strconv.Atoi(property)
+	if err == nil && index >= 0 && index < len(value.Items) {
+		return value.Items[index], true
+	}
+	if value.Props != nil {
+		if member, ok := value.Props[property]; ok {
+			return member, true
+		}
+	}
+	switch property {
 	case "join":
 		return nativeFunction(func(args []any) (any, error) {
 			separator := ","
@@ -2968,7 +3051,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 				separator = jsString(args[0])
 			}
 			parts := []string{}
-			for _, item := range value {
+			for _, item := range value.Items {
 				if isNullish(item) {
 					parts = append(parts, "")
 				} else {
@@ -2983,14 +3066,14 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 				return nil, errors.New("map callback is required")
 			}
 			result := []any{}
-			for index, item := range value {
+			for index, item := range value.Items {
 				mapped, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
 				}
 				result = append(result, mapped)
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}), true
 	case "filter":
 		return nativeFunction(func(args []any) (any, error) {
@@ -2998,7 +3081,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 				return nil, errors.New("filter callback is required")
 			}
 			result := []any{}
-			for index, item := range value {
+			for index, item := range value.Items {
 				keep, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
@@ -3007,14 +3090,14 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 					result = append(result, item)
 				}
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}), true
 	case "forEach":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return nil, errors.New("forEach callback is required")
 			}
-			for index, item := range value {
+			for index, item := range value.Items {
 				if _, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined); err != nil {
 					return nil, err
 				}
@@ -3026,7 +3109,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("reduce callback is required")
 			}
-			if len(value) == 0 && len(args) < 2 {
+			if len(value.Items) == 0 && len(args) < 2 {
 				return nil, errors.New("reduce of empty array with no initial value")
 			}
 			start := 0
@@ -3034,11 +3117,11 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) > 1 {
 				accumulator = args[1]
 			} else {
-				accumulator = value[0]
+				accumulator = value.Items[0]
 				start = 1
 			}
-			for index := start; index < len(value); index++ {
-				next, err := callFunctionWithValues(args[0], []any{accumulator, value[index], float64(index), value}, env, jsUndefined)
+			for index := start; index < len(value.Items); index++ {
+				next, err := callFunctionWithValues(args[0], []any{accumulator, value.Items[index], float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
 				}
@@ -3051,19 +3134,19 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("reduceRight callback is required")
 			}
-			if len(value) == 0 && len(args) < 2 {
+			if len(value.Items) == 0 && len(args) < 2 {
 				return nil, errors.New("reduce of empty array with no initial value")
 			}
-			index := len(value) - 1
+			index := len(value.Items) - 1
 			accumulator := any(jsUndefined)
 			if len(args) > 1 {
 				accumulator = args[1]
 			} else {
-				accumulator = value[index]
+				accumulator = value.Items[index]
 				index--
 			}
 			for ; index >= 0; index-- {
-				next, err := callFunctionWithValues(args[0], []any{accumulator, value[index], float64(index), value}, env, jsUndefined)
+				next, err := callFunctionWithValues(args[0], []any{accumulator, value.Items[index], float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
 				}
@@ -3076,7 +3159,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("some callback is required")
 			}
-			for index, item := range value {
+			for index, item := range value.Items {
 				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
@@ -3092,7 +3175,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("every callback is required")
 			}
-			for index, item := range value {
+			for index, item := range value.Items {
 				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
@@ -3108,7 +3191,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("find callback is required")
 			}
-			for index, item := range value {
+			for index, item := range value.Items {
 				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
@@ -3124,7 +3207,7 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) == 0 {
 				return nil, errors.New("findIndex callback is required")
 			}
-			for index, item := range value {
+			for index, item := range value.Items {
 				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
 				if err != nil {
 					return nil, err
@@ -3143,9 +3226,9 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			}
 			start := 0
 			if len(args) > 1 {
-				start = jsArrayStartIndex(args[1], len(value))
+				start = jsArrayStartIndex(args[1], len(value.Items))
 			}
-			return float64(arrayIndexOf(value, search, start)), nil
+			return float64(arrayIndexOf(value.Items, search, start)), nil
 		}), true
 	case "lastIndexOf":
 		return nativeFunction(func(args []any) (any, error) {
@@ -3153,12 +3236,12 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) > 0 {
 				search = args[0]
 			}
-			start := len(value) - 1
+			start := len(value.Items) - 1
 			if len(args) > 1 {
-				start = jsSliceIndex(args[1], len(value))
+				start = jsSliceIndex(args[1], len(value.Items))
 			}
-			for index := minInt(start, len(value)-1); index >= 0; index-- {
-				if jsSameValue(value[index], search) {
+			for index := minInt(start, len(value.Items)-1); index >= 0; index-- {
+				if jsSameValue(value.Items[index], search) {
 					return float64(index), nil
 				}
 			}
@@ -3172,36 +3255,36 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			}
 			start := 0
 			if len(args) > 1 {
-				start = jsArrayStartIndex(args[1], len(value))
+				start = jsArrayStartIndex(args[1], len(value.Items))
 			}
-			return arrayIndexOf(value, search, start) >= 0, nil
+			return arrayIndexOf(value.Items, search, start) >= 0, nil
 		}), true
 	case "concat":
 		return nativeFunction(func(args []any) (any, error) {
-			result := append([]any{}, value...)
+			result := append([]any{}, value.Items...)
 			for _, arg := range args {
-				if next, ok := arg.([]any); ok {
-					result = append(result, next...)
+				if next, ok := arg.(*ArrayValue); ok {
+					result = append(result, next.Items...)
 				} else {
 					result = append(result, arg)
 				}
 			}
-			return result, nil
+			return &ArrayValue{Items: result}, nil
 		}), true
 	case "slice":
 		return nativeFunction(func(args []any) (any, error) {
 			start := 0
-			end := len(value)
+			end := len(value.Items)
 			if len(args) > 0 {
-				start = jsSliceIndex(args[0], len(value))
+				start = jsSliceIndex(args[0], len(value.Items))
 			}
 			if len(args) > 1 {
-				end = jsSliceIndex(args[1], len(value))
+				end = jsSliceIndex(args[1], len(value.Items))
 			}
 			if end < start {
 				end = start
 			}
-			return append([]any{}, value[start:end]...), nil
+			return &ArrayValue{Items: append([]any{}, value.Items[start:end]...)}, nil
 		}), true
 	case "flat":
 		return nativeFunction(func(args []any) (any, error) {
@@ -3209,17 +3292,17 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			if len(args) > 0 {
 				depth = jsInteger(args[0])
 			}
-			return flattenArray(value, depth), nil
+			return &ArrayValue{Items: flattenArray(value.Items, depth)}, nil
 		}), true
 	case "sort":
 		return nativeFunction(func(args []any) (any, error) {
 			var sortErr error
-			sort.SliceStable(value, func(leftIndex int, rightIndex int) bool {
+			sort.SliceStable(value.Items, func(leftIndex int, rightIndex int) bool {
 				if sortErr != nil {
 					return false
 				}
-				left := value[leftIndex]
-				right := value[rightIndex]
+				left := value.Items[leftIndex]
+				right := value.Items[rightIndex]
 				if len(args) > 0 && !isNullish(args[0]) {
 					compared, err := callFunctionWithValues(args[0], []any{left, right}, env, jsUndefined)
 					if err != nil {
@@ -3235,10 +3318,6 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			}
 			return value, nil
 		}), true
-	}
-	index, err := strconv.Atoi(property)
-	if err == nil && index >= 0 && index < len(value) {
-		return value[index], true
 	}
 	return nil, false
 }
@@ -3320,8 +3399,8 @@ func flattenArray(value []any, depth int) []any {
 	}
 	result := []any{}
 	for _, item := range value {
-		if nested, ok := item.([]any); ok {
-			result = append(result, flattenArray(nested, depth-1)...)
+		if nested, ok := item.(*ArrayValue); ok {
+			result = append(result, flattenArray(nested.Items, depth-1)...)
 		} else {
 			result = append(result, item)
 		}
@@ -4036,8 +4115,8 @@ func isArrayPop(callee map[string]any) bool {
 
 func iterableValues(value any) []any {
 	switch typed := value.(type) {
-	case []any:
-		return typed
+	case *ArrayValue:
+		return append([]any{}, typed.Items...)
 	case *IteratorValue:
 		if typed.Index >= len(typed.Values) {
 			return []any{}
@@ -4048,7 +4127,7 @@ func iterableValues(value any) []any {
 	case *MapValue:
 		values := []any{}
 		for _, entry := range typed.Entries {
-			values = append(values, []any{entry.Key, entry.Value})
+			values = append(values, &ArrayValue{Items: []any{entry.Key, entry.Value}})
 		}
 		return values
 	case *SetValue:
@@ -4108,8 +4187,24 @@ func jsSameValue(left any, right any) bool {
 	case *SymbolValue:
 		rightTyped, ok := right.(*SymbolValue)
 		return ok && leftTyped == rightTyped
-	case map[string]any, []any, FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
-		return referenceIdentity(left) == referenceIdentity(right)
+	case map[string]any:
+		_, ok := right.(map[string]any)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
+	case *ArrayValue:
+		_, ok := right.(*ArrayValue)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
+	case FunctionValue:
+		_, ok := right.(FunctionValue)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
+	case BoundFunctionValue:
+		_, ok := right.(BoundFunctionValue)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
+	case NativeFunctionValue:
+		_, ok := right.(NativeFunctionValue)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
+	case *ClassValue:
+		_, ok := right.(*ClassValue)
+		return ok && referenceIdentity(left) == referenceIdentity(right)
 	default:
 		return fmt.Sprintf("%p", &left) == fmt.Sprintf("%p", &right)
 	}
@@ -4146,12 +4241,39 @@ func hasProperty(value any, key string) bool {
 	case map[string]any:
 		_, ok := typed[key]
 		return ok
-	case []any:
+	case *ArrayValue:
 		if key == "length" {
 			return true
 		}
 		index, err := strconv.Atoi(key)
-		return err == nil && index >= 0 && index < len(typed)
+		if err == nil && index >= 0 && index < len(typed.Items) {
+			return true
+		}
+		_, ok := typed.Props[key]
+		return ok
+	case FunctionValue:
+		if key == "length" || key == "name" || key == "prototype" {
+			return true
+		}
+		_, ok := typed.Props[key]
+		return ok
+	case BoundFunctionValue:
+		if key == "length" || key == "name" {
+			return true
+		}
+		return false
+	case NativeFunctionValue:
+		if key == "length" || key == "name" {
+			return true
+		}
+		_, ok := typed.Props[key]
+		return ok
+	case *RegExpValue:
+		if key == "lastIndex" {
+			return true
+		}
+		_, ok := typed.Props[key]
+		return ok
 	default:
 		return false
 	}
@@ -4276,9 +4398,9 @@ func jsString(value any) string {
 			return "true"
 		}
 		return "false"
-	case []any:
+	case *ArrayValue:
 		parts := []string{}
-		for _, item := range typed {
+		for _, item := range typed.Items {
 			if isNullish(item) {
 				parts = append(parts, "")
 			} else {
