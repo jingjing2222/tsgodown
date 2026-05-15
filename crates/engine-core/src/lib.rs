@@ -672,6 +672,12 @@ function parseSimpleClass(glob, position) {
   return [comb, false, endPos - pos, true]
 }
 const parsed = JSON.parse('{"empty":"","bool":true,"num":42}')
+let parseError = ""
+try {
+  JSON.parse("<html>")
+} catch (error) {
+  parseError = error.name
+}
 const err = TypeError("Invalid UUID")
 const date = new Date(Date.UTC(2026, 4, 15))
 const child = spawnSync(
@@ -691,6 +697,7 @@ console.log(JSON.stringify({
   privateMagic: new MagicTracker().parse(),
   parseClass: parseSimpleClass("[ai]*.ts", 0),
   keys: Object.keys(parsed),
+  parseError,
   error: { name: err.name, message: err.message },
   date: date.toISOString(),
   child: child.stdout.trim()
@@ -758,6 +765,7 @@ console.log(JSON.stringify({
             observed["keys"],
             serde_json::json!(["empty", "bool", "num"])
         );
+        assert_eq!(observed["parseError"], "SyntaxError");
         assert_eq!(
             observed["error"],
             serde_json::json!({"name": "TypeError", "message": "Invalid UUID"})
@@ -1057,9 +1065,10 @@ const comparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s*(v?(0|[1-9]\d*)\.(0|[1-9]\
 const safeComparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s{0,1}(v?(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})(?:-((?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256})(?:\.(?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256}))*))?(?:\+([a-zA-Z0-9-]{1,250}(?:\.[a-zA-Z0-9-]{1,250})*))?)$|^$/)
 const dynamicWhitespace = new RegExp(`^a\\s+b$`).test("a b")
 const jsIdentifier = /^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u
+const spreadString = [..."ab"].join("")
 const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, jsIdentifier.test("item_1") + ":" + jsIdentifier.test("$x") + ":" + jsIdentifier.test("9x"), protoSlice, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, jsIdentifier.test("item_1") + ":" + jsIdentifier.test("$x") + ":" + jsIdentifier.test("9x"), spreadString, protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -1109,7 +1118,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true true:true:false bcd 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true true:true:false ab bcd 2|3 true\n"
         );
     }
 
@@ -2909,7 +2918,8 @@ function makeCallable() {
   return router
 }
 const callable = makeCallable()
-console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1], copyFunctionProps({ load: () => "loaded" }), tag.cache.value, callable.use("layer"), callable.stack[0], Object.getPrototypeOf(callable) === callableProto)
+const tri = (req, res, next) => next
+console.log("fn-props", tag("7"), tag.count, tag.length, Box.length, tri.length, tri.bind(null, "req").length, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1], copyFunctionProps({ load: () => "loaded" }), tag.cache.value, callable.use("layer"), callable.stack[0], Object.getPrototypeOf(callable) === callableProto)
 "#,
         );
 
@@ -2959,7 +2969,7 @@ console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "fn-props id:7 3 object tag ok yes true true false 3 x loaded cached 1 layer true\n"
+            "fn-props id:7 3 1 1 3 2 object tag ok yes true true false 3 x loaded cached 1 layer true\n"
         );
     }
 
@@ -4030,6 +4040,10 @@ let tick = "pending"
 timers.setImmediate(() => {
   tick = "immediate"
 })
+let globalTick = "pending"
+setImmediate((value) => {
+  globalTick = value
+}, "global-immediate")
 const stackTarget = { name: "Trace", message: "ok" }
 Error.captureStackTrace(stackTarget)
 const previousPrepareStackTrace = Error.prepareStackTrace
@@ -4043,9 +4057,10 @@ headers.append("x-trace", "two")
 const response = new Response(null, { status: 302, headers })
 const legacyUtil = process.binding("util")
 const legacyBuffer = process.binding("buffer")
-console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, performance.now() >= 0)
+const combined = Buffer.concat([Buffer.from("ab"), Buffer.from("cd")])
+console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, globalTick, performance.now() >= 0)
 console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv6("::1"), net.isIP("bad"))
-console.log("web-api", stackTarget.stack, typeof firstCallSite.getFileName, firstCallSite.getLineNumber(), firstCallSite.getColumnNumber(), firstCallSite.isEval(), firstCallSite.toString().includes("generated.js"), response.status, response.headers.get("X-Trace"))
+console.log("web-api", stackTarget.stack, typeof firstCallSite.getFileName, firstCallSite.getLineNumber(), firstCallSite.getColumnNumber(), firstCallSite.isEval(), firstCallSite.toString().includes("generated.js"), response.status, response.headers.get("X-Trace"), Buffer.byteLength("가"), combined.toString())
 console.log("binding-api", legacyUtil.isRegExp(/x/), legacyUtil.isDate(new Date(0)), legacyUtil.isMap(new Map()), legacyUtil.isSet(new Set()), legacyUtil.isTypedArray(Buffer.from("x")), legacyBuffer.kStringMaxLength > 0)
 "#,
         );
@@ -4096,7 +4111,7 @@ console.log("binding-api", legacyUtil.isRegExp(/x/), legacyUtil.isDate(new Date(
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok function 1 1 false true 302 one, two\nbinding-api true true true true true true\n"
+            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate global-immediate true\nnet-api 4 true true 0\nweb-api Trace: ok function 1 1 false true 302 one, two 3 abcd\nbinding-api true true true true true true\n"
         );
     }
 
@@ -4112,6 +4127,8 @@ import { createServer, METHODS, STATUS_CODES } from "node:http"
 async function main() {
   const methodSummary = METHODS.slice(0, 3).map((method) => method.toLowerCase()).join("|")
   const server = createServer((req, res) => {
+    req.pause()
+    req.unpipe()
     res.setHeader("x-vector", "ok")
     res.writeHead(req.method === "POST" ? 201 : 200, { "content-type": "application/json" })
     res.end(JSON.stringify({ method: req.method, url: req.url }))
@@ -4140,7 +4157,40 @@ async function main() {
     return requestLike()
   }
   const result = await outerRequestLike()
-  console.log("http", methodSummary, STATUS_CODES[200], STATUS_CODES[404], result.status, result.header, result.text, deferredListen)
+  function appLike(req, res) {
+    res.setHeader("x-vector", "app")
+    res.end(JSON.stringify({ method: req.method, url: req.url }))
+  }
+  appLike.listen = function listen() {
+    const server = createServer(this)
+    return server.listen.apply(server, arguments)
+  }
+  async function requestHttp(appOrHandler, vector) {
+    const server = typeof appOrHandler.listen === "function"
+      ? await new Promise((resolve, reject) => {
+          const server = appOrHandler.listen(0, "127.0.0.1", () => {
+            server.off("error", reject)
+            resolve(server)
+          })
+          server.once("error", reject)
+        })
+      : createServer(appOrHandler)
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/items/${vector.pathId}?${new URLSearchParams(vector.query)}`, {
+        method: vector.method,
+        headers: { "content-type": "application/json" }
+      })
+      return {
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+        body: await response.text()
+      }
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  }
+  const appResult = await requestHttp(appLike, { pathId: "9", query: { q: "z" }, method: "GET" })
+  console.log("http", methodSummary, STATUS_CODES[200], STATUS_CODES[404], result.status, result.header, result.text, deferredListen, appResult.status, appResult.headers["x-vector"], appResult.body)
 }
 main()
 "#,
@@ -4192,7 +4242,7 @@ main()
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "http acl|bind|checkout OK Not Found 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"} true\n"
+            "http acl|bind|checkout OK Not Found 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"} true 200 app {\"method\":\"GET\",\"url\":\"/items/9?q=z\"}\n"
         );
     }
 

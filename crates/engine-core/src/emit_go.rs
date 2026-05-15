@@ -618,7 +618,27 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 					time.Sleep(time.Duration(delay) * time.Millisecond)
 				}
 				if len(args) > 0 {
-					if _, err := callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined); err != nil {
+					callArgs := []any{}
+					if len(args) > 2 {
+						callArgs = args[2:]
+					}
+					if _, err := callFunctionWithValues(args[0], callArgs, Env{}, jsUndefined); err != nil {
+						return nil, err
+					}
+				}
+				return map[string]any{
+					"unref": nativeFunction(func(args []any) (any, error) {
+						return jsUndefined, nil
+					}),
+				}, nil
+			}),
+			"setImmediate": nativeFunction(func(args []any) (any, error) {
+				if len(args) > 0 {
+					callArgs := []any{}
+					if len(args) > 1 {
+						callArgs = args[1:]
+					}
+					if _, err := callFunctionWithValues(args[0], callArgs, Env{}, jsUndefined); err != nil {
 						return nil, err
 					}
 				}
@@ -629,6 +649,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 				}, nil
 			}),
 			"clearTimeout": nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			}),
+			"clearImmediate": nativeFunction(func(args []any) (any, error) {
 				return jsUndefined, nil
 			}),
 		"decodeURIComponent": nativeFunction(func(args []any) (any, error) {
@@ -1528,6 +1551,33 @@ func bufferGlobal() map[string]any {
 			_, ok := args[0].(*ArrayValue)
 			return ok, nil
 		}),
+		"byteLength": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 || isNullish(args[0]) {
+				return float64(0), nil
+			}
+			if array, ok := args[0].(*ArrayValue); ok {
+				return float64(len(array.Items)), nil
+			}
+			return float64(len([]byte(jsString(args[0])))), nil
+		}),
+		"concat": nativeFunction(func(args []any) (any, error) {
+			out := []byte{}
+			if len(args) > 0 {
+				for _, item := range iterableValues(args[0]) {
+					out = append(out, bytesFromJSValue(item)...)
+				}
+			}
+			if len(args) > 1 && !isNullish(args[1]) {
+				length := jsInteger(args[1])
+				if length < len(out) {
+					out = out[:length]
+				}
+				for len(out) < length {
+					out = append(out, 0)
+				}
+			}
+			return arrayFromBytes(out), nil
+		}),
 	}
 }
 
@@ -2312,7 +2362,10 @@ func jsonGlobal() map[string]any {
 			decoder := json.NewDecoder(strings.NewReader(jsString(args[0])))
 			value, err := parseJSONValue(decoder)
 			if err != nil {
-				return nil, err
+				return nil, jsThrow{value: map[string]any{
+					"name":    "SyntaxError",
+					"message": err.Error(),
+				}}
 			}
 			return value, nil
 		}),
@@ -3735,6 +3788,11 @@ func dispatchHTTPFetch(rawURL string, options map[string]any) (map[string]any, e
 	if value, ok := options["body"]; ok && !isUndefined(value) {
 		body = jsString(value)
 	}
+	if body != "" {
+		if _, ok := headers["content-length"]; !ok {
+			headers["content-length"] = strconv.Itoa(len(body))
+		}
+	}
 	path := parsed.RequestURI()
 	if path == "" {
 		path = "/"
@@ -3747,6 +3805,10 @@ func dispatchHTTPFetch(rawURL string, options map[string]any) (map[string]any, e
 		if err != nil {
 			return nil, err
 		}
+		if body != "" {
+			emitEvent(req, "data", body)
+		}
+		emitEvent(req, "end")
 		if _, err := awaitValue(result); err != nil {
 			return nil, err
 		}
@@ -3767,6 +3829,31 @@ func newHTTPRequest(method string, path string, headers map[string]any, body str
 	req["body"] = body
 	req["setEncoding"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
 	req["resume"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
+	req["pause"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
+	req["unpipe"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
+	req["destroy"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		req["readable"] = false
+		emitEvent(req, "close")
+		return req, nil
+	})
+	req["pipe"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nil
+		}
+		destination := args[0]
+		emitToDestination := func(name string) any {
+			return nativeFunction(func(eventArgs []any) (any, error) {
+				if object, ok := destination.(map[string]any); ok {
+					emitEvent(object, name, eventArgs...)
+				}
+				return jsUndefined, nil
+			})
+		}
+		_, _ = callFunctionWithValues(req["on"], []any{"data", emitToDestination("data")}, Env{}, req)
+		_, _ = callFunctionWithValues(req["on"], []any{"end", emitToDestination("end")}, Env{}, req)
+		_, _ = callFunctionWithValues(req["on"], []any{"error", emitToDestination("error")}, Env{}, req)
+		return destination, nil
+	})
 	return req
 }
 
@@ -6732,6 +6819,8 @@ func functionMemberWithError(function FunctionValue, property string) (any, bool
 		}
 	}
 	switch property {
+	case "length":
+		return float64(len(function.Params)), true, nil
 	case "call":
 		return nativeFunction(func(args []any) (any, error) {
 			thisValue := any(jsUndefined)
@@ -6769,6 +6858,12 @@ func functionMemberWithError(function FunctionValue, property string) (any, bool
 
 func boundFunctionMember(function BoundFunctionValue, property string) (any, bool) {
 	switch property {
+	case "length":
+		remaining := len(function.Function.Params) - len(function.Args)
+		if remaining < 0 {
+			remaining = 0
+		}
+		return float64(remaining), true
 	case "call":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) > 0 {
@@ -8723,6 +8818,12 @@ func isArrayPop(callee map[string]any) bool {
 
 func iterableValues(value any) []any {
 	switch typed := value.(type) {
+	case string:
+		values := []any{}
+		for _, char := range typed {
+			values = append(values, string(char))
+		}
+		return values
 	case *ArrayValue:
 		return append([]any{}, typed.Items...)
 	case *IteratorValue:
@@ -9126,6 +9227,13 @@ func jsString(value any) string {
 				return jsString(name) + ": " + jsString(message)
 			}
 			return jsString(message)
+		}
+		if toString, ok := lookupObjectProperty(typed, "toString"); ok && isCallable(toString) {
+			if value, err := callFunctionWithValues(toString, []any{}, Env{}, typed); err == nil {
+				if _, isObject := value.(map[string]any); !isObject {
+					return jsString(value)
+				}
+			}
 		}
 		return objectTag(typed)
 	case *RegExpValue:
