@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyze;
+use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse, BackendProvider};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
     fail_closed_report_version, unsupported_codegen_diagnostic, unsupported_executable_features,
@@ -61,9 +62,26 @@ pub struct IrSnapshotRequest {
     pub description: String,
 }
 
+pub struct GoBackendProvider;
+
+pub static GO_BACKEND_PROVIDER: GoBackendProvider = GoBackendProvider;
+
+impl BackendProvider for GoBackendProvider {
+    fn name(&self) -> &'static str {
+        "go"
+    }
+
+    fn emit(&self, request: BackendEmitRequest) -> BackendEmitResponse {
+        emit_go_project(request)
+    }
+}
+
 pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
+    emit_backend("go", request)
+}
+
+pub fn emit_backend(target_backend: &str, request: EmitGoRequest) -> EmitGoResponse {
     let analyzed = analyze(request.analyze);
-    let mut diagnostics = analyzed.diagnostics.clone();
     let package_name = sanitize_package_name(request.package_name.as_deref().unwrap_or("main"));
     let module_path = sanitize_module_path(
         request
@@ -71,6 +89,29 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
             .as_deref()
             .unwrap_or("example.com/tsgodown-generated"),
     );
+    let backend_request = BackendEmitRequest {
+        analyzed,
+        package_name,
+        module_path,
+        output_kind: request.output_kind,
+        ir_snapshot: request.ir_snapshot,
+    };
+    match backend_provider(target_backend) {
+        Ok(provider) => provider.emit(backend_request).into(),
+        Err(diagnostic) => EmitGoResponse {
+            version: "engine-core.emit.v1".to_string(),
+            target_backend: target_backend.to_string(),
+            files: vec![],
+            diagnostics: vec![diagnostic],
+        },
+    }
+}
+
+fn emit_go_project(request: BackendEmitRequest) -> BackendEmitResponse {
+    let analyzed = request.analyzed;
+    let mut diagnostics = analyzed.diagnostics.clone();
+    let package_name = request.package_name;
+    let module_path = request.module_path;
     let unsupported_features = unsupported_executable_features(&analyzed.ir);
     let can_emit_executable = diagnostics.is_empty() && unsupported_features.is_empty();
     if !can_emit_executable {
@@ -124,11 +165,22 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
         });
     }
 
-    EmitGoResponse {
+    BackendEmitResponse {
         version: "engine-core.emit-go.v1".to_string(),
         target_backend: "go".to_string(),
         files,
         diagnostics,
+    }
+}
+
+impl From<BackendEmitResponse> for EmitGoResponse {
+    fn from(response: BackendEmitResponse) -> Self {
+        Self {
+            version: response.version,
+            target_backend: response.target_backend,
+            files: response.files,
+            diagnostics: response.diagnostics,
+        }
     }
 }
 

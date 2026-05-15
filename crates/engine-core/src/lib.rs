@@ -1,16 +1,22 @@
 mod analyze;
+mod backend;
 mod contract;
 mod emit_go;
 mod runtime_contract;
 
 pub use analyze::analyze;
+pub use backend::{
+    backend_provider, registered_backend_names, unsupported_backend_diagnostic, BackendEmitRequest,
+    BackendEmitResponse, BackendProvider,
+};
 pub use contract::{
     AnalyzeConfig, AnalyzeRequest, AnalyzeResponse, Diagnostic, DiagnosticLevel, DiagnosticSource,
     ExecutableModule, Import, InputManifest, IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue,
     Module, Route,
 };
 pub use emit_go::{
-    emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile, IrSnapshotRequest,
+    emit_backend, emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile,
+    IrSnapshotRequest,
 };
 pub use runtime_contract::{
     fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
@@ -180,6 +186,43 @@ export { value };
                 }),
             }]
         );
+    }
+
+    #[test]
+    fn backend_registry_exposes_go_provider() {
+        assert_eq!(registered_backend_names(), vec!["go"]);
+        let provider = backend_provider("go").expect("go backend provider");
+        assert_eq!(provider.name(), "go");
+    }
+
+    #[test]
+    fn emit_backend_fails_closed_for_unregistered_backend() {
+        let response = emit_backend(
+            "rust",
+            EmitGoRequest {
+                analyze: AnalyzeRequest {
+                    manifest: InputManifest {
+                        entry: "src/index.js".to_string(),
+                        framework: None,
+                    },
+                    cwd: None,
+                    config: AnalyzeConfig::default(),
+                },
+                package_name: None,
+                module_path: None,
+                output_kind: EmitGoOutputKind::Main,
+                ir_snapshot: None,
+            },
+        );
+
+        assert_eq!(response.version, "engine-core.emit.v1");
+        assert_eq!(response.target_backend, "rust");
+        assert!(response.files.is_empty());
+        assert_eq!(response.diagnostics.len(), 1);
+        assert_eq!(response.diagnostics[0].code, "BACKEND_PROVIDER_UNSUPPORTED");
+        assert!(response.diagnostics[0]
+            .message
+            .contains("available backends: go"));
     }
 
     #[test]
