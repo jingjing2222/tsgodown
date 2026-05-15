@@ -381,6 +381,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_console_log(callee) {
                 imports.insert("fmt");
             }
+            if is_console_error(callee) {
+                imports.insert("fmt");
+                imports.insert("os");
+            }
             if is_json_stringify(callee) {
                 imports.insert("encoding/json");
             }
@@ -1924,6 +1928,11 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         .collect::<Vec<_>>()
         .join(", ");
     let function_body = render_function_body(&function.body, &function_state)?;
+    let function_body = if function_body.trim_end().ends_with("return nil") {
+        function_body
+    } else {
+        format!("{function_body}\nreturn nil")
+    };
     Some(format!(
         "func {}({rendered_params}) any {{\n{}\n}}",
         function.go_name,
@@ -2110,11 +2119,25 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("fmt.Println({})", args.join(", ")))
         }
+        JsExpr::Call { callee, args, .. } if is_console_error(callee) => {
+            let args = args
+                .iter()
+                .map(|arg| render_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            if args.is_empty() {
+                return Some("fmt.Fprintln(os.Stderr)".to_string());
+            }
+            Some(format!("fmt.Fprintln(os.Stderr, {})", args.join(", ")))
+        }
         JsExpr::Assign { op, left, .. } if op == "=" && is_cjs_export_target(left) => {
             Some(String::new())
         }
         JsExpr::Assign { op, left, right } => render_assignment_stmt(op, left, right, state),
         JsExpr::Update { op, arg, .. } => render_update_stmt(op, arg, state),
+        JsExpr::Call { callee, args, .. } => {
+            let call = render_call_expr(callee, args, state)?;
+            Some(format!("_ = {call}"))
+        }
         _ => None,
     }
 }
@@ -2184,6 +2207,18 @@ fn is_console_log(expr: &JsExpr) -> bool {
             property_expr: None,
             ..
         } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "console") && property == "log"
+    )
+}
+
+fn is_console_error(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "console") && property == "error"
     )
 }
 
