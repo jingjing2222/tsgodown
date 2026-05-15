@@ -10,9 +10,35 @@ const manifestPath = path.join(corpusRoot, "manifest.json");
 const generatedRoot =
   process.env.TSGODOWN_NODE_LARGE_GO_ROOT ??
   path.join(corpusRoot, "generated-go");
+const vectorRunnerPath = path.join(corpusRoot, "tests", "vector-runner.mjs");
 const engineCoreBin =
   process.env.TSGODOWN_ENGINE_CORE_BIN ??
   path.join(repoRoot, "target", "debug", "engine-core");
+
+const RUNNER_FUNCTION_BY_ENTRY = {
+  "express-app": "runExpress",
+  "nestjs-app": "runNest",
+  "fastify-app": "runFastify",
+  "koa-app": "runKoa",
+  "hapi-app": "runHapi",
+  "vite-build": "runVite",
+  "rollup-build": "runRollup",
+  "webpack-build": "runWebpack",
+  "next-app": "runNext",
+  "nuxt-app": "runNuxt",
+  "astro-app": "runAstro",
+  "remix-app": "runRemix",
+  "eslint-engine": "runEslint",
+  "prettier-engine": "runPrettier",
+  "babel-core": "runBabel",
+  "typescript-compiler": "runTypescript",
+  "graphql-engine": "runGraphql",
+  "apollo-server-app": "runApollo",
+  "socketio-app": "runSocketIo",
+  "typeorm-app": "runTypeorm",
+};
+
+const HTTP_VECTOR_ENTRIES = new Set(["express-app", "koa-app", "socketio-app"]);
 
 function run(cmd, args, options = {}) {
   return spawnSync(cmd, args, {
@@ -121,13 +147,6 @@ function emittedFileContents(entry, emitGoJson, fileName) {
   return file.contents;
 }
 
-function writeSelectedEmitGoFile(entry, outDir, emitGoJson, fileName) {
-  const contents = emittedFileContents(entry, emitGoJson, fileName);
-  const outPath = path.join(outDir, fileName);
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, contents, "utf8");
-}
-
 function writeEmitGoFiles(entry, outDir, emitGoJson, requiredFile) {
   emittedFileContents(entry, emitGoJson, requiredFile);
   for (const file of emitGoJson?.files ?? []) {
@@ -215,18 +234,155 @@ function executableIrStats(analyzeJson) {
   return { statements, functions, conditionals };
 }
 
-function generateEntry(entry) {
-  const sourceAnalyzeJson = analyzeEntry(entry, entry.entry);
-  const vectorAnalyzeJson = analyzeEntry(entry, "tests/vector-suite-entry.mjs");
-  const sourceSnapshotEmitGoJson = emitGoEntry(entry, entry.entry, {
-    irSnapshot: {
-      filePath: "source_ir.go",
-      constName: "sourceIRJSON",
-      description:
-        "sourceIRJSON is the analyzer-lowered executable JS IR for this large corpus package entry.",
-    },
+function vectorEntryFor(entry) {
+  const runnerSource = fs.readFileSync(vectorRunnerPath, "utf8");
+  const runnerFunction = RUNNER_FUNCTION_BY_ENTRY[entry.id];
+  if (!runnerFunction) {
+    fail(`missing large corpus runner function mapping for ${entry.id}`);
+  }
+  const selectedRunner = extractFunction(runnerSource, runnerFunction);
+  const helpers = [
+    "listenExpress",
+    "normalizeHttpResult",
+    "listen",
+    "once",
+    "normalizeError",
+  ]
+    .map((name) => extractFunction(runnerSource, name))
+    .join("\n\n");
+  const entryPath = path.join(
+    corpusRoot,
+    "tests",
+    `.generated-vector-${entry.id}.mjs`,
+  );
+  const httpImport = HTTP_VECTOR_ENTRIES.has(entry.id)
+    ? 'import { createServer } from "node:http";\n'
+    : "";
+  const source = `#!/usr/bin/env node
+
+import fs, { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+${httpImport}import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const require = createRequire(import.meta.url);
+let nuxtConfigModulePromise;
+let astroConfigModulePromise;
+
+const [, , corpus, vectorPath] = process.argv;
+
+if (!corpus || !vectorPath) {
+  console.error("usage: node vector-suite-entry.mjs <corpus> <vectors.json>");
+  process.exit(2);
+}
+
+async function runVectorCase(corpus, vector) {
+  try {
+    return {
+      ok: true,
+      value: await ${runnerFunction}(vector),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: normalizeError(error),
+    };
+  }
+}
+
+${selectedRunner}
+
+${helpers}
+
+const vectors = JSON.parse(fs.readFileSync(vectorPath, "utf8"));
+const results = [];
+
+for (const vector of vectors.cases ?? []) {
+  results.push({
+    id: vector.id,
+    result: await runVectorCase(corpus, vector),
   });
-  const vectorEmitGoJson = emitGoEntry(entry, "tests/vector-suite-entry.mjs", {
+}
+
+console.log(
+  JSON.stringify({
+    version: "node-large-vector-suite-result.v1",
+    corpus,
+    total: results.length,
+    results,
+  }),
+);
+`;
+  fs.writeFileSync(entryPath, source);
+  return path.relative(corpusRoot, entryPath);
+}
+
+function extractFunction(source, name) {
+  const match = new RegExp(
+    `(?:^|\\n)(?:async\\s+)?function\\s+${name}\\s*\\(`,
+  ).exec(source);
+  if (!match) {
+    fail(`cannot find function ${name} in vector runner`);
+  }
+  const start = match.index + (source[match.index] === "\n" ? 1 : 0);
+  const open = source.indexOf("{", start);
+  if (open < 0) {
+    fail(`cannot find function body for ${name}`);
+  }
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escaped = false;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inSingle) {
+      if (char === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (char === '"') inDouble = false;
+      continue;
+    }
+    if (inTemplate) {
+      if (char === "`") inTemplate = false;
+      continue;
+    }
+    if (char === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (char === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (char === "`") {
+      inTemplate = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+  fail(`unterminated function body for ${name}`);
+}
+
+function generateEntry(entry) {
+  const vectorEntry = vectorEntryFor(entry);
+  const vectorAnalyzeJson = analyzeEntry(entry, vectorEntry);
+  const vectorEmitGoJson = emitGoEntry(entry, vectorEntry, {
     outputKind: "vectorSuite",
     irSnapshot: {
       filePath: "vector_ir.go",
@@ -238,23 +394,14 @@ function generateEntry(entry) {
 
   const outDir = path.join(generatedRoot, entry.id);
   fs.mkdirSync(outDir, { recursive: true });
-  writeSelectedEmitGoFile(
-    entry,
-    outDir,
-    sourceSnapshotEmitGoJson,
-    "source_ir.go",
-  );
   writeEmitGoFiles(entry, outDir, vectorEmitGoJson, "vector_suite.go");
 
   return {
     id: entry.id,
     path: path.relative(repoRoot, outDir),
-    sourceModules: sourceAnalyzeJson?.ir?.modules?.length ?? 0,
     vectorModules: vectorAnalyzeJson?.ir?.modules?.length ?? 0,
-    sourceDiagnostics: sourceAnalyzeJson?.diagnostics?.length ?? 0,
     vectorDiagnostics: vectorAnalyzeJson?.diagnostics?.length ?? 0,
     emitGoDiagnostics: vectorEmitGoJson?.diagnostics?.length ?? 0,
-    sourceExecutableIr: executableIrStats(sourceAnalyzeJson),
     vectorExecutableIr: executableIrStats(vectorAnalyzeJson),
   };
 }
