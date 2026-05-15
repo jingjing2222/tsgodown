@@ -1192,7 +1192,10 @@ export const enabled = true
             "src/index.js",
             r#"
 import { randomUUID } from "node:crypto"
+import diagnosticsChannel from "node:diagnostics_channel"
+import { StringDecoder } from "node:string_decoder"
 const fs = require("fs")
+const constants = require("constants")
 console.log("aot-builtin-import", "unused")
 "#,
         );
