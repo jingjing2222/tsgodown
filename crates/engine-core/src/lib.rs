@@ -2112,6 +2112,78 @@ console.log("fn-props", tag("7"), tag.count)
     }
 
     #[test]
+    fn emit_go_runs_function_reflect_json_uri_intrinsics_subset() {
+        let root = temp_project("engine-core-function-reflect-json-uri");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function sum(left, right) {
+  return this.base + left + right
+}
+const direct = Function.prototype.call.call(sum, { base: 1 }, 2, 3)
+const applied = Reflect.apply(sum, { base: 4 }, [5, 6])
+const bound = sum.bind({ base: 7 }, 8)
+const re = /x/
+Reflect.defineProperty(re, "test", { value: function (value) { return value === "ok" } })
+const encoded = encodeURIComponent("a b/[]")
+const decoded = decodeURIComponent(encoded)
+const json = JSON.stringify({ direct, applied, bound: bound(9), ok: re.test("ok"), decoded })
+console.log("intrinsics", json)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/function-reflect-json-uri".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "intrinsics {\"applied\":15,\"bound\":24,\"decoded\":\"a b/[]\",\"direct\":6,\"ok\":true}\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_delete_and_subtract_assign_subset() {
         let root = temp_project("engine-core-delete-subassign");
         write(

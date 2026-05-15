@@ -274,6 +274,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -348,6 +349,7 @@ type ClassValue struct {
 type BoundFunctionValue struct {
 	Function FunctionValue
 	This     any
+	Args     []any
 }
 
 type NativeFunctionValue struct {
@@ -360,6 +362,7 @@ type RegExpValue struct {
 	Flags   string
 	Regex   *regexp.Regexp
 	Global  bool
+	Props   map[string]any
 }
 
 type SymbolValue struct {
@@ -442,6 +445,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"RangeError": builtinErrorClass("RangeError"),
 		"SyntaxError": builtinErrorClass("SyntaxError"),
 		"ReferenceError": builtinErrorClass("ReferenceError"),
+		"Function": functionGlobal(),
 		"Number": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return float64(0), nil
@@ -477,6 +481,8 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		"Symbol": symbolGlobal(),
 		"Array":  arrayGlobal(),
 		"Object": objectGlobal(),
+		"Reflect": reflectGlobal(),
+		"JSON": jsonGlobal(),
 		"Math":   mathGlobal(),
 		"Map":    mapGlobal(),
 		"Set":    setGlobal(),
@@ -511,6 +517,40 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 				return true, nil
 			}
 			return math.IsNaN(toNumber(args[0])), nil
+		}),
+		"decodeURIComponent": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			decoded, err := url.PathUnescape(jsString(args[0]))
+			if err != nil {
+				return jsString(args[0]), nil
+			}
+			return decoded, nil
+		}),
+		"encodeURIComponent": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			encoded := url.QueryEscape(jsString(args[0]))
+			return strings.ReplaceAll(encoded, "+", "%20"), nil
+		}),
+		"escape": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			encoded := url.QueryEscape(jsString(args[0]))
+			return strings.ReplaceAll(encoded, "+", "%20"), nil
+		}),
+		"unescape": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			decoded, err := url.QueryUnescape(jsString(args[0]))
+			if err != nil {
+				return jsString(args[0]), nil
+			}
+			return decoded, nil
 		}),
 		"process": processObject(),
 		"module": map[string]any{
@@ -664,6 +704,44 @@ func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunct
 	}
 }
 
+func functionGlobal() map[string]any {
+	prototype := map[string]any{}
+	prototype["call"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		callThis := any(jsUndefined)
+		if len(args) > 0 {
+			callThis = args[0]
+			args = args[1:]
+		}
+		return callFunctionWithValues(thisValue, args, Env{}, callThis)
+	})
+	prototype["apply"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		callThis := any(jsUndefined)
+		callArgs := []any{}
+		if len(args) > 0 {
+			callThis = args[0]
+		}
+		if len(args) > 1 {
+			callArgs = iterableValues(args[1])
+		}
+		return callFunctionWithValues(thisValue, callArgs, Env{}, callThis)
+	})
+	prototype["bind"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		boundThis := any(jsUndefined)
+		boundArgs := []any{}
+		if len(args) > 0 {
+			boundThis = args[0]
+			boundArgs = append(boundArgs, args[1:]...)
+		}
+		return bindCallable(thisValue, boundThis, boundArgs), nil
+	})
+	return map[string]any{
+		"__call": nativeFunction(func(args []any) (any, error) {
+			return FunctionValue{Params: []string{}, Body: []map[string]any{}, Env: Env{}, Props: map[string]any{}}, nil
+		}),
+		"prototype": prototype,
+	}
+}
+
 func arrayGlobal() map[string]any {
 	prototype := map[string]any{
 		"push": nativeMethod(func(thisValue any, args []any) (any, error) {
@@ -732,15 +810,11 @@ func objectGlobal() map[string]any {
 			if len(args) < 3 {
 				return jsUndefined, nil
 			}
-			object, ok := args[0].(map[string]any)
-			if !ok {
-				return args[0], nil
-			}
 			descriptor, ok := args[2].(map[string]any)
 			if ok {
-				object[jsPropertyKey(args[1])] = descriptor["value"]
+				setDynamicProperty(args[0], jsPropertyKey(args[1]), descriptor["value"])
 			}
-			return object, nil
+			return args[0], nil
 		}),
 		"entries": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -779,6 +853,60 @@ func objectGlobal() map[string]any {
 			return result, nil
 		}),
 		"prototype": prototype,
+	}
+}
+
+func reflectGlobal() map[string]any {
+	return map[string]any{
+		"apply": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("Reflect.apply target is required")
+			}
+			thisValue := any(jsUndefined)
+			if len(args) > 1 {
+				thisValue = args[1]
+			}
+			callArgs := []any{}
+			if len(args) > 2 {
+				callArgs = iterableValues(args[2])
+			}
+			return callFunctionWithValues(args[0], callArgs, Env{}, thisValue)
+		}),
+		"defineProperty": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 3 {
+				return false, nil
+			}
+			if descriptor, ok := args[2].(map[string]any); ok {
+				setDynamicProperty(args[0], jsPropertyKey(args[1]), descriptor["value"])
+				return true, nil
+			}
+			return false, nil
+		}),
+	}
+}
+
+func jsonGlobal() map[string]any {
+	return map[string]any{
+		"stringify": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			bytes, err := json.Marshal(jsonCompatible(args[0], map[uintptr]bool{}))
+			if err != nil {
+				return nil, err
+			}
+			return string(bytes), nil
+		}),
+		"parse": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			var value any
+			if err := json.Unmarshal([]byte(jsString(args[0])), &value); err != nil {
+				return nil, err
+			}
+			return jsValueFromJSON(value), nil
+		}),
 	}
 }
 
@@ -913,6 +1041,104 @@ func objectKeys(object map[string]any) []string {
 	return keys
 }
 
+func setDynamicProperty(target any, property string, value any) bool {
+	switch typed := target.(type) {
+	case map[string]any:
+		typed[property] = value
+		return true
+	case *RegExpValue:
+		if typed.Props == nil {
+			typed.Props = map[string]any{}
+		}
+		typed.Props[property] = value
+		return true
+	case []any:
+		_, ok := assignArrayMember(typed, property, value)
+		return ok
+	case FunctionValue:
+		if typed.Props == nil {
+			typed.Props = map[string]any{}
+		}
+		typed.Props[property] = value
+		return true
+	default:
+		return false
+	}
+}
+
+func jsonCompatible(value any, seen map[uintptr]bool) any {
+	switch typed := value.(type) {
+	case nil, UndefinedValue, NullValue:
+		return nil
+	case bool, string, float64:
+		return typed
+	case *SymbolValue, FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
+		return nil
+	case []any:
+		id := referenceIdentity(typed)
+		if id != 0 {
+			if seen[id] {
+				return nil
+			}
+			seen[id] = true
+			defer delete(seen, id)
+		}
+		out := []any{}
+		for _, item := range typed {
+			out = append(out, jsonCompatible(item, seen))
+		}
+		return out
+	case map[string]any:
+		id := referenceIdentity(typed)
+		if id != 0 {
+			if seen[id] {
+				return nil
+			}
+			seen[id] = true
+			defer delete(seen, id)
+		}
+		out := map[string]any{}
+		for _, key := range objectKeys(typed) {
+			if value, ok := typed[key]; ok {
+				converted := jsonCompatible(value, seen)
+				if _, skip := value.(UndefinedValue); !skip {
+					out[key] = converted
+				}
+			}
+		}
+		return out
+	case *RegExpValue:
+		return map[string]any{}
+	case *MapValue:
+		return map[string]any{}
+	case *SetValue:
+		return map[string]any{}
+	default:
+		return typed
+	}
+}
+
+func jsValueFromJSON(value any) any {
+	switch typed := value.(type) {
+	case nil:
+		return jsNull
+	case []any:
+		out := []any{}
+		for _, item := range typed {
+			out = append(out, jsValueFromJSON(item))
+		}
+		return out
+	case map[string]any:
+		out := map[string]any{}
+		for key, item := range typed {
+			out[key] = jsValueFromJSON(item)
+		}
+		return out
+	default:
+		return typed
+	}
+}
+
 func objectTag(value any) string {
 	switch value.(type) {
 	case []any:
@@ -948,6 +1174,7 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 		Flags:   flags,
 		Regex:   compiled,
 		Global:  strings.Contains(flags, "g"),
+		Props:   map[string]any{},
 	}, nil
 }
 
@@ -1731,6 +1958,13 @@ func assignTarget(target map[string]any, value any, env Env) error {
 			function.Props[property] = value
 			return assignTarget(objectExpr, function, env)
 		}
+		if regExpValue, ok := object.(*RegExpValue); ok {
+			if regExpValue.Props == nil {
+				regExpValue.Props = map[string]any{}
+			}
+			regExpValue.Props[property] = value
+			return nil
+		}
 		if objectArray, ok := object.([]any); ok {
 			nextArray, handled := assignArrayMember(objectArray, property, value)
 			if !handled {
@@ -1943,6 +2177,16 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 			}
 			return function.Call(callArgs)
 		}), true
+	case "bind":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			boundArgs := []any{}
+			if len(args) > 0 {
+				thisValue = args[0]
+				boundArgs = append(boundArgs, args[1:]...)
+			}
+			return bindCallable(function, thisValue, boundArgs), nil
+		}), true
 	}
 	return nil, false
 }
@@ -1975,6 +2219,16 @@ func functionMember(function FunctionValue, property string) (any, bool) {
 			}
 			return callFunctionWithThisValues(function, callArgs, thisValue)
 		}), true
+	case "bind":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			boundArgs := []any{}
+			if len(args) > 0 {
+				thisValue = args[0]
+				boundArgs = append(boundArgs, args[1:]...)
+			}
+			return bindCallable(function, thisValue, boundArgs), nil
+		}), true
 	}
 	return nil, false
 }
@@ -1986,7 +2240,9 @@ func boundFunctionMember(function BoundFunctionValue, property string) (any, boo
 			if len(args) > 0 {
 				args = args[1:]
 			}
-			return callFunctionWithThisValues(function.Function, args, function.This)
+			callArgs := append([]any{}, function.Args...)
+			callArgs = append(callArgs, args...)
+			return callFunctionWithThisValues(function.Function, callArgs, function.This)
 		}), true
 	case "apply":
 		return nativeFunction(func(args []any) (any, error) {
@@ -1994,10 +2250,40 @@ func boundFunctionMember(function BoundFunctionValue, property string) (any, boo
 			if len(args) > 1 {
 				callArgs = iterableValues(args[1])
 			}
-			return callFunctionWithThisValues(function.Function, callArgs, function.This)
+			return callFunctionWithThisValues(function.Function, append(append([]any{}, function.Args...), callArgs...), function.This)
+		}), true
+	case "bind":
+		return nativeFunction(func(args []any) (any, error) {
+			boundArgs := append([]any{}, function.Args...)
+			if len(args) > 1 {
+				boundArgs = append(boundArgs, args[1:]...)
+			}
+			return BoundFunctionValue{Function: function.Function, This: function.This, Args: boundArgs}, nil
 		}), true
 	}
 	return nil, false
+}
+
+func bindCallable(raw any, thisValue any, boundArgs []any) any {
+	switch function := raw.(type) {
+	case FunctionValue:
+		return BoundFunctionValue{Function: function, This: thisValue, Args: boundArgs}
+	case BoundFunctionValue:
+		args := append([]any{}, function.Args...)
+		args = append(args, boundArgs...)
+		return BoundFunctionValue{Function: function.Function, This: function.This, Args: args}
+	case NativeFunctionValue:
+		return nativeFunction(func(args []any) (any, error) {
+			callArgs := append([]any{}, boundArgs...)
+			callArgs = append(callArgs, args...)
+			if function.CallWithThis != nil {
+				return function.CallWithThis(thisValue, callArgs)
+			}
+			return function.Call(callArgs)
+		})
+	default:
+		return raw
+	}
 }
 
 func numberMember(value float64, property string) (any, bool) {
@@ -2290,6 +2576,11 @@ func stringMember(value string, property string, env Env) (any, bool) {
 }
 
 func regexpMember(value *RegExpValue, property string) (any, bool) {
+	if value.Props != nil {
+		if prop, ok := value.Props[property]; ok {
+			return prop, true
+		}
+	}
 	switch property {
 	case "source":
 		return value.Pattern, true
@@ -2991,7 +3282,15 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 		if bound, boundOk := raw.(BoundFunctionValue); boundOk {
 			instance := map[string]any{}
-			result, err := callFunctionWithThis(bound.Function, rawArgs, callerEnv, instance)
+			args := append([]any{}, bound.Args...)
+			for _, rawArg := range rawArgs {
+				value, err := evalExpr(asMap(rawArg), callerEnv)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, value)
+			}
+			result, err := callFunctionWithThisValues(bound.Function, args, instance)
 			if err != nil {
 				return nil, err
 			}
@@ -3023,7 +3322,15 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	case FunctionValue:
 		return callFunctionWithThis(function, rawArgs, callerEnv, jsUndefined)
 	case BoundFunctionValue:
-		return callFunctionWithThis(function.Function, rawArgs, callerEnv, function.This)
+		args := append([]any{}, function.Args...)
+		for _, rawArg := range rawArgs {
+			value, err := evalExpr(asMap(rawArg), callerEnv)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, value)
+		}
+		return callFunctionWithThisValues(function.Function, args, function.This)
 	case NativeFunctionValue:
 		args := []any{}
 		for _, rawArg := range rawArgs {
@@ -3049,8 +3356,13 @@ func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (
 	case FunctionValue:
 		return callFunctionWithThisValues(function, args, thisValue)
 	case BoundFunctionValue:
-		return callFunctionWithThisValues(function.Function, args, function.This)
+		callArgs := append([]any{}, function.Args...)
+		callArgs = append(callArgs, args...)
+		return callFunctionWithThisValues(function.Function, callArgs, function.This)
 	case NativeFunctionValue:
+		if function.CallWithThis != nil {
+			return function.CallWithThis(thisValue, args)
+		}
 		return function.Call(args)
 	case map[string]any:
 		if callable, ok := function["__call"]; ok {
