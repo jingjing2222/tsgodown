@@ -3832,6 +3832,8 @@ import net from "net"
 
 const parsed = qs.parse("a=1&b=x&b=y")
 const encoded = qs.stringify({ a: 1, b: ["x", "y"] })
+const params = new URLSearchParams({ a: 1, b: "x y" })
+params.append("b", "z")
 const gzipText = gunzipSync(gzipSync("abc")).toString()
 const inflateText = inflateSync(deflateSync("def")).toString()
 const storage = new AsyncLocalStorage()
@@ -3843,7 +3845,7 @@ let tick = "pending"
 timers.setImmediate(() => {
   tick = "immediate"
 })
-console.log("node-api", parsed.a, parsed.b.join("|"), encoded, gzipText, inflateText, stored, tick, performance.now() >= 0)
+console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, performance.now() >= 0)
 console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv6("::1"), net.isIP("bad"))
 "#,
         );
@@ -3894,7 +3896,7 @@ console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "node-api 1 x|y a=1&b=x&b=y abc def 3 immediate true\nnet-api 4 true true 0\n"
+            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\n"
         );
     }
 

@@ -550,6 +550,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			"TextEncoder": textEncoderGlobal(),
 			"TextDecoder": textDecoderGlobal(),
 			"URL": urlGlobal(),
+			"URLSearchParams": urlSearchParamsGlobal(),
 			"Uint8Array": typedArrayGlobal(),
 			"Uint16Array": typedArrayGlobal(),
 			"Uint32Array": typedArrayGlobal(),
@@ -663,7 +664,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	}
 	env["globalThis"] = sharedGlobal
 	sharedGlobal["process"] = process
-	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL"} {
+	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL", "URLSearchParams"} {
 		sharedGlobal[name] = env[name]
 	}
 	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
@@ -4369,6 +4370,67 @@ func urlGlobal() NativeFunctionValue {
 			return urlObject(""), nil
 		}
 		return urlObject(jsString(args[0])), nil
+	})
+}
+
+func urlSearchParamsGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		values := url.Values{}
+		if len(args) > 0 && !isNullish(args[0]) {
+			switch typed := args[0].(type) {
+			case string:
+				parsed, err := url.ParseQuery(typed)
+				if err == nil {
+					values = parsed
+				}
+			case map[string]any:
+				for _, key := range objectKeys(typed) {
+					value := typed[key]
+					if array, ok := value.(*ArrayValue); ok {
+						for _, item := range array.Items {
+							values.Add(key, jsString(item))
+						}
+					} else {
+						values.Set(key, jsString(value))
+					}
+				}
+			case *ArrayValue:
+				for _, pair := range typed.Items {
+					if tuple, ok := pair.(*ArrayValue); ok && len(tuple.Items) >= 2 {
+						values.Add(jsString(tuple.Items[0]), jsString(tuple.Items[1]))
+					}
+				}
+			}
+		}
+		object := map[string]any{}
+		object["append"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) >= 2 {
+				values.Add(jsString(args[0]), jsString(args[1]))
+			}
+			return jsUndefined, nil
+		})
+		object["set"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) >= 2 {
+				values.Set(jsString(args[0]), jsString(args[1]))
+			}
+			return jsUndefined, nil
+		})
+		object["get"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsNull, nil
+			}
+			value := values.Get(jsString(args[0]))
+			if value == "" {
+				if _, ok := values[jsString(args[0])]; !ok {
+					return jsNull, nil
+				}
+			}
+			return value, nil
+		})
+		object["toString"] = nativeFunction(func(args []any) (any, error) {
+			return values.Encode(), nil
+		})
+		return object, nil
 	})
 }
 
