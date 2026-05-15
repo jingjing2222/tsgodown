@@ -1,72 +1,49 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const corpusRoot = path.join(repoRoot, "test-corpus", "node-large");
-const manifest = JSON.parse(
-  fs.readFileSync(path.join(corpusRoot, "manifest.json"), "utf8"),
-);
-const generatedRoot =
-  process.env.TSGODOWN_NODE_LARGE_GO_ROOT ??
-  path.join(corpusRoot, "generated-go");
 
-const cases = manifest.entries.map((entry) => {
-  const vectorPath = path.join(corpusRoot, "cases", entry.id, "vectors.json");
-  const vectorCount = fs.existsSync(vectorPath)
-    ? (JSON.parse(fs.readFileSync(vectorPath, "utf8")).cases?.length ?? 0)
-    : 0;
-  const generatedPath = path.join(generatedRoot, entry.id, "go.mod");
-  return {
-    id: entry.id,
-    package: entry.package,
-    version: entry.version,
-    node:
-      vectorCount === manifest.policy.vectorsPerEntry
-        ? {
-            status: "passed",
-            vectors: vectorCount,
-            command: `pnpm run test:node-large:vitest -- ${entry.id}`,
-          }
-        : {
-            status: "blocked",
-            vectors: vectorCount,
-            reason: "100-vector Node probe suite not implemented yet",
-          },
-    go: {
-      build: fs.existsSync(generatedPath)
-        ? { status: "blocked", reason: "large Go build gate not wired yet" }
-        : {
-            status: "blocked",
-            reason: "generated Go project not available yet",
-          },
-      run: {
-        status: "blocked",
-        reason: "generated Go binary not available yet",
-      },
-    },
-    parity: {
-      status: "blocked",
-      reason: "generated Go vector parity suite not implemented yet",
-    },
-  };
+const vector = spawnSync("node", ["scripts/node-large-vector-parity.mjs"], {
+  cwd: repoRoot,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"],
+  maxBuffer: 256 * 1024 * 1024,
 });
+
+let vectorReport;
+try {
+  vectorReport = JSON.parse(vector.stdout);
+} catch (error) {
+  const report = {
+    version: "node-large-parity.v1",
+    status: "failed",
+    reason: "node-large vector parity report was not valid JSON",
+    error: error instanceof Error ? error.message : String(error),
+    stdout: vector.stdout,
+    stderr: vector.stderr,
+  };
+  console.log(JSON.stringify(report, null, 2));
+  process.exit(1);
+}
 
 const report = {
   version: "node-large-parity.v1",
-  status: "blocked",
-  nodeLts: manifest.nodeLts,
+  status: vectorReport.status === "passed" ? "passed" : "blocked",
+  nodeLts: vectorReport.nodeLts,
   summary: {
-    total: cases.length,
-    nodePassed: cases.filter((entry) => entry.node.status === "passed").length,
-    goBuildPassed: 0,
-    goRunPassed: 0,
-    parityPassed: 0,
-    requiredVectors: cases.length * manifest.policy.vectorsPerEntry,
+    total: vectorReport.summary.total,
+    nodePassed: vectorReport.summary.nodePassed,
+    goBuildPassed: vectorReport.summary.goBuildPassed,
+    goRunPassed: vectorReport.summary.goRunPassed,
+    parityPassed: vectorReport.summary.parityPassed,
+    requiredVectors: vectorReport.summary.vectorsRequired,
   },
-  cases,
+  cases: vectorReport.cases,
 };
 
 console.log(JSON.stringify(report, null, 2));
-process.exit(1);
+if (report.status !== "passed") {
+  process.exit(1);
+}

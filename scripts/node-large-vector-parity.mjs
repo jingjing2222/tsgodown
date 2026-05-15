@@ -14,6 +14,8 @@ const manifest = JSON.parse(
 const generatedRoot =
   process.env.TSGODOWN_NODE_LARGE_GO_ROOT ??
   path.join(corpusRoot, "generated-go");
+const buildRoot = path.join(repoRoot, ".tmp", "node-large-vector-parity");
+let generated = false;
 
 function run(cmd, args, options = {}) {
   return spawnSync(cmd, args, {
@@ -84,6 +86,7 @@ function runNodeVectorSuite(entry) {
 }
 
 function runGoVectorSuite(entry) {
+  ensureGeneratedGo();
   const goDir = path.join(generatedRoot, entry.id);
   const vectorSuite = path.join(goDir, "vector_suite.go");
   if (!fs.existsSync(vectorSuite)) {
@@ -92,12 +95,90 @@ function runGoVectorSuite(entry) {
       run: { status: "blocked", reason: "generated Go vector suite missing" },
     };
   }
+
+  const outDir = path.join(buildRoot, entry.id);
+  fs.mkdirSync(outDir, { recursive: true });
+  const binaryPath = path.join(outDir, "vector-suite");
+  const build = run(
+    "go",
+    ["build", "-tags", "tsgodown_vector", "-o", binaryPath, "vector_suite.go"],
+    { cwd: goDir },
+  );
+  const buildReport = {
+    command: `go build -tags tsgodown_vector -o ${path.relative(repoRoot, binaryPath)} vector_suite.go`,
+    cwd: path.relative(repoRoot, goDir),
+    status: build.status === 0 ? "passed" : "failed",
+    exitCode: build.status,
+    stdout: build.stdout,
+    stderr: build.stderr,
+  };
+  if (build.status !== 0) {
+    return { build: buildReport, run: { status: "skipped" } };
+  }
+
+  const vectorPath = path.join(corpusRoot, "cases", entry.id, "vectors.json");
+  const result = run(binaryPath, [entry.id, vectorPath], { cwd: goDir });
+  const runReport = {
+    command: `${path.relative(repoRoot, binaryPath)} ${entry.id} ${path.relative(
+      repoRoot,
+      vectorPath,
+    )}`,
+    status: result.status === 0 ? "passed" : "failed",
+    exitCode: result.status,
+    stderr: result.stderr,
+  };
+  if (result.status !== 0) {
+    return {
+      build: buildReport,
+      run: { ...runReport, stdout: result.stdout },
+    };
+  }
+  try {
+    const json = JSON.parse(result.stdout);
+    return {
+      build: buildReport,
+      run: {
+        ...runReport,
+        total: json.total,
+        digest: digest(json),
+        json,
+      },
+    };
+  } catch (error) {
+    return {
+      build: buildReport,
+      run: {
+        ...runReport,
+        status: "failed",
+        stdout: result.stdout,
+        parseError: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function ensureGeneratedGo() {
+  if (
+    generated ||
+    manifest.entries.every((entry) =>
+      fs.existsSync(path.join(generatedRoot, entry.id, "vector_suite.go")),
+    )
+  ) {
+    generated = true;
+    return;
+  }
+  const result = run("node", ["scripts/generate-node-large-go.mjs"]);
+  if (result.status !== 0) {
+    console.error(result.stderr || result.stdout);
+  }
+  generated = true;
+}
+
+function stripGoJson(report) {
+  if (!report) return report;
   return {
-    build: {
-      status: "blocked",
-      reason: "large Go vector runner not wired yet",
-    },
-    run: { status: "blocked", reason: "large Go vector runner not wired yet" },
+    build: report.build,
+    run: stripJson(report.run),
   };
 }
 
@@ -108,12 +189,12 @@ const cases = manifest.entries.map((entry) => {
     node.status === "passed" &&
     go.build.status === "passed" &&
     go.run.status === "passed" &&
-    node.digest === go.run.digest;
+    stableStringify(node.json) === stableStringify(go.run.json);
   return {
     id: entry.id,
     package: entry.package,
     node: stripJson(node),
-    go,
+    go: stripGoJson(go),
     parity: parity ? { status: "passed" } : { status: "blocked" },
   };
 });
