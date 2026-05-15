@@ -374,6 +374,7 @@ fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> boo
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
     imports.insert("strconv");
+    imports.insert("strings");
     for module in &ir.modules {
         if let Some(executable) = &module.executable {
             for stmt in &executable.stmts {
@@ -837,6 +838,27 @@ func tsgodownToBool(value any) bool {
 	default:
 		return true
 	}
+}
+
+func tsgodownIsNaN(value any) bool {
+	text := tsgodownToString(value)
+	if text == "" {
+		return false
+	}
+	_, err := strconv.ParseFloat(text, 64)
+	return err != nil
+}
+
+func tsgodownParseInt(value any, radix float64) float64 {
+	base := int(radix)
+	if base == 0 {
+		base = 10
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(tsgodownToString(value)), base, 64)
+	if err != nil {
+		return 0
+	}
+	return float64(parsed)
 }
 
 func tsgodownObjectFromAny(value any) map[string]any {
@@ -2876,6 +2898,10 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_boolean_cast_call(callee, args) => {
             render_js_to_bool_expr(args.first()?, state)
         }
+        JsExpr::Call { callee, args, .. } if is_global_is_nan_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownIsNaN({value})"))
+        }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
             render_regexp_test_call(callee, args, state)
         }
@@ -3291,6 +3317,14 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         ),
         JsExpr::Call { callee, args, .. } if is_process_uid_gid_call(callee, args) => {
             render_process_uid_gid_call(callee, args)
+        }
+        JsExpr::Call { callee, args, .. } if is_parse_int_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            let radix = args
+                .get(1)
+                .map(|arg| render_numeric_expr(arg, state))
+                .unwrap_or_else(|| Some("10".to_string()))?;
+            Some(format!("tsgodownParseInt({value}, {radix})"))
         }
         JsExpr::Call { callee, args, .. } if is_string_from_char_code_call(callee, args) => {
             let args = args
@@ -4853,6 +4887,14 @@ fn is_string_from_char_code_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 
 fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Boolean")
+}
+
+fn is_global_is_nan_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "isNaN")
+}
+
+fn is_parse_int_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2) && matches!(callee, JsExpr::Ident { name } if name == "parseInt")
 }
 
 fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
