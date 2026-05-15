@@ -4320,6 +4320,7 @@ fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
         || is_process_function_ref(expr).is_some()
         || is_process_uid_gid_call_expr(expr)
         || is_process_chdir_call_expr(expr)
+        || is_process_noop_call_expr(expr)
 }
 
 fn is_process_stdout_is_tty(expr: &JsExpr) -> bool {
@@ -4522,6 +4523,14 @@ fn is_process_uid_gid_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 
 fn is_process_uid_gid_call_expr(expr: &JsExpr) -> bool {
     matches!(expr, JsExpr::Call { callee, args, .. } if is_process_uid_gid_call(callee, args))
+}
+
+fn is_process_noop_call(callee: &JsExpr, _args: &[JsExpr]) -> bool {
+    matches!(is_process_function_ref(callee), Some("emitWarning" | "on"))
+}
+
+fn is_process_noop_call_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_process_noop_call(callee, args))
 }
 
 fn render_process_uid_gid_call(callee: &JsExpr, args: &[JsExpr]) -> Option<String> {
@@ -4769,6 +4778,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     if is_json_stringify(callee) {
         let value = render_json_value_expr(args.first()?, state)?;
         return Some(format!("tsgodownJSONStringify({value})"));
+    }
+    if is_process_noop_call(callee, args) {
+        return Some("func() any { return nil }()".to_string());
     }
     if is_process_chdir_call(callee, args) {
         let path = render_string_expr(args.first()?, state)?;
