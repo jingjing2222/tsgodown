@@ -122,6 +122,8 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:fs",
     "fs/promises",
     "node:fs/promises",
+    "http",
+    "node:http",
     "string_decoder",
     "node:string_decoder",
     "node:timers/promises",

@@ -431,8 +431,10 @@ console.log("still executable");
             .find(|file| file.path == "source_ir.go")
             .expect("source IR snapshot file");
         assert!(snapshot.contents.contains("package main"));
-        assert!(snapshot.contents.contains("const sourceIRJSON = `"));
-        assert!(snapshot.contents.contains("\"entry\": \"src/server.ts\""));
+        assert!(snapshot.contents.contains("const sourceIRJSON = \""));
+        assert!(snapshot
+            .contents
+            .contains("\\\"entry\\\": \\\"src/server.ts\\\""));
     }
 
     #[test]
@@ -765,14 +767,12 @@ console.log(JSON.stringify({
     }
 
     #[test]
-    fn emit_go_escapes_program_json_as_raw_string_literal() {
-        let root = temp_project("engine-core-raw-program-json");
+    fn emit_go_escapes_program_json_as_go_string_literal() {
+        let root = temp_project("engine-core-string-program-json");
         write(
             &root,
             "src/index.js",
-            r#"
-console.log("escape", "\x1b[31m")
-"#,
+            "\u{feff}\nconsole.log(\"escape\", \"\u{feff}\", \"\\x1b[31m\", \"`\", \"한글\")\n",
         );
 
         let response = emit_go(EmitGoRequest {
@@ -785,15 +785,17 @@ console.log("escape", "\x1b[31m")
                 config: AnalyzeConfig::default(),
             },
             package_name: None,
-            module_path: Some("example.com/raw-program-json".to_string()),
+            module_path: Some("example.com/string-program-json".to_string()),
             output_kind: EmitGoOutputKind::Main,
             ir_snapshot: None,
         });
 
         assert!(response.files[0]
             .contents
-            .contains("tsgodownrt.RunProgram(`"));
-        assert!(!response.files[0].contents.contains("\\x1b"));
+            .contains("tsgodownrt.RunProgram(\""));
+        assert!(response.files[0].contents.contains("\\uFEFF"));
+        assert!(response.files[0].contents.contains("\\uD55C\\uAE00"));
+        assert!(!response.files[0].contents.contains('\u{feff}'));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -3897,6 +3899,83 @@ console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_in_process_http_fetch_subset() {
+        let root = temp_project("engine-core-http-fetch");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { createServer } from "node:http"
+
+async function main() {
+  const server = createServer((req, res) => {
+    res.setHeader("x-vector", "ok")
+    res.writeHead(req.method === "POST" ? 201 : 200, { "content-type": "application/json" })
+    res.end(JSON.stringify({ method: req.method, url: req.url }))
+  })
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const port = server.address().port
+  const response = await fetch(`http://127.0.0.1:${port}/items/7?q=x`, { method: "POST", body: "payload" })
+  const headers = Object.fromEntries(response.headers)
+  const text = await response.text()
+  await new Promise((resolve) => server.close(resolve))
+  console.log("http", response.status, headers["x-vector"], text)
+}
+main()
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/http-fetch".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "http 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"}\n"
         );
     }
 

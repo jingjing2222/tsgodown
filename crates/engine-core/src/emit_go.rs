@@ -289,7 +289,7 @@ fn render_executable_program(
     analyzed: &AnalyzeResponse,
 ) -> String {
     let program_json = serde_json::to_string(&analyzed.ir).expect("analyzed IR should serialize");
-    let program_literal = go_raw_string_literal(&program_json);
+    let program_literal = go_string_literal(&program_json);
     format!(
         r#"package {package_name}
 
@@ -489,6 +489,8 @@ type moduleState struct {
 
 var sharedProcess map[string]any
 var sharedGlobal map[string]any
+var httpServers map[int]map[string]any
+var nextHTTPPort int
 
 type jsThrow struct {
 	value any
@@ -505,6 +507,8 @@ func RunProgram(programJSON string) error {
 	}
 	sharedProcess = processObject(program.Entry)
 	sharedGlobal = map[string]any{}
+	httpServers = map[int]map[string]any{}
+	nextHTTPPort = 31000
 	module, ok := entryModule(program)
 	if !ok {
 		return errors.New("entry module not found")
@@ -551,6 +555,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			"TextDecoder": textDecoderGlobal(),
 			"URL": urlGlobal(),
 			"URLSearchParams": urlSearchParamsGlobal(),
+			"fetch": fetchGlobal(),
 			"Uint8Array": typedArrayGlobal(),
 			"Uint16Array": typedArrayGlobal(),
 			"Uint32Array": typedArrayGlobal(),
@@ -664,7 +669,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	}
 	env["globalThis"] = sharedGlobal
 	sharedGlobal["process"] = process
-	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL", "URLSearchParams"} {
+	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL", "URLSearchParams", "fetch"} {
 		sharedGlobal[name] = env[name]
 	}
 	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
@@ -1005,6 +1010,8 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return fsModuleExports(), true
 	case "fs/promises", "node:fs/promises":
 		return fsPromisesModuleExports(), true
+	case "http", "node:http":
+		return httpModuleExports(), true
 	case "node:string_decoder", "string_decoder":
 		return stringDecoderModuleExports(), true
 	case "node:timers/promises":
@@ -3313,6 +3320,234 @@ func fsPromisesModuleExports() map[string]any {
 	})
 	exports["default"] = exports
 	return exports
+}
+
+func httpModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["createServer"] = nativeFunction(func(args []any) (any, error) {
+		var handler any = jsUndefined
+		if len(args) > 0 {
+			handler = args[0]
+		}
+		return newHTTPServer(handler), nil
+	})
+	exports["Server"] = nativeFunction(func(args []any) (any, error) {
+		var handler any = jsUndefined
+		if len(args) > 0 {
+			handler = args[0]
+		}
+		return newHTTPServer(handler), nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func newHTTPServer(handler any) map[string]any {
+	server := newEventEmitter()
+	server["__handler"] = handler
+	server["__port"] = float64(0)
+	server["listen"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		port := 0
+		if len(args) > 0 {
+			port = jsInteger(args[0])
+		}
+		if port == 0 {
+			port = nextHTTPPort
+			nextHTTPPort++
+		}
+		server["__port"] = float64(port)
+		httpServers[port] = server
+		if callback := lastCallback(args); callback != nil {
+			if _, err := callFunctionWithValues(callback, []any{}, Env{}, server); err != nil {
+				return nil, err
+			}
+		}
+		emitEvent(server, "listening")
+		return server, nil
+	})
+	server["address"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return map[string]any{
+			"address": "127.0.0.1",
+			"family":  "IPv4",
+			"port":    server["__port"],
+		}, nil
+	})
+	server["close"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		delete(httpServers, jsInteger(server["__port"]))
+		if callback := lastCallback(args); callback != nil {
+			if _, err := callFunctionWithValues(callback, []any{}, Env{}, server); err != nil {
+				return nil, err
+			}
+		}
+		emitEvent(server, "close")
+		return server, nil
+	})
+	return server
+}
+
+func fetchGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_URL", "fetch URL is required")), nil
+		}
+		requestURL := jsString(args[0])
+		options := map[string]any{}
+		if len(args) > 1 {
+			options, _ = args[1].(map[string]any)
+		}
+		response, err := dispatchHTTPFetch(requestURL, options)
+		if err != nil {
+			return promiseRejectedFromError(err), nil
+		}
+		return promiseFulfilled(response), nil
+	})
+}
+
+func dispatchHTTPFetch(rawURL string, options map[string]any) (map[string]any, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	port := parsed.Port()
+	if port == "" {
+		if parsed.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	portNumber, _ := strconv.Atoi(port)
+	server := httpServers[portNumber]
+	if server == nil {
+		return nil, fmt.Errorf("http server for port %d is not registered", portNumber)
+	}
+	method := "GET"
+	if value, ok := options["method"]; ok && !isUndefined(value) {
+		method = strings.ToUpper(jsString(value))
+	}
+	headers := map[string]any{}
+	if rawHeaders, ok := options["headers"].(map[string]any); ok {
+		for _, key := range objectKeys(rawHeaders) {
+			headers[strings.ToLower(key)] = rawHeaders[key]
+		}
+	}
+	body := ""
+	if value, ok := options["body"]; ok && !isUndefined(value) {
+		body = jsString(value)
+	}
+	path := parsed.RequestURI()
+	if path == "" {
+		path = "/"
+	}
+	req := newHTTPRequest(method, path, headers, body)
+	res := newHTTPResponse()
+	handler := server["__handler"]
+	if !isUndefined(handler) {
+		result, err := callFunctionWithValues(handler, []any{req, res}, Env{}, server)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := awaitValue(result); err != nil {
+			return nil, err
+		}
+	}
+	return httpFetchResponse(res), nil
+}
+
+func newHTTPRequest(method string, path string, headers map[string]any, body string) map[string]any {
+	req := newEventEmitter()
+	req["method"] = method
+	req["url"] = path
+	req["headers"] = headers
+	req["socket"] = map[string]any{
+		"remoteAddress": "127.0.0.1",
+		"encrypted":     false,
+	}
+	req["readable"] = true
+	req["body"] = body
+	req["setEncoding"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
+	req["resume"] = nativeMethod(func(thisValue any, args []any) (any, error) { return req, nil })
+	return req
+}
+
+func newHTTPResponse() map[string]any {
+	res := newEventEmitter()
+	headers := map[string]any{}
+	res["statusCode"] = float64(200)
+	res["headers"] = headers
+	res["body"] = ""
+	res["setHeader"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) >= 2 {
+			headers[strings.ToLower(jsString(args[0]))] = jsString(args[1])
+		}
+		return res, nil
+	})
+	res["getHeader"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nil
+		}
+		if value, ok := headers[strings.ToLower(jsString(args[0]))]; ok {
+			return value, nil
+		}
+		return jsUndefined, nil
+	})
+	res["removeHeader"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			delete(headers, strings.ToLower(jsString(args[0])))
+		}
+		return jsUndefined, nil
+	})
+	res["writeHead"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			res["statusCode"] = float64(jsInteger(args[0]))
+		}
+		if len(args) > 1 {
+			if object, ok := args[1].(map[string]any); ok {
+				for _, key := range objectKeys(object) {
+					headers[strings.ToLower(key)] = jsString(object[key])
+				}
+			}
+		}
+		return res, nil
+	})
+	res["write"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			res["body"] = jsString(res["body"]) + jsString(args[0])
+		}
+		return true, nil
+	})
+	res["end"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			res["body"] = jsString(res["body"]) + jsString(args[0])
+		}
+		res["writableEnded"] = true
+		emitEvent(res, "finish")
+		return jsUndefined, nil
+	})
+	return res
+}
+
+func httpFetchResponse(res map[string]any) map[string]any {
+	headersMap, _ := res["headers"].(map[string]any)
+	headerEntries := []any{}
+	for _, key := range objectKeys(headersMap) {
+		headerEntries = append(headerEntries, &ArrayValue{Items: []any{key, headersMap[key]}})
+	}
+	body := jsString(res["body"])
+	return map[string]any{
+		"status":  float64(jsInteger(res["statusCode"])),
+		"headers": &ArrayValue{Items: headerEntries},
+		"text": nativeFunction(func(args []any) (any, error) {
+			return promiseFulfilled(body), nil
+		}),
+		"json": nativeFunction(func(args []any) (any, error) {
+			var value any
+			if err := json.Unmarshal([]byte(body), &value); err != nil {
+				return promiseRejectedFromError(err), nil
+			}
+			return promiseFulfilled(value), nil
+		}),
+	}
 }
 
 func constantsModuleExports() map[string]any {
@@ -8354,7 +8589,7 @@ fn render_ir_snapshot_file(
     });
     let json = serde_json::to_string_pretty(&snapshot).expect("IR snapshot should serialize");
     let description = sanitize_go_comment_line(description);
-    let json_literal = go_raw_string_literal(&json);
+    let json_literal = go_string_literal(&json);
     format!(
         r#"package {package_name}
 
@@ -8374,6 +8609,29 @@ fn sanitize_go_comment_line(value: &str) -> String {
     }
 }
 
-fn go_raw_string_literal(value: &str) -> String {
-    format!("`{}`", value.replace('`', "` + \"`\" + `"))
+fn go_string_literal(value: &str) -> String {
+    let mut literal = String::with_capacity(value.len() + 2);
+    literal.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => literal.push_str("\\\\"),
+            '"' => literal.push_str("\\\""),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            '\u{08}' => literal.push_str("\\b"),
+            '\u{0c}' => literal.push_str("\\f"),
+            ch if ch.is_ascii() && !ch.is_ascii_control() => literal.push(ch),
+            ch => {
+                let code = ch as u32;
+                if code <= 0xffff {
+                    literal.push_str(&format!("\\u{code:04X}"));
+                } else {
+                    literal.push_str(&format!("\\U{code:08X}"));
+                }
+            }
+        }
+    }
+    literal.push('"');
+    literal
 }
