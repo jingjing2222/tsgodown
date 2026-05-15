@@ -467,7 +467,7 @@ console.log("hello", value)
                     framework: None,
                 },
                 cwd: Some(root.to_string_lossy().to_string()),
-                config: legacy_ir_interpreter_config(),
+                config: AnalyzeConfig::default(),
             },
             package_name: None,
             module_path: Some("example.com/simple-console-log".to_string()),
@@ -1045,6 +1045,77 @@ export const enabled = true
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "aot-esm-value 42 config-next true\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_json_value_model_subset() {
+        let root = temp_project("engine-core-aot-json-value-model");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const versions = ["1.2.3", "1.2.3-beta.2", "bad"]
+const report = {
+  package: "holdout",
+  versions,
+  nested: { ready: true, count: 3 },
+  empty: null
+}
+console.log(JSON.stringify(report, null, 2))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-json-value-model".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("\"encoding/json\""));
+        assert!(response.files[0].contents.contains("map[string]any"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\n  \"empty\": null,\n  \"nested\": {\n    \"count\": 3,\n    \"ready\": true\n  },\n  \"package\": \"holdout\",\n  \"versions\": [\n    \"1.2.3\",\n    \"1.2.3-beta.2\",\n    \"bad\"\n  ]\n}\n"
         );
     }
 

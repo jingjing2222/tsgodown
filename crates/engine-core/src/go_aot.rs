@@ -15,6 +15,7 @@ pub(crate) fn render_aot_executable_program(
     let module_slots = collect_module_slots(&analyzed.ir, &module_functions);
     let declarations = render_module_decls(&analyzed.ir, &module_functions, &module_slots)?;
     let mut state = module_aot_state(module, &analyzed.ir, &module_functions, &module_slots)?;
+    state.go_imports = collect_aot_imports(&analyzed.ir);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
         if let JsStmt::FunctionDecl { .. } = stmt {
@@ -25,16 +26,141 @@ pub(crate) fn render_aot_executable_program(
     Some(format!(
         r#"package {package_name}
 
-import "fmt"
+{imports}
 
 {declarations}
+{helpers}
 func main() {{
 {body}
 }}
 "#,
+        imports = render_go_imports(&state.go_imports),
         declarations = declarations.join("\n\n"),
+        helpers = render_aot_helpers(&state.go_imports),
         body = indent_lines(&body.join("\n"))
     ))
+}
+
+fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
+    let mut imports = BTreeSet::new();
+    for module in &ir.modules {
+        if let Some(executable) = &module.executable {
+            for stmt in &executable.stmts {
+                collect_stmt_imports(stmt, &mut imports);
+            }
+        }
+    }
+    imports
+}
+
+fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
+    match stmt {
+        JsStmt::Expr { expr } => collect_expr_imports(expr, imports),
+        JsStmt::VarDecl {
+            init: Some(init), ..
+        } => collect_expr_imports(init, imports),
+        JsStmt::VarDecl { init: None, .. } => {}
+        JsStmt::FunctionDecl { body, .. } => {
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+        }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_expr_imports(test, imports);
+            for stmt in consequent {
+                collect_stmt_imports(stmt, imports);
+            }
+            for stmt in alternate {
+                collect_stmt_imports(stmt, imports);
+            }
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            for stmt in init {
+                collect_stmt_imports(stmt, imports);
+            }
+            if let Some(test) = test {
+                collect_expr_imports(test, imports);
+            }
+            if let Some(update) = update {
+                collect_expr_imports(update, imports);
+            }
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
+    match expr {
+        JsExpr::Call { callee, args, .. } => {
+            if is_console_log(callee) {
+                imports.insert("fmt");
+            }
+            if is_json_stringify(callee) {
+                imports.insert("encoding/json");
+            }
+            collect_expr_imports(callee, imports);
+            for arg in args {
+                collect_expr_imports(arg, imports);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_expr_imports(item, imports);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                collect_expr_imports(&prop.value, imports);
+            }
+        }
+        JsExpr::Binary { left, right, .. } => {
+            collect_expr_imports(left, imports);
+            collect_expr_imports(right, imports);
+        }
+        JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
+        _ => {}
+    }
+}
+
+fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
+    if imports.len() == 1 {
+        return format!("import {:?}", imports.iter().next().expect("single import"));
+    }
+    format!(
+        "import (\n{}\n)",
+        imports
+            .iter()
+            .map(|import| format!("\t{import:?}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
+    if !imports.contains("encoding/json") {
+        return String::new();
+    }
+    r#"func tsgodownJSONStringify(value any) string {
+	bytes, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(bytes)
+}
+"#
+    .to_string()
 }
 
 fn can_aot_module_graph(ir: &IrDocument) -> bool {
@@ -216,6 +342,7 @@ fn module_member_go_name(module: &Module, name: &str) -> String {
 
 #[derive(Default)]
 struct AotState {
+    go_imports: BTreeSet<&'static str>,
     bindings: BTreeSet<String>,
     binding_refs: BTreeMap<String, String>,
     numeric_bindings: BTreeSet<String>,
@@ -299,6 +426,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.object_bindings.insert(name.clone(), object);
                     return Some(format!("var {ident} = {value}"));
                 }
+                if let Some(value) = render_json_value_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    return Some(format!("var {ident} any = {value}"));
+                }
                 let value = render_expr(expr, state)?;
                 state.bindings.insert(name.clone());
                 state.binding_refs.insert(name.clone(), ident.clone());
@@ -345,6 +477,7 @@ fn render_for_stmt(
         return None;
     }
     let mut loop_state = AotState {
+        go_imports: state.go_imports.clone(),
         bindings: state.bindings.clone(),
         binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
@@ -414,6 +547,7 @@ fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
 
 fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let block_state = AotState {
+        go_imports: state.go_imports.clone(),
         bindings: state.bindings.clone(),
         binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
@@ -427,6 +561,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
 
 fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let mut block_state = AotState {
+        go_imports: state.go_imports.clone(),
         bindings: state.bindings.clone(),
         binding_refs: state.binding_refs.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
@@ -751,6 +886,10 @@ fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Opti
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if is_json_stringify(callee) {
+        let value = render_json_value_expr(args.first()?, state)?;
+        return Some(format!("tsgodownJSONStringify({value})"));
+    }
     let JsExpr::Ident { name } = callee else {
         return None;
     };
@@ -767,6 +906,54 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         function.go_name,
         rendered_args.join(", ")
     ))
+}
+
+fn is_json_stringify(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "JSON") && property == "stringify"
+    )
+}
+
+fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value { value } => render_value(value),
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Array { items } => {
+            let items = items
+                .iter()
+                .map(|item| render_json_value_expr(item, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]any{{{}}}", items.join(", ")))
+        }
+        JsExpr::Object { props } => {
+            let mut fields = Vec::new();
+            for prop in props {
+                if prop.spread || prop.key_expr.is_some() {
+                    return None;
+                }
+                let value = render_json_value_expr(&prop.value, state)?;
+                fields.push(format!("{:?}: {value}", prop.key));
+            }
+            Some(format!("map[string]any{{{}}}", fields.join(", ")))
+        }
+        JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
+        JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } => render_static_member_expr(object, property, state),
+        _ => None,
+    }
 }
 
 fn render_value(value: &JsValue) -> Option<String> {
