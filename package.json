@@ -38,6 +38,7 @@
     "guard:compiler-mode-only": "node scripts/guard-compiler-mode-only.mjs",
     "guard:core-path": "node scripts/guard-core-path-no-framework-branching.mjs",
     "guard:framework-defaults": "node scripts/guard-framework-defaults.mjs",
+    "guard:backend-boundaries": "node scripts/guard-backend-boundaries.mjs",
     "test:guard:core-path": "node --test scripts/guard-core-path-no-framework-branching.test.mjs",
     "test:guard:framework-defaults": "node --test scripts/guard-framework-defaults.test.mjs",
     "harness:semantics-parity": "node scripts/differential-harness.mjs --all",
