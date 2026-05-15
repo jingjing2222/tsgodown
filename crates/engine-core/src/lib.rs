@@ -1525,10 +1525,20 @@ const comparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s*(v?(0|[1-9]\d*)\.(0|[1-9]\
 const safeComparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s{0,1}(v?(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})(?:-((?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256})(?:\.(?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256}))*))?(?:\+([a-zA-Z0-9-]{1,250}(?:\.[a-zA-Z0-9-]{1,250})*))?)$|^$/)
 const dynamicWhitespace = new RegExp(`^a\\s+b$`).test("a b")
 const jsIdentifier = /^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u
+const idStart = /^[$_\p{ID_Start}]$/u
+const idContinue = /^[$\u200c\u200d\p{ID_Continue}]$/u
+const pathChars = [..."/items/:id"]
+let pathIndex = 8
+let pathName = ""
+if (idStart.test(pathChars[pathIndex])) {
+  do {
+    pathName += pathChars[pathIndex++]
+  } while (idContinue.test(pathChars[pathIndex]))
+}
 const spreadString = [..."ab"].join("")
 const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, jsIdentifier.test("item_1") + ":" + jsIdentifier.test("$x") + ":" + jsIdentifier.test("9x"), spreadString, protoSlice, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, jsIdentifier.test("item_1") + ":" + jsIdentifier.test("$x") + ":" + jsIdentifier.test("9x"), pathChars[8] + ":" + pathName + ":" + pathIndex, spreadString, protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -1578,7 +1588,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true true:true:false ab bcd 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true true:true:false i:id:10 ab bcd 2|3 true\n"
         );
     }
 
@@ -2203,6 +2213,85 @@ try {
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "error-subclass TypeError bad RangeError\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_derived_error_super_constructor_subset() {
+        let root = temp_project("engine-core-derived-error-super");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+class PathError extends TypeError {
+  constructor(message, originalPath) {
+    let text = message
+    if (originalPath) text += `: ${originalPath}`
+    super(text)
+    this.originalPath = originalPath
+  }
+}
+
+try {
+  throw new PathError("Unexpected token", "/items/:id")
+} catch (error) {
+  console.log(JSON.stringify({
+    name: error.name,
+    message: error.message,
+    originalPath: error.originalPath,
+    instanceOfTypeError: error instanceof TypeError
+  }))
+}
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/derived-error-super".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"instanceOfTypeError\":true,\"message\":\"Unexpected token: /items/:id\",\"name\":\"TypeError\",\"originalPath\":\"/items/:id\"}\n"
         );
     }
 

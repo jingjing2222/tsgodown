@@ -143,6 +143,10 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
             test: map_js_expr(test),
             body: body.into_iter().map(map_js_stmt).collect(),
         },
+        analyzer_rust::JsStmtIR::DoWhile { body, test } => JsStmt::DoWhile {
+            body: body.into_iter().map(map_js_stmt).collect(),
+            test: map_js_expr(test),
+        },
         analyzer_rust::JsStmtIR::Switch {
             discriminant,
             cases,
@@ -197,6 +201,7 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
         },
         analyzer_rust::JsExprIR::Ident(name) => JsExpr::Ident { name },
         analyzer_rust::JsExprIR::This => JsExpr::This,
+        analyzer_rust::JsExprIR::Super => JsExpr::Super,
         analyzer_rust::JsExprIR::Array(items) => JsExpr::Array {
             items: items.into_iter().map(map_js_expr).collect(),
         },

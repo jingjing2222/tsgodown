@@ -116,6 +116,8 @@ pub enum JsStmt {
     },
     #[serde(rename = "while")]
     While { test: JsExpr, body: Vec<JsStmt> },
+    #[serde(rename = "do-while")]
+    DoWhile { body: Vec<JsStmt>, test: JsExpr },
     #[serde(rename = "switch")]
     Switch {
         discriminant: JsExpr,
@@ -197,6 +199,8 @@ pub enum JsExpr {
     Ident { name: String },
     #[serde(rename = "this")]
     This,
+    #[serde(rename = "super")]
+    Super,
     #[serde(rename = "array")]
     Array { items: Vec<JsExpr> },
     #[serde(rename = "array-spread")]

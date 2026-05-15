@@ -5914,6 +5914,38 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return result, nil
 				}
 			}
+	case "do-while":
+			loopLabel := asString(stmt["__label"])
+			out := completion{}
+			for {
+				result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
+				if err != nil {
+					return completion{}, err
+				}
+				out.yields = append(out.yields, result.yields...)
+				if result.returned {
+					result.yields = out.yields
+					return result, nil
+				}
+				if result.broke {
+					if result.breakLabel == "" || result.breakLabel == loopLabel {
+						return out, nil
+					}
+					result.yields = out.yields
+					return result, nil
+				}
+				if result.continued && result.continueLabel != "" && result.continueLabel != loopLabel {
+					result.yields = out.yields
+					return result, nil
+				}
+				test, err := evalExpr(asMap(stmt["test"]), env)
+				if err != nil {
+					return completion{}, err
+				}
+				if !isTruthy(test) {
+					return out, nil
+				}
+			}
 	case "switch":
 		discriminant, err := evalExpr(asMap(stmt["discriminant"]), env)
 		if err != nil {
@@ -6081,6 +6113,8 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		return lookupEnv(env, asString(expr["name"])), nil
 	case "this":
 		return lookupEnv(env, "this"), nil
+	case "super":
+		return lookupEnv(env, "super"), nil
 	case "array":
 		out := []any{}
 		for _, item := range asSlice(expr["items"]) {
@@ -8235,6 +8269,66 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 	return classValue, nil
 }
 
+func classConstructorWithSuper(classValue *ClassValue, constructor FunctionValue, instance any) FunctionValue {
+	superCallable := nativeFunction(func(args []any) (any, error) {
+		return constructSuperWithThis(classValue, args, instance)
+	})
+	constructor.Env = Env{"__parent": constructor.Env, "super": superCallable}
+	return constructor
+}
+
+func constructSuperWithThis(classValue *ClassValue, args []any, instance any) (any, error) {
+	if classValue.Super != nil {
+		result, err := callClassConstructorWithThis(classValue.Super, args, instance)
+		if err != nil {
+			return nil, err
+		}
+		mergeReturnedObjectIntoInstance(instance, result)
+		return instance, nil
+	}
+	if classValue.SuperCtor != nil {
+		result, err := callFunctionWithValues(classValue.SuperCtor, args, Env{}, instance)
+		if err != nil {
+			return nil, err
+		}
+		mergeReturnedObjectIntoInstance(instance, result)
+		return instance, nil
+	}
+	return nil, fmt.Errorf("super constructor is not available")
+}
+
+func callClassConstructorWithThis(classValue *ClassValue, args []any, instance any) (any, error) {
+	if classValue.Constructor != nil {
+		constructor := classConstructorWithSuper(classValue, *classValue.Constructor, instance)
+		result, err := callFunctionWithThisValues(constructor, args, instance)
+		if err != nil {
+			return nil, err
+		}
+		if isObjectLikeResult(result) {
+			return result, nil
+		}
+		return instance, nil
+	}
+	if classValue.Super != nil || classValue.SuperCtor != nil {
+		return constructSuperWithThis(classValue, args, instance)
+	}
+	return instance, nil
+}
+
+func mergeReturnedObjectIntoInstance(instance any, result any) {
+	instanceMap, instanceOk := instance.(map[string]any)
+	resultMap, resultOk := result.(map[string]any)
+	if !instanceOk || !resultOk {
+		return
+	}
+	for key, value := range resultMap {
+		if key == "__class" {
+			continue
+		}
+		instanceMap[key] = value
+	}
+}
+
 func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	classValue, ok := raw.(*ClassValue)
 	if !ok {
@@ -8288,7 +8382,12 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		instance = superInstance
 	}
 	if classValue.Constructor != nil {
-		result, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance)
+		args, err := evalCallArgs(rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
+		}
+		constructor := classConstructorWithSuper(classValue, *classValue.Constructor, instance)
+		result, err := callFunctionWithThisValues(constructor, args, instance)
 		if err != nil {
 			return nil, err
 		}
@@ -8298,8 +8397,12 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		if resultArray, ok := result.(*ArrayValue); ok {
 			return resultArray, nil
 		}
-	} else if classValue.Super != nil && classValue.Super.Constructor != nil {
-		result, err := callFunctionWithThis(*classValue.Super.Constructor, rawArgs, callerEnv, instance)
+	} else if classValue.Super != nil || classValue.SuperCtor != nil {
+		args, err := evalCallArgs(rawArgs, callerEnv)
+		if err != nil {
+			return nil, err
+		}
+		result, err := constructSuperWithThis(classValue, args, instance)
 		if err != nil {
 			return nil, err
 		}
@@ -8316,7 +8419,19 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 func constructClassWithValues(classValue *ClassValue, args []any) (any, error) {
 	var instance any = map[string]any{"__class": classValue}
 	if classValue.Constructor != nil {
-		result, err := callFunctionWithThisValues(*classValue.Constructor, args, instance)
+		constructor := classConstructorWithSuper(classValue, *classValue.Constructor, instance)
+		result, err := callFunctionWithThisValues(constructor, args, instance)
+		if err != nil {
+			return nil, err
+		}
+		if resultMap, ok := result.(map[string]any); ok {
+			return resultMap, nil
+		}
+		if resultArray, ok := result.(*ArrayValue); ok {
+			return resultArray, nil
+		}
+	} else if classValue.Super != nil || classValue.SuperCtor != nil {
+		result, err := constructSuperWithThis(classValue, args, instance)
 		if err != nil {
 			return nil, err
 		}

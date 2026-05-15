@@ -543,6 +543,14 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
                 });
             }
         }
+        Stmt::DoWhile(do_while_stmt) => {
+            if let Some(test) = lower_js_expr(&do_while_stmt.test) {
+                stmts.push(JsStmtIR::DoWhile {
+                    body: lower_stmt_as_block(&do_while_stmt.body),
+                    test,
+                });
+            }
+        }
         Stmt::Switch(switch_stmt) => {
             if let Some(discriminant) = lower_js_expr(&switch_stmt.discriminant) {
                 let cases = switch_stmt
@@ -934,7 +942,7 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
             let callee = match &call.callee {
                 Callee::Expr(callee) => lower_js_expr(callee)?,
                 Callee::Import(_) => JsExprIR::Ident("import".to_string()),
-                Callee::Super(_) => return None,
+                Callee::Super(_) => JsExprIR::Super,
             };
             let args = lower_call_args(&call.args);
             Some(JsExprIR::Call {
@@ -1413,6 +1421,10 @@ fn collect_cjs_imports_from_stmt(imports: &mut Vec<ImportIR>, stmt: &Stmt) {
         Stmt::While(while_stmt) => {
             collect_cjs_imports_from_expr(imports, &while_stmt.test);
             collect_cjs_imports_from_stmt(imports, &while_stmt.body);
+        }
+        Stmt::DoWhile(do_while_stmt) => {
+            collect_cjs_imports_from_stmt(imports, &do_while_stmt.body);
+            collect_cjs_imports_from_expr(imports, &do_while_stmt.test);
         }
         _ => {}
     }

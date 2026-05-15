@@ -209,6 +209,14 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        JsStmtIR::DoWhile { body, test } => format!(
+            "do-while body=[{}] test={}",
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            render_js_expr(test)
+        ),
         JsStmtIR::Switch {
             discriminant,
             cases,
@@ -294,6 +302,7 @@ fn render_js_expr(expr: &JsExprIR) -> String {
         JsExprIR::Value(value) => render_js_value(value),
         JsExprIR::Ident(name) => format!("ident({name})"),
         JsExprIR::This => "this".to_string(),
+        JsExprIR::Super => "super".to_string(),
         JsExprIR::Array(items) => format!(
             "array([{}])",
             items

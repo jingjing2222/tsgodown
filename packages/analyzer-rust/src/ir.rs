@@ -130,6 +130,10 @@ pub enum JsStmtIR {
         test: JsExprIR,
         body: Vec<JsStmtIR>,
     },
+    DoWhile {
+        body: Vec<JsStmtIR>,
+        test: JsExprIR,
+    },
     Switch {
         discriminant: JsExprIR,
         cases: Vec<JsSwitchCaseIR>,
@@ -181,6 +185,7 @@ pub enum JsExprIR {
     Value(JsValueIR),
     Ident(String),
     This,
+    Super,
     Array(Vec<JsExprIR>),
     ArraySpread(Vec<JsArrayElementIR>),
     Object(Vec<JsObjectPropIR>),

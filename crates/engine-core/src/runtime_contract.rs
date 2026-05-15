@@ -274,6 +274,10 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(test, unsupported);
             collect_unsupported_stmt_list(body, false, unsupported);
         }
+        JsStmt::DoWhile { body, test } => {
+            collect_unsupported_stmt_list(body, false, unsupported);
+            collect_unsupported_expr(test, unsupported);
+        }
         JsStmt::Switch {
             discriminant,
             cases,
@@ -350,6 +354,10 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
             collect_unsupported_expr(test, unsupported);
             collect_unsupported_stmt_list(body, true, unsupported);
         }
+        JsStmt::DoWhile { body, test } => {
+            collect_unsupported_stmt_list(body, true, unsupported);
+            collect_unsupported_expr(test, unsupported);
+        }
         JsStmt::Switch {
             discriminant,
             cases,
@@ -405,7 +413,7 @@ fn collect_unsupported_return(value: &Option<JsExpr>, unsupported: &mut Vec<Stri
 
 fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
     match expr {
-        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This => {}
+        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => {}
         JsExpr::Array { items } => {
             for item in items {
                 collect_unsupported_expr(item, unsupported);
