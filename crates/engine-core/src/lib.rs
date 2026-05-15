@@ -3933,7 +3933,8 @@ console.log("process-props", Boolean(process), Boolean(env), process.versions.no
             r#"
 const path = require("path")
 const os = require("os")
-console.log("path-os", path.join("a", "b", "..", "c"), path.resolve("file").length > 0, os.homedir().length > 0, path.posix.sep, path.win32.sep, path.basename("/tmp/app.exe", ".exe"), path.normalize("a/../b").length > 0, path.delimiter.length > 0)
+const parsed = path.parse("/tmp/app.txt")
+console.log("path-os", path.join("a", "b", "..", "c"), path.resolve("file").length > 0, os.homedir().length > 0, path.posix.sep, path.win32.sep, path.basename("/tmp/app.exe", ".exe"), path.dirname("/tmp/app.txt"), path.isAbsolute("/tmp"), path.relative("/tmp/a", "/tmp/a/b/c"), parsed.dir, parsed.base, parsed.ext, parsed.name, path.normalize("a/../b").length > 0, path.delimiter.length > 0)
 "#,
         );
 
@@ -3988,7 +3989,7 @@ console.log("path-os", path.join("a", "b", "..", "c"), path.resolve("file").leng
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "path-os a/c true true / \\ app true true\n"
+            "path-os a/c true true / \\ app /tmp true b/c /tmp app.txt .txt app true true\n"
         );
     }
 

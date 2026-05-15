@@ -429,6 +429,14 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                     imports.insert("strings");
                 }
             }
+            if is_node_path_bool_call(callee, args) {
+                imports.insert("path/filepath");
+            }
+            if is_node_path_parse_call(callee, args) {
+                imports.insert("os");
+                imports.insert("path/filepath");
+                imports.insert("strings");
+            }
             if is_node_os_homedir_call(callee, args) {
                 imports.insert("os");
             }
@@ -1550,6 +1558,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.object_bindings.insert(name.clone(), object);
                     return Some(format!("var {ident} = {value}"));
                 }
+                if let Some((value, object)) = render_node_path_parse_object(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.object_bindings.insert(name.clone(), object);
+                    return Some(format!("var {ident} = {value}"));
+                }
                 if let Some((class_name, value)) = render_new_class_expr(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -2270,6 +2284,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_node_buffer_is_buffer_call(callee, args) => {
             render_node_buffer_is_buffer_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_node_path_bool_call(callee, args) => {
+            render_node_path_bool_call(callee, args, state)
         }
         expr if process_env_lookup_name(expr).is_some() => {
             let value = render_process_env_lookup(expr)?;
@@ -3179,6 +3196,8 @@ fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
                 || is_node_buffer_from_call(callee, args)
                 || is_node_buffer_alloc_call(callee, args)
                 || is_node_buffer_is_buffer_call(callee, args)
+                || is_node_path_bool_call(callee, args)
+                || is_node_path_parse_call(callee, args)
     )
 }
 
@@ -3194,7 +3213,10 @@ fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             property_expr: None,
             optional: false,
             } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
-            && matches!(property.as_str(), "basename" | "join" | "normalize" | "resolve")
+            && matches!(
+                property.as_str(),
+                "basename" | "dirname" | "join" | "normalize" | "relative" | "resolve"
+            )
     )
 }
 
@@ -3242,14 +3264,91 @@ fn render_node_path_string_call(
             "func() string {{ base := filepath.Base({}); ext := {}; if strings.HasSuffix(base, ext) {{ return strings.TrimSuffix(base, ext) }}; return base }}()",
             rendered_args[0], rendered_args[1]
         )),
+        "dirname" if rendered_args.len() == 1 => Some(format!("filepath.Dir({})", rendered_args[0])),
         "join" => Some(format!("filepath.Join({})", rendered_args.join(", "))),
         "normalize" if rendered_args.len() == 1 => Some(format!("filepath.Clean({})", rendered_args[0])),
+        "relative" if rendered_args.len() == 2 => Some(format!(
+            "func() string {{ value, err := filepath.Rel({}, {}); if err != nil {{ return {} }}; return value }}()",
+            rendered_args[0], rendered_args[1], rendered_args[1]
+        )),
         "resolve" => Some(format!(
             "func() string {{ value, err := filepath.Abs(filepath.Join({})); if err != nil {{ return \"\" }}; return value }}()",
             rendered_args.join(", ")
         )),
         _ => None,
     }
+}
+
+fn is_node_path_bool_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                && property == "isAbsolute"
+        )
+}
+
+fn render_node_path_bool_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.builtin_bindings.contains(name) || !is_node_path_bool_call(callee, args) {
+        return None;
+    }
+    let value = render_string_expr(args.first()?, state)?;
+    Some(format!("filepath.IsAbs({value})"))
+}
+
+fn is_node_path_parse_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                && property == "parse"
+        )
+}
+
+fn render_node_path_parse_object(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    let JsExpr::Member { object, .. } = callee.as_ref() else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.builtin_bindings.contains(name) || !is_node_path_parse_call(callee, args) {
+        return None;
+    }
+    let value = render_string_expr(args.first()?, state)?;
+    let fields = ["root", "dir", "base", "ext", "name"]
+        .into_iter()
+        .map(|field| (field.to_string(), AotSlotKind::String))
+        .collect::<BTreeMap<_, _>>();
+    Some((
+        format!(
+            "func() struct {{ root string; dir string; base string; ext string; name string }} {{ input := {value}; clean := filepath.Clean(input); dir, base := filepath.Split(clean); if dir != \"\" {{ dir = strings.TrimSuffix(dir, string(os.PathSeparator)) }}; ext := filepath.Ext(base); name := strings.TrimSuffix(base, ext); root := \"\"; if filepath.IsAbs(input) {{ root = string(os.PathSeparator) }}; return struct {{ root string; dir string; base string; ext string; name string }}{{root: root, dir: dir, base: base, ext: ext, name: name}} }}()"
+        ),
+        AotObject { fields },
+    ))
 }
 
 fn is_node_path_static_string_expr(expr: &JsExpr) -> bool {
