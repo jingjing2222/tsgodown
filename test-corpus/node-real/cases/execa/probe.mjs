@@ -23,7 +23,9 @@ try {
     exitCode: error.exitCode,
     stdout: error.stdout,
     stderr: error.stderr,
-    shortMessagePrefix: String(error.shortMessage).split("\n")[0],
+    shortMessagePrefix: normalizeProcessExecPath(
+      String(error.shortMessage).split("\n")[0],
+    ),
   };
 }
 
@@ -40,3 +42,7 @@ const report = {
 };
 
 console.log(JSON.stringify(report, null, 2));
+
+function normalizeProcessExecPath(value) {
+  return value.replace(process.execPath, "<process.execPath>");
+}
