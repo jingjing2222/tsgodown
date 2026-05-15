@@ -152,6 +152,8 @@ pub enum JsStmt {
     Yield {
         #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<JsExpr>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        delegate: bool,
     },
     #[serde(rename = "var-decl")]
     VarDecl {
@@ -199,6 +201,12 @@ pub enum JsExpr {
     ArraySpread { items: Vec<JsArrayElement> },
     #[serde(rename = "object")]
     Object { props: Vec<JsObjectProp> },
+    #[serde(rename = "object-rest")]
+    ObjectRest {
+        object: Box<JsExpr>,
+        #[serde(default)]
+        excluded: Vec<String>,
+    },
     #[serde(rename = "function")]
     Function {
         params: Vec<String>,

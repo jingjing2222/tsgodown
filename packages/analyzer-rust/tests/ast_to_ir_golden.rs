@@ -260,8 +260,17 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
         JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
         JsStmtIR::Return(None) => "return".to_string(),
         JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
-        JsStmtIR::Yield(Some(expr)) => format!("yield {}", render_js_expr(expr)),
-        JsStmtIR::Yield(None) => "yield".to_string(),
+        JsStmtIR::Yield {
+            value: Some(expr),
+            delegate,
+        } => {
+            if *delegate {
+                format!("yield* {}", render_js_expr(expr))
+            } else {
+                format!("yield {}", render_js_expr(expr))
+            }
+        }
+        JsStmtIR::Yield { value: None, .. } => "yield".to_string(),
         JsStmtIR::VarDecl { name, init } => format!(
             "var {} = {}",
             name,
@@ -304,6 +313,11 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .map(|prop| format!("{}: {}", prop.key, render_js_expr(&prop.value)))
                 .collect::<Vec<_>>()
                 .join(", ")
+        ),
+        JsExprIR::ObjectRest { object, excluded } => format!(
+            "object-rest({}, [{}])",
+            render_js_expr(object),
+            excluded.join(",")
         ),
         JsExprIR::Function {
             params,
@@ -758,6 +772,75 @@ const out = rows.map(({ dot = false } = {}) => dot);
     assert!(rendered.contains(
         "var dot = conditional(binary(===, member(ident(__tsgodown_destructure_0), dot), undefined), bool(false), member(ident(__tsgodown_destructure_0), dot))"
     ));
+}
+
+#[test]
+fn executable_object_rest_destructuring_params_are_lowered() {
+    let source = r#"
+const out = rows.map(({ known = 1, ...rest }) => rest);
+"#;
+    let ir = analyze_compiler_entry("object-rest-destructure-param.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("var known = conditional(binary(===, member(ident(__tsgodown_destructure_0), known), undefined), number(1), member(ident(__tsgodown_destructure_0), known))"));
+    assert!(rendered.contains("var rest = object-rest(ident(__tsgodown_destructure_0), [known])"));
+}
+
+#[test]
+fn executable_object_method_props_are_lowered() {
+    let source = r#"
+const handlers = {
+  native() {},
+  transform({ value }) { return value }
+};
+"#;
+    let ir = analyze_compiler_entry("object-method-props.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("native: function-expr async=false params=[] body=[]"));
+    assert!(rendered.contains("transform: function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains("var value = member(ident(__tsgodown_destructure_0), value)"));
+}
+
+#[test]
+fn export_object_destructuring_decl_names_are_collected() {
+    let source = r#"
+const source = { onExit() {}, load() {}, unload() {} };
+export const { onExit, load: start, ...rest } = source;
+"#;
+    let ir = analyze_compiler_entry("export-object-destructure.js", source);
+
+    assert!(ir.modules[0].exports.contains(&"onExit".to_string()));
+    assert!(ir.modules[0].exports.contains(&"start".to_string()));
+    assert!(ir.modules[0].exports.contains(&"rest".to_string()));
+}
+
+#[test]
+fn executable_for_of_destructuring_head_is_lowered() {
+    let source = r#"
+for (const [chunk] of rows) {
+  sink(chunk);
+}
+"#;
+    let ir = analyze_compiler_entry("for-of-destructure.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("for-of __tsgodown_forof_value in ident(rows) body=[var __tsgodown_destructure_0 = ident(__tsgodown_forof_value); var chunk = member(ident(__tsgodown_destructure_0), 0); expr call(ident(sink), [ident(chunk)])]"));
+}
+
+#[test]
+fn executable_yield_delegate_is_preserved() {
+    let source = r#"
+function * flatten(chunks) {
+  for (const chunk of chunks) {
+    yield * transform(chunk);
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("yield-delegate.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("yield* call(ident(transform), [ident(chunk)])"));
 }
 
 #[test]

@@ -494,6 +494,10 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			"Buffer": bufferGlobal(),
 			"Date":   dateGlobal(),
 			"Promise": promiseGlobal(),
+			"AbortController": abortControllerGlobal(),
+			"TextEncoder": textEncoderGlobal(),
+			"TextDecoder": textDecoderGlobal(),
+			"URL": urlGlobal(),
 			"Uint8Array": typedArrayGlobal(),
 			"Uint16Array": typedArrayGlobal(),
 			"Uint32Array": typedArrayGlobal(),
@@ -607,6 +611,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	}
 	env["globalThis"] = sharedGlobal
 	sharedGlobal["process"] = process
+	for _, name := range []string{"Buffer", "Promise", "AbortController", "TextEncoder", "TextDecoder", "URL"} {
+		sharedGlobal[name] = env[name]
+	}
 	env["require"] = NativeFunctionValue{Call: func(args []any) (any, error) {
 		if len(args) == 0 {
 			return nil, errors.New("require specifier is required")
@@ -623,6 +630,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			if !ok {
 				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
 			}
+			return executeModule(importedModule, program, cache)
+		}
+		if importedModule, ok := resolveRelativeModuleAtRuntime(program, module.SourcePath, spec); ok {
 			return executeModule(importedModule, program, cache)
 		}
 		if importedModule, ok := resolveBareModule(program, spec); ok {
@@ -710,6 +720,28 @@ func moduleByID(program Program, id string) (Module, bool) {
 	return Module{}, false
 }
 
+func resolveRelativeModuleAtRuntime(program Program, fromModule string, spec string) (Module, bool) {
+	if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+		return Module{}, false
+	}
+	base := filepath.ToSlash(filepath.Clean(filepath.Join(filepath.Dir(fromModule), spec)))
+	candidates := []string{
+		base,
+		base + ".js",
+		base + ".mjs",
+		base + ".cjs",
+		filepath.ToSlash(filepath.Join(base, "index.js")),
+		filepath.ToSlash(filepath.Join(base, "index.mjs")),
+		filepath.ToSlash(filepath.Join(base, "index.cjs")),
+	}
+	for _, candidate := range candidates {
+		if module, ok := moduleByID(program, candidate); ok {
+			return module, true
+		}
+	}
+	return Module{}, false
+}
+
 func resolveBareModule(program Program, spec string) (Module, bool) {
 	if strings.HasPrefix(spec, ".") || strings.HasPrefix(spec, "/") || strings.HasPrefix(spec, "node:") {
 		return Module{}, false
@@ -764,6 +796,80 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		})
 		exports["inspect"] = inspect
 		exports["format"] = format
+		exports["debuglog"] = nativeFunction(func(args []any) (any, error) {
+			return nativeFunction(func(args []any) (any, error) {
+				return jsUndefined, nil
+			}), nil
+		})
+		exports["stripVTControlCharacters"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			re := regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+			return re.ReplaceAllString(jsString(args[0]), ""), nil
+		})
+		exports["callbackify"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			fn := args[0]
+			return nativeFunction(func(callArgs []any) (any, error) {
+				callback := lastCallback(callArgs)
+				if callback != nil {
+					callArgs = callArgs[:len(callArgs)-1]
+				}
+				result, err := callFunctionWithValues(fn, callArgs, Env{}, jsUndefined)
+				if err != nil {
+					if callback != nil {
+						_, cbErr := callFunctionWithValues(callback, []any{nodeError("ERR_CALLBACKIFY", err.Error())}, Env{}, jsUndefined)
+						return jsUndefined, cbErr
+					}
+					return nil, err
+				}
+				value, awaitErr := awaitValue(result)
+				if awaitErr != nil {
+					if callback != nil {
+						_, cbErr := callFunctionWithValues(callback, []any{nodeError("ERR_CALLBACKIFY", awaitErr.Error())}, Env{}, jsUndefined)
+						return jsUndefined, cbErr
+					}
+					return nil, awaitErr
+				}
+				if callback != nil {
+					_, cbErr := callFunctionWithValues(callback, []any{jsNull, value}, Env{}, jsUndefined)
+					return jsUndefined, cbErr
+				}
+				return value, nil
+			}), nil
+		})
+		exports["promisify"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			fn := args[0]
+			return nativeFunction(func(callArgs []any) (any, error) {
+				var callbackErr error
+				var callbackValues []any
+				callback := nativeFunction(func(cbArgs []any) (any, error) {
+					if len(cbArgs) > 0 && !isNullish(cbArgs[0]) {
+						callbackErr = jsThrow{value: cbArgs[0]}
+						return jsUndefined, nil
+					}
+					callbackValues = append([]any{}, cbArgs[1:]...)
+					return jsUndefined, nil
+				})
+				_, err := callFunctionWithValues(fn, append(callArgs, callback), Env{}, jsUndefined)
+				if err != nil {
+					return promiseRejectedFromError(err), nil
+				}
+				if callbackErr != nil {
+					return promiseRejectedFromError(callbackErr), nil
+				}
+				if len(callbackValues) == 0 {
+					return promiseFulfilled(jsUndefined), nil
+				}
+				return promiseFulfilled(callbackValues[0]), nil
+			}), nil
+		})
 		exports["default"] = exports
 		return exports, true
 	case "path", "node:path":
@@ -772,20 +878,40 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return osModuleExports(), true
 	case "node:diagnostics_channel":
 		return diagnosticsChannelModuleExports(), true
+	case "process", "node:process":
+		exports := sharedProcess
+		exports["default"] = exports
+		return exports, true
 	case "buffer", "node:buffer":
 		exports := map[string]any{"Buffer": bufferGlobal()}
 		exports["default"] = exports
 		return exports, true
+	case "child_process", "node:child_process":
+		return childProcessModuleExports(), true
+	case "events", "node:events":
+		return eventsModuleExports(), true
 	case "crypto", "node:crypto":
 		return cryptoModuleExports(), true
-	case "constants":
+	case "constants", "node:constants":
 		exports := constantsModuleExports()
 		exports["default"] = exports
 		return exports, true
 	case "stream", "node:stream":
 		return streamModuleExports(), true
+	case "node:stream/promises":
+		return streamPromisesModuleExports(), true
 	case "fs", "node:fs":
 		return fsModuleExports(), true
+	case "node:string_decoder", "string_decoder":
+		return stringDecoderModuleExports(), true
+	case "node:timers/promises":
+		return timersPromisesModuleExports(), true
+	case "tty", "node:tty":
+		return ttyModuleExports(), true
+	case "url", "node:url":
+		return urlModuleExports(), true
+	case "v8", "node:v8":
+		return v8ModuleExports(), true
 	case "node:module":
 		return moduleModuleExports(), true
 	default:
@@ -936,7 +1062,7 @@ func stringGlobal() NativeFunctionValue {
 	for _, property := range []string{
 		"trim", "toLowerCase", "toUpperCase", "trimStart", "trimLeft", "trimEnd", "trimRight",
 		"split", "replace", "replaceAll", "match", "slice", "substring", "substr", "charAt",
-		"charCodeAt", "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith", "repeat",
+			"charCodeAt", "codePointAt", "at", "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith", "repeat",
 	} {
 		current := property
 		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
@@ -979,6 +1105,9 @@ func numberGlobal() NativeFunctionValue {
 		number, ok := args[0].(float64)
 		return ok && !math.IsNaN(number) && !math.IsInf(number, 0) && math.Trunc(number) == number && math.Abs(number) <= 9007199254740991, nil
 	})
+	constructor.Props["POSITIVE_INFINITY"] = math.Inf(1)
+	constructor.Props["NEGATIVE_INFINITY"] = math.Inf(-1)
+	constructor.Props["NaN"] = math.NaN()
 	return constructor
 }
 
@@ -1262,6 +1391,11 @@ func promiseGlobal() NativeFunctionValue {
 		}
 		return promise, nil
 	})
+	prototype := map[string]any{}
+	prototype["then"] = nativeMethod(promiseThen)
+	prototype["catch"] = nativeMethod(promiseCatch)
+	prototype["finally"] = nativeMethod(promiseFinally)
+	constructor.Props["prototype"] = prototype
 	constructor.Props["all"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) == 0 {
 			return promiseFulfilled(&ArrayValue{Items: []any{}}), nil
@@ -1276,6 +1410,47 @@ func promiseGlobal() NativeFunctionValue {
 			out = append(out, next)
 		}
 		return promiseFulfilled(&ArrayValue{Items: out}), nil
+	})
+	constructor.Props["allSettled"] = nativeFunction(func(args []any) (any, error) {
+		out := []any{}
+		if len(args) > 0 {
+			for _, value := range iterableValues(args[0]) {
+				if promise, ok := value.(map[string]any); ok && promise["__promise"] == true && promise["state"] == "rejected" {
+					out = append(out, map[string]any{"status": "rejected", "reason": promise["value"]})
+					continue
+				}
+				resolved, err := awaitValue(value)
+				if err != nil {
+					if thrown, ok := err.(jsThrow); ok {
+						out = append(out, map[string]any{"status": "rejected", "reason": thrown.value})
+						continue
+					}
+					out = append(out, map[string]any{"status": "rejected", "reason": nodeError("ERR_PROMISE_REJECTION", err.Error())})
+					continue
+				}
+				out = append(out, map[string]any{"status": "fulfilled", "value": resolved})
+			}
+		}
+		return promiseFulfilled(&ArrayValue{Items: out}), nil
+	})
+	constructor.Props["race"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promisePending(), nil
+		}
+		values := iterableValues(args[0])
+		if len(values) == 0 {
+			return promisePending(), nil
+		}
+		for _, value := range values {
+			if promise, ok := value.(map[string]any); ok && promise["__promise"] == true {
+				if promise["state"] == "pending" {
+					continue
+				}
+				return promise, nil
+			}
+			return promiseFulfilled(value), nil
+		}
+		return promisePending(), nil
 	})
 	constructor.Props["resolve"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) == 0 {
@@ -1296,6 +1471,10 @@ func promiseFulfilled(value any) map[string]any {
 	return promiseObject("fulfilled", value)
 }
 
+func promisePending() map[string]any {
+	return promiseObject("pending", jsUndefined)
+}
+
 func promiseRejected(value any) map[string]any {
 	return promiseObject("rejected", value)
 }
@@ -1306,28 +1485,19 @@ func promiseObject(state string, value any) map[string]any {
 		"state":     state,
 		"value":     value,
 	}
-	promise["then"] = nativeFunction(func(args []any) (any, error) {
-		if promise["state"] == "fulfilled" {
-			if len(args) > 0 && !isNullish(args[0]) {
-				next, err := callFunctionWithValues(args[0], []any{promise["value"]}, Env{}, jsUndefined)
-				if err != nil {
-					return promiseRejectedFromError(err), nil
-				}
-				return promiseFulfilled(next), nil
-			}
-			return promise, nil
-		}
-		if promise["state"] == "rejected" && len(args) > 1 && !isNullish(args[1]) {
-			next, err := callFunctionWithValues(args[1], []any{promise["value"]}, Env{}, jsUndefined)
-			if err != nil {
-				return promiseRejectedFromError(err), nil
-			}
-			return promiseFulfilled(next), nil
-		}
-		return promise, nil
-	})
-	promise["catch"] = nativeFunction(func(args []any) (any, error) {
-		if promise["state"] == "rejected" && len(args) > 0 && !isNullish(args[0]) {
+	promise["then"] = nativeMethod(promiseThen)
+	promise["catch"] = nativeMethod(promiseCatch)
+	promise["finally"] = nativeMethod(promiseFinally)
+	return promise
+}
+
+func promiseThen(thisValue any, args []any) (any, error) {
+	promise, ok := thisValue.(map[string]any)
+	if !ok || promise["__promise"] != true {
+		return nil, errors.New("Promise.prototype.then called on incompatible receiver")
+	}
+	if promise["state"] == "fulfilled" {
+		if len(args) > 0 && !isNullish(args[0]) {
 			next, err := callFunctionWithValues(args[0], []any{promise["value"]}, Env{}, jsUndefined)
 			if err != nil {
 				return promiseRejectedFromError(err), nil
@@ -1335,18 +1505,115 @@ func promiseObject(state string, value any) map[string]any {
 			return promiseFulfilled(next), nil
 		}
 		return promise, nil
-	})
-	return promise
+	}
+	if promise["state"] == "rejected" && len(args) > 1 && !isNullish(args[1]) {
+		next, err := callFunctionWithValues(args[1], []any{promise["value"]}, Env{}, jsUndefined)
+		if err != nil {
+			return promiseRejectedFromError(err), nil
+		}
+		return promiseFulfilled(next), nil
+	}
+	return promise, nil
+}
+
+func promiseCatch(thisValue any, args []any) (any, error) {
+	promise, ok := thisValue.(map[string]any)
+	if !ok || promise["__promise"] != true {
+		return nil, errors.New("Promise.prototype.catch called on incompatible receiver")
+	}
+	if promise["state"] == "rejected" && len(args) > 0 && !isNullish(args[0]) {
+		next, err := callFunctionWithValues(args[0], []any{promise["value"]}, Env{}, jsUndefined)
+		if err != nil {
+			return promiseRejectedFromError(err), nil
+		}
+		return promiseFulfilled(next), nil
+	}
+	return promise, nil
+}
+
+func promiseFinally(thisValue any, args []any) (any, error) {
+	promise, ok := thisValue.(map[string]any)
+	if !ok || promise["__promise"] != true {
+		return nil, errors.New("Promise.prototype.finally called on incompatible receiver")
+	}
+	if len(args) > 0 && !isNullish(args[0]) {
+		if _, err := callFunctionWithValues(args[0], []any{}, Env{}, jsUndefined); err != nil {
+			return promiseRejectedFromError(err), nil
+		}
+	}
+	return promise, nil
 }
 
 func awaitValue(value any) (any, error) {
+	return awaitValueDepth(value, 0)
+}
+
+func awaitValueDepth(value any, depth int) (any, error) {
+	if depth > 64 {
+		return nil, errors.New("promise resolution exceeded maximum depth")
+	}
 	if promise, ok := value.(map[string]any); ok && promise["__promise"] == true {
+		if promise["state"] == "pending" {
+			return nil, pendingAwait{promise: promise}
+		}
 		if promise["state"] == "rejected" {
 			return nil, jsThrow{value: promise["value"]}
 		}
-		return promise["value"], nil
+		resolved := promise["value"]
+		if resolvedMap, ok := resolved.(map[string]any); ok {
+			then, hasThen := lookupObjectProperty(resolvedMap, "then")
+			if resolvedMap["__promise"] == true || (hasThen && isCallable(then)) {
+				return awaitValueDepth(resolvedMap, depth+1)
+			}
+		}
+		return resolved, nil
+	}
+	if object, ok := value.(map[string]any); ok {
+		if then, ok := lookupObjectProperty(object, "then"); ok && isCallable(then) {
+			resolved := any(jsUndefined)
+			rejected := any(nil)
+			settled := false
+			resolve := nativeFunction(func(args []any) (any, error) {
+				settled = true
+				if len(args) > 0 {
+					resolved = args[0]
+				}
+				return jsUndefined, nil
+			})
+			reject := nativeFunction(func(args []any) (any, error) {
+				settled = true
+				if len(args) > 0 {
+					rejected = args[0]
+				} else {
+					rejected = jsUndefined
+				}
+				return jsUndefined, nil
+			})
+			result, err := callFunctionWithValues(then, []any{resolve, reject}, Env{}, object)
+			if err != nil {
+				return nil, err
+			}
+			if settled {
+				if rejected != nil {
+					return nil, jsThrow{value: rejected}
+				}
+				return resolved, nil
+			}
+			if resultMap, ok := result.(map[string]any); ok && resultMap["__promise"] == true {
+				return awaitValueDepth(resultMap, depth+1)
+			}
+			return result, nil
+		}
 	}
 	return value, nil
+}
+
+type pendingAwait struct {
+	promise map[string]any
+}
+
+func (pendingAwait) Error() string {
+	return "promise is pending"
 }
 
 func promiseRejectedFromError(err error) map[string]any {
@@ -1355,6 +1622,18 @@ func promiseRejectedFromError(err error) map[string]any {
 		return promiseRejected(thrown.value)
 	}
 	return promiseRejected(nodeError("ERR_PROMISE_REJECTION", err.Error()))
+}
+
+func isCallable(value any) bool {
+	switch typed := value.(type) {
+	case FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
+		return true
+	case map[string]any:
+		_, ok := typed["__call"]
+		return ok
+	default:
+		return false
+	}
 }
 
 func objectGlobal() map[string]any {
@@ -1448,11 +1727,45 @@ func objectGlobal() map[string]any {
 			}
 			return &ArrayValue{Items: result}, nil
 		}),
+		"values": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			if array, ok := args[0].(*ArrayValue); ok {
+				result := append([]any{}, array.Items...)
+				for _, key := range objectKeys(array.Props) {
+					result = append(result, array.Props[key])
+				}
+				return &ArrayValue{Items: result}, nil
+			}
+			object, ok := args[0].(map[string]any)
+			if !ok {
+				return &ArrayValue{Items: []any{}}, nil
+			}
+			result := []any{}
+			for _, key := range objectKeys(object) {
+				result = append(result, object[key])
+			}
+			return &ArrayValue{Items: result}, nil
+		}),
 		"freeze": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return jsUndefined, nil
 			}
 			return args[0], nil
+		}),
+		"fromEntries": nativeFunction(func(args []any) (any, error) {
+			out := map[string]any{}
+			if len(args) == 0 {
+				return out, nil
+			}
+			for _, entry := range iterableValues(args[0]) {
+				values := iterableValues(entry)
+				if len(values) >= 2 {
+					setObjectProperty(out, jsPropertyKey(values[0]), values[1])
+				}
+			}
+			return out, nil
 		}),
 		"getOwnPropertyNames": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -1557,6 +1870,23 @@ func reflectGlobal() map[string]any {
 				return true, nil
 			}
 			return false, nil
+		}),
+		"getOwnPropertyDescriptor": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return jsUndefined, nil
+			}
+			key := jsPropertyKey(args[1])
+			if object, ok := args[0].(map[string]any); ok {
+				if value, ok := lookupObjectProperty(object, key); ok {
+					return map[string]any{
+						"value":        value,
+						"enumerable":   true,
+						"configurable": true,
+						"writable":     true,
+					}, nil
+				}
+			}
+			return jsUndefined, nil
 		}),
 		"deleteProperty": nativeFunction(func(args []any) (any, error) {
 			if len(args) < 2 {
@@ -1673,6 +2003,7 @@ func symbolGlobal() map[string]any {
 	return map[string]any{
 		"__call":    call,
 		"iterator":  &SymbolValue{Description: "Symbol.iterator"},
+		"asyncIterator": &SymbolValue{Description: "Symbol.asyncIterator"},
 		"prototype": prototype,
 		"for": nativeFunction(func(args []any) (any, error) {
 			description := ""
@@ -1951,6 +2282,11 @@ func objectTag(value any) string {
 	case FunctionValue, BoundFunctionValue, NativeFunctionValue:
 		return "[object Function]"
 	default:
+		if object, ok := value.(map[string]any); ok {
+			if tag, ok := object["__tag"].(string); ok {
+				return tag
+			}
+		}
 		return "[object Object]"
 	}
 }
@@ -2279,7 +2615,7 @@ func pathModuleExports() map[string]any {
 func osModuleExports() map[string]any {
 	exports := map[string]any{}
 	exports["EOL"] = "\n"
-	exports["constants"] = map[string]any{}
+	exports["constants"] = constantsModuleExports()
 	exports["homedir"] = nativeFunction(func(args []any) (any, error) {
 		dir, err := os.UserHomeDir()
 		if err != nil {
@@ -2541,21 +2877,726 @@ func fsModuleExports() map[string]any {
 func constantsModuleExports() map[string]any {
 	return map[string]any{
 		"O_SYMLINK": float64(0),
+		"signals": map[string]any{
+			"SIGHUP":    float64(1),
+			"SIGINT":    float64(2),
+			"SIGQUIT":   float64(3),
+			"SIGILL":    float64(4),
+			"SIGTRAP":   float64(5),
+			"SIGABRT":   float64(6),
+			"SIGBUS":    float64(10),
+			"SIGFPE":    float64(8),
+			"SIGKILL":   float64(9),
+			"SIGUSR1":   float64(30),
+			"SIGSEGV":   float64(11),
+			"SIGUSR2":   float64(31),
+			"SIGPIPE":   float64(13),
+			"SIGALRM":   float64(14),
+			"SIGTERM":   float64(15),
+			"SIGCHLD":   float64(20),
+			"SIGCONT":   float64(19),
+			"SIGSTOP":   float64(17),
+			"SIGTSTP":   float64(18),
+			"SIGTTIN":   float64(21),
+			"SIGTTOU":   float64(22),
+			"SIGURG":    float64(16),
+			"SIGXCPU":   float64(24),
+			"SIGXFSZ":   float64(25),
+			"SIGVTALRM": float64(26),
+			"SIGPROF":   float64(27),
+			"SIGWINCH":  float64(28),
+			"SIGIO":     float64(23),
+			"SIGSYS":    float64(12),
+		},
 	}
 }
 
 func streamModuleExports() map[string]any {
 	stream := map[string]any{}
 	streamCtor := nativeFunction(func(args []any) (any, error) {
-		return map[string]any{}, nil
+		return newDuplexStream(nil), nil
 	})
 	stream["Stream"] = streamCtor
 	stream["Readable"] = streamCtor
 	stream["Writable"] = streamCtor
 	stream["Duplex"] = streamCtor
 	stream["PassThrough"] = streamCtor
+	stream["getDefaultHighWaterMark"] = nativeFunction(func(args []any) (any, error) {
+		return float64(16 * 1024), nil
+	})
 	stream["default"] = stream
 	return stream
+}
+
+func eventsModuleExports() map[string]any {
+	exports := map[string]any{}
+	eventEmitter := nativeFunction(func(args []any) (any, error) {
+		return newEventEmitter(), nil
+	})
+	exports["EventEmitter"] = eventEmitter
+	exports["once"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return promisePending(), nil
+		}
+		if emitter, ok := args[0].(map[string]any); ok {
+			name := jsString(args[1])
+			if !hasEventPayload(emitter, name) {
+				return promisePending(), nil
+			}
+			return promiseFulfilled(lastEventPayload(emitter, name)), nil
+		}
+		return promisePending(), nil
+	})
+	exports["on"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return &ArrayValue{Items: []any{}}, nil
+		}
+		if emitter, ok := args[0].(map[string]any); ok {
+			return eventPayloads(emitter, jsString(args[1])), nil
+		}
+		return &ArrayValue{Items: []any{}}, nil
+	})
+	exports["addAbortListener"] = nativeFunction(func(args []any) (any, error) {
+		return map[string]any{"dispose": nativeFunction(func(args []any) (any, error) {
+			return jsUndefined, nil
+		})}, nil
+	})
+	exports["setMaxListeners"] = nativeFunction(func(args []any) (any, error) {
+		return jsUndefined, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func streamPromisesModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["finished"] = nativeFunction(func(args []any) (any, error) {
+		return promiseFulfilled(jsUndefined), nil
+	})
+	exports["pipeline"] = nativeFunction(func(args []any) (any, error) {
+		return promiseFulfilled(jsUndefined), nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func timersPromisesModuleExports() map[string]any {
+	exports := map[string]any{}
+	setTimeoutFn := nativeFunction(func(args []any) (any, error) {
+		delay := 0
+		if len(args) > 0 {
+			delay = jsInteger(args[0])
+		}
+		if delay > 0 {
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
+		value := any(jsUndefined)
+		if len(args) > 1 {
+			value = args[1]
+		}
+		return promiseFulfilled(value), nil
+	})
+	exports["setTimeout"] = setTimeoutFn
+	exports["setImmediate"] = nativeFunction(func(args []any) (any, error) {
+		value := any(jsUndefined)
+		if len(args) > 0 {
+			value = args[0]
+		}
+		return promiseFulfilled(value), nil
+	})
+	exports["scheduler"] = map[string]any{
+		"yield": nativeFunction(func(args []any) (any, error) {
+			return promiseFulfilled(jsUndefined), nil
+		}),
+		"wait": setTimeoutFn,
+	}
+	exports["default"] = exports
+	return exports
+}
+
+func stringDecoderModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["StringDecoder"] = nativeFunction(func(args []any) (any, error) {
+		decoder := map[string]any{}
+		decoder["write"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			return jsString(args[0]), nil
+		})
+		decoder["end"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return "", nil
+			}
+			return jsString(args[0]), nil
+		})
+		return decoder, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func ttyModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["isatty"] = nativeFunction(func(args []any) (any, error) {
+		return false, nil
+	})
+	exports["ReadStream"] = nativeFunction(func(args []any) (any, error) {
+		return newReadableStream(nil), nil
+	})
+	exports["WriteStream"] = nativeFunction(func(args []any) (any, error) {
+		return newWritableStream(), nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func urlModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["fileURLToPath"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		value := jsString(args[0])
+		parsed, err := url.Parse(value)
+		if err == nil && parsed.Scheme == "file" {
+			return parsed.Path, nil
+		}
+		if object, ok := args[0].(map[string]any); ok {
+			if pathname, ok := object["pathname"]; ok {
+				return jsString(pathname), nil
+			}
+		}
+		return value, nil
+	})
+	exports["pathToFileURL"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return urlObject("file://"), nil
+		}
+		path := filepath.ToSlash(jsString(args[0]))
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		return urlObject("file://" + path), nil
+	})
+	exports["URL"] = urlGlobal()
+	exports["default"] = exports
+	return exports
+}
+
+func v8ModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["serialize"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return arrayFromBytes(nil), nil
+		}
+		bytes, err := json.Marshal(jsonCompatible(args[0], map[uintptr]bool{}))
+		if err != nil {
+			return nil, err
+		}
+		return arrayFromBytes(bytes), nil
+	})
+	exports["deserialize"] = nativeFunction(func(args []any) (any, error) {
+		return jsUndefined, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func childProcessModuleExports() map[string]any {
+	exports := map[string]any{}
+	childProcessCtor := nativeFunction(func(args []any) (any, error) {
+		return newEventEmitter(), nil
+	})
+	exports["ChildProcess"] = childProcessCtor
+	exports["spawn"] = nativeFunction(func(args []any) (any, error) {
+		return spawnChildProcess(args)
+	})
+	exports["spawnSync"] = nativeFunction(func(args []any) (any, error) {
+		result, err := runCommand(args)
+		if err != nil {
+			return map[string]any{"error": nodeError("ENOENT", err.Error())}, nil
+		}
+		return map[string]any{
+			"pid":    float64(os.Getpid()),
+			"status": float64(result.ExitCode),
+			"signal": jsNull,
+			"stdout": arrayFromBytes([]byte(result.Stdout)),
+			"stderr": arrayFromBytes([]byte(result.Stderr)),
+			"output": &ArrayValue{Items: []any{jsNull, arrayFromBytes([]byte(result.Stdout)), arrayFromBytes([]byte(result.Stderr))}},
+			"error":  jsUndefined,
+		}, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+type commandResult struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+}
+
+func spawnChildProcess(args []any) (any, error) {
+	result, err := runCommand(args)
+	subprocess := newEventEmitter()
+	subprocess["pid"] = float64(os.Getpid())
+	subprocess["stdin"] = newWritableStream()
+	subprocess["stdout"] = newReadableStream([]any{result.Stdout})
+	subprocess["stderr"] = newReadableStream([]any{result.Stderr})
+	subprocess["stdio"] = &ArrayValue{Items: []any{subprocess["stdin"], subprocess["stdout"], subprocess["stderr"]}}
+	subprocess["killed"] = false
+	subprocess["exitCode"] = float64(result.ExitCode)
+	subprocess["signalCode"] = jsNull
+	subprocess["kill"] = nativeFunction(func(args []any) (any, error) {
+		subprocess["killed"] = true
+		return true, nil
+	})
+	subprocess["ref"] = nativeFunction(func(args []any) (any, error) {
+		return subprocess, nil
+	})
+	subprocess["unref"] = nativeFunction(func(args []any) (any, error) {
+		return subprocess, nil
+	})
+	emitEvent(subprocess, "spawn")
+	if err != nil {
+		emitEvent(subprocess, "error", nodeError("ENOENT", err.Error()))
+	}
+	emitEvent(subprocess, "exit", float64(result.ExitCode), jsNull)
+	emitEvent(subprocess, "close", float64(result.ExitCode), jsNull)
+	return subprocess, nil
+}
+
+func runCommand(args []any) (commandResult, error) {
+	if len(args) == 0 {
+		return commandResult{ExitCode: 1}, errors.New("spawn file is required")
+	}
+	file := jsString(args[0])
+	commandArgs := []string{}
+	if len(args) > 1 {
+		for _, value := range iterableValues(args[1]) {
+			commandArgs = append(commandArgs, jsString(value))
+		}
+	}
+	env := map[string]string{}
+	for _, entry := range os.Environ() {
+		parts := strings.SplitN(entry, "=", 2)
+		value := ""
+		if len(parts) == 2 {
+			value = parts[1]
+		}
+		env[parts[0]] = value
+	}
+	if len(args) > 2 {
+		if options, ok := args[2].(map[string]any); ok {
+			if envValue, ok := options["env"].(map[string]any); ok {
+				for key, value := range envValue {
+					if strings.HasPrefix(key, "__") || isNullish(value) {
+						continue
+					}
+					env[key] = jsString(value)
+				}
+			}
+		}
+	}
+	if len(commandArgs) >= 2 && commandArgs[0] == "-e" && sameExecutablePath(file, nodeExecutablePath()) {
+		processArgv := append([]string{file}, commandArgs[2:]...)
+		result, err := runNodeEvalSnippet(commandArgs[1], processArgv, env)
+		return result, err
+	}
+	return commandResult{ExitCode: 1}, fmt.Errorf("unsupported child_process command %s", file)
+}
+
+func sameExecutablePath(left string, right string) bool {
+	if left == right {
+		return true
+	}
+	if leftResolved, err := filepath.EvalSymlinks(left); err == nil {
+		if rightResolved, err := filepath.EvalSymlinks(right); err == nil && leftResolved == rightResolved {
+			return true
+		}
+	}
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr == nil && rightErr == nil && leftAbs == rightAbs {
+		return true
+	}
+	return filepath.Base(left) == "node" && filepath.Base(right) == "node"
+}
+
+func runNodeEvalSnippet(source string, argv []string, env map[string]string) (commandResult, error) {
+	result := commandResult{ExitCode: 0}
+	statements := splitSimpleStatements(source)
+	for _, statement := range statements {
+		statement = strings.TrimSpace(statement)
+		switch {
+		case strings.HasPrefix(statement, "console.log(") && strings.HasSuffix(statement, ")"):
+			expr := strings.TrimSuffix(strings.TrimPrefix(statement, "console.log("), ")")
+			result.Stdout += evalSimpleNodeExpression(expr, argv, env) + "\n"
+		case strings.HasPrefix(statement, "console.error(") && strings.HasSuffix(statement, ")"):
+			expr := strings.TrimSuffix(strings.TrimPrefix(statement, "console.error("), ")")
+			result.Stderr += evalSimpleNodeExpression(expr, argv, env) + "\n"
+		case strings.HasPrefix(statement, "process.exit(") && strings.HasSuffix(statement, ")"):
+			expr := strings.TrimSuffix(strings.TrimPrefix(statement, "process.exit("), ")")
+			result.ExitCode = jsInteger(evalSimpleNodeExpression(expr, argv, env))
+		case statement == "":
+		default:
+			return commandResult{ExitCode: 1}, fmt.Errorf("unsupported node -e statement %q", statement)
+		}
+	}
+	result.Stdout = strings.TrimSuffix(result.Stdout, "\n")
+	result.Stderr = strings.TrimSuffix(result.Stderr, "\n")
+	return result, nil
+}
+
+func splitSimpleStatements(source string) []string {
+	out := []string{}
+	var current strings.Builder
+	quote := rune(0)
+	escaped := false
+	for _, ch := range source {
+		if escaped {
+			current.WriteRune(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != 0 {
+			current.WriteRune(ch)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			current.WriteRune(ch)
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' || ch == '`' {
+			quote = ch
+			current.WriteRune(ch)
+			continue
+		}
+		if ch == ';' {
+			out = append(out, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(ch)
+	}
+	out = append(out, current.String())
+	return out
+}
+
+func evalSimpleNodeExpression(expr string, argv []string, env map[string]string) string {
+	parts := splitSimpleConcat(expr)
+	var out strings.Builder
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		switch {
+		case len(part) >= 2 && ((part[0] == '\'' && part[len(part)-1] == '\'') || (part[0] == '"' && part[len(part)-1] == '"')):
+			out.WriteString(unquoteSimpleJSString(part))
+		case strings.HasPrefix(part, "process.env."):
+			out.WriteString(env[strings.TrimPrefix(part, "process.env.")])
+		case strings.HasPrefix(part, "process.argv[") && strings.HasSuffix(part, "]"):
+			indexText := strings.TrimSuffix(strings.TrimPrefix(part, "process.argv["), "]")
+			index, _ := strconv.Atoi(indexText)
+			if index >= 0 && index < len(argv) {
+				out.WriteString(argv[index])
+			}
+		default:
+			out.WriteString(part)
+		}
+	}
+	return out.String()
+}
+
+func splitSimpleConcat(expr string) []string {
+	out := []string{}
+	var current strings.Builder
+	quote := rune(0)
+	escaped := false
+	for _, ch := range expr {
+		if escaped {
+			current.WriteRune(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != 0 {
+			current.WriteRune(ch)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			current.WriteRune(ch)
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' || ch == '`' {
+			quote = ch
+			current.WriteRune(ch)
+			continue
+		}
+		if ch == '+' {
+			out = append(out, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(ch)
+	}
+	out = append(out, current.String())
+	return out
+}
+
+func unquoteSimpleJSString(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	unquoted := value[1 : len(value)-1]
+	unquoted = strings.ReplaceAll(unquoted, "\\'", "'")
+	unquoted = strings.ReplaceAll(unquoted, "\\\"", "\"")
+	unquoted = strings.ReplaceAll(unquoted, "\\n", "\n")
+	unquoted = strings.ReplaceAll(unquoted, "\\t", "\t")
+	unquoted = strings.ReplaceAll(unquoted, "\\\\", "\\")
+	return unquoted
+}
+
+func newReadableStream(chunks []any) map[string]any {
+	stream := newEventEmitter()
+	stream["readable"] = true
+	stream["writable"] = false
+	stream["readableObjectMode"] = false
+	stream["writableObjectMode"] = false
+	stream["destroyed"] = false
+	stream["readableFlowing"] = jsNull
+	stream["__chunks"] = &ArrayValue{Items: append([]any{}, chunks...)}
+	stream["pipe"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			return args[0], nil
+		}
+		return thisValue, nil
+	})
+	stream["read"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		chunks := iterableValues(stream["__chunks"])
+		if len(chunks) == 0 {
+			return jsNull, nil
+		}
+		stream["__chunks"] = &ArrayValue{Items: chunks[1:]}
+		return chunks[0], nil
+	})
+	stream["Symbol.asyncIterator"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return &IteratorValue{Values: iterableValues(stream["__chunks"])}, nil
+	})
+	stream["resume"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		stream["readableFlowing"] = true
+		return thisValue, nil
+	})
+	stream["destroy"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		stream["destroyed"] = true
+		return thisValue, nil
+	})
+	for _, chunk := range chunks {
+		if chunk != "" {
+			emitEvent(stream, "data", chunk)
+		}
+	}
+	emitEvent(stream, "end")
+	emitEvent(stream, "close")
+	return stream
+}
+
+func newWritableStream() map[string]any {
+	stream := newEventEmitter()
+	stream["readable"] = false
+	stream["writable"] = true
+	stream["readableObjectMode"] = false
+	stream["writableObjectMode"] = false
+	stream["destroyed"] = false
+	stream["write"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			emitEvent(stream, "data", args[0])
+		}
+		return true, nil
+	})
+	stream["end"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitEvent(stream, "finish")
+		emitEvent(stream, "close")
+		return thisValue, nil
+	})
+	stream["destroy"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		stream["destroyed"] = true
+		return thisValue, nil
+	})
+	stream["pipe"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			return args[0], nil
+		}
+		return thisValue, nil
+	})
+	return stream
+}
+
+func newDuplexStream(chunks []any) map[string]any {
+	stream := newReadableStream(chunks)
+	stream["writable"] = true
+	stream["write"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) > 0 {
+			emitEvent(stream, "data", args[0])
+		}
+		return true, nil
+	})
+	stream["end"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitEvent(stream, "finish")
+		return thisValue, nil
+	})
+	return stream
+}
+
+func newEventEmitter() map[string]any {
+	emitter := map[string]any{
+		"__events": map[string][]any{},
+	}
+	emitter["emit"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		if len(args) == 0 {
+			return false, nil
+		}
+		emitEvent(emitter, jsString(args[0]), args[1:]...)
+		return true, nil
+	})
+	emitter["on"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return emitter, nil
+	})
+	emitter["once"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return emitter, nil
+	})
+	emitter["addListener"] = emitter["on"]
+	emitter["removeListener"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return emitter, nil
+	})
+	emitter["removeAllListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return emitter, nil
+	})
+	emitter["listenerCount"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return float64(0), nil
+	})
+	emitter["setMaxListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return emitter, nil
+	})
+	return emitter
+}
+
+func emitEvent(emitter map[string]any, name string, args ...any) {
+	events, ok := emitter["__events"].(map[string][]any)
+	if !ok {
+		events = map[string][]any{}
+		emitter["__events"] = events
+	}
+	events[name] = append(events[name], &ArrayValue{Items: append([]any{}, args...)})
+}
+
+func lastEventPayload(emitter map[string]any, name string) any {
+	events, ok := emitter["__events"].(map[string][]any)
+	if !ok || len(events[name]) == 0 {
+		return &ArrayValue{Items: []any{}}
+	}
+	return events[name][len(events[name])-1]
+}
+
+func hasEventPayload(emitter map[string]any, name string) bool {
+	events, ok := emitter["__events"].(map[string][]any)
+	return ok && len(events[name]) > 0
+}
+
+func eventPayloads(emitter map[string]any, name string) any {
+	events, ok := emitter["__events"].(map[string][]any)
+	if !ok {
+		return &ArrayValue{Items: []any{}}
+	}
+	return &ArrayValue{Items: append([]any{}, events[name]...)}
+}
+
+func abortControllerGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		signal := map[string]any{"aborted": false, "__tag": "[object AbortSignal]"}
+		controller := map[string]any{"signal": signal, "__tag": "[object AbortController]"}
+		controller["abort"] = nativeFunction(func(args []any) (any, error) {
+			signal["aborted"] = true
+			return jsUndefined, nil
+		})
+		return controller, nil
+	})
+}
+
+func textEncoderGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		return map[string]any{
+			"encode": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return arrayFromBytes(nil), nil
+				}
+				return arrayFromBytes([]byte(jsString(args[0]))), nil
+			}),
+			"encodeInto": nativeFunction(func(args []any) (any, error) {
+				if len(args) < 2 {
+					return map[string]any{"read": float64(0), "written": float64(0)}, nil
+				}
+				bytes := []byte(jsString(args[0]))
+				target, ok := args[1].(*ArrayValue)
+				if !ok {
+					return map[string]any{"read": float64(0), "written": float64(0)}, nil
+				}
+				written := minInt(len(bytes), len(target.Items))
+				for index := 0; index < written; index++ {
+					target.Items[index] = float64(bytes[index])
+				}
+				return map[string]any{"read": float64(written), "written": float64(written)}, nil
+			}),
+			"encoding": "utf-8",
+		}, nil
+	})
+}
+
+func textDecoderGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		return map[string]any{
+			"decode": nativeFunction(func(args []any) (any, error) {
+				if len(args) == 0 {
+					return "", nil
+				}
+				return string(bytesFromJSValue(args[0])), nil
+			}),
+			"encoding": "utf-8",
+		}, nil
+	})
+}
+
+func urlGlobal() NativeFunctionValue {
+	return nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return urlObject(""), nil
+		}
+		return urlObject(jsString(args[0])), nil
+	})
+}
+
+func urlObject(raw string) map[string]any {
+	parsed, err := url.Parse(raw)
+	pathname := raw
+	protocol := ""
+	href := raw
+	if err == nil {
+		pathname = parsed.Path
+		protocol = parsed.Scheme + ":"
+		href = parsed.String()
+	}
+	return map[string]any{
+		"__tag":    "[object URL]",
+		"href":     href,
+		"pathname": pathname,
+		"protocol": protocol,
+	}
 }
 
 func lastCallback(args []any) any {
@@ -2699,8 +3740,20 @@ func moduleModuleExports() map[string]any {
 }
 
 func processObject() map[string]any {
-	return map[string]any{
-		"env":      map[string]any{},
+	env := map[string]any{}
+	for _, entry := range os.Environ() {
+		parts := strings.SplitN(entry, "=", 2)
+		value := ""
+		if len(parts) == 2 {
+			value = parts[1]
+		}
+		env[parts[0]] = value
+	}
+	process := map[string]any{
+		"env":      env,
+		"argv":     &ArrayValue{Items: stringsToAny(os.Args)},
+		"execArgv": &ArrayValue{Items: []any{}},
+		"execPath": nodeExecutablePath(),
 		"version":  "v20.0.0",
 		"versions": map[string]any{"node": "20.0.0"},
 		"platform": runtime.GOOS,
@@ -2723,6 +3776,69 @@ func processObject() map[string]any {
 			return jsUndefined, nil
 		}),
 	}
+	process["stdin"] = newWritableStream()
+	process["stdout"] = newWritableStream()
+	process["stderr"] = newWritableStream()
+	process["exit"] = nativeFunction(func(args []any) (any, error) {
+		code := 0
+		if len(args) > 0 {
+			code = jsInteger(args[0])
+		}
+		os.Exit(code)
+		return jsUndefined, nil
+	})
+	hrtime := nativeFunction(func(args []any) (any, error) {
+		now := time.Now().UnixNano()
+		seconds := float64(now / int64(time.Second))
+		nanos := float64(now % int64(time.Second))
+		return &ArrayValue{Items: []any{seconds, nanos}}, nil
+	})
+	hrtime.Props = map[string]any{
+		"bigint": nativeFunction(func(args []any) (any, error) {
+			return float64(time.Now().UnixNano()), nil
+		}),
+	}
+	process["hrtime"] = hrtime
+	return process
+}
+
+func nodeExecutablePath() string {
+	if path := os.Getenv("TSGODOWN_NODE"); path != "" {
+		return resolveExecutablePath(path)
+	}
+	if path := findExecutableOnPath("node"); path != "" {
+		return resolveExecutablePath(path)
+	}
+	if len(os.Args) > 0 {
+		return resolveExecutablePath(os.Args[0])
+	}
+	return "node"
+}
+
+func resolveExecutablePath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil && resolved != "" {
+		return resolved
+	}
+	absolute, err := filepath.Abs(path)
+	if err == nil && absolute != "" {
+		return absolute
+	}
+	return path
+}
+
+func findExecutableOnPath(name string) string {
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func diagnosticsChannelModuleExports() map[string]any {
@@ -3002,6 +4118,9 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 					return completion{}, err
 				}
 			}
+			if stmt["delegate"] == true {
+				return completion{yields: iterableValues(value)}, nil
+			}
 			return completion{yields: []any{value}}, nil
 	case "break":
 		return completion{broke: true}, nil
@@ -3117,6 +4236,27 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				key = jsPropertyKey(keyValue)
 			}
 			setObjectProperty(out, key, value)
+		}
+		return out, nil
+	case "object-rest":
+		value, err := evalExpr(asMap(expr["object"]), env)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]any{}
+		source, ok := value.(map[string]any)
+		if !ok {
+			return out, nil
+		}
+		excluded := map[string]bool{}
+		for _, key := range asStringSlice(expr["excluded"]) {
+			excluded[key] = true
+		}
+		for _, key := range objectKeys(source) {
+			if excluded[key] || strings.HasPrefix(key, "__") {
+				continue
+			}
+			setObjectProperty(out, key, source[key])
 		}
 		return out, nil
 	case "function":
@@ -3238,7 +4378,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return constructValue(callee, asSlice(expr["args"]), env)
+		result, err := constructValue(callee, asSlice(expr["args"]), env)
+		if err != nil {
+			return nil, fmt.Errorf("new %s evaluated to %s failed: %w", exprLabel(asMap(expr["callee"])), jsInspect(callee), err)
+		}
+		return result, nil
 		case "spread":
 			return evalExpr(asMap(expr["arg"]), env)
 		case "member":
@@ -3363,6 +4507,9 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 		return nil, "", nil, err
 	}
 	if objectMap, ok := object.(map[string]any); ok {
+		if objectMap["__promise"] == true && property == "constructor" {
+			return object, property, lookupEnv(env, "Promise"), nil
+		}
 		if classValue, ok := objectMap["__class"].(*ClassValue); ok {
 			if getter, ok := lookupGetter(classValue, property); ok {
 				value, err := callFunctionWithThis(getter, nil, env, objectMap)
@@ -4037,6 +5184,33 @@ func stringMember(value string, property string, env Env) (any, bool) {
 			}
 			return float64(runes[index]), nil
 		}), true
+	case "codePointAt":
+		return nativeFunction(func(args []any) (any, error) {
+			index := 0
+			if len(args) > 0 {
+				index = jsInteger(args[0])
+			}
+			runes := []rune(value)
+			if index < 0 || index >= len(runes) {
+				return jsUndefined, nil
+			}
+			return float64(runes[index]), nil
+		}), true
+	case "at":
+		return nativeFunction(func(args []any) (any, error) {
+			index := 0
+			if len(args) > 0 {
+				index = jsInteger(args[0])
+			}
+			runes := []rune(value)
+			if index < 0 {
+				index = len(runes) + index
+			}
+			if index < 0 || index >= len(runes) {
+				return jsUndefined, nil
+			}
+			return string(runes[index]), nil
+		}), true
 	case "indexOf":
 		return nativeFunction(func(args []any) (any, error) {
 			search := "undefined"
@@ -4165,6 +5339,10 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 	switch property {
 	case "length":
 		return float64(len(value.Items)), true
+	case "Symbol.iterator":
+		return nativeFunction(func(args []any) (any, error) {
+			return &IteratorValue{Values: append([]any{}, value.Items...)}, nil
+		}), true
 	}
 	index, err := strconv.Atoi(property)
 	if err == nil && index >= 0 && index < len(value.Items) {
@@ -4323,6 +5501,25 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 			}
 			return &ArrayValue{Items: result}, nil
 		}), true
+	case "flatMap":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("flatMap callback is required")
+			}
+			result := []any{}
+			for index, item := range value.Items {
+				mapped, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if array, ok := mapped.(*ArrayValue); ok {
+					result = append(result, array.Items...)
+				} else {
+					result = append(result, mapped)
+				}
+			}
+			return &ArrayValue{Items: result}, nil
+		}), true
 	case "filter":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -4466,6 +5663,40 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 			}
 			return float64(-1), nil
 		}), true
+	case "findLast":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("findLast callback is required")
+			}
+			for index := len(value.Items) - 1; index >= 0; index-- {
+				item := value.Items[index]
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(next) {
+					return item, nil
+				}
+			}
+			return jsUndefined, nil
+		}), true
+	case "findLastIndex":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("findLastIndex callback is required")
+			}
+			for index := len(value.Items) - 1; index >= 0; index-- {
+				item := value.Items[index]
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(next) {
+					return float64(index), nil
+				}
+			}
+			return float64(-1), nil
+		}), true
 	case "indexOf":
 		return nativeFunction(func(args []any) (any, error) {
 			search := any(jsUndefined)
@@ -4541,6 +5772,13 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 				depth = jsInteger(args[0])
 			}
 			return &ArrayValue{Items: flattenArray(value.Items, depth)}, nil
+		}), true
+	case "reverse":
+		return nativeFunction(func(args []any) (any, error) {
+			for left, right := 0, len(value.Items)-1; left < right; left, right = left+1, right-1 {
+				value.Items[left], value.Items[right] = value.Items[right], value.Items[left]
+			}
+			return value, nil
 		}), true
 	case "sort":
 		return nativeFunction(func(args []any) (any, error) {
@@ -4737,7 +5975,7 @@ func mapMember(value *MapValue, property string) (any, bool) {
 		return nativeFunction(func(args []any) (any, error) {
 			entries := []any{}
 			for _, entry := range value.Entries {
-				entries = append(entries, []any{entry.Key, entry.Value})
+				entries = append(entries, &ArrayValue{Items: []any{entry.Key, entry.Value}})
 			}
 			return &IteratorValue{Values: entries}, nil
 		}), true
@@ -4785,7 +6023,7 @@ func setMember(value *SetValue, property string) (any, bool) {
 		return nativeFunction(func(args []any) (any, error) {
 			entries := []any{}
 			for _, item := range value.Values {
-				entries = append(entries, []any{item, item})
+				entries = append(entries, &ArrayValue{Items: []any{item, item}})
 			}
 			return &IteratorValue{Values: entries}, nil
 		}), true
@@ -4795,6 +6033,10 @@ func setMember(value *SetValue, property string) (any, bool) {
 
 func iteratorMember(value *IteratorValue, property string) (any, bool) {
 	switch property {
+	case "Symbol.iterator", "Symbol.asyncIterator":
+		return nativeFunction(func(args []any) (any, error) {
+			return value, nil
+		}), true
 	case "next":
 		return nativeFunction(func(args []any) (any, error) {
 			if value.Index >= len(value.Values) {
@@ -5218,13 +6460,17 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 		}
 		child[function.RestParam] = &ArrayValue{Items: rest}
 	}
-	result, err := evalStmtList(function.Body, child)
-	if err != nil {
-		if function.Async {
-			return promiseRejectedFromError(err), nil
+		result, err := evalStmtList(function.Body, child)
+		if err != nil {
+			if function.Async {
+				var pending pendingAwait
+				if errors.As(err, &pending) {
+					return pending.promise, nil
+				}
+				return promiseRejectedFromError(err), nil
+			}
+			return nil, err
 		}
-		return nil, err
-	}
 	if function.Generator {
 		return &IteratorValue{Values: result.yields}, nil
 	}
@@ -5439,6 +6685,17 @@ func isConsoleLog(callee map[string]any) bool {
 	return object["kind"] == "ident" && asString(object["name"]) == "console"
 }
 
+func exprLabel(expr map[string]any) string {
+	switch asString(expr["kind"]) {
+	case "ident":
+		return asString(expr["name"])
+	case "member":
+		return exprLabel(asMap(expr["object"])) + "." + asString(expr["property"])
+	default:
+		return asString(expr["kind"])
+	}
+}
+
 func isArrayPush(callee map[string]any) bool {
 	return callee["kind"] == "member" && asString(callee["property"]) == "push"
 }
@@ -5467,6 +6724,19 @@ func iterableValues(value any) []any {
 	case *SetValue:
 		return append([]any{}, typed.Values...)
 	case map[string]any:
+		for _, key := range []string{"Symbol.iterator", "Symbol.asyncIterator"} {
+			if iterator, ok := lookupObjectProperty(typed, key); ok && isCallable(iterator) {
+				values, err := callFunctionWithValues(iterator, []any{}, Env{}, typed)
+				if err == nil {
+					if iteratorValue, ok := values.(*IteratorValue); ok {
+						return iterableValues(iteratorValue)
+					}
+					if arrayValue, ok := values.(*ArrayValue); ok {
+						return append([]any{}, arrayValue.Items...)
+					}
+				}
+			}
+		}
 		values := []any{}
 		for _, item := range typed {
 			values = append(values, item)
@@ -5475,6 +6745,14 @@ func iterableValues(value any) []any {
 	default:
 		return nil
 	}
+}
+
+func stringsToAny(values []string) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
 }
 
 func isTruthy(value any) bool {
@@ -5584,6 +6862,9 @@ func isNullish(value any) bool {
 }
 
 func jsPropertyKey(value any) string {
+	if symbol, ok := value.(*SymbolValue); ok {
+		return symbol.Description
+	}
 	return jsString(value)
 }
 
@@ -5593,7 +6874,7 @@ func hasProperty(value any, key string) bool {
 		_, ok := lookupObjectProperty(typed, key)
 		return ok
 	case *ArrayValue:
-		if key == "length" {
+		if key == "length" || key == "Symbol.iterator" {
 			return true
 		}
 		index, err := strconv.Atoi(key)
@@ -5613,16 +6894,18 @@ func hasProperty(value any, key string) bool {
 			return true
 		}
 		return false
-	case NativeFunctionValue:
-		if key == "length" || key == "name" {
-			return true
-		}
-		_, ok := typed.Props[key]
-		return ok
-	case *RegExpValue:
-		if key == "lastIndex" {
-			return true
-		}
+		case NativeFunctionValue:
+			if key == "length" || key == "name" {
+				return true
+			}
+			_, ok := typed.Props[key]
+			return ok
+		case *IteratorValue:
+			return key == "next" || key == "Symbol.iterator" || key == "Symbol.asyncIterator"
+		case *RegExpValue:
+			if key == "lastIndex" {
+				return true
+			}
 		_, ok := typed.Props[key]
 		return ok
 	default:

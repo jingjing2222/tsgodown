@@ -144,7 +144,10 @@ pub enum JsStmtIR {
     Continue(Option<String>),
     Return(Option<JsExprIR>),
     Throw(JsExprIR),
-    Yield(Option<JsExprIR>),
+    Yield {
+        value: Option<JsExprIR>,
+        delegate: bool,
+    },
     VarDecl {
         name: String,
         init: Option<JsExprIR>,
@@ -177,6 +180,10 @@ pub enum JsExprIR {
     Array(Vec<JsExprIR>),
     ArraySpread(Vec<JsArrayElementIR>),
     Object(Vec<JsObjectPropIR>),
+    ObjectRest {
+        object: Box<JsExprIR>,
+        excluded: Vec<String>,
+    },
     Function {
         params: Vec<String>,
         rest_param: Option<String>,

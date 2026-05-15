@@ -101,13 +101,14 @@ fn resolves_vendored_package_imports_from_node_modules() {
 import dep from "pkg-a";
 const util = require("@scope/pkg-b/utils");
 const dotted = require("pkg-a/Object.getPrototypeOf");
+const ponyfill = require("pkg-a/ponyfill");
 export { dep, util };
 "#,
     );
     write(
         &root,
         "node_modules/pkg-a/package.json",
-        r#"{ "name": "pkg-a", "exports": { ".": { "import": "./esm.js", "require": "./cjs.js" } } }"#,
+        r#"{ "name": "pkg-a", "exports": { ".": { "import": "./esm.js", "require": "./cjs.js" }, "./ponyfill": "./dist/ponyfill/index.js" } }"#,
     );
     write(
         &root,
@@ -121,6 +122,13 @@ export default "esm";
         "node_modules/pkg-a/Object.getPrototypeOf.js",
         r#"
 module.exports = Object.getPrototypeOf;
+"#,
+    );
+    write(
+        &root,
+        "node_modules/pkg-a/dist/ponyfill/index.js",
+        r#"
+module.exports = { value: "ponyfill" };
 "#,
     );
     write(
@@ -147,6 +155,7 @@ module.exports = { value: 1 };
         vec![
             "node_modules/@scope/pkg-b/utils.js",
             "node_modules/pkg-a/Object.getPrototypeOf.js",
+            "node_modules/pkg-a/dist/ponyfill/index.js",
             "node_modules/pkg-a/esm.js",
             "src/index.js",
         ]
@@ -172,6 +181,10 @@ module.exports = { value: 1 };
             (
                 "pkg-a/Object.getPrototypeOf",
                 Some("node_modules/pkg-a/Object.getPrototypeOf.js")
+            ),
+            (
+                "pkg-a/ponyfill",
+                Some("node_modules/pkg-a/dist/ponyfill/index.js")
             ),
         ]
     );

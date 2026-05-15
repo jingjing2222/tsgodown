@@ -20,7 +20,7 @@ fn vendored_node_corpus_relative_module_graphs_are_deterministic() {
         ("lru-cache", "packages/lru-cache/dist/esm/index.js", 3, 0),
         ("uuid", "packages/uuid/dist-node/index.js", 21, 0),
         ("fs-extra", "packages/fs-extra/lib/index.js", 35, 0),
-        ("execa", "packages/execa/index.js", 145, 0),
+        ("execa", "packages/execa/index.js", 150, 0),
     ];
 
     let actual = cases

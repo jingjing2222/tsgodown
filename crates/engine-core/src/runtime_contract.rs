@@ -60,15 +60,32 @@ fn is_supported_builtin_import(spec: &str) -> bool {
             | "os"
             | "node:os"
             | "node:diagnostics_channel"
+            | "process"
+            | "node:process"
             | "buffer"
             | "node:buffer"
+            | "child_process"
+            | "node:child_process"
+            | "events"
+            | "node:events"
             | "crypto"
             | "node:crypto"
             | "constants"
+            | "node:constants"
             | "stream"
             | "node:stream"
+            | "node:stream/promises"
             | "fs"
             | "node:fs"
+            | "string_decoder"
+            | "node:string_decoder"
+            | "node:timers/promises"
+            | "tty"
+            | "node:tty"
+            | "url"
+            | "node:url"
+            | "v8"
+            | "node:v8"
             | "node:module"
     )
 }
@@ -164,7 +181,7 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
         }
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
-        JsStmt::Yield { value } => {
+        JsStmt::Yield { value, .. } => {
             if let Some(value) = value {
                 collect_unsupported_expr(value, unsupported);
             }
@@ -236,7 +253,7 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
             collect_unsupported_stmt_list(finally_body, true, unsupported);
         }
         JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
-        JsStmt::Yield { value } => {
+        JsStmt::Yield { value, .. } => {
             if let Some(value) = value {
                 collect_unsupported_expr(value, unsupported);
             }
@@ -282,6 +299,9 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             for JsObjectProp { value, .. } in props {
                 collect_unsupported_expr(value, unsupported);
             }
+        }
+        JsExpr::ObjectRest { object, .. } => {
+            collect_unsupported_expr(object, unsupported);
         }
         JsExpr::Unary { op, arg } => {
             if !matches!(

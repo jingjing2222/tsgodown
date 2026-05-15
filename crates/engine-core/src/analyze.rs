@@ -175,8 +175,9 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
         analyzer_rust::JsStmtIR::Throw(value) => JsStmt::Throw {
             value: map_js_expr(value),
         },
-        analyzer_rust::JsStmtIR::Yield(value) => JsStmt::Yield {
+        analyzer_rust::JsStmtIR::Yield { value, delegate } => JsStmt::Yield {
             value: value.map(map_js_expr),
+            delegate,
         },
         analyzer_rust::JsStmtIR::VarDecl { name, init } => JsStmt::VarDecl {
             name,
@@ -214,6 +215,10 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
                     spread: prop.spread,
                 })
                 .collect(),
+        },
+        analyzer_rust::JsExprIR::ObjectRest { object, excluded } => JsExpr::ObjectRest {
+            object: Box::new(map_js_expr(*object)),
+            excluded,
         },
         analyzer_rust::JsExprIR::Function {
             params,

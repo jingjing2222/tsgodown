@@ -90,7 +90,7 @@ fn resolve_package_module(root: &Path, from_module: &str, spec: &str) -> Option<
         let package_dir = normalize_path_buf(current.join("node_modules").join(&package_name));
         if root.join(&package_dir).is_dir() {
             if let Some(subpath) = subpath.as_deref() {
-                return resolve_file_or_directory(root, &package_dir.join(subpath));
+                return resolve_package_subpath(root, &package_dir, subpath);
             }
             return resolve_package_entry(root, &package_dir);
         }
@@ -104,9 +104,24 @@ fn resolve_package_module(root: &Path, from_module: &str, spec: &str) -> Option<
         return None;
     }
     if let Some(subpath) = subpath.as_deref() {
-        return resolve_file_or_directory(root, &package_dir.join(subpath));
+        return resolve_package_subpath(root, &package_dir, subpath);
     }
     resolve_package_entry(root, &package_dir)
+}
+
+fn resolve_package_subpath(root: &Path, package_dir: &Path, subpath: &Path) -> Option<String> {
+    let package_json_path = root.join(package_dir).join("package.json");
+    if let Ok(source) = fs::read_to_string(package_json_path) {
+        if let Ok(package_json) = serde_json::from_str::<serde_json::Value>(&source) {
+            let export_key = format!("./{}", to_posix_path(subpath.to_path_buf()));
+            for entry in package_export_candidates(package_json.get("exports"), &export_key) {
+                if let Some(resolved) = resolve_file_or_directory(root, &package_dir.join(entry)) {
+                    return Some(resolved);
+                }
+            }
+        }
+    }
+    resolve_file_or_directory(root, &package_dir.join(subpath))
 }
 
 fn resolve_package_entry(root: &Path, package_dir: &Path) -> Option<String> {
@@ -130,6 +145,17 @@ fn package_entry_candidates(package_json: &serde_json::Value) -> Vec<PathBuf> {
         if let Some(value) = package_json.get(key).and_then(|value| value.as_str()) {
             out.push(PathBuf::from(value));
         }
+    }
+    out
+}
+
+fn package_export_candidates(value: Option<&serde_json::Value>, export_key: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Some(serde_json::Value::Object(map)) = value else {
+        return out;
+    };
+    if let Some(entry) = map.get(export_key) {
+        collect_exports_entry(Some(entry), &mut out);
     }
     out
 }

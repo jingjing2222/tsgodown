@@ -274,9 +274,7 @@ fn push_decl_export(exports: &mut Vec<String>, decl: &Decl) {
         Decl::Class(class) => exports.push(class.ident.sym.to_string()),
         Decl::Var(var_decl) => {
             for decl in &var_decl.decls {
-                if let Some(name) = pat_name(&decl.name) {
-                    exports.push(name);
-                }
+                exports.extend(pat_names(&decl.name));
             }
         }
         Decl::TsInterface(interface) => exports.push(interface.id.sym.to_string()),
@@ -306,6 +304,27 @@ fn pat_name(pat: &Pat) -> Option<String> {
         Pat::Ident(binding) => Some(binding.id.sym.to_string()),
         Pat::Assign(assign) => pat_name(&assign.left),
         _ => None,
+    }
+}
+
+fn pat_names(pat: &Pat) -> Vec<String> {
+    match pat {
+        Pat::Ident(binding) => vec![binding.id.sym.to_string()],
+        Pat::Assign(assign) => pat_names(&assign.left),
+        Pat::Rest(rest) => pat_names(&rest.arg),
+        Pat::Array(array) => array.elems.iter().flatten().flat_map(pat_names).collect(),
+        Pat::Object(object) => object
+            .props
+            .iter()
+            .flat_map(|prop| match prop {
+                swc_ecma_ast::ObjectPatProp::KeyValue(kv) => pat_names(&kv.value),
+                swc_ecma_ast::ObjectPatProp::Assign(assign) => {
+                    vec![assign.key.sym.to_string()]
+                }
+                swc_ecma_ast::ObjectPatProp::Rest(rest) => pat_names(&rest.arg),
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -441,9 +460,10 @@ fn collect_executable_from_item(stmts: &mut Vec<JsStmtIR>, item: &ModuleItem) {
         }
         ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
             if let Expr::Yield(yield_expr) = &*expr_stmt.expr {
-                stmts.push(JsStmtIR::Yield(
-                    yield_expr.arg.as_deref().and_then(lower_js_expr),
-                ));
+                stmts.push(JsStmtIR::Yield {
+                    value: yield_expr.arg.as_deref().and_then(lower_js_expr),
+                    delegate: yield_expr.delegate,
+                });
             } else if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
             }
@@ -470,9 +490,10 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
         Stmt::Decl(Decl::Class(class_decl)) => lower_class_decl_stmt(stmts, class_decl),
         Stmt::Expr(expr_stmt) => {
             if let Expr::Yield(yield_expr) = &*expr_stmt.expr {
-                stmts.push(JsStmtIR::Yield(
-                    yield_expr.arg.as_deref().and_then(lower_js_expr),
-                ));
+                stmts.push(JsStmtIR::Yield {
+                    value: yield_expr.arg.as_deref().and_then(lower_js_expr),
+                    delegate: yield_expr.delegate,
+                });
             } else if let Some(expr) = lower_js_expr(&expr_stmt.expr) {
                 stmts.push(JsStmtIR::Expr(expr));
             }
@@ -503,12 +524,13 @@ fn collect_executable_from_stmt(stmts: &mut Vec<JsStmtIR>, stmt: &Stmt) {
             });
         }
         Stmt::ForOf(for_of) => {
-            if let Some(left) = for_head_name(&for_of.left) {
+            if let Some((left, mut prefix)) = lower_for_head_binding(&for_of.left) {
                 if let Some(right) = lower_js_expr(&for_of.right) {
+                    prefix.extend(lower_stmt_as_block(&for_of.body));
                     stmts.push(JsStmtIR::ForOf {
                         left,
                         right,
-                        body: lower_stmt_as_block(&for_of.body),
+                        body: prefix,
                     });
                 }
             }
@@ -602,17 +624,19 @@ fn lower_for_init(init: &VarDeclOrExpr) -> Vec<JsStmtIR> {
     }
 }
 
-fn for_head_name(head: &swc_ecma_ast::ForHead) -> Option<String> {
-    match head {
-        swc_ecma_ast::ForHead::VarDecl(var_decl) => var_decl
-            .decls
-            .first()?
-            .name
-            .as_ident()
-            .map(|ident| ident.id.sym.to_string()),
-        swc_ecma_ast::ForHead::Pat(pat) => pat_name(pat),
-        swc_ecma_ast::ForHead::UsingDecl(_) => None,
+fn lower_for_head_binding(head: &swc_ecma_ast::ForHead) -> Option<(String, Vec<JsStmtIR>)> {
+    let pat = match head {
+        swc_ecma_ast::ForHead::VarDecl(var_decl) => &var_decl.decls.first()?.name,
+        swc_ecma_ast::ForHead::Pat(pat) => pat,
+        swc_ecma_ast::ForHead::UsingDecl(_) => return None,
+    };
+    if let Some(ident) = pat.as_ident() {
+        return Some((ident.id.sym.to_string(), Vec::new()));
     }
+    let temp_name = "__tsgodown_forof_value".to_string();
+    let mut prefix = Vec::new();
+    lower_pat_decl_stmts(&mut prefix, pat, JsExprIR::Ident(temp_name.clone()));
+    Some((temp_name, prefix))
 }
 
 fn lower_fn_decl_stmt(stmts: &mut Vec<JsStmtIR>, function: &FnDecl) {
@@ -717,12 +741,14 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                 name: temp_name.clone(),
                 init: Some(init),
             });
+            let mut excluded = Vec::new();
             for prop in &object.props {
                 match prop {
                     swc_ecma_ast::ObjectPatProp::KeyValue(kv) => {
                         let Some(property) = prop_name(&kv.key) else {
                             continue;
                         };
+                        excluded.push(property.clone());
                         lower_pat_decl_stmts(
                             stmts,
                             &kv.value,
@@ -736,6 +762,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                     }
                     swc_ecma_ast::ObjectPatProp::Assign(assign) => {
                         let property = assign.key.sym.to_string();
+                        excluded.push(property.clone());
                         let member = JsExprIR::Member {
                             object: Box::new(JsExprIR::Ident(temp_name.clone())),
                             property: property.clone(),
@@ -751,7 +778,16 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                             init: Some(init),
                         });
                     }
-                    swc_ecma_ast::ObjectPatProp::Rest(_) => {}
+                    swc_ecma_ast::ObjectPatProp::Rest(rest) => {
+                        lower_pat_decl_stmts(
+                            stmts,
+                            &rest.arg,
+                            JsExprIR::ObjectRest {
+                                object: Box::new(JsExprIR::Ident(temp_name.clone())),
+                                excluded: excluded.clone(),
+                            },
+                        );
+                    }
                 }
             }
         }
@@ -1220,7 +1256,32 @@ fn lower_js_object_prop(prop: &PropOrSpread) -> Option<JsObjectPropIR> {
             value: lower_js_expr(&assign.value)?,
             spread: false,
         }),
-        Prop::Getter(_) | Prop::Setter(_) | Prop::Method(_) => None,
+        Prop::Method(method) => {
+            let (key, key_expr) = lower_object_key(&method.key)?;
+            let (params, rest_param, body) = lower_param_bound_body(
+                method.function.params.iter().map(|param| &param.pat),
+                method
+                    .function
+                    .body
+                    .as_ref()
+                    .map(lower_block_stmt)
+                    .unwrap_or_default(),
+            );
+            Some(JsObjectPropIR {
+                key,
+                key_expr,
+                value: JsExprIR::Function {
+                    params,
+                    rest_param,
+                    r#async: method.function.is_async,
+                    generator: method.function.is_generator,
+                    lexical_this: false,
+                    body,
+                },
+                spread: false,
+            })
+        }
+        Prop::Getter(_) | Prop::Setter(_) => None,
     }
 }
 
@@ -1260,8 +1321,14 @@ fn lower_js_lit(lit: &Lit) -> Option<JsValueIR> {
 }
 
 fn collect_cjs_imports_from_item(imports: &mut Vec<ImportIR>, item: &ModuleItem) {
-    match item {
-        ModuleItem::Stmt(Stmt::Decl(Decl::Var(var_decl))) => {
+    if let ModuleItem::Stmt(stmt) = item {
+        collect_cjs_imports_from_stmt(imports, stmt);
+    }
+}
+
+fn collect_cjs_imports_from_stmt(imports: &mut Vec<ImportIR>, stmt: &Stmt) {
+    match stmt {
+        Stmt::Decl(Decl::Var(var_decl)) => {
             for decl in &var_decl.decls {
                 if let Some(init) = &decl.init {
                     if let Some(spec) = require_spec(init) {
@@ -1277,8 +1344,48 @@ fn collect_cjs_imports_from_item(imports: &mut Vec<ImportIR>, item: &ModuleItem)
                 }
             }
         }
-        ModuleItem::Stmt(Stmt::Expr(expr_stmt)) => {
+        Stmt::Expr(expr_stmt) => {
             collect_cjs_imports_from_expr(imports, &expr_stmt.expr);
+        }
+        Stmt::If(if_stmt) => {
+            collect_cjs_imports_from_expr(imports, &if_stmt.test);
+            collect_cjs_imports_from_stmt(imports, &if_stmt.cons);
+            if let Some(alt) = &if_stmt.alt {
+                collect_cjs_imports_from_stmt(imports, alt);
+            }
+        }
+        Stmt::Block(block) => {
+            for stmt in &block.stmts {
+                collect_cjs_imports_from_stmt(imports, stmt);
+            }
+        }
+        Stmt::Return(return_stmt) => {
+            if let Some(arg) = &return_stmt.arg {
+                collect_cjs_imports_from_expr(imports, arg);
+            }
+        }
+        Stmt::Throw(throw_stmt) => collect_cjs_imports_from_expr(imports, &throw_stmt.arg),
+        Stmt::For(for_stmt) => {
+            if let Some(init) = &for_stmt.init {
+                match init {
+                    VarDeclOrExpr::VarDecl(var_decl) => collect_cjs_imports_from_stmt(
+                        imports,
+                        &Stmt::Decl(Decl::Var(var_decl.clone())),
+                    ),
+                    VarDeclOrExpr::Expr(expr) => collect_cjs_imports_from_expr(imports, expr),
+                }
+            }
+            if let Some(test) = &for_stmt.test {
+                collect_cjs_imports_from_expr(imports, test);
+            }
+            if let Some(update) = &for_stmt.update {
+                collect_cjs_imports_from_expr(imports, update);
+            }
+            collect_cjs_imports_from_stmt(imports, &for_stmt.body);
+        }
+        Stmt::While(while_stmt) => {
+            collect_cjs_imports_from_expr(imports, &while_stmt.test);
+            collect_cjs_imports_from_stmt(imports, &while_stmt.body);
         }
         _ => {}
     }
