@@ -619,6 +619,23 @@ func tsgodownStringCharAt(value string, index float64) string {
 	return string(chars[offset])
 }
 
+func tsgodownStringCharCodeAt(value string, index float64) float64 {
+	chars := []rune(value)
+	offset := int(index)
+	if offset < 0 || offset >= len(chars) {
+		return 0
+	}
+	return float64(chars[offset])
+}
+
+func tsgodownStringFromCharCode(values ...float64) string {
+	runes := make([]rune, len(values))
+	for index, value := range values {
+		runes[index] = rune(int(value))
+	}
+	return string(runes)
+}
+
 func tsgodownStringSlice(value string, start float64, endValues ...float64) string {
 	chars := []rune(value)
 	length := len(chars)
@@ -3003,6 +3020,19 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} + {right})"))
         }),
+        JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            let expr = match op.as_str() {
+                ">>" => format!("(int({left}) >> int({right}))"),
+                "<<" => format!("(int({left}) << int({right}))"),
+                "&" => format!("(int({left}) & int({right}))"),
+                "|" => format!("(int({left}) | int({right}))"),
+                "^" => format!("(int({left}) ^ int({right}))"),
+                _ => return None,
+            };
+            Some(format!("float64({expr})"))
+        }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
@@ -3113,6 +3143,19 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let arg = render_numeric_expr(arg, state)?;
             Some(format!("(-{arg})"))
         }
+        JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            let expr = match op.as_str() {
+                ">>" => format!("(int({left}) >> int({right}))"),
+                "<<" => format!("(int({left}) << int({right}))"),
+                "&" => format!("(int({left}) & int({right}))"),
+                "|" => format!("(int({left}) | int({right}))"),
+                "^" => format!("(int({left}) ^ int({right}))"),
+                _ => return None,
+            };
+            Some(format!("float64({expr})"))
+        }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
@@ -3132,6 +3175,16 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         ),
         JsExpr::Call { callee, args, .. } if is_process_uid_gid_call(callee, args) => {
             render_process_uid_gid_call(callee, args)
+        }
+        JsExpr::Call { callee, args, .. } if is_string_from_char_code_call(callee, args) => {
+            let args = args
+                .iter()
+                .map(|arg| render_numeric_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!(
+                "tsgodownToFloat64(tsgodownStringFromCharCode({}))",
+                args.join(", ")
+            ))
         }
         JsExpr::Call { callee, args, .. } => render_string_numeric_method_call(callee, args, state),
         _ => None,
@@ -3183,6 +3236,13 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_string_from_char_code_call(callee, args) => {
+            let args = args
+                .iter()
+                .map(|arg| render_numeric_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("tsgodownStringFromCharCode({})", args.join(", ")))
         }
         JsExpr::Call { callee, args, .. } if is_string_array_join_call(callee, args) => {
             render_string_array_join_call(callee, args, state)
@@ -3702,9 +3762,8 @@ fn string_method_name(callee: &JsExpr) -> Option<&str> {
         return None;
     };
     match property.as_str() {
-        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt" | "slice" => {
-            Some(property.as_str())
-        }
+        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt"
+        | "charCodeAt" | "slice" => Some(property.as_str()),
         _ => None,
     }
 }
@@ -3725,6 +3784,7 @@ fn string_method_receiver<'a>(
         "toLowerCase" | "toUpperCase" | "trim" if args.is_empty() => {}
         "includes" | "indexOf" if args.len() == 1 => {}
         "charAt" if args.len() == 1 => {}
+        "charCodeAt" if args.len() == 1 => {}
         "slice" if matches!(args.len(), 1 | 2) => {}
         _ => return None,
     }
@@ -4513,14 +4573,35 @@ fn render_string_numeric_method_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
-    let object = string_method_receiver(callee, "indexOf", args, state)?;
-    let object = render_string_expr(object, state)?;
-    let needle = render_string_expr(args.first()?, state)?;
-    Some(format!("float64(strings.Index({object}, {needle}))"))
+    if let Some(object) = string_method_receiver(callee, "indexOf", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        return Some(format!("float64(strings.Index({object}, {needle}))"));
+    }
+    if let Some(object) = string_method_receiver(callee, "charCodeAt", args, state) {
+        let object = render_string_expr(object, state)?;
+        let index = render_numeric_expr(args.first()?, state)?;
+        return Some(format!("tsgodownStringCharCodeAt({object}, {index})"));
+    }
+    None
 }
 
 fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "String")
+}
+
+fn is_string_from_char_code_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    !args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "String")
+                && property == "fromCharCode"
+        )
 }
 
 fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -5188,6 +5269,10 @@ fn number_literal(value: &str) -> Option<String> {
 
 fn is_numeric_binary_op(op: &str) -> bool {
     matches!(op, "+" | "-" | "*" | "/" | "%")
+}
+
+fn is_bitwise_binary_op(op: &str) -> bool {
+    matches!(op, ">>" | "<<" | "&" | "|" | "^")
 }
 
 fn go_comparison_op(op: &str) -> Option<&'static str> {
