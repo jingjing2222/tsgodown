@@ -199,6 +199,7 @@ const LEDGERS = {
       "aot.expr.numeric",
       "aot.expr.string",
       "aot.expr.boolean",
+      "aot.expr.regexp",
       "aot.property.static",
       "aot.property.dynamic",
       "aot.value.model",

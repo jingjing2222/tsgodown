@@ -391,6 +391,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
+            if is_regexp_test_call(callee, args) {
+                imports.insert("regexp");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -1771,6 +1774,10 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
+        JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::String);
+            infer_expr_param_kinds(&args[0], param_index, kinds);
+        }
         JsExpr::Call { callee, args, .. } => {
             infer_expr_param_kinds(callee, param_index, kinds);
             for arg in args {
@@ -2106,6 +2113,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } => render_conditional_expr(test, consequent, alternate, state, render_bool_expr, "bool"),
         JsExpr::Call { callee, args, .. } if is_boolean_cast_call(callee, args) => {
             render_js_to_bool_expr(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
+            render_regexp_test_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
             .or_else(|| render_string_bool_method_call(callee, args, state))
@@ -2795,6 +2805,55 @@ fn render_array_bool_method_call(
         return Some("false".to_string());
     }
     Some(format!("({})", comparisons.join(" || ")))
+}
+
+fn is_regexp_test_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    if property != "test" {
+        return false;
+    }
+    matches!(
+        object.as_ref(),
+        JsExpr::Value {
+            value: JsValue::RegExp { flags, .. },
+        } if flags.chars().all(|flag| flag == 'i')
+    )
+}
+
+fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Value {
+        value: JsValue::RegExp { pattern, flags },
+    } = object.as_ref()
+    else {
+        return None;
+    };
+    if !flags.chars().all(|flag| flag == 'i') {
+        return None;
+    }
+    let pattern = if flags.contains('i') {
+        format!("(?i){pattern}")
+    } else {
+        pattern.clone()
+    };
+    let value = render_string_expr(args.first()?, state)?;
+    Some(format!(
+        "regexp.MustCompile({}).MatchString({value})",
+        go_string_literal(&pattern)
+    ))
 }
 
 fn render_string_numeric_method_call(
