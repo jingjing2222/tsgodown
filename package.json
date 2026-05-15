@@ -29,7 +29,7 @@
     "gate:node-corpus-general-compiler": "node scripts/audit-node-corpus-general-compiler.mjs",
     "gate:node-corpus-vector-parity": "node scripts/node-corpus-vector-parity.mjs",
     "test:ir-go-codegen": "node --test scripts/executable-ir-go-codegen.test.mjs",
-    "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path && pnpm run guard:framework-defaults",
+    "gate:compliance": "node --import tsx --test packages/cli/test/commands.e2e.test.ts --test-name-pattern \"CLI rejects removed legacy compiler command\" && pnpm run guard:compiler-mode-only && pnpm run guard:core-path && pnpm run guard:framework-defaults && pnpm run guard:backend-boundaries",
     "perf:baseline": "tsx scripts/perf-baseline.ts",
     "docs:scaffold:sync": "node scripts/check-fastify-scaffold-sync.mjs",
     "scaffold:sync:check": "node scripts/check-scaffold-sync.mjs",
