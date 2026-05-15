@@ -1,0 +1,706 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "babel-core",
+  "cases": [
+    {
+      "id": "babel-core-001",
+      "op": "transform",
+      "code": "const input0 = () => 0; input0();",
+      "renameFrom": "input0",
+      "renameTo": "output0"
+    },
+    {
+      "id": "babel-core-002",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input1",
+      "renameTo": "output1"
+    },
+    {
+      "id": "babel-core-003",
+      "op": "plugin",
+      "code": "const input2 = () => 2; input2();",
+      "renameFrom": "input2",
+      "renameTo": "output2"
+    },
+    {
+      "id": "babel-core-004",
+      "op": "transform",
+      "code": "const input3 = () => 3; input3();",
+      "renameFrom": "input3",
+      "renameTo": "output3"
+    },
+    {
+      "id": "babel-core-005",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input4",
+      "renameTo": "output4"
+    },
+    {
+      "id": "babel-core-006",
+      "op": "plugin",
+      "code": "const input5 = () => 5; input5();",
+      "renameFrom": "input5",
+      "renameTo": "output5"
+    },
+    {
+      "id": "babel-core-007",
+      "op": "transform",
+      "code": "const input6 = () => 6; input6();",
+      "renameFrom": "input6",
+      "renameTo": "output6"
+    },
+    {
+      "id": "babel-core-008",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input7",
+      "renameTo": "output7"
+    },
+    {
+      "id": "babel-core-009",
+      "op": "plugin",
+      "code": "const input8 = () => 8; input8();",
+      "renameFrom": "input8",
+      "renameTo": "output8"
+    },
+    {
+      "id": "babel-core-010",
+      "op": "transform",
+      "code": "const input9 = () => 9; input9();",
+      "renameFrom": "input9",
+      "renameTo": "output9"
+    },
+    {
+      "id": "babel-core-011",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input10",
+      "renameTo": "output10"
+    },
+    {
+      "id": "babel-core-012",
+      "op": "plugin",
+      "code": "const input11 = () => 11; input11();",
+      "renameFrom": "input11",
+      "renameTo": "output11"
+    },
+    {
+      "id": "babel-core-013",
+      "op": "transform",
+      "code": "const input12 = () => 12; input12();",
+      "renameFrom": "input12",
+      "renameTo": "output12"
+    },
+    {
+      "id": "babel-core-014",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input13",
+      "renameTo": "output13"
+    },
+    {
+      "id": "babel-core-015",
+      "op": "plugin",
+      "code": "const input14 = () => 14; input14();",
+      "renameFrom": "input14",
+      "renameTo": "output14"
+    },
+    {
+      "id": "babel-core-016",
+      "op": "transform",
+      "code": "const input15 = () => 15; input15();",
+      "renameFrom": "input15",
+      "renameTo": "output15"
+    },
+    {
+      "id": "babel-core-017",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input16",
+      "renameTo": "output16"
+    },
+    {
+      "id": "babel-core-018",
+      "op": "plugin",
+      "code": "const input17 = () => 17; input17();",
+      "renameFrom": "input17",
+      "renameTo": "output17"
+    },
+    {
+      "id": "babel-core-019",
+      "op": "transform",
+      "code": "const input18 = () => 18; input18();",
+      "renameFrom": "input18",
+      "renameTo": "output18"
+    },
+    {
+      "id": "babel-core-020",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input19",
+      "renameTo": "output19"
+    },
+    {
+      "id": "babel-core-021",
+      "op": "plugin",
+      "code": "const input20 = () => 20; input20();",
+      "renameFrom": "input20",
+      "renameTo": "output20"
+    },
+    {
+      "id": "babel-core-022",
+      "op": "transform",
+      "code": "const input21 = () => 21; input21();",
+      "renameFrom": "input21",
+      "renameTo": "output21"
+    },
+    {
+      "id": "babel-core-023",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input22",
+      "renameTo": "output22"
+    },
+    {
+      "id": "babel-core-024",
+      "op": "plugin",
+      "code": "const input23 = () => 23; input23();",
+      "renameFrom": "input23",
+      "renameTo": "output23"
+    },
+    {
+      "id": "babel-core-025",
+      "op": "transform",
+      "code": "const input24 = () => 24; input24();",
+      "renameFrom": "input24",
+      "renameTo": "output24"
+    },
+    {
+      "id": "babel-core-026",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input25",
+      "renameTo": "output25"
+    },
+    {
+      "id": "babel-core-027",
+      "op": "plugin",
+      "code": "const input26 = () => 26; input26();",
+      "renameFrom": "input26",
+      "renameTo": "output26"
+    },
+    {
+      "id": "babel-core-028",
+      "op": "transform",
+      "code": "const input27 = () => 27; input27();",
+      "renameFrom": "input27",
+      "renameTo": "output27"
+    },
+    {
+      "id": "babel-core-029",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input28",
+      "renameTo": "output28"
+    },
+    {
+      "id": "babel-core-030",
+      "op": "plugin",
+      "code": "const input29 = () => 29; input29();",
+      "renameFrom": "input29",
+      "renameTo": "output29"
+    },
+    {
+      "id": "babel-core-031",
+      "op": "transform",
+      "code": "const input30 = () => 30; input30();",
+      "renameFrom": "input30",
+      "renameTo": "output30"
+    },
+    {
+      "id": "babel-core-032",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input31",
+      "renameTo": "output31"
+    },
+    {
+      "id": "babel-core-033",
+      "op": "plugin",
+      "code": "const input32 = () => 32; input32();",
+      "renameFrom": "input32",
+      "renameTo": "output32"
+    },
+    {
+      "id": "babel-core-034",
+      "op": "transform",
+      "code": "const input33 = () => 33; input33();",
+      "renameFrom": "input33",
+      "renameTo": "output33"
+    },
+    {
+      "id": "babel-core-035",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input34",
+      "renameTo": "output34"
+    },
+    {
+      "id": "babel-core-036",
+      "op": "plugin",
+      "code": "const input35 = () => 35; input35();",
+      "renameFrom": "input35",
+      "renameTo": "output35"
+    },
+    {
+      "id": "babel-core-037",
+      "op": "transform",
+      "code": "const input36 = () => 36; input36();",
+      "renameFrom": "input36",
+      "renameTo": "output36"
+    },
+    {
+      "id": "babel-core-038",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input37",
+      "renameTo": "output37"
+    },
+    {
+      "id": "babel-core-039",
+      "op": "plugin",
+      "code": "const input38 = () => 38; input38();",
+      "renameFrom": "input38",
+      "renameTo": "output38"
+    },
+    {
+      "id": "babel-core-040",
+      "op": "transform",
+      "code": "const input39 = () => 39; input39();",
+      "renameFrom": "input39",
+      "renameTo": "output39"
+    },
+    {
+      "id": "babel-core-041",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input40",
+      "renameTo": "output40"
+    },
+    {
+      "id": "babel-core-042",
+      "op": "plugin",
+      "code": "const input41 = () => 41; input41();",
+      "renameFrom": "input41",
+      "renameTo": "output41"
+    },
+    {
+      "id": "babel-core-043",
+      "op": "transform",
+      "code": "const input42 = () => 42; input42();",
+      "renameFrom": "input42",
+      "renameTo": "output42"
+    },
+    {
+      "id": "babel-core-044",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input43",
+      "renameTo": "output43"
+    },
+    {
+      "id": "babel-core-045",
+      "op": "plugin",
+      "code": "const input44 = () => 44; input44();",
+      "renameFrom": "input44",
+      "renameTo": "output44"
+    },
+    {
+      "id": "babel-core-046",
+      "op": "transform",
+      "code": "const input45 = () => 45; input45();",
+      "renameFrom": "input45",
+      "renameTo": "output45"
+    },
+    {
+      "id": "babel-core-047",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input46",
+      "renameTo": "output46"
+    },
+    {
+      "id": "babel-core-048",
+      "op": "plugin",
+      "code": "const input47 = () => 47; input47();",
+      "renameFrom": "input47",
+      "renameTo": "output47"
+    },
+    {
+      "id": "babel-core-049",
+      "op": "transform",
+      "code": "const input48 = () => 48; input48();",
+      "renameFrom": "input48",
+      "renameTo": "output48"
+    },
+    {
+      "id": "babel-core-050",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input49",
+      "renameTo": "output49"
+    },
+    {
+      "id": "babel-core-051",
+      "op": "plugin",
+      "code": "const input50 = () => 50; input50();",
+      "renameFrom": "input50",
+      "renameTo": "output50"
+    },
+    {
+      "id": "babel-core-052",
+      "op": "transform",
+      "code": "const input51 = () => 51; input51();",
+      "renameFrom": "input51",
+      "renameTo": "output51"
+    },
+    {
+      "id": "babel-core-053",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input52",
+      "renameTo": "output52"
+    },
+    {
+      "id": "babel-core-054",
+      "op": "plugin",
+      "code": "const input53 = () => 53; input53();",
+      "renameFrom": "input53",
+      "renameTo": "output53"
+    },
+    {
+      "id": "babel-core-055",
+      "op": "transform",
+      "code": "const input54 = () => 54; input54();",
+      "renameFrom": "input54",
+      "renameTo": "output54"
+    },
+    {
+      "id": "babel-core-056",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input55",
+      "renameTo": "output55"
+    },
+    {
+      "id": "babel-core-057",
+      "op": "plugin",
+      "code": "const input56 = () => 56; input56();",
+      "renameFrom": "input56",
+      "renameTo": "output56"
+    },
+    {
+      "id": "babel-core-058",
+      "op": "transform",
+      "code": "const input57 = () => 57; input57();",
+      "renameFrom": "input57",
+      "renameTo": "output57"
+    },
+    {
+      "id": "babel-core-059",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input58",
+      "renameTo": "output58"
+    },
+    {
+      "id": "babel-core-060",
+      "op": "plugin",
+      "code": "const input59 = () => 59; input59();",
+      "renameFrom": "input59",
+      "renameTo": "output59"
+    },
+    {
+      "id": "babel-core-061",
+      "op": "transform",
+      "code": "const input60 = () => 60; input60();",
+      "renameFrom": "input60",
+      "renameTo": "output60"
+    },
+    {
+      "id": "babel-core-062",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input61",
+      "renameTo": "output61"
+    },
+    {
+      "id": "babel-core-063",
+      "op": "plugin",
+      "code": "const input62 = () => 62; input62();",
+      "renameFrom": "input62",
+      "renameTo": "output62"
+    },
+    {
+      "id": "babel-core-064",
+      "op": "transform",
+      "code": "const input63 = () => 63; input63();",
+      "renameFrom": "input63",
+      "renameTo": "output63"
+    },
+    {
+      "id": "babel-core-065",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input64",
+      "renameTo": "output64"
+    },
+    {
+      "id": "babel-core-066",
+      "op": "plugin",
+      "code": "const input65 = () => 65; input65();",
+      "renameFrom": "input65",
+      "renameTo": "output65"
+    },
+    {
+      "id": "babel-core-067",
+      "op": "transform",
+      "code": "const input66 = () => 66; input66();",
+      "renameFrom": "input66",
+      "renameTo": "output66"
+    },
+    {
+      "id": "babel-core-068",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input67",
+      "renameTo": "output67"
+    },
+    {
+      "id": "babel-core-069",
+      "op": "plugin",
+      "code": "const input68 = () => 68; input68();",
+      "renameFrom": "input68",
+      "renameTo": "output68"
+    },
+    {
+      "id": "babel-core-070",
+      "op": "transform",
+      "code": "const input69 = () => 69; input69();",
+      "renameFrom": "input69",
+      "renameTo": "output69"
+    },
+    {
+      "id": "babel-core-071",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input70",
+      "renameTo": "output70"
+    },
+    {
+      "id": "babel-core-072",
+      "op": "plugin",
+      "code": "const input71 = () => 71; input71();",
+      "renameFrom": "input71",
+      "renameTo": "output71"
+    },
+    {
+      "id": "babel-core-073",
+      "op": "transform",
+      "code": "const input72 = () => 72; input72();",
+      "renameFrom": "input72",
+      "renameTo": "output72"
+    },
+    {
+      "id": "babel-core-074",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input73",
+      "renameTo": "output73"
+    },
+    {
+      "id": "babel-core-075",
+      "op": "plugin",
+      "code": "const input74 = () => 74; input74();",
+      "renameFrom": "input74",
+      "renameTo": "output74"
+    },
+    {
+      "id": "babel-core-076",
+      "op": "transform",
+      "code": "const input75 = () => 75; input75();",
+      "renameFrom": "input75",
+      "renameTo": "output75"
+    },
+    {
+      "id": "babel-core-077",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input76",
+      "renameTo": "output76"
+    },
+    {
+      "id": "babel-core-078",
+      "op": "plugin",
+      "code": "const input77 = () => 77; input77();",
+      "renameFrom": "input77",
+      "renameTo": "output77"
+    },
+    {
+      "id": "babel-core-079",
+      "op": "transform",
+      "code": "const input78 = () => 78; input78();",
+      "renameFrom": "input78",
+      "renameTo": "output78"
+    },
+    {
+      "id": "babel-core-080",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input79",
+      "renameTo": "output79"
+    },
+    {
+      "id": "babel-core-081",
+      "op": "plugin",
+      "code": "const input80 = () => 80; input80();",
+      "renameFrom": "input80",
+      "renameTo": "output80"
+    },
+    {
+      "id": "babel-core-082",
+      "op": "transform",
+      "code": "const input81 = () => 81; input81();",
+      "renameFrom": "input81",
+      "renameTo": "output81"
+    },
+    {
+      "id": "babel-core-083",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input82",
+      "renameTo": "output82"
+    },
+    {
+      "id": "babel-core-084",
+      "op": "plugin",
+      "code": "const input83 = () => 83; input83();",
+      "renameFrom": "input83",
+      "renameTo": "output83"
+    },
+    {
+      "id": "babel-core-085",
+      "op": "transform",
+      "code": "const input84 = () => 84; input84();",
+      "renameFrom": "input84",
+      "renameTo": "output84"
+    },
+    {
+      "id": "babel-core-086",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input85",
+      "renameTo": "output85"
+    },
+    {
+      "id": "babel-core-087",
+      "op": "plugin",
+      "code": "const input86 = () => 86; input86();",
+      "renameFrom": "input86",
+      "renameTo": "output86"
+    },
+    {
+      "id": "babel-core-088",
+      "op": "transform",
+      "code": "const input87 = () => 87; input87();",
+      "renameFrom": "input87",
+      "renameTo": "output87"
+    },
+    {
+      "id": "babel-core-089",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input88",
+      "renameTo": "output88"
+    },
+    {
+      "id": "babel-core-090",
+      "op": "plugin",
+      "code": "const input89 = () => 89; input89();",
+      "renameFrom": "input89",
+      "renameTo": "output89"
+    },
+    {
+      "id": "babel-core-091",
+      "op": "transform",
+      "code": "const input90 = () => 90; input90();",
+      "renameFrom": "input90",
+      "renameTo": "output90"
+    },
+    {
+      "id": "babel-core-092",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input91",
+      "renameTo": "output91"
+    },
+    {
+      "id": "babel-core-093",
+      "op": "plugin",
+      "code": "const input92 = () => 92; input92();",
+      "renameFrom": "input92",
+      "renameTo": "output92"
+    },
+    {
+      "id": "babel-core-094",
+      "op": "transform",
+      "code": "const input93 = () => 93; input93();",
+      "renameFrom": "input93",
+      "renameTo": "output93"
+    },
+    {
+      "id": "babel-core-095",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input94",
+      "renameTo": "output94"
+    },
+    {
+      "id": "babel-core-096",
+      "op": "plugin",
+      "code": "const input95 = () => 95; input95();",
+      "renameFrom": "input95",
+      "renameTo": "output95"
+    },
+    {
+      "id": "babel-core-097",
+      "op": "transform",
+      "code": "const input96 = () => 96; input96();",
+      "renameFrom": "input96",
+      "renameTo": "output96"
+    },
+    {
+      "id": "babel-core-098",
+      "op": "parseError",
+      "code": "const = ;",
+      "renameFrom": "input97",
+      "renameTo": "output97"
+    },
+    {
+      "id": "babel-core-099",
+      "op": "plugin",
+      "code": "const input98 = () => 98; input98();",
+      "renameFrom": "input98",
+      "renameTo": "output98"
+    },
+    {
+      "id": "babel-core-100",
+      "op": "transform",
+      "code": "const input99 = () => 99; input99();",
+      "renameFrom": "input99",
+      "renameTo": "output99"
+    }
+  ]
+}

@@ -1,0 +1,806 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "astro-app",
+  "cases": [
+    {
+      "id": "astro-app-001",
+      "op": "defineConfig",
+      "site": "https://example0.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_0"
+    },
+    {
+      "id": "astro-app-002",
+      "op": "mergeConfig",
+      "site": "https://example1.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_1"
+    },
+    {
+      "id": "astro-app-003",
+      "op": "envField",
+      "site": "https://example2.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_2"
+    },
+    {
+      "id": "astro-app-004",
+      "op": "defineConfig",
+      "site": "https://example3.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_3"
+    },
+    {
+      "id": "astro-app-005",
+      "op": "mergeConfig",
+      "site": "https://example4.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_4"
+    },
+    {
+      "id": "astro-app-006",
+      "op": "envField",
+      "site": "https://example5.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_5"
+    },
+    {
+      "id": "astro-app-007",
+      "op": "defineConfig",
+      "site": "https://example6.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_6"
+    },
+    {
+      "id": "astro-app-008",
+      "op": "mergeConfig",
+      "site": "https://example7.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_7"
+    },
+    {
+      "id": "astro-app-009",
+      "op": "envField",
+      "site": "https://example8.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_8"
+    },
+    {
+      "id": "astro-app-010",
+      "op": "defineConfig",
+      "site": "https://example9.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_9"
+    },
+    {
+      "id": "astro-app-011",
+      "op": "mergeConfig",
+      "site": "https://example10.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_10"
+    },
+    {
+      "id": "astro-app-012",
+      "op": "envField",
+      "site": "https://example11.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_11"
+    },
+    {
+      "id": "astro-app-013",
+      "op": "defineConfig",
+      "site": "https://example12.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_12"
+    },
+    {
+      "id": "astro-app-014",
+      "op": "mergeConfig",
+      "site": "https://example13.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_13"
+    },
+    {
+      "id": "astro-app-015",
+      "op": "envField",
+      "site": "https://example14.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_14"
+    },
+    {
+      "id": "astro-app-016",
+      "op": "defineConfig",
+      "site": "https://example15.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_15"
+    },
+    {
+      "id": "astro-app-017",
+      "op": "mergeConfig",
+      "site": "https://example16.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_16"
+    },
+    {
+      "id": "astro-app-018",
+      "op": "envField",
+      "site": "https://example17.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_17"
+    },
+    {
+      "id": "astro-app-019",
+      "op": "defineConfig",
+      "site": "https://example18.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_18"
+    },
+    {
+      "id": "astro-app-020",
+      "op": "mergeConfig",
+      "site": "https://example19.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_19"
+    },
+    {
+      "id": "astro-app-021",
+      "op": "envField",
+      "site": "https://example20.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_20"
+    },
+    {
+      "id": "astro-app-022",
+      "op": "defineConfig",
+      "site": "https://example21.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_21"
+    },
+    {
+      "id": "astro-app-023",
+      "op": "mergeConfig",
+      "site": "https://example22.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_22"
+    },
+    {
+      "id": "astro-app-024",
+      "op": "envField",
+      "site": "https://example23.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_23"
+    },
+    {
+      "id": "astro-app-025",
+      "op": "defineConfig",
+      "site": "https://example24.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_24"
+    },
+    {
+      "id": "astro-app-026",
+      "op": "mergeConfig",
+      "site": "https://example25.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_25"
+    },
+    {
+      "id": "astro-app-027",
+      "op": "envField",
+      "site": "https://example26.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_26"
+    },
+    {
+      "id": "astro-app-028",
+      "op": "defineConfig",
+      "site": "https://example27.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_27"
+    },
+    {
+      "id": "astro-app-029",
+      "op": "mergeConfig",
+      "site": "https://example28.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_28"
+    },
+    {
+      "id": "astro-app-030",
+      "op": "envField",
+      "site": "https://example29.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_29"
+    },
+    {
+      "id": "astro-app-031",
+      "op": "defineConfig",
+      "site": "https://example30.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_30"
+    },
+    {
+      "id": "astro-app-032",
+      "op": "mergeConfig",
+      "site": "https://example31.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_31"
+    },
+    {
+      "id": "astro-app-033",
+      "op": "envField",
+      "site": "https://example32.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_32"
+    },
+    {
+      "id": "astro-app-034",
+      "op": "defineConfig",
+      "site": "https://example33.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_33"
+    },
+    {
+      "id": "astro-app-035",
+      "op": "mergeConfig",
+      "site": "https://example34.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_34"
+    },
+    {
+      "id": "astro-app-036",
+      "op": "envField",
+      "site": "https://example35.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_35"
+    },
+    {
+      "id": "astro-app-037",
+      "op": "defineConfig",
+      "site": "https://example36.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_36"
+    },
+    {
+      "id": "astro-app-038",
+      "op": "mergeConfig",
+      "site": "https://example37.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_37"
+    },
+    {
+      "id": "astro-app-039",
+      "op": "envField",
+      "site": "https://example38.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_38"
+    },
+    {
+      "id": "astro-app-040",
+      "op": "defineConfig",
+      "site": "https://example39.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_39"
+    },
+    {
+      "id": "astro-app-041",
+      "op": "mergeConfig",
+      "site": "https://example40.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_40"
+    },
+    {
+      "id": "astro-app-042",
+      "op": "envField",
+      "site": "https://example41.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_41"
+    },
+    {
+      "id": "astro-app-043",
+      "op": "defineConfig",
+      "site": "https://example42.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_42"
+    },
+    {
+      "id": "astro-app-044",
+      "op": "mergeConfig",
+      "site": "https://example43.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_43"
+    },
+    {
+      "id": "astro-app-045",
+      "op": "envField",
+      "site": "https://example44.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_44"
+    },
+    {
+      "id": "astro-app-046",
+      "op": "defineConfig",
+      "site": "https://example45.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_45"
+    },
+    {
+      "id": "astro-app-047",
+      "op": "mergeConfig",
+      "site": "https://example46.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_46"
+    },
+    {
+      "id": "astro-app-048",
+      "op": "envField",
+      "site": "https://example47.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_47"
+    },
+    {
+      "id": "astro-app-049",
+      "op": "defineConfig",
+      "site": "https://example48.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_48"
+    },
+    {
+      "id": "astro-app-050",
+      "op": "mergeConfig",
+      "site": "https://example49.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_49"
+    },
+    {
+      "id": "astro-app-051",
+      "op": "envField",
+      "site": "https://example50.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_50"
+    },
+    {
+      "id": "astro-app-052",
+      "op": "defineConfig",
+      "site": "https://example51.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_51"
+    },
+    {
+      "id": "astro-app-053",
+      "op": "mergeConfig",
+      "site": "https://example52.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_52"
+    },
+    {
+      "id": "astro-app-054",
+      "op": "envField",
+      "site": "https://example53.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_53"
+    },
+    {
+      "id": "astro-app-055",
+      "op": "defineConfig",
+      "site": "https://example54.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_54"
+    },
+    {
+      "id": "astro-app-056",
+      "op": "mergeConfig",
+      "site": "https://example55.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_55"
+    },
+    {
+      "id": "astro-app-057",
+      "op": "envField",
+      "site": "https://example56.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_56"
+    },
+    {
+      "id": "astro-app-058",
+      "op": "defineConfig",
+      "site": "https://example57.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_57"
+    },
+    {
+      "id": "astro-app-059",
+      "op": "mergeConfig",
+      "site": "https://example58.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_58"
+    },
+    {
+      "id": "astro-app-060",
+      "op": "envField",
+      "site": "https://example59.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_59"
+    },
+    {
+      "id": "astro-app-061",
+      "op": "defineConfig",
+      "site": "https://example60.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_60"
+    },
+    {
+      "id": "astro-app-062",
+      "op": "mergeConfig",
+      "site": "https://example61.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_61"
+    },
+    {
+      "id": "astro-app-063",
+      "op": "envField",
+      "site": "https://example62.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_62"
+    },
+    {
+      "id": "astro-app-064",
+      "op": "defineConfig",
+      "site": "https://example63.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_63"
+    },
+    {
+      "id": "astro-app-065",
+      "op": "mergeConfig",
+      "site": "https://example64.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_64"
+    },
+    {
+      "id": "astro-app-066",
+      "op": "envField",
+      "site": "https://example65.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_65"
+    },
+    {
+      "id": "astro-app-067",
+      "op": "defineConfig",
+      "site": "https://example66.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_66"
+    },
+    {
+      "id": "astro-app-068",
+      "op": "mergeConfig",
+      "site": "https://example67.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_67"
+    },
+    {
+      "id": "astro-app-069",
+      "op": "envField",
+      "site": "https://example68.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_68"
+    },
+    {
+      "id": "astro-app-070",
+      "op": "defineConfig",
+      "site": "https://example69.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_69"
+    },
+    {
+      "id": "astro-app-071",
+      "op": "mergeConfig",
+      "site": "https://example70.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_70"
+    },
+    {
+      "id": "astro-app-072",
+      "op": "envField",
+      "site": "https://example71.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_71"
+    },
+    {
+      "id": "astro-app-073",
+      "op": "defineConfig",
+      "site": "https://example72.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_72"
+    },
+    {
+      "id": "astro-app-074",
+      "op": "mergeConfig",
+      "site": "https://example73.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_73"
+    },
+    {
+      "id": "astro-app-075",
+      "op": "envField",
+      "site": "https://example74.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_74"
+    },
+    {
+      "id": "astro-app-076",
+      "op": "defineConfig",
+      "site": "https://example75.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_75"
+    },
+    {
+      "id": "astro-app-077",
+      "op": "mergeConfig",
+      "site": "https://example76.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_76"
+    },
+    {
+      "id": "astro-app-078",
+      "op": "envField",
+      "site": "https://example77.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_77"
+    },
+    {
+      "id": "astro-app-079",
+      "op": "defineConfig",
+      "site": "https://example78.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_78"
+    },
+    {
+      "id": "astro-app-080",
+      "op": "mergeConfig",
+      "site": "https://example79.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_79"
+    },
+    {
+      "id": "astro-app-081",
+      "op": "envField",
+      "site": "https://example80.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_80"
+    },
+    {
+      "id": "astro-app-082",
+      "op": "defineConfig",
+      "site": "https://example81.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_81"
+    },
+    {
+      "id": "astro-app-083",
+      "op": "mergeConfig",
+      "site": "https://example82.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_82"
+    },
+    {
+      "id": "astro-app-084",
+      "op": "envField",
+      "site": "https://example83.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_83"
+    },
+    {
+      "id": "astro-app-085",
+      "op": "defineConfig",
+      "site": "https://example84.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_84"
+    },
+    {
+      "id": "astro-app-086",
+      "op": "mergeConfig",
+      "site": "https://example85.test",
+      "base": "/base-0",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_85"
+    },
+    {
+      "id": "astro-app-087",
+      "op": "envField",
+      "site": "https://example86.test",
+      "base": "/base-1",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_86"
+    },
+    {
+      "id": "astro-app-088",
+      "op": "defineConfig",
+      "site": "https://example87.test",
+      "base": "/base-2",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_87"
+    },
+    {
+      "id": "astro-app-089",
+      "op": "mergeConfig",
+      "site": "https://example88.test",
+      "base": "/base-3",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_88"
+    },
+    {
+      "id": "astro-app-090",
+      "op": "envField",
+      "site": "https://example89.test",
+      "base": "/base-4",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_89"
+    },
+    {
+      "id": "astro-app-091",
+      "op": "defineConfig",
+      "site": "https://example90.test",
+      "base": "/base-0",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_90"
+    },
+    {
+      "id": "astro-app-092",
+      "op": "mergeConfig",
+      "site": "https://example91.test",
+      "base": "/base-1",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_91"
+    },
+    {
+      "id": "astro-app-093",
+      "op": "envField",
+      "site": "https://example92.test",
+      "base": "/base-2",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_92"
+    },
+    {
+      "id": "astro-app-094",
+      "op": "defineConfig",
+      "site": "https://example93.test",
+      "base": "/base-3",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_93"
+    },
+    {
+      "id": "astro-app-095",
+      "op": "mergeConfig",
+      "site": "https://example94.test",
+      "base": "/base-4",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_94"
+    },
+    {
+      "id": "astro-app-096",
+      "op": "envField",
+      "site": "https://example95.test",
+      "base": "/base-0",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_95"
+    },
+    {
+      "id": "astro-app-097",
+      "op": "defineConfig",
+      "site": "https://example96.test",
+      "base": "/base-1",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_96"
+    },
+    {
+      "id": "astro-app-098",
+      "op": "mergeConfig",
+      "site": "https://example97.test",
+      "base": "/base-2",
+      "output": "server",
+      "envName": "PUBLIC_VALUE_97"
+    },
+    {
+      "id": "astro-app-099",
+      "op": "envField",
+      "site": "https://example98.test",
+      "base": "/base-3",
+      "output": "hybrid",
+      "envName": "PUBLIC_VALUE_98"
+    },
+    {
+      "id": "astro-app-100",
+      "op": "defineConfig",
+      "site": "https://example99.test",
+      "base": "/base-4",
+      "output": "static",
+      "envName": "PUBLIC_VALUE_99"
+    }
+  ]
+}

@@ -1,0 +1,506 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "eslint-engine",
+  "cases": [
+    {
+      "id": "eslint-engine-001",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-002",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-003",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-004",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-005",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-006",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-007",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-008",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-009",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-010",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-011",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-012",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-013",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-014",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-015",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-016",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-017",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-018",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-019",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-020",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-021",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-022",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-023",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-024",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-025",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-026",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-027",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-028",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-029",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-030",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-031",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-032",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-033",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-034",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-035",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-036",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-037",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-038",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-039",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-040",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-041",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-042",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-043",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-044",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-045",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-046",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-047",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-048",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-049",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-050",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-051",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-052",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-053",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-054",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-055",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-056",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-057",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-058",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-059",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-060",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-061",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-062",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-063",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-064",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-065",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-066",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-067",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-068",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-069",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-070",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-071",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-072",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-073",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-074",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-075",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-076",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-077",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-078",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-079",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-080",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-081",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-082",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-083",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-084",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-085",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-086",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-087",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-088",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-089",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-090",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-091",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-092",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-093",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-094",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-095",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-096",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    },
+    {
+      "id": "eslint-engine-097",
+      "op": "semi",
+      "code": "const a = 1\nconsole.log(a)\n"
+    },
+    {
+      "id": "eslint-engine-098",
+      "op": "noUndef",
+      "code": "missingReference()\n"
+    },
+    {
+      "id": "eslint-engine-099",
+      "op": "noUnused",
+      "code": "const unused = 1;\n"
+    },
+    {
+      "id": "eslint-engine-100",
+      "op": "clean",
+      "code": "const ok = 1;\nconsole.log(ok);\n"
+    }
+  ]
+}

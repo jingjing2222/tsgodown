@@ -1,0 +1,706 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "apollo-server-app",
+  "cases": [
+    {
+      "id": "apollo-server-app-001",
+      "op": "executeOperation",
+      "field": "value0",
+      "value": 0,
+      "variable": 1
+    },
+    {
+      "id": "apollo-server-app-002",
+      "op": "executeOperation",
+      "field": "value1",
+      "value": 1,
+      "variable": 2
+    },
+    {
+      "id": "apollo-server-app-003",
+      "op": "executeOperation",
+      "field": "value2",
+      "value": 2,
+      "variable": 3
+    },
+    {
+      "id": "apollo-server-app-004",
+      "op": "executeOperation",
+      "field": "value3",
+      "value": 3,
+      "variable": 4
+    },
+    {
+      "id": "apollo-server-app-005",
+      "op": "executeOperation",
+      "field": "value4",
+      "value": 4,
+      "variable": 5
+    },
+    {
+      "id": "apollo-server-app-006",
+      "op": "executeOperation",
+      "field": "value5",
+      "value": 5,
+      "variable": 6
+    },
+    {
+      "id": "apollo-server-app-007",
+      "op": "executeOperation",
+      "field": "value6",
+      "value": 6,
+      "variable": 7
+    },
+    {
+      "id": "apollo-server-app-008",
+      "op": "executeOperation",
+      "field": "value7",
+      "value": 7,
+      "variable": 8
+    },
+    {
+      "id": "apollo-server-app-009",
+      "op": "executeOperation",
+      "field": "value8",
+      "value": 8,
+      "variable": 9
+    },
+    {
+      "id": "apollo-server-app-010",
+      "op": "executeOperation",
+      "field": "value9",
+      "value": 9,
+      "variable": 10
+    },
+    {
+      "id": "apollo-server-app-011",
+      "op": "executeOperation",
+      "field": "value10",
+      "value": 10,
+      "variable": 11
+    },
+    {
+      "id": "apollo-server-app-012",
+      "op": "executeOperation",
+      "field": "value11",
+      "value": 11,
+      "variable": 12
+    },
+    {
+      "id": "apollo-server-app-013",
+      "op": "executeOperation",
+      "field": "value12",
+      "value": 12,
+      "variable": 13
+    },
+    {
+      "id": "apollo-server-app-014",
+      "op": "executeOperation",
+      "field": "value13",
+      "value": 13,
+      "variable": 14
+    },
+    {
+      "id": "apollo-server-app-015",
+      "op": "executeOperation",
+      "field": "value14",
+      "value": 14,
+      "variable": 15
+    },
+    {
+      "id": "apollo-server-app-016",
+      "op": "executeOperation",
+      "field": "value15",
+      "value": 15,
+      "variable": 16
+    },
+    {
+      "id": "apollo-server-app-017",
+      "op": "executeOperation",
+      "field": "value16",
+      "value": 16,
+      "variable": 17
+    },
+    {
+      "id": "apollo-server-app-018",
+      "op": "executeOperation",
+      "field": "value17",
+      "value": 17,
+      "variable": 18
+    },
+    {
+      "id": "apollo-server-app-019",
+      "op": "executeOperation",
+      "field": "value18",
+      "value": 18,
+      "variable": 19
+    },
+    {
+      "id": "apollo-server-app-020",
+      "op": "executeOperation",
+      "field": "value19",
+      "value": 19,
+      "variable": 20
+    },
+    {
+      "id": "apollo-server-app-021",
+      "op": "executeOperation",
+      "field": "value20",
+      "value": 20,
+      "variable": 21
+    },
+    {
+      "id": "apollo-server-app-022",
+      "op": "executeOperation",
+      "field": "value21",
+      "value": 21,
+      "variable": 22
+    },
+    {
+      "id": "apollo-server-app-023",
+      "op": "executeOperation",
+      "field": "value22",
+      "value": 22,
+      "variable": 23
+    },
+    {
+      "id": "apollo-server-app-024",
+      "op": "executeOperation",
+      "field": "value23",
+      "value": 23,
+      "variable": 24
+    },
+    {
+      "id": "apollo-server-app-025",
+      "op": "executeOperation",
+      "field": "value24",
+      "value": 24,
+      "variable": 25
+    },
+    {
+      "id": "apollo-server-app-026",
+      "op": "executeOperation",
+      "field": "value25",
+      "value": 25,
+      "variable": 26
+    },
+    {
+      "id": "apollo-server-app-027",
+      "op": "executeOperation",
+      "field": "value26",
+      "value": 26,
+      "variable": 27
+    },
+    {
+      "id": "apollo-server-app-028",
+      "op": "executeOperation",
+      "field": "value27",
+      "value": 27,
+      "variable": 28
+    },
+    {
+      "id": "apollo-server-app-029",
+      "op": "executeOperation",
+      "field": "value28",
+      "value": 28,
+      "variable": 29
+    },
+    {
+      "id": "apollo-server-app-030",
+      "op": "executeOperation",
+      "field": "value29",
+      "value": 29,
+      "variable": 30
+    },
+    {
+      "id": "apollo-server-app-031",
+      "op": "executeOperation",
+      "field": "value30",
+      "value": 30,
+      "variable": 31
+    },
+    {
+      "id": "apollo-server-app-032",
+      "op": "executeOperation",
+      "field": "value31",
+      "value": 31,
+      "variable": 32
+    },
+    {
+      "id": "apollo-server-app-033",
+      "op": "executeOperation",
+      "field": "value32",
+      "value": 32,
+      "variable": 33
+    },
+    {
+      "id": "apollo-server-app-034",
+      "op": "executeOperation",
+      "field": "value33",
+      "value": 33,
+      "variable": 34
+    },
+    {
+      "id": "apollo-server-app-035",
+      "op": "executeOperation",
+      "field": "value34",
+      "value": 34,
+      "variable": 35
+    },
+    {
+      "id": "apollo-server-app-036",
+      "op": "executeOperation",
+      "field": "value35",
+      "value": 35,
+      "variable": 36
+    },
+    {
+      "id": "apollo-server-app-037",
+      "op": "executeOperation",
+      "field": "value36",
+      "value": 36,
+      "variable": 37
+    },
+    {
+      "id": "apollo-server-app-038",
+      "op": "executeOperation",
+      "field": "value37",
+      "value": 37,
+      "variable": 38
+    },
+    {
+      "id": "apollo-server-app-039",
+      "op": "executeOperation",
+      "field": "value38",
+      "value": 38,
+      "variable": 39
+    },
+    {
+      "id": "apollo-server-app-040",
+      "op": "executeOperation",
+      "field": "value39",
+      "value": 39,
+      "variable": 40
+    },
+    {
+      "id": "apollo-server-app-041",
+      "op": "executeOperation",
+      "field": "value40",
+      "value": 40,
+      "variable": 41
+    },
+    {
+      "id": "apollo-server-app-042",
+      "op": "executeOperation",
+      "field": "value41",
+      "value": 41,
+      "variable": 42
+    },
+    {
+      "id": "apollo-server-app-043",
+      "op": "executeOperation",
+      "field": "value42",
+      "value": 42,
+      "variable": 43
+    },
+    {
+      "id": "apollo-server-app-044",
+      "op": "executeOperation",
+      "field": "value43",
+      "value": 43,
+      "variable": 44
+    },
+    {
+      "id": "apollo-server-app-045",
+      "op": "executeOperation",
+      "field": "value44",
+      "value": 44,
+      "variable": 45
+    },
+    {
+      "id": "apollo-server-app-046",
+      "op": "executeOperation",
+      "field": "value45",
+      "value": 45,
+      "variable": 46
+    },
+    {
+      "id": "apollo-server-app-047",
+      "op": "executeOperation",
+      "field": "value46",
+      "value": 46,
+      "variable": 47
+    },
+    {
+      "id": "apollo-server-app-048",
+      "op": "executeOperation",
+      "field": "value47",
+      "value": 47,
+      "variable": 48
+    },
+    {
+      "id": "apollo-server-app-049",
+      "op": "executeOperation",
+      "field": "value48",
+      "value": 48,
+      "variable": 49
+    },
+    {
+      "id": "apollo-server-app-050",
+      "op": "executeOperation",
+      "field": "value49",
+      "value": 49,
+      "variable": 50
+    },
+    {
+      "id": "apollo-server-app-051",
+      "op": "executeOperation",
+      "field": "value50",
+      "value": 50,
+      "variable": 51
+    },
+    {
+      "id": "apollo-server-app-052",
+      "op": "executeOperation",
+      "field": "value51",
+      "value": 51,
+      "variable": 52
+    },
+    {
+      "id": "apollo-server-app-053",
+      "op": "executeOperation",
+      "field": "value52",
+      "value": 52,
+      "variable": 53
+    },
+    {
+      "id": "apollo-server-app-054",
+      "op": "executeOperation",
+      "field": "value53",
+      "value": 53,
+      "variable": 54
+    },
+    {
+      "id": "apollo-server-app-055",
+      "op": "executeOperation",
+      "field": "value54",
+      "value": 54,
+      "variable": 55
+    },
+    {
+      "id": "apollo-server-app-056",
+      "op": "executeOperation",
+      "field": "value55",
+      "value": 55,
+      "variable": 56
+    },
+    {
+      "id": "apollo-server-app-057",
+      "op": "executeOperation",
+      "field": "value56",
+      "value": 56,
+      "variable": 57
+    },
+    {
+      "id": "apollo-server-app-058",
+      "op": "executeOperation",
+      "field": "value57",
+      "value": 57,
+      "variable": 58
+    },
+    {
+      "id": "apollo-server-app-059",
+      "op": "executeOperation",
+      "field": "value58",
+      "value": 58,
+      "variable": 59
+    },
+    {
+      "id": "apollo-server-app-060",
+      "op": "executeOperation",
+      "field": "value59",
+      "value": 59,
+      "variable": 60
+    },
+    {
+      "id": "apollo-server-app-061",
+      "op": "executeOperation",
+      "field": "value60",
+      "value": 60,
+      "variable": 61
+    },
+    {
+      "id": "apollo-server-app-062",
+      "op": "executeOperation",
+      "field": "value61",
+      "value": 61,
+      "variable": 62
+    },
+    {
+      "id": "apollo-server-app-063",
+      "op": "executeOperation",
+      "field": "value62",
+      "value": 62,
+      "variable": 63
+    },
+    {
+      "id": "apollo-server-app-064",
+      "op": "executeOperation",
+      "field": "value63",
+      "value": 63,
+      "variable": 64
+    },
+    {
+      "id": "apollo-server-app-065",
+      "op": "executeOperation",
+      "field": "value64",
+      "value": 64,
+      "variable": 65
+    },
+    {
+      "id": "apollo-server-app-066",
+      "op": "executeOperation",
+      "field": "value65",
+      "value": 65,
+      "variable": 66
+    },
+    {
+      "id": "apollo-server-app-067",
+      "op": "executeOperation",
+      "field": "value66",
+      "value": 66,
+      "variable": 67
+    },
+    {
+      "id": "apollo-server-app-068",
+      "op": "executeOperation",
+      "field": "value67",
+      "value": 67,
+      "variable": 68
+    },
+    {
+      "id": "apollo-server-app-069",
+      "op": "executeOperation",
+      "field": "value68",
+      "value": 68,
+      "variable": 69
+    },
+    {
+      "id": "apollo-server-app-070",
+      "op": "executeOperation",
+      "field": "value69",
+      "value": 69,
+      "variable": 70
+    },
+    {
+      "id": "apollo-server-app-071",
+      "op": "executeOperation",
+      "field": "value70",
+      "value": 70,
+      "variable": 71
+    },
+    {
+      "id": "apollo-server-app-072",
+      "op": "executeOperation",
+      "field": "value71",
+      "value": 71,
+      "variable": 72
+    },
+    {
+      "id": "apollo-server-app-073",
+      "op": "executeOperation",
+      "field": "value72",
+      "value": 72,
+      "variable": 73
+    },
+    {
+      "id": "apollo-server-app-074",
+      "op": "executeOperation",
+      "field": "value73",
+      "value": 73,
+      "variable": 74
+    },
+    {
+      "id": "apollo-server-app-075",
+      "op": "executeOperation",
+      "field": "value74",
+      "value": 74,
+      "variable": 75
+    },
+    {
+      "id": "apollo-server-app-076",
+      "op": "executeOperation",
+      "field": "value75",
+      "value": 75,
+      "variable": 76
+    },
+    {
+      "id": "apollo-server-app-077",
+      "op": "executeOperation",
+      "field": "value76",
+      "value": 76,
+      "variable": 77
+    },
+    {
+      "id": "apollo-server-app-078",
+      "op": "executeOperation",
+      "field": "value77",
+      "value": 77,
+      "variable": 78
+    },
+    {
+      "id": "apollo-server-app-079",
+      "op": "executeOperation",
+      "field": "value78",
+      "value": 78,
+      "variable": 79
+    },
+    {
+      "id": "apollo-server-app-080",
+      "op": "executeOperation",
+      "field": "value79",
+      "value": 79,
+      "variable": 80
+    },
+    {
+      "id": "apollo-server-app-081",
+      "op": "executeOperation",
+      "field": "value80",
+      "value": 80,
+      "variable": 81
+    },
+    {
+      "id": "apollo-server-app-082",
+      "op": "executeOperation",
+      "field": "value81",
+      "value": 81,
+      "variable": 82
+    },
+    {
+      "id": "apollo-server-app-083",
+      "op": "executeOperation",
+      "field": "value82",
+      "value": 82,
+      "variable": 83
+    },
+    {
+      "id": "apollo-server-app-084",
+      "op": "executeOperation",
+      "field": "value83",
+      "value": 83,
+      "variable": 84
+    },
+    {
+      "id": "apollo-server-app-085",
+      "op": "executeOperation",
+      "field": "value84",
+      "value": 84,
+      "variable": 85
+    },
+    {
+      "id": "apollo-server-app-086",
+      "op": "executeOperation",
+      "field": "value85",
+      "value": 85,
+      "variable": 86
+    },
+    {
+      "id": "apollo-server-app-087",
+      "op": "executeOperation",
+      "field": "value86",
+      "value": 86,
+      "variable": 87
+    },
+    {
+      "id": "apollo-server-app-088",
+      "op": "executeOperation",
+      "field": "value87",
+      "value": 87,
+      "variable": 88
+    },
+    {
+      "id": "apollo-server-app-089",
+      "op": "executeOperation",
+      "field": "value88",
+      "value": 88,
+      "variable": 89
+    },
+    {
+      "id": "apollo-server-app-090",
+      "op": "executeOperation",
+      "field": "value89",
+      "value": 89,
+      "variable": 90
+    },
+    {
+      "id": "apollo-server-app-091",
+      "op": "executeOperation",
+      "field": "value90",
+      "value": 90,
+      "variable": 91
+    },
+    {
+      "id": "apollo-server-app-092",
+      "op": "executeOperation",
+      "field": "value91",
+      "value": 91,
+      "variable": 92
+    },
+    {
+      "id": "apollo-server-app-093",
+      "op": "executeOperation",
+      "field": "value92",
+      "value": 92,
+      "variable": 93
+    },
+    {
+      "id": "apollo-server-app-094",
+      "op": "executeOperation",
+      "field": "value93",
+      "value": 93,
+      "variable": 94
+    },
+    {
+      "id": "apollo-server-app-095",
+      "op": "executeOperation",
+      "field": "value94",
+      "value": 94,
+      "variable": 95
+    },
+    {
+      "id": "apollo-server-app-096",
+      "op": "executeOperation",
+      "field": "value95",
+      "value": 95,
+      "variable": 96
+    },
+    {
+      "id": "apollo-server-app-097",
+      "op": "executeOperation",
+      "field": "value96",
+      "value": 96,
+      "variable": 97
+    },
+    {
+      "id": "apollo-server-app-098",
+      "op": "executeOperation",
+      "field": "value97",
+      "value": 97,
+      "variable": 98
+    },
+    {
+      "id": "apollo-server-app-099",
+      "op": "executeOperation",
+      "field": "value98",
+      "value": 98,
+      "variable": 99
+    },
+    {
+      "id": "apollo-server-app-100",
+      "op": "executeOperation",
+      "field": "value99",
+      "value": 99,
+      "variable": 100
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { runVectorCase } from "./vector-runner.mjs";
 
 const corpusRoot = path.resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(
@@ -12,7 +13,7 @@ describe("large Node corpus manifest", () => {
     expect(manifest.version).toBe("node-large-corpus.v1");
     expect(manifest.nodeLts).toBe("24.15.0");
     expect(manifest.policy.vectorsPerEntry).toBe(100);
-    expect(manifest.policy.status).toBe("vendored");
+    expect(manifest.policy.status).toBe("vectors-node-ready");
     expect(manifest.entries).toHaveLength(20);
   });
 
@@ -55,8 +56,34 @@ describe("large Node corpus manifest", () => {
       expect(entry.parityDimensions.length).toBeGreaterThan(0);
       expect(entry.vectors).toEqual({
         expected: 100,
-        status: "pending-vectors",
+        status: "node-ready",
       });
     },
   );
 });
+
+for (const entry of manifest.entries) {
+  const vectors = JSON.parse(
+    fs.readFileSync(
+      path.join(corpusRoot, "cases", entry.id, "vectors.json"),
+      "utf8",
+    ),
+  );
+
+  describe(`${entry.id} Node vectors`, () => {
+    it("declares exactly 100 vectors", () => {
+      expect(vectors.version).toBe("node-large-corpus-vectors.v1");
+      expect(vectors.corpus).toBe(entry.id);
+      expect(vectors.cases).toHaveLength(100);
+    });
+
+    it.each(vectors.cases)(
+      "$id matches Node observable behavior",
+      async (vector) => {
+        const result = await runVectorCase(entry.id, vector);
+        expect(result.ok, JSON.stringify(result.error ?? null)).toBe(true);
+        expect(result.value).not.toBeUndefined();
+      },
+    );
+  });
+}

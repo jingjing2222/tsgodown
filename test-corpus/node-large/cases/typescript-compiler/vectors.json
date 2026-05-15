@@ -1,0 +1,706 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "typescript-compiler",
+  "cases": [
+    {
+      "id": "typescript-compiler-001",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value0: number = 0;\nexport type Box0 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-002",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value1: number = 1;\nexport type Box1 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-003",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value2: number = 2;\nexport type Box2 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-004",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value3: number = 3;\nexport type Box3 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-005",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value4: number = 4;\nexport type Box4 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-006",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value5: number = 5;\nexport type Box5 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-007",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value6: number = 6;\nexport type Box6 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-008",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value7: number = 7;\nexport type Box7 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-009",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value8: number = 8;\nexport type Box8 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-010",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value9: number = 9;\nexport type Box9 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-011",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value10: number = 10;\nexport type Box10 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-012",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value11: number = 11;\nexport type Box11 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-013",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value12: number = 12;\nexport type Box12 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-014",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value13: number = 13;\nexport type Box13 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-015",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value14: number = 14;\nexport type Box14 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-016",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value15: number = 15;\nexport type Box15 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-017",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value16: number = 16;\nexport type Box16 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-018",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value17: number = 17;\nexport type Box17 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-019",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value18: number = 18;\nexport type Box18 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-020",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value19: number = 19;\nexport type Box19 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-021",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value20: number = 20;\nexport type Box20 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-022",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value21: number = 21;\nexport type Box21 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-023",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value22: number = 22;\nexport type Box22 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-024",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value23: number = 23;\nexport type Box23 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-025",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value24: number = 24;\nexport type Box24 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-026",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value25: number = 25;\nexport type Box25 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-027",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value26: number = 26;\nexport type Box26 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-028",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value27: number = 27;\nexport type Box27 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-029",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value28: number = 28;\nexport type Box28 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-030",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value29: number = 29;\nexport type Box29 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-031",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value30: number = 30;\nexport type Box30 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-032",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value31: number = 31;\nexport type Box31 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-033",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value32: number = 32;\nexport type Box32 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-034",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value33: number = 33;\nexport type Box33 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-035",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value34: number = 34;\nexport type Box34 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-036",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value35: number = 35;\nexport type Box35 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-037",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value36: number = 36;\nexport type Box36 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-038",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value37: number = 37;\nexport type Box37 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-039",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value38: number = 38;\nexport type Box38 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-040",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value39: number = 39;\nexport type Box39 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-041",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value40: number = 40;\nexport type Box40 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-042",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value41: number = 41;\nexport type Box41 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-043",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value42: number = 42;\nexport type Box42 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-044",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value43: number = 43;\nexport type Box43 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-045",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value44: number = 44;\nexport type Box44 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-046",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value45: number = 45;\nexport type Box45 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-047",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value46: number = 46;\nexport type Box46 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-048",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value47: number = 47;\nexport type Box47 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-049",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value48: number = 48;\nexport type Box48 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-050",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value49: number = 49;\nexport type Box49 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-051",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value50: number = 50;\nexport type Box50 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-052",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value51: number = 51;\nexport type Box51 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-053",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value52: number = 52;\nexport type Box52 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-054",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value53: number = 53;\nexport type Box53 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-055",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value54: number = 54;\nexport type Box54 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-056",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value55: number = 55;\nexport type Box55 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-057",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value56: number = 56;\nexport type Box56 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-058",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value57: number = 57;\nexport type Box57 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-059",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value58: number = 58;\nexport type Box58 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-060",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value59: number = 59;\nexport type Box59 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-061",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value60: number = 60;\nexport type Box60 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-062",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value61: number = 61;\nexport type Box61 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-063",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value62: number = 62;\nexport type Box62 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-064",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value63: number = 63;\nexport type Box63 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-065",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value64: number = 64;\nexport type Box64 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-066",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value65: number = 65;\nexport type Box65 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-067",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value66: number = 66;\nexport type Box66 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-068",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value67: number = 67;\nexport type Box67 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-069",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value68: number = 68;\nexport type Box68 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-070",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value69: number = 69;\nexport type Box69 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-071",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value70: number = 70;\nexport type Box70 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-072",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value71: number = 71;\nexport type Box71 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-073",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value72: number = 72;\nexport type Box72 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-074",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value73: number = 73;\nexport type Box73 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-075",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value74: number = 74;\nexport type Box74 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-076",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value75: number = 75;\nexport type Box75 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-077",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value76: number = 76;\nexport type Box76 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-078",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value77: number = 77;\nexport type Box77 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-079",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value78: number = 78;\nexport type Box78 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-080",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value79: number = 79;\nexport type Box79 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-081",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value80: number = 80;\nexport type Box80 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-082",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value81: number = 81;\nexport type Box81 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-083",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value82: number = 82;\nexport type Box82 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-084",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value83: number = 83;\nexport type Box83 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-085",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value84: number = 84;\nexport type Box84 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-086",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value85: number = 85;\nexport type Box85 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-087",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value86: number = 86;\nexport type Box86 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-088",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value87: number = 87;\nexport type Box87 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-089",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value88: number = 88;\nexport type Box88 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-090",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value89: number = 89;\nexport type Box89 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-091",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value90: number = 90;\nexport type Box90 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-092",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value91: number = 91;\nexport type Box91 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-093",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value92: number = 92;\nexport type Box92 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-094",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value93: number = 93;\nexport type Box93 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-095",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value94: number = 94;\nexport type Box94 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-096",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value95: number = 95;\nexport type Box95 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-097",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value96: number = 96;\nexport type Box96 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-098",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value97: number = 97;\nexport type Box97 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-099",
+      "op": "transpile",
+      "module": "CommonJS",
+      "target": "ES2019",
+      "source": "export const value98: number = 98;\nexport type Box98 = { value: number };\n"
+    },
+    {
+      "id": "typescript-compiler-100",
+      "op": "transpile",
+      "module": "ESNext",
+      "target": "ES2022",
+      "source": "export const value99: number = 99;\nexport type Box99 = { value: number };\n"
+    }
+  ]
+}

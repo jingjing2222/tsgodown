@@ -1,0 +1,706 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "nestjs-app",
+  "cases": [
+    {
+      "id": "nestjs-app-001",
+      "op": "factory",
+      "base": 0,
+      "delta": 1,
+      "label": "nest-0"
+    },
+    {
+      "id": "nestjs-app-002",
+      "op": "asyncFactory",
+      "base": 1,
+      "delta": 2,
+      "label": "nest-1"
+    },
+    {
+      "id": "nestjs-app-003",
+      "op": "override",
+      "base": 2,
+      "delta": 3,
+      "label": "nest-2"
+    },
+    {
+      "id": "nestjs-app-004",
+      "op": "missing",
+      "base": 3,
+      "delta": 4,
+      "label": "nest-3"
+    },
+    {
+      "id": "nestjs-app-005",
+      "op": "factory",
+      "base": 4,
+      "delta": 5,
+      "label": "nest-4"
+    },
+    {
+      "id": "nestjs-app-006",
+      "op": "asyncFactory",
+      "base": 5,
+      "delta": 6,
+      "label": "nest-5"
+    },
+    {
+      "id": "nestjs-app-007",
+      "op": "override",
+      "base": 6,
+      "delta": 7,
+      "label": "nest-6"
+    },
+    {
+      "id": "nestjs-app-008",
+      "op": "missing",
+      "base": 7,
+      "delta": 1,
+      "label": "nest-7"
+    },
+    {
+      "id": "nestjs-app-009",
+      "op": "factory",
+      "base": 8,
+      "delta": 2,
+      "label": "nest-8"
+    },
+    {
+      "id": "nestjs-app-010",
+      "op": "asyncFactory",
+      "base": 9,
+      "delta": 3,
+      "label": "nest-9"
+    },
+    {
+      "id": "nestjs-app-011",
+      "op": "override",
+      "base": 10,
+      "delta": 4,
+      "label": "nest-10"
+    },
+    {
+      "id": "nestjs-app-012",
+      "op": "missing",
+      "base": 11,
+      "delta": 5,
+      "label": "nest-11"
+    },
+    {
+      "id": "nestjs-app-013",
+      "op": "factory",
+      "base": 12,
+      "delta": 6,
+      "label": "nest-12"
+    },
+    {
+      "id": "nestjs-app-014",
+      "op": "asyncFactory",
+      "base": 13,
+      "delta": 7,
+      "label": "nest-13"
+    },
+    {
+      "id": "nestjs-app-015",
+      "op": "override",
+      "base": 14,
+      "delta": 1,
+      "label": "nest-14"
+    },
+    {
+      "id": "nestjs-app-016",
+      "op": "missing",
+      "base": 15,
+      "delta": 2,
+      "label": "nest-15"
+    },
+    {
+      "id": "nestjs-app-017",
+      "op": "factory",
+      "base": 16,
+      "delta": 3,
+      "label": "nest-16"
+    },
+    {
+      "id": "nestjs-app-018",
+      "op": "asyncFactory",
+      "base": 17,
+      "delta": 4,
+      "label": "nest-17"
+    },
+    {
+      "id": "nestjs-app-019",
+      "op": "override",
+      "base": 18,
+      "delta": 5,
+      "label": "nest-18"
+    },
+    {
+      "id": "nestjs-app-020",
+      "op": "missing",
+      "base": 19,
+      "delta": 6,
+      "label": "nest-19"
+    },
+    {
+      "id": "nestjs-app-021",
+      "op": "factory",
+      "base": 20,
+      "delta": 7,
+      "label": "nest-20"
+    },
+    {
+      "id": "nestjs-app-022",
+      "op": "asyncFactory",
+      "base": 21,
+      "delta": 1,
+      "label": "nest-21"
+    },
+    {
+      "id": "nestjs-app-023",
+      "op": "override",
+      "base": 22,
+      "delta": 2,
+      "label": "nest-22"
+    },
+    {
+      "id": "nestjs-app-024",
+      "op": "missing",
+      "base": 23,
+      "delta": 3,
+      "label": "nest-23"
+    },
+    {
+      "id": "nestjs-app-025",
+      "op": "factory",
+      "base": 24,
+      "delta": 4,
+      "label": "nest-24"
+    },
+    {
+      "id": "nestjs-app-026",
+      "op": "asyncFactory",
+      "base": 25,
+      "delta": 5,
+      "label": "nest-25"
+    },
+    {
+      "id": "nestjs-app-027",
+      "op": "override",
+      "base": 26,
+      "delta": 6,
+      "label": "nest-26"
+    },
+    {
+      "id": "nestjs-app-028",
+      "op": "missing",
+      "base": 27,
+      "delta": 7,
+      "label": "nest-27"
+    },
+    {
+      "id": "nestjs-app-029",
+      "op": "factory",
+      "base": 28,
+      "delta": 1,
+      "label": "nest-28"
+    },
+    {
+      "id": "nestjs-app-030",
+      "op": "asyncFactory",
+      "base": 29,
+      "delta": 2,
+      "label": "nest-29"
+    },
+    {
+      "id": "nestjs-app-031",
+      "op": "override",
+      "base": 30,
+      "delta": 3,
+      "label": "nest-30"
+    },
+    {
+      "id": "nestjs-app-032",
+      "op": "missing",
+      "base": 31,
+      "delta": 4,
+      "label": "nest-31"
+    },
+    {
+      "id": "nestjs-app-033",
+      "op": "factory",
+      "base": 32,
+      "delta": 5,
+      "label": "nest-32"
+    },
+    {
+      "id": "nestjs-app-034",
+      "op": "asyncFactory",
+      "base": 33,
+      "delta": 6,
+      "label": "nest-33"
+    },
+    {
+      "id": "nestjs-app-035",
+      "op": "override",
+      "base": 34,
+      "delta": 7,
+      "label": "nest-34"
+    },
+    {
+      "id": "nestjs-app-036",
+      "op": "missing",
+      "base": 35,
+      "delta": 1,
+      "label": "nest-35"
+    },
+    {
+      "id": "nestjs-app-037",
+      "op": "factory",
+      "base": 36,
+      "delta": 2,
+      "label": "nest-36"
+    },
+    {
+      "id": "nestjs-app-038",
+      "op": "asyncFactory",
+      "base": 37,
+      "delta": 3,
+      "label": "nest-37"
+    },
+    {
+      "id": "nestjs-app-039",
+      "op": "override",
+      "base": 38,
+      "delta": 4,
+      "label": "nest-38"
+    },
+    {
+      "id": "nestjs-app-040",
+      "op": "missing",
+      "base": 39,
+      "delta": 5,
+      "label": "nest-39"
+    },
+    {
+      "id": "nestjs-app-041",
+      "op": "factory",
+      "base": 40,
+      "delta": 6,
+      "label": "nest-40"
+    },
+    {
+      "id": "nestjs-app-042",
+      "op": "asyncFactory",
+      "base": 41,
+      "delta": 7,
+      "label": "nest-41"
+    },
+    {
+      "id": "nestjs-app-043",
+      "op": "override",
+      "base": 42,
+      "delta": 1,
+      "label": "nest-42"
+    },
+    {
+      "id": "nestjs-app-044",
+      "op": "missing",
+      "base": 43,
+      "delta": 2,
+      "label": "nest-43"
+    },
+    {
+      "id": "nestjs-app-045",
+      "op": "factory",
+      "base": 44,
+      "delta": 3,
+      "label": "nest-44"
+    },
+    {
+      "id": "nestjs-app-046",
+      "op": "asyncFactory",
+      "base": 45,
+      "delta": 4,
+      "label": "nest-45"
+    },
+    {
+      "id": "nestjs-app-047",
+      "op": "override",
+      "base": 46,
+      "delta": 5,
+      "label": "nest-46"
+    },
+    {
+      "id": "nestjs-app-048",
+      "op": "missing",
+      "base": 47,
+      "delta": 6,
+      "label": "nest-47"
+    },
+    {
+      "id": "nestjs-app-049",
+      "op": "factory",
+      "base": 48,
+      "delta": 7,
+      "label": "nest-48"
+    },
+    {
+      "id": "nestjs-app-050",
+      "op": "asyncFactory",
+      "base": 49,
+      "delta": 1,
+      "label": "nest-49"
+    },
+    {
+      "id": "nestjs-app-051",
+      "op": "override",
+      "base": 50,
+      "delta": 2,
+      "label": "nest-50"
+    },
+    {
+      "id": "nestjs-app-052",
+      "op": "missing",
+      "base": 51,
+      "delta": 3,
+      "label": "nest-51"
+    },
+    {
+      "id": "nestjs-app-053",
+      "op": "factory",
+      "base": 52,
+      "delta": 4,
+      "label": "nest-52"
+    },
+    {
+      "id": "nestjs-app-054",
+      "op": "asyncFactory",
+      "base": 53,
+      "delta": 5,
+      "label": "nest-53"
+    },
+    {
+      "id": "nestjs-app-055",
+      "op": "override",
+      "base": 54,
+      "delta": 6,
+      "label": "nest-54"
+    },
+    {
+      "id": "nestjs-app-056",
+      "op": "missing",
+      "base": 55,
+      "delta": 7,
+      "label": "nest-55"
+    },
+    {
+      "id": "nestjs-app-057",
+      "op": "factory",
+      "base": 56,
+      "delta": 1,
+      "label": "nest-56"
+    },
+    {
+      "id": "nestjs-app-058",
+      "op": "asyncFactory",
+      "base": 57,
+      "delta": 2,
+      "label": "nest-57"
+    },
+    {
+      "id": "nestjs-app-059",
+      "op": "override",
+      "base": 58,
+      "delta": 3,
+      "label": "nest-58"
+    },
+    {
+      "id": "nestjs-app-060",
+      "op": "missing",
+      "base": 59,
+      "delta": 4,
+      "label": "nest-59"
+    },
+    {
+      "id": "nestjs-app-061",
+      "op": "factory",
+      "base": 60,
+      "delta": 5,
+      "label": "nest-60"
+    },
+    {
+      "id": "nestjs-app-062",
+      "op": "asyncFactory",
+      "base": 61,
+      "delta": 6,
+      "label": "nest-61"
+    },
+    {
+      "id": "nestjs-app-063",
+      "op": "override",
+      "base": 62,
+      "delta": 7,
+      "label": "nest-62"
+    },
+    {
+      "id": "nestjs-app-064",
+      "op": "missing",
+      "base": 63,
+      "delta": 1,
+      "label": "nest-63"
+    },
+    {
+      "id": "nestjs-app-065",
+      "op": "factory",
+      "base": 64,
+      "delta": 2,
+      "label": "nest-64"
+    },
+    {
+      "id": "nestjs-app-066",
+      "op": "asyncFactory",
+      "base": 65,
+      "delta": 3,
+      "label": "nest-65"
+    },
+    {
+      "id": "nestjs-app-067",
+      "op": "override",
+      "base": 66,
+      "delta": 4,
+      "label": "nest-66"
+    },
+    {
+      "id": "nestjs-app-068",
+      "op": "missing",
+      "base": 67,
+      "delta": 5,
+      "label": "nest-67"
+    },
+    {
+      "id": "nestjs-app-069",
+      "op": "factory",
+      "base": 68,
+      "delta": 6,
+      "label": "nest-68"
+    },
+    {
+      "id": "nestjs-app-070",
+      "op": "asyncFactory",
+      "base": 69,
+      "delta": 7,
+      "label": "nest-69"
+    },
+    {
+      "id": "nestjs-app-071",
+      "op": "override",
+      "base": 70,
+      "delta": 1,
+      "label": "nest-70"
+    },
+    {
+      "id": "nestjs-app-072",
+      "op": "missing",
+      "base": 71,
+      "delta": 2,
+      "label": "nest-71"
+    },
+    {
+      "id": "nestjs-app-073",
+      "op": "factory",
+      "base": 72,
+      "delta": 3,
+      "label": "nest-72"
+    },
+    {
+      "id": "nestjs-app-074",
+      "op": "asyncFactory",
+      "base": 73,
+      "delta": 4,
+      "label": "nest-73"
+    },
+    {
+      "id": "nestjs-app-075",
+      "op": "override",
+      "base": 74,
+      "delta": 5,
+      "label": "nest-74"
+    },
+    {
+      "id": "nestjs-app-076",
+      "op": "missing",
+      "base": 75,
+      "delta": 6,
+      "label": "nest-75"
+    },
+    {
+      "id": "nestjs-app-077",
+      "op": "factory",
+      "base": 76,
+      "delta": 7,
+      "label": "nest-76"
+    },
+    {
+      "id": "nestjs-app-078",
+      "op": "asyncFactory",
+      "base": 77,
+      "delta": 1,
+      "label": "nest-77"
+    },
+    {
+      "id": "nestjs-app-079",
+      "op": "override",
+      "base": 78,
+      "delta": 2,
+      "label": "nest-78"
+    },
+    {
+      "id": "nestjs-app-080",
+      "op": "missing",
+      "base": 79,
+      "delta": 3,
+      "label": "nest-79"
+    },
+    {
+      "id": "nestjs-app-081",
+      "op": "factory",
+      "base": 80,
+      "delta": 4,
+      "label": "nest-80"
+    },
+    {
+      "id": "nestjs-app-082",
+      "op": "asyncFactory",
+      "base": 81,
+      "delta": 5,
+      "label": "nest-81"
+    },
+    {
+      "id": "nestjs-app-083",
+      "op": "override",
+      "base": 82,
+      "delta": 6,
+      "label": "nest-82"
+    },
+    {
+      "id": "nestjs-app-084",
+      "op": "missing",
+      "base": 83,
+      "delta": 7,
+      "label": "nest-83"
+    },
+    {
+      "id": "nestjs-app-085",
+      "op": "factory",
+      "base": 84,
+      "delta": 1,
+      "label": "nest-84"
+    },
+    {
+      "id": "nestjs-app-086",
+      "op": "asyncFactory",
+      "base": 85,
+      "delta": 2,
+      "label": "nest-85"
+    },
+    {
+      "id": "nestjs-app-087",
+      "op": "override",
+      "base": 86,
+      "delta": 3,
+      "label": "nest-86"
+    },
+    {
+      "id": "nestjs-app-088",
+      "op": "missing",
+      "base": 87,
+      "delta": 4,
+      "label": "nest-87"
+    },
+    {
+      "id": "nestjs-app-089",
+      "op": "factory",
+      "base": 88,
+      "delta": 5,
+      "label": "nest-88"
+    },
+    {
+      "id": "nestjs-app-090",
+      "op": "asyncFactory",
+      "base": 89,
+      "delta": 6,
+      "label": "nest-89"
+    },
+    {
+      "id": "nestjs-app-091",
+      "op": "override",
+      "base": 90,
+      "delta": 7,
+      "label": "nest-90"
+    },
+    {
+      "id": "nestjs-app-092",
+      "op": "missing",
+      "base": 91,
+      "delta": 1,
+      "label": "nest-91"
+    },
+    {
+      "id": "nestjs-app-093",
+      "op": "factory",
+      "base": 92,
+      "delta": 2,
+      "label": "nest-92"
+    },
+    {
+      "id": "nestjs-app-094",
+      "op": "asyncFactory",
+      "base": 93,
+      "delta": 3,
+      "label": "nest-93"
+    },
+    {
+      "id": "nestjs-app-095",
+      "op": "override",
+      "base": 94,
+      "delta": 4,
+      "label": "nest-94"
+    },
+    {
+      "id": "nestjs-app-096",
+      "op": "missing",
+      "base": 95,
+      "delta": 5,
+      "label": "nest-95"
+    },
+    {
+      "id": "nestjs-app-097",
+      "op": "factory",
+      "base": 96,
+      "delta": 6,
+      "label": "nest-96"
+    },
+    {
+      "id": "nestjs-app-098",
+      "op": "asyncFactory",
+      "base": 97,
+      "delta": 7,
+      "label": "nest-97"
+    },
+    {
+      "id": "nestjs-app-099",
+      "op": "override",
+      "base": 98,
+      "delta": 1,
+      "label": "nest-98"
+    },
+    {
+      "id": "nestjs-app-100",
+      "op": "missing",
+      "base": 99,
+      "delta": 2,
+      "label": "nest-99"
+    }
+  ]
+}

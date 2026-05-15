@@ -1,0 +1,806 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "webpack-build",
+  "cases": [
+    {
+      "id": "webpack-build-001",
+      "op": "bundle",
+      "value": 0,
+      "expression": "0 + 0",
+      "libraryName": "bundle0",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-002",
+      "op": "bundle",
+      "value": 1,
+      "expression": "1 + 1",
+      "libraryName": "bundle1",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-003",
+      "op": "bundle",
+      "value": 2,
+      "expression": "2 + 2",
+      "libraryName": "bundle2",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-004",
+      "op": "bundle",
+      "value": 3,
+      "expression": "3 + 3",
+      "libraryName": "bundle3",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-005",
+      "op": "bundle",
+      "value": 4,
+      "expression": "4 + 4",
+      "libraryName": "bundle4",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-006",
+      "op": "bundle",
+      "value": 5,
+      "expression": "5 + 5",
+      "libraryName": "bundle5",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-007",
+      "op": "bundle",
+      "value": 6,
+      "expression": "6 + 6",
+      "libraryName": "bundle6",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-008",
+      "op": "bundle",
+      "value": 7,
+      "expression": "7 + 7",
+      "libraryName": "bundle7",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-009",
+      "op": "bundle",
+      "value": 8,
+      "expression": "8 + 8",
+      "libraryName": "bundle8",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-010",
+      "op": "bundle",
+      "value": 9,
+      "expression": "9 + 9",
+      "libraryName": "bundle9",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-011",
+      "op": "bundle",
+      "value": 10,
+      "expression": "10 + 10",
+      "libraryName": "bundle10",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-012",
+      "op": "bundle",
+      "value": 11,
+      "expression": "11 + 0",
+      "libraryName": "bundle11",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-013",
+      "op": "bundle",
+      "value": 12,
+      "expression": "12 + 1",
+      "libraryName": "bundle12",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-014",
+      "op": "bundle",
+      "value": 13,
+      "expression": "13 + 2",
+      "libraryName": "bundle13",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-015",
+      "op": "bundle",
+      "value": 14,
+      "expression": "14 + 3",
+      "libraryName": "bundle14",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-016",
+      "op": "bundle",
+      "value": 15,
+      "expression": "15 + 4",
+      "libraryName": "bundle15",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-017",
+      "op": "bundle",
+      "value": 16,
+      "expression": "16 + 5",
+      "libraryName": "bundle16",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-018",
+      "op": "bundle",
+      "value": 17,
+      "expression": "17 + 6",
+      "libraryName": "bundle17",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-019",
+      "op": "bundle",
+      "value": 18,
+      "expression": "18 + 7",
+      "libraryName": "bundle18",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-020",
+      "op": "bundle",
+      "value": 19,
+      "expression": "19 + 8",
+      "libraryName": "bundle19",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-021",
+      "op": "bundle",
+      "value": 20,
+      "expression": "20 + 9",
+      "libraryName": "bundle20",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-022",
+      "op": "bundle",
+      "value": 21,
+      "expression": "21 + 10",
+      "libraryName": "bundle21",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-023",
+      "op": "bundle",
+      "value": 22,
+      "expression": "22 + 0",
+      "libraryName": "bundle22",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-024",
+      "op": "bundle",
+      "value": 23,
+      "expression": "23 + 1",
+      "libraryName": "bundle23",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-025",
+      "op": "bundle",
+      "value": 24,
+      "expression": "24 + 2",
+      "libraryName": "bundle24",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-026",
+      "op": "bundle",
+      "value": 25,
+      "expression": "25 + 3",
+      "libraryName": "bundle25",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-027",
+      "op": "bundle",
+      "value": 26,
+      "expression": "26 + 4",
+      "libraryName": "bundle26",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-028",
+      "op": "bundle",
+      "value": 27,
+      "expression": "27 + 5",
+      "libraryName": "bundle27",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-029",
+      "op": "bundle",
+      "value": 28,
+      "expression": "28 + 6",
+      "libraryName": "bundle28",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-030",
+      "op": "bundle",
+      "value": 29,
+      "expression": "29 + 7",
+      "libraryName": "bundle29",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-031",
+      "op": "bundle",
+      "value": 30,
+      "expression": "30 + 8",
+      "libraryName": "bundle30",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-032",
+      "op": "bundle",
+      "value": 31,
+      "expression": "31 + 9",
+      "libraryName": "bundle31",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-033",
+      "op": "bundle",
+      "value": 32,
+      "expression": "32 + 10",
+      "libraryName": "bundle32",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-034",
+      "op": "bundle",
+      "value": 33,
+      "expression": "33 + 0",
+      "libraryName": "bundle33",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-035",
+      "op": "bundle",
+      "value": 34,
+      "expression": "34 + 1",
+      "libraryName": "bundle34",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-036",
+      "op": "bundle",
+      "value": 35,
+      "expression": "35 + 2",
+      "libraryName": "bundle35",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-037",
+      "op": "bundle",
+      "value": 36,
+      "expression": "36 + 3",
+      "libraryName": "bundle36",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-038",
+      "op": "bundle",
+      "value": 37,
+      "expression": "37 + 4",
+      "libraryName": "bundle37",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-039",
+      "op": "bundle",
+      "value": 38,
+      "expression": "38 + 5",
+      "libraryName": "bundle38",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-040",
+      "op": "bundle",
+      "value": 39,
+      "expression": "39 + 6",
+      "libraryName": "bundle39",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-041",
+      "op": "bundle",
+      "value": 40,
+      "expression": "40 + 7",
+      "libraryName": "bundle40",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-042",
+      "op": "bundle",
+      "value": 41,
+      "expression": "41 + 8",
+      "libraryName": "bundle41",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-043",
+      "op": "bundle",
+      "value": 42,
+      "expression": "42 + 9",
+      "libraryName": "bundle42",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-044",
+      "op": "bundle",
+      "value": 43,
+      "expression": "43 + 10",
+      "libraryName": "bundle43",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-045",
+      "op": "bundle",
+      "value": 44,
+      "expression": "44 + 0",
+      "libraryName": "bundle44",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-046",
+      "op": "bundle",
+      "value": 45,
+      "expression": "45 + 1",
+      "libraryName": "bundle45",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-047",
+      "op": "bundle",
+      "value": 46,
+      "expression": "46 + 2",
+      "libraryName": "bundle46",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-048",
+      "op": "bundle",
+      "value": 47,
+      "expression": "47 + 3",
+      "libraryName": "bundle47",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-049",
+      "op": "bundle",
+      "value": 48,
+      "expression": "48 + 4",
+      "libraryName": "bundle48",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-050",
+      "op": "bundle",
+      "value": 49,
+      "expression": "49 + 5",
+      "libraryName": "bundle49",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-051",
+      "op": "bundle",
+      "value": 50,
+      "expression": "50 + 6",
+      "libraryName": "bundle50",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-052",
+      "op": "bundle",
+      "value": 51,
+      "expression": "51 + 7",
+      "libraryName": "bundle51",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-053",
+      "op": "bundle",
+      "value": 52,
+      "expression": "52 + 8",
+      "libraryName": "bundle52",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-054",
+      "op": "bundle",
+      "value": 53,
+      "expression": "53 + 9",
+      "libraryName": "bundle53",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-055",
+      "op": "bundle",
+      "value": 54,
+      "expression": "54 + 10",
+      "libraryName": "bundle54",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-056",
+      "op": "bundle",
+      "value": 55,
+      "expression": "55 + 0",
+      "libraryName": "bundle55",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-057",
+      "op": "bundle",
+      "value": 56,
+      "expression": "56 + 1",
+      "libraryName": "bundle56",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-058",
+      "op": "bundle",
+      "value": 57,
+      "expression": "57 + 2",
+      "libraryName": "bundle57",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-059",
+      "op": "bundle",
+      "value": 58,
+      "expression": "58 + 3",
+      "libraryName": "bundle58",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-060",
+      "op": "bundle",
+      "value": 59,
+      "expression": "59 + 4",
+      "libraryName": "bundle59",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-061",
+      "op": "bundle",
+      "value": 60,
+      "expression": "60 + 5",
+      "libraryName": "bundle60",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-062",
+      "op": "bundle",
+      "value": 61,
+      "expression": "61 + 6",
+      "libraryName": "bundle61",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-063",
+      "op": "bundle",
+      "value": 62,
+      "expression": "62 + 7",
+      "libraryName": "bundle62",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-064",
+      "op": "bundle",
+      "value": 63,
+      "expression": "63 + 8",
+      "libraryName": "bundle63",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-065",
+      "op": "bundle",
+      "value": 64,
+      "expression": "64 + 9",
+      "libraryName": "bundle64",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-066",
+      "op": "bundle",
+      "value": 65,
+      "expression": "65 + 10",
+      "libraryName": "bundle65",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-067",
+      "op": "bundle",
+      "value": 66,
+      "expression": "66 + 0",
+      "libraryName": "bundle66",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-068",
+      "op": "bundle",
+      "value": 67,
+      "expression": "67 + 1",
+      "libraryName": "bundle67",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-069",
+      "op": "bundle",
+      "value": 68,
+      "expression": "68 + 2",
+      "libraryName": "bundle68",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-070",
+      "op": "bundle",
+      "value": 69,
+      "expression": "69 + 3",
+      "libraryName": "bundle69",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-071",
+      "op": "bundle",
+      "value": 70,
+      "expression": "70 + 4",
+      "libraryName": "bundle70",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-072",
+      "op": "bundle",
+      "value": 71,
+      "expression": "71 + 5",
+      "libraryName": "bundle71",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-073",
+      "op": "bundle",
+      "value": 72,
+      "expression": "72 + 6",
+      "libraryName": "bundle72",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-074",
+      "op": "bundle",
+      "value": 73,
+      "expression": "73 + 7",
+      "libraryName": "bundle73",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-075",
+      "op": "bundle",
+      "value": 74,
+      "expression": "74 + 8",
+      "libraryName": "bundle74",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-076",
+      "op": "bundle",
+      "value": 75,
+      "expression": "75 + 9",
+      "libraryName": "bundle75",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-077",
+      "op": "bundle",
+      "value": 76,
+      "expression": "76 + 10",
+      "libraryName": "bundle76",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-078",
+      "op": "bundle",
+      "value": 77,
+      "expression": "77 + 0",
+      "libraryName": "bundle77",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-079",
+      "op": "bundle",
+      "value": 78,
+      "expression": "78 + 1",
+      "libraryName": "bundle78",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-080",
+      "op": "bundle",
+      "value": 79,
+      "expression": "79 + 2",
+      "libraryName": "bundle79",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-081",
+      "op": "bundle",
+      "value": 80,
+      "expression": "80 + 3",
+      "libraryName": "bundle80",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-082",
+      "op": "bundle",
+      "value": 81,
+      "expression": "81 + 4",
+      "libraryName": "bundle81",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-083",
+      "op": "bundle",
+      "value": 82,
+      "expression": "82 + 5",
+      "libraryName": "bundle82",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-084",
+      "op": "bundle",
+      "value": 83,
+      "expression": "83 + 6",
+      "libraryName": "bundle83",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-085",
+      "op": "bundle",
+      "value": 84,
+      "expression": "84 + 7",
+      "libraryName": "bundle84",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-086",
+      "op": "bundle",
+      "value": 85,
+      "expression": "85 + 8",
+      "libraryName": "bundle85",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-087",
+      "op": "bundle",
+      "value": 86,
+      "expression": "86 + 9",
+      "libraryName": "bundle86",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-088",
+      "op": "bundle",
+      "value": 87,
+      "expression": "87 + 10",
+      "libraryName": "bundle87",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-089",
+      "op": "bundle",
+      "value": 88,
+      "expression": "88 + 0",
+      "libraryName": "bundle88",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-090",
+      "op": "bundle",
+      "value": 89,
+      "expression": "89 + 1",
+      "libraryName": "bundle89",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-091",
+      "op": "bundle",
+      "value": 90,
+      "expression": "90 + 2",
+      "libraryName": "bundle90",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-092",
+      "op": "bundle",
+      "value": 91,
+      "expression": "91 + 3",
+      "libraryName": "bundle91",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-093",
+      "op": "bundle",
+      "value": 92,
+      "expression": "92 + 4",
+      "libraryName": "bundle92",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-094",
+      "op": "bundle",
+      "value": 93,
+      "expression": "93 + 5",
+      "libraryName": "bundle93",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-095",
+      "op": "bundle",
+      "value": 94,
+      "expression": "94 + 6",
+      "libraryName": "bundle94",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-096",
+      "op": "bundle",
+      "value": 95,
+      "expression": "95 + 7",
+      "libraryName": "bundle95",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-097",
+      "op": "bundle",
+      "value": 96,
+      "expression": "96 + 8",
+      "libraryName": "bundle96",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-098",
+      "op": "bundle",
+      "value": 97,
+      "expression": "97 + 9",
+      "libraryName": "bundle97",
+      "devtool": "source-map"
+    },
+    {
+      "id": "webpack-build-099",
+      "op": "bundle",
+      "value": 98,
+      "expression": "98 + 10",
+      "libraryName": "bundle98",
+      "devtool": false
+    },
+    {
+      "id": "webpack-build-100",
+      "op": "bundle",
+      "value": 99,
+      "expression": "99 + 0",
+      "libraryName": "bundle99",
+      "devtool": "source-map"
+    }
+  ]
+}

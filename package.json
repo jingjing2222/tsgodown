@@ -33,6 +33,7 @@
     "gate:node-large-parity": "node scripts/node-large-parity.mjs",
     "gate:node-large-general-compiler": "node scripts/audit-node-large-general-compiler.mjs",
     "node-large:vendor": "node scripts/vendor-node-large-packages.mjs",
+    "node-large:vectors:generate": "node scripts/generate-node-large-vectors.mjs",
     "gate:node-lts-coverage-ledger": "node scripts/check-ledger.mjs node-lts",
     "gate:tsdown-artifact-contract": "node scripts/check-ledger.mjs tsdown-artifact",
     "gate:ecmascript-ledger": "node scripts/check-ledger.mjs ecmascript",

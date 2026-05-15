@@ -1,0 +1,706 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "graphql-engine",
+  "cases": [
+    {
+      "id": "graphql-engine-001",
+      "op": "execute",
+      "field": "value0",
+      "value": 0,
+      "query": "query($input:Int!){ value0(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-002",
+      "op": "validate",
+      "field": "value1",
+      "value": 1,
+      "query": "query($input:Int!){ value1(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-003",
+      "op": "parseError",
+      "field": "value2",
+      "value": 2,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-004",
+      "op": "execute",
+      "field": "value3",
+      "value": 3,
+      "query": "query($input:Int!){ value3(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-005",
+      "op": "validate",
+      "field": "value4",
+      "value": 4,
+      "query": "query($input:Int!){ value4(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-006",
+      "op": "parseError",
+      "field": "value5",
+      "value": 5,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-007",
+      "op": "execute",
+      "field": "value6",
+      "value": 6,
+      "query": "query($input:Int!){ value6(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-008",
+      "op": "validate",
+      "field": "value7",
+      "value": 7,
+      "query": "query($input:Int!){ value7(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-009",
+      "op": "parseError",
+      "field": "value8",
+      "value": 8,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-010",
+      "op": "execute",
+      "field": "value9",
+      "value": 9,
+      "query": "query($input:Int!){ value9(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-011",
+      "op": "validate",
+      "field": "value10",
+      "value": 10,
+      "query": "query($input:Int!){ value10(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-012",
+      "op": "parseError",
+      "field": "value11",
+      "value": 11,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-013",
+      "op": "execute",
+      "field": "value12",
+      "value": 12,
+      "query": "query($input:Int!){ value12(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-014",
+      "op": "validate",
+      "field": "value13",
+      "value": 13,
+      "query": "query($input:Int!){ value13(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-015",
+      "op": "parseError",
+      "field": "value14",
+      "value": 14,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-016",
+      "op": "execute",
+      "field": "value15",
+      "value": 15,
+      "query": "query($input:Int!){ value15(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-017",
+      "op": "validate",
+      "field": "value16",
+      "value": 16,
+      "query": "query($input:Int!){ value16(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-018",
+      "op": "parseError",
+      "field": "value17",
+      "value": 17,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-019",
+      "op": "execute",
+      "field": "value18",
+      "value": 18,
+      "query": "query($input:Int!){ value18(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-020",
+      "op": "validate",
+      "field": "value19",
+      "value": 19,
+      "query": "query($input:Int!){ value19(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-021",
+      "op": "parseError",
+      "field": "value20",
+      "value": 20,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-022",
+      "op": "execute",
+      "field": "value21",
+      "value": 21,
+      "query": "query($input:Int!){ value21(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-023",
+      "op": "validate",
+      "field": "value22",
+      "value": 22,
+      "query": "query($input:Int!){ value22(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-024",
+      "op": "parseError",
+      "field": "value23",
+      "value": 23,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-025",
+      "op": "execute",
+      "field": "value24",
+      "value": 24,
+      "query": "query($input:Int!){ value24(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-026",
+      "op": "validate",
+      "field": "value25",
+      "value": 25,
+      "query": "query($input:Int!){ value25(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-027",
+      "op": "parseError",
+      "field": "value26",
+      "value": 26,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-028",
+      "op": "execute",
+      "field": "value27",
+      "value": 27,
+      "query": "query($input:Int!){ value27(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-029",
+      "op": "validate",
+      "field": "value28",
+      "value": 28,
+      "query": "query($input:Int!){ value28(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-030",
+      "op": "parseError",
+      "field": "value29",
+      "value": 29,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-031",
+      "op": "execute",
+      "field": "value30",
+      "value": 30,
+      "query": "query($input:Int!){ value30(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-032",
+      "op": "validate",
+      "field": "value31",
+      "value": 31,
+      "query": "query($input:Int!){ value31(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-033",
+      "op": "parseError",
+      "field": "value32",
+      "value": 32,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-034",
+      "op": "execute",
+      "field": "value33",
+      "value": 33,
+      "query": "query($input:Int!){ value33(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-035",
+      "op": "validate",
+      "field": "value34",
+      "value": 34,
+      "query": "query($input:Int!){ value34(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-036",
+      "op": "parseError",
+      "field": "value35",
+      "value": 35,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-037",
+      "op": "execute",
+      "field": "value36",
+      "value": 36,
+      "query": "query($input:Int!){ value36(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-038",
+      "op": "validate",
+      "field": "value37",
+      "value": 37,
+      "query": "query($input:Int!){ value37(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-039",
+      "op": "parseError",
+      "field": "value38",
+      "value": 38,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-040",
+      "op": "execute",
+      "field": "value39",
+      "value": 39,
+      "query": "query($input:Int!){ value39(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-041",
+      "op": "validate",
+      "field": "value40",
+      "value": 40,
+      "query": "query($input:Int!){ value40(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-042",
+      "op": "parseError",
+      "field": "value41",
+      "value": 41,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-043",
+      "op": "execute",
+      "field": "value42",
+      "value": 42,
+      "query": "query($input:Int!){ value42(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-044",
+      "op": "validate",
+      "field": "value43",
+      "value": 43,
+      "query": "query($input:Int!){ value43(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-045",
+      "op": "parseError",
+      "field": "value44",
+      "value": 44,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-046",
+      "op": "execute",
+      "field": "value45",
+      "value": 45,
+      "query": "query($input:Int!){ value45(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-047",
+      "op": "validate",
+      "field": "value46",
+      "value": 46,
+      "query": "query($input:Int!){ value46(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-048",
+      "op": "parseError",
+      "field": "value47",
+      "value": 47,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-049",
+      "op": "execute",
+      "field": "value48",
+      "value": 48,
+      "query": "query($input:Int!){ value48(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-050",
+      "op": "validate",
+      "field": "value49",
+      "value": 49,
+      "query": "query($input:Int!){ value49(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-051",
+      "op": "parseError",
+      "field": "value50",
+      "value": 50,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-052",
+      "op": "execute",
+      "field": "value51",
+      "value": 51,
+      "query": "query($input:Int!){ value51(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-053",
+      "op": "validate",
+      "field": "value52",
+      "value": 52,
+      "query": "query($input:Int!){ value52(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-054",
+      "op": "parseError",
+      "field": "value53",
+      "value": 53,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-055",
+      "op": "execute",
+      "field": "value54",
+      "value": 54,
+      "query": "query($input:Int!){ value54(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-056",
+      "op": "validate",
+      "field": "value55",
+      "value": 55,
+      "query": "query($input:Int!){ value55(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-057",
+      "op": "parseError",
+      "field": "value56",
+      "value": 56,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-058",
+      "op": "execute",
+      "field": "value57",
+      "value": 57,
+      "query": "query($input:Int!){ value57(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-059",
+      "op": "validate",
+      "field": "value58",
+      "value": 58,
+      "query": "query($input:Int!){ value58(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-060",
+      "op": "parseError",
+      "field": "value59",
+      "value": 59,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-061",
+      "op": "execute",
+      "field": "value60",
+      "value": 60,
+      "query": "query($input:Int!){ value60(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-062",
+      "op": "validate",
+      "field": "value61",
+      "value": 61,
+      "query": "query($input:Int!){ value61(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-063",
+      "op": "parseError",
+      "field": "value62",
+      "value": 62,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-064",
+      "op": "execute",
+      "field": "value63",
+      "value": 63,
+      "query": "query($input:Int!){ value63(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-065",
+      "op": "validate",
+      "field": "value64",
+      "value": 64,
+      "query": "query($input:Int!){ value64(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-066",
+      "op": "parseError",
+      "field": "value65",
+      "value": 65,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-067",
+      "op": "execute",
+      "field": "value66",
+      "value": 66,
+      "query": "query($input:Int!){ value66(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-068",
+      "op": "validate",
+      "field": "value67",
+      "value": 67,
+      "query": "query($input:Int!){ value67(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-069",
+      "op": "parseError",
+      "field": "value68",
+      "value": 68,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-070",
+      "op": "execute",
+      "field": "value69",
+      "value": 69,
+      "query": "query($input:Int!){ value69(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-071",
+      "op": "validate",
+      "field": "value70",
+      "value": 70,
+      "query": "query($input:Int!){ value70(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-072",
+      "op": "parseError",
+      "field": "value71",
+      "value": 71,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-073",
+      "op": "execute",
+      "field": "value72",
+      "value": 72,
+      "query": "query($input:Int!){ value72(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-074",
+      "op": "validate",
+      "field": "value73",
+      "value": 73,
+      "query": "query($input:Int!){ value73(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-075",
+      "op": "parseError",
+      "field": "value74",
+      "value": 74,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-076",
+      "op": "execute",
+      "field": "value75",
+      "value": 75,
+      "query": "query($input:Int!){ value75(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-077",
+      "op": "validate",
+      "field": "value76",
+      "value": 76,
+      "query": "query($input:Int!){ value76(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-078",
+      "op": "parseError",
+      "field": "value77",
+      "value": 77,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-079",
+      "op": "execute",
+      "field": "value78",
+      "value": 78,
+      "query": "query($input:Int!){ value78(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-080",
+      "op": "validate",
+      "field": "value79",
+      "value": 79,
+      "query": "query($input:Int!){ value79(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-081",
+      "op": "parseError",
+      "field": "value80",
+      "value": 80,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-082",
+      "op": "execute",
+      "field": "value81",
+      "value": 81,
+      "query": "query($input:Int!){ value81(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-083",
+      "op": "validate",
+      "field": "value82",
+      "value": 82,
+      "query": "query($input:Int!){ value82(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-084",
+      "op": "parseError",
+      "field": "value83",
+      "value": 83,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-085",
+      "op": "execute",
+      "field": "value84",
+      "value": 84,
+      "query": "query($input:Int!){ value84(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-086",
+      "op": "validate",
+      "field": "value85",
+      "value": 85,
+      "query": "query($input:Int!){ value85(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-087",
+      "op": "parseError",
+      "field": "value86",
+      "value": 86,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-088",
+      "op": "execute",
+      "field": "value87",
+      "value": 87,
+      "query": "query($input:Int!){ value87(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-089",
+      "op": "validate",
+      "field": "value88",
+      "value": 88,
+      "query": "query($input:Int!){ value88(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-090",
+      "op": "parseError",
+      "field": "value89",
+      "value": 89,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-091",
+      "op": "execute",
+      "field": "value90",
+      "value": 90,
+      "query": "query($input:Int!){ value90(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-092",
+      "op": "validate",
+      "field": "value91",
+      "value": 91,
+      "query": "query($input:Int!){ value91(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-093",
+      "op": "parseError",
+      "field": "value92",
+      "value": 92,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-094",
+      "op": "execute",
+      "field": "value93",
+      "value": 93,
+      "query": "query($input:Int!){ value93(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-095",
+      "op": "validate",
+      "field": "value94",
+      "value": 94,
+      "query": "query($input:Int!){ value94(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-096",
+      "op": "parseError",
+      "field": "value95",
+      "value": 95,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-097",
+      "op": "execute",
+      "field": "value96",
+      "value": 96,
+      "query": "query($input:Int!){ value96(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-098",
+      "op": "validate",
+      "field": "value97",
+      "value": 97,
+      "query": "query($input:Int!){ value97(input:$input) }"
+    },
+    {
+      "id": "graphql-engine-099",
+      "op": "parseError",
+      "field": "value98",
+      "value": 98,
+      "query": "query {"
+    },
+    {
+      "id": "graphql-engine-100",
+      "op": "execute",
+      "field": "value99",
+      "value": 99,
+      "query": "query($input:Int!){ value99(input:$input) }"
+    }
+  ]
+}

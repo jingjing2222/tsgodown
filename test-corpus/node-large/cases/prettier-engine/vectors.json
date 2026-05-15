@@ -1,0 +1,606 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "prettier-engine",
+  "cases": [
+    {
+      "id": "prettier-engine-001",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-002",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-003",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-004",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-005",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-006",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-007",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-008",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-009",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-010",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-011",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-012",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-013",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-014",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-015",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-016",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-017",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-018",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-019",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-020",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-021",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-022",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-023",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-024",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-025",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-026",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-027",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-028",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-029",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-030",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-031",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-032",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-033",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-034",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-035",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-036",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-037",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-038",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-039",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-040",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-041",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-042",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-043",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-044",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-045",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-046",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-047",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-048",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-049",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-050",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-051",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-052",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-053",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-054",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-055",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-056",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-057",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-058",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-059",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-060",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-061",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-062",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-063",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-064",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-065",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-066",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-067",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-068",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-069",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-070",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-071",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-072",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-073",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-074",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-075",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-076",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-077",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-078",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-079",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-080",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-081",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-082",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-083",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-084",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-085",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-086",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-087",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-088",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-089",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-090",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-091",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-092",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-093",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-094",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-095",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-096",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    },
+    {
+      "id": "prettier-engine-097",
+      "op": "format",
+      "parser": "babel",
+      "source": "const x={a:1,b:[2,3]}\n"
+    },
+    {
+      "id": "prettier-engine-098",
+      "op": "format",
+      "parser": "typescript",
+      "source": "type User={id:number;name:string}\nconst user:User={id:1,name:'kim'}\n"
+    },
+    {
+      "id": "prettier-engine-099",
+      "op": "format",
+      "parser": "json",
+      "source": "{\"b\":2,\"a\":[1,2]}"
+    },
+    {
+      "id": "prettier-engine-100",
+      "op": "format",
+      "parser": "markdown",
+      "source": "# Title\n\n- a\n- b\n"
+    }
+  ]
+}

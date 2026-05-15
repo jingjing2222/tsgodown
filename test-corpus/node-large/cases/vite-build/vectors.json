@@ -1,0 +1,906 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "vite-build",
+  "cases": [
+    {
+      "id": "vite-build-001",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_0__"
+    },
+    {
+      "id": "vite-build-002",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_1__"
+    },
+    {
+      "id": "vite-build-003",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_2__"
+    },
+    {
+      "id": "vite-build-004",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_3__"
+    },
+    {
+      "id": "vite-build-005",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_4__"
+    },
+    {
+      "id": "vite-build-006",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_5__"
+    },
+    {
+      "id": "vite-build-007",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_6__"
+    },
+    {
+      "id": "vite-build-008",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_7__"
+    },
+    {
+      "id": "vite-build-009",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_8__"
+    },
+    {
+      "id": "vite-build-010",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_9__"
+    },
+    {
+      "id": "vite-build-011",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_10__"
+    },
+    {
+      "id": "vite-build-012",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_11__"
+    },
+    {
+      "id": "vite-build-013",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_12__"
+    },
+    {
+      "id": "vite-build-014",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_13__"
+    },
+    {
+      "id": "vite-build-015",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_14__"
+    },
+    {
+      "id": "vite-build-016",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_15__"
+    },
+    {
+      "id": "vite-build-017",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_16__"
+    },
+    {
+      "id": "vite-build-018",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_17__"
+    },
+    {
+      "id": "vite-build-019",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_18__"
+    },
+    {
+      "id": "vite-build-020",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_19__"
+    },
+    {
+      "id": "vite-build-021",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_20__"
+    },
+    {
+      "id": "vite-build-022",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_21__"
+    },
+    {
+      "id": "vite-build-023",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_22__"
+    },
+    {
+      "id": "vite-build-024",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_23__"
+    },
+    {
+      "id": "vite-build-025",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_24__"
+    },
+    {
+      "id": "vite-build-026",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_25__"
+    },
+    {
+      "id": "vite-build-027",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_26__"
+    },
+    {
+      "id": "vite-build-028",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_27__"
+    },
+    {
+      "id": "vite-build-029",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_28__"
+    },
+    {
+      "id": "vite-build-030",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_29__"
+    },
+    {
+      "id": "vite-build-031",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_30__"
+    },
+    {
+      "id": "vite-build-032",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_31__"
+    },
+    {
+      "id": "vite-build-033",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_32__"
+    },
+    {
+      "id": "vite-build-034",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_33__"
+    },
+    {
+      "id": "vite-build-035",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_34__"
+    },
+    {
+      "id": "vite-build-036",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_35__"
+    },
+    {
+      "id": "vite-build-037",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_36__"
+    },
+    {
+      "id": "vite-build-038",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_37__"
+    },
+    {
+      "id": "vite-build-039",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_38__"
+    },
+    {
+      "id": "vite-build-040",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_39__"
+    },
+    {
+      "id": "vite-build-041",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_40__"
+    },
+    {
+      "id": "vite-build-042",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_41__"
+    },
+    {
+      "id": "vite-build-043",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_42__"
+    },
+    {
+      "id": "vite-build-044",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_43__"
+    },
+    {
+      "id": "vite-build-045",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_44__"
+    },
+    {
+      "id": "vite-build-046",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_45__"
+    },
+    {
+      "id": "vite-build-047",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_46__"
+    },
+    {
+      "id": "vite-build-048",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_47__"
+    },
+    {
+      "id": "vite-build-049",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_48__"
+    },
+    {
+      "id": "vite-build-050",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_49__"
+    },
+    {
+      "id": "vite-build-051",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_50__"
+    },
+    {
+      "id": "vite-build-052",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_51__"
+    },
+    {
+      "id": "vite-build-053",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_52__"
+    },
+    {
+      "id": "vite-build-054",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_53__"
+    },
+    {
+      "id": "vite-build-055",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_54__"
+    },
+    {
+      "id": "vite-build-056",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_55__"
+    },
+    {
+      "id": "vite-build-057",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_56__"
+    },
+    {
+      "id": "vite-build-058",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_57__"
+    },
+    {
+      "id": "vite-build-059",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_58__"
+    },
+    {
+      "id": "vite-build-060",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_59__"
+    },
+    {
+      "id": "vite-build-061",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_60__"
+    },
+    {
+      "id": "vite-build-062",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_61__"
+    },
+    {
+      "id": "vite-build-063",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_62__"
+    },
+    {
+      "id": "vite-build-064",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_63__"
+    },
+    {
+      "id": "vite-build-065",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_64__"
+    },
+    {
+      "id": "vite-build-066",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_65__"
+    },
+    {
+      "id": "vite-build-067",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_66__"
+    },
+    {
+      "id": "vite-build-068",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_67__"
+    },
+    {
+      "id": "vite-build-069",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_68__"
+    },
+    {
+      "id": "vite-build-070",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_69__"
+    },
+    {
+      "id": "vite-build-071",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_70__"
+    },
+    {
+      "id": "vite-build-072",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_71__"
+    },
+    {
+      "id": "vite-build-073",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_72__"
+    },
+    {
+      "id": "vite-build-074",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_73__"
+    },
+    {
+      "id": "vite-build-075",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_74__"
+    },
+    {
+      "id": "vite-build-076",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_75__"
+    },
+    {
+      "id": "vite-build-077",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_76__"
+    },
+    {
+      "id": "vite-build-078",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_77__"
+    },
+    {
+      "id": "vite-build-079",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_78__"
+    },
+    {
+      "id": "vite-build-080",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_79__"
+    },
+    {
+      "id": "vite-build-081",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_80__"
+    },
+    {
+      "id": "vite-build-082",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_81__"
+    },
+    {
+      "id": "vite-build-083",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_82__"
+    },
+    {
+      "id": "vite-build-084",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_83__"
+    },
+    {
+      "id": "vite-build-085",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_84__"
+    },
+    {
+      "id": "vite-build-086",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_85__"
+    },
+    {
+      "id": "vite-build-087",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_86__"
+    },
+    {
+      "id": "vite-build-088",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_87__"
+    },
+    {
+      "id": "vite-build-089",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_88__"
+    },
+    {
+      "id": "vite-build-090",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_89__"
+    },
+    {
+      "id": "vite-build-091",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_90__"
+    },
+    {
+      "id": "vite-build-092",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_91__"
+    },
+    {
+      "id": "vite-build-093",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_92__"
+    },
+    {
+      "id": "vite-build-094",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_93__"
+    },
+    {
+      "id": "vite-build-095",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_94__"
+    },
+    {
+      "id": "vite-build-096",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_95__"
+    },
+    {
+      "id": "vite-build-097",
+      "op": "normalizePath",
+      "inputPath": "src\\entry.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_96__"
+    },
+    {
+      "id": "vite-build-098",
+      "op": "mergeConfig",
+      "inputPath": "src/entry.ts",
+      "include": "src/**",
+      "exclude": "dist/**",
+      "mode": "production",
+      "defineValue": "__VALUE_97__"
+    },
+    {
+      "id": "vite-build-099",
+      "op": "createFilter",
+      "inputPath": "/repo/pkg/src/app.ts",
+      "include": "**/*.{js,ts}",
+      "exclude": "node_modules/**",
+      "mode": "test",
+      "defineValue": "__VALUE_98__"
+    },
+    {
+      "id": "vite-build-100",
+      "op": "defineConfig",
+      "inputPath": "C:\\repo\\pkg\\src\\app.ts",
+      "include": "**/*.ts",
+      "exclude": "**/*.test.ts",
+      "mode": "development",
+      "defineValue": "__VALUE_99__"
+    }
+  ]
+}
