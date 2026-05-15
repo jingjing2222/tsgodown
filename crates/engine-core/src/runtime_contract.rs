@@ -114,7 +114,16 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
                 collect_unsupported_stmt_list(&case.consequent, false, unsupported);
             }
         }
-        JsStmt::Try { .. } => unsupported.push("try statements".to_string()),
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            collect_unsupported_stmt_list(body, false, unsupported);
+            collect_unsupported_stmt_list(catch_body, false, unsupported);
+            collect_unsupported_stmt_list(finally_body, false, unsupported);
+        }
         JsStmt::Break { label } => {
             if label.is_some() {
                 unsupported.push("labeled break".to_string());
@@ -126,7 +135,7 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             }
         }
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
-        JsStmt::Throw { .. } => unsupported.push("throw statements".to_string()),
+        JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
     }
 }
 
@@ -183,6 +192,17 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
                 collect_unsupported_stmt_list(&case.consequent, true, unsupported);
             }
         }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            collect_unsupported_stmt_list(body, true, unsupported);
+            collect_unsupported_stmt_list(catch_body, true, unsupported);
+            collect_unsupported_stmt_list(finally_body, true, unsupported);
+        }
+        JsStmt::Throw { value } => collect_unsupported_expr(value, unsupported),
         other => collect_unsupported_stmt(other, unsupported),
     }
 }

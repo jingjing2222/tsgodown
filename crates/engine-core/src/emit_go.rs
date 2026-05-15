@@ -335,6 +335,14 @@ type moduleState struct {
 	evaluating bool
 }
 
+type jsThrow struct {
+	value any
+}
+
+func (throw jsThrow) Error() string {
+	return jsString(throw.value)
+}
+
 func RunProgram(programJSON string) error {
 	var program Program
 	if err := json.Unmarshal([]byte(programJSON), &program); err != nil {
@@ -632,6 +640,33 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			}
 		}
 		return completion{}, nil
+	case "try":
+		result, err := evalStmtList(asStmtSlice(stmt["body"]), env)
+		if err != nil {
+			if thrown, ok := err.(jsThrow); ok {
+				if catchParam := asString(stmt["catchParam"]); catchParam != "" {
+					env[catchParam] = thrown.value
+				}
+				result, err = evalStmtList(asStmtSlice(stmt["catchBody"]), env)
+			}
+		}
+		finallyResult, finallyErr := evalStmtList(asStmtSlice(stmt["finallyBody"]), env)
+		if finallyErr != nil {
+			return completion{}, finallyErr
+		}
+		if finallyResult.returned || finallyResult.broke || finallyResult.continued {
+			return finallyResult, nil
+		}
+		if err != nil {
+			return completion{}, err
+		}
+		return result, nil
+	case "throw":
+		value, err := evalExpr(asMap(stmt["value"]), env)
+		if err != nil {
+			return completion{}, err
+		}
+		return completion{}, jsThrow{value: value}
 	case "break":
 		return completion{broke: true}, nil
 	case "continue":
@@ -651,12 +686,25 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 	}
 }
 
+func evalStmtList(stmts []map[string]any, env Env) (completion, error) {
+	for _, stmt := range stmts {
+		result, err := evalStmt(stmt, env)
+		if err != nil {
+			return completion{}, err
+		}
+		if result.returned || result.broke || result.continued {
+			return result, nil
+		}
+	}
+	return completion{}, nil
+}
+
 func evalExpr(expr map[string]any, env Env) (any, error) {
 	switch expr["kind"] {
 	case "value":
 		return evalValue(asMap(expr["value"]))
 	case "ident":
-		return env[asString(expr["name"])], nil
+		return lookupEnv(env, asString(expr["name"])), nil
 	case "array":
 		out := []any{}
 		for _, item := range asSlice(expr["items"]) {
@@ -822,7 +870,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 func assignTarget(target map[string]any, value any, env Env) error {
 	switch target["kind"] {
 	case "ident":
-		env[asString(target["name"])] = value
+		assignEnv(env, asString(target["name"]), value)
 		return nil
 	case "member":
 		object, err := evalExpr(asMap(target["object"]), env)
@@ -843,7 +891,7 @@ func assignTarget(target map[string]any, value any, env Env) error {
 func readTarget(target map[string]any, env Env) (any, error) {
 	switch target["kind"] {
 	case "ident":
-		return env[asString(target["name"])], nil
+		return lookupEnv(env, asString(target["name"])), nil
 	case "member":
 		return evalExpr(target, env)
 	default:
@@ -968,10 +1016,7 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	if !ok {
 		return nil, errors.New("callee is not callable")
 	}
-	child := Env{}
-	for key, value := range function.Env {
-		child[key] = value
-	}
+	child := Env{"__parent": function.Env}
 	for index, param := range function.Params {
 		value := any(jsUndefined)
 		if index < len(rawArgs) {
@@ -993,6 +1038,38 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+func lookupEnv(env Env, name string) any {
+	if value, ok := env[name]; ok {
+		return value
+	}
+	if parent, ok := env["__parent"].(Env); ok {
+		return lookupEnv(parent, name)
+	}
+	return jsUndefined
+}
+
+func assignEnv(env Env, name string, value any) {
+	if _, ok := env[name]; ok {
+		env[name] = value
+		return
+	}
+	if parent, ok := env["__parent"].(Env); ok && hasEnvBinding(parent, name) {
+		assignEnv(parent, name, value)
+		return
+	}
+	env[name] = value
+}
+
+func hasEnvBinding(env Env, name string) bool {
+	if _, ok := env[name]; ok {
+		return true
+	}
+	if parent, ok := env["__parent"].(Env); ok {
+		return hasEnvBinding(parent, name)
+	}
+	return false
 }
 
 func evalValue(value map[string]any) (any, error) {

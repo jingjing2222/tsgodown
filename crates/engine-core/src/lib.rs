@@ -1222,6 +1222,80 @@ console.log("delete", value, deleted, "drop" in target, "keep" in target)
         );
     }
 
+    #[test]
+    fn emit_go_runs_try_catch_finally_and_throw_subset() {
+        let root = temp_project("engine-core-try-throw");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+let cleanup = 0
+function risky(value) {
+  try {
+    if (value > 2) {
+      throw "too-big"
+    }
+    return value
+  } catch (error) {
+    return `caught:${error}`
+  } finally {
+    cleanup += 1
+  }
+}
+console.log("try", risky(1), risky(3), cleanup)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/try-throw".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "try 1 caught:too-big 2\n"
+        );
+    }
+
     fn write(root: &std::path::Path, rel: &str, source: &str) {
         let path = root.join(rel);
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
