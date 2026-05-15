@@ -67,6 +67,189 @@ func main() {{
     ))
 }
 
+pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
+    let module_classes = collect_module_classes(ir);
+    let mut features = BTreeSet::new();
+    for module in &ir.modules {
+        for import in &module.imports {
+            if import.resolved.is_none() && !is_node_builtin_spec(&import.spec) {
+                features.insert(format!("aot.module.unresolved_import:{}", import.spec));
+            }
+        }
+        let Some(executable) = &module.executable else {
+            features.insert(format!("aot.module.no_executable:{}", module.source_path));
+            continue;
+        };
+        for stmt in &executable.stmts {
+            if let JsStmt::ClassDecl { name, .. } = stmt {
+                if !module_classes.contains_key(&(module.id.clone(), name.clone())) {
+                    features.insert(format!(
+                        "aot.class.unsupported:{}:{}",
+                        module.source_path, name
+                    ));
+                }
+            }
+            collect_builtin_usage_features(stmt, &mut features);
+        }
+    }
+    features.into_iter().collect()
+}
+
+fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>) {
+    match stmt {
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        }
+        | JsStmt::Expr { expr }
+        | JsStmt::Return { value: Some(expr) }
+        | JsStmt::Throw { value: expr }
+        | JsStmt::Yield {
+            value: Some(expr), ..
+        } => collect_builtin_usage_expr_features(expr, features),
+        JsStmt::FunctionDecl { body, .. } => {
+            for stmt in body {
+                collect_builtin_usage_features(stmt, features);
+            }
+        }
+        JsStmt::ClassDecl { methods, .. } => {
+            for method in methods {
+                for stmt in &method.body {
+                    collect_builtin_usage_features(stmt, features);
+                }
+            }
+        }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_builtin_usage_expr_features(test, features);
+            for stmt in consequent {
+                collect_builtin_usage_features(stmt, features);
+            }
+            for stmt in alternate {
+                collect_builtin_usage_features(stmt, features);
+            }
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            for stmt in init {
+                collect_builtin_usage_features(stmt, features);
+            }
+            if let Some(test) = test {
+                collect_builtin_usage_expr_features(test, features);
+            }
+            if let Some(update) = update {
+                collect_builtin_usage_expr_features(update, features);
+            }
+            for stmt in body {
+                collect_builtin_usage_features(stmt, features);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_builtin_usage_expr_features(expr: &JsExpr, features: &mut BTreeSet<String>) {
+    match expr {
+        JsExpr::Call { callee, args, .. } => {
+            if let JsExpr::Member {
+                object, property, ..
+            } = callee.as_ref()
+            {
+                if let JsExpr::Ident { name } = object.as_ref() {
+                    if matches!(
+                        name.as_str(),
+                        "fs" | "path" | "os" | "crypto" | "Buffer" | "process"
+                    ) {
+                        features.insert(format!("aot.node.builtin_operation:{name}.{property}"));
+                    }
+                }
+            }
+            collect_builtin_usage_expr_features(callee, features);
+            for arg in args {
+                collect_builtin_usage_expr_features(arg, features);
+            }
+        }
+        JsExpr::Member {
+            object, property, ..
+        } => {
+            if let JsExpr::Ident { name } = object.as_ref() {
+                if matches!(
+                    name.as_str(),
+                    "fs" | "path" | "os" | "crypto" | "Buffer" | "process"
+                ) {
+                    features.insert(format!("aot.node.builtin_property:{name}.{property}"));
+                }
+            }
+            collect_builtin_usage_expr_features(object, features);
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_builtin_usage_expr_features(item, features);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_builtin_usage_expr_features(&item.value, features);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                collect_builtin_usage_expr_features(&prop.value, features);
+            }
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            collect_builtin_usage_expr_features(arg, features)
+        }
+        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
+            collect_builtin_usage_expr_features(left, features);
+            collect_builtin_usage_expr_features(right, features);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_builtin_usage_expr_features(test, features);
+            collect_builtin_usage_expr_features(consequent, features);
+            collect_builtin_usage_expr_features(alternate, features);
+        }
+        JsExpr::New { callee, args } => {
+            collect_builtin_usage_expr_features(callee, features);
+            for arg in args {
+                collect_builtin_usage_expr_features(arg, features);
+            }
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_builtin_usage_expr_features(expr, features);
+            }
+        }
+        JsExpr::Function { body, .. } => {
+            for stmt in body {
+                collect_builtin_usage_features(stmt, features);
+            }
+        }
+        JsExpr::Class { methods, .. } => {
+            for method in methods {
+                for stmt in &method.body {
+                    collect_builtin_usage_features(stmt, features);
+                }
+            }
+        }
+        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => {}
+    }
+}
+
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
     for module in &ir.modules {

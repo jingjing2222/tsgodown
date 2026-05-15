@@ -1249,6 +1249,45 @@ console.log("aot-builtin-import", "unused")
     }
 
     #[test]
+    fn emit_go_reports_aot_unsupported_feature_details() {
+        let root = temp_project("engine-core-aot-unsupported-details");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+class Box {
+  static make() {
+    return new Box()
+  }
+}
+console.log("unsupported", Box.make())
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-unsupported-details".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(response.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"
+            && diagnostic
+                .message
+                .contains("aot.class.unsupported:src/index.js:Box")));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
     fn emit_go_runs_aot_json_value_model_subset() {
         let root = temp_project("engine-core-aot-json-value-model");
         write(

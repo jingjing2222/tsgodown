@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::analyze;
 use crate::backend::{backend_provider, BackendEmitRequest, BackendEmitResponse};
 use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
-use crate::go_aot::render_aot_executable_program;
+use crate::go_aot::{aot_unsupported_features, render_aot_executable_program};
 use crate::runtime_contract::{
     fail_closed_report_version, is_codegen_blocking_diagnostic, runtime_contract,
     unsupported_codegen_diagnostic, unsupported_executable_features, ProgramPurpose,
@@ -118,9 +118,15 @@ pub(crate) fn emit_go_project(request: BackendEmitRequest) -> BackendEmitRespons
                 render_interpreted_program(&package_name, &module_path, &analyzed)
             }
             None => {
-                diagnostics.push(unsupported_codegen_diagnostic(&[
-                    "aot emission unsupported by Go backend".to_string(),
-                ]));
+                let aot_features = aot_unsupported_features(&analyzed.ir);
+                let fallback_features;
+                let features = if aot_features.is_empty() {
+                    fallback_features = vec!["aot emission unsupported by Go backend".to_string()];
+                    &fallback_features
+                } else {
+                    &aot_features
+                };
+                diagnostics.push(unsupported_codegen_diagnostic(features));
                 render_fail_closed_program(&package_name, &module_path, &diagnostics, purpose)
             }
         }
