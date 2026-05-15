@@ -1751,6 +1751,12 @@ fn infer_comparison_param_kind(
 ) {
     match other {
         expr if is_string_literal_like(expr) => {
+            if let JsExpr::Unary { op, arg } = candidate {
+                if op == "typeof" {
+                    mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
+                    return;
+                }
+            }
             mark_ident_param_kind(candidate, param_index, kinds, AotSlotKind::String);
         }
         JsExpr::Value {
@@ -2153,9 +2159,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
-        JsExpr::Unary { .. } => {
-            render_numeric_expr(expr, state).or_else(|| render_bool_expr(expr, state))
-        }
+        JsExpr::Unary { .. } => render_string_expr(expr, state)
+            .or_else(|| render_numeric_expr(expr, state))
+            .or_else(|| render_bool_expr(expr, state)),
         JsExpr::Conditional {
             test,
             consequent,
@@ -2254,6 +2260,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
+        JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
@@ -2267,6 +2274,42 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_string_expr,
             "string",
         ),
+        _ => None,
+    }
+}
+
+fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some("\"undefined\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Null,
+        } => Some("\"object\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Bool { .. },
+        } => Some("\"boolean\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Number { .. },
+        } => Some("\"number\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::String { .. },
+        } => Some("\"string\"".to_string()),
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            Some("\"string\"".to_string())
+        }
+        JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
+            Some("\"number\"".to_string())
+        }
+        JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
+            Some("\"boolean\"".to_string())
+        }
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!(
+                "func() string {{ switch any({value}).(type) {{ case nil: return \"undefined\"; case bool: return \"boolean\"; case float64, int, int64: return \"number\"; case string: return \"string\"; default: return \"object\" }} }}()"
+            ))
+        }
         _ => None,
     }
 }
