@@ -158,7 +158,16 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         JsExpr::Function { .. } => unsupported.push("function expressions".to_string()),
         JsExpr::Class { .. } => unsupported.push("class expressions".to_string()),
         JsExpr::Await { .. } => unsupported.push("await expressions".to_string()),
-        JsExpr::Assign { .. } => unsupported.push("assignments".to_string()),
+        JsExpr::Assign { op, left, right } => {
+            if op != "=" {
+                unsupported.push(format!("assignment {op}"));
+            }
+            if !matches!(left.as_ref(), JsExpr::Ident { .. } | JsExpr::Member { .. }) {
+                unsupported.push("assignment targets".to_string());
+            }
+            collect_unsupported_expr(left, unsupported);
+            collect_unsupported_expr(right, unsupported);
+        }
         JsExpr::Update { .. } => unsupported.push("updates".to_string()),
         JsExpr::New { .. } => unsupported.push("new expressions".to_string()),
     }

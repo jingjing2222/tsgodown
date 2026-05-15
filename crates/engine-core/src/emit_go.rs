@@ -316,7 +316,13 @@ func RunProgram(programJSON string) error {
 	if !ok {
 		return errors.New("entry module not found")
 	}
-	env := Env{}
+	exports := map[string]any{}
+	env := Env{
+		"exports": exports,
+		"module": map[string]any{
+			"exports": exports,
+		},
+	}
 	for _, stmt := range module.Executable.Stmts {
 		if result, err := evalStmt(stmt, env); err != nil {
 			return err
@@ -427,6 +433,18 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return evalExpr(asMap(expr["consequent"]), env)
 		}
 		return evalExpr(asMap(expr["alternate"]), env)
+	case "assign":
+		if asString(expr["op"]) != "=" {
+			return nil, errors.New("unsupported assignment operator")
+		}
+		value, err := evalExpr(asMap(expr["right"]), env)
+		if err != nil {
+			return nil, err
+		}
+		if err := assignTarget(asMap(expr["left"]), value, env); err != nil {
+			return nil, err
+		}
+		return value, nil
 	case "call":
 		if isConsoleLog(asMap(expr["callee"])) {
 			parts := []string{}
@@ -480,6 +498,27 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		return value, nil
 	default:
 		return nil, fmt.Errorf("unsupported expression %v", expr["kind"])
+	}
+}
+
+func assignTarget(target map[string]any, value any, env Env) error {
+	switch target["kind"] {
+	case "ident":
+		env[asString(target["name"])] = value
+		return nil
+	case "member":
+		object, err := evalExpr(asMap(target["object"]), env)
+		if err != nil {
+			return err
+		}
+		objectMap, ok := object.(map[string]any)
+		if !ok {
+			return errors.New("member assignment target is not object")
+		}
+		objectMap[asString(target["property"])] = value
+		return nil
+	default:
+		return fmt.Errorf("unsupported assignment target %v", target["kind"])
 	}
 }
 
