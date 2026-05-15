@@ -108,6 +108,7 @@ Required implementation pattern:
 | Node.js LTS API ledger | Every official Node.js 24.15.0 LTS documentation area has a row with contract status, Go backend status, test evidence, diagnostic code, and known gaps. Stable APIs are `DONE` or explicitly `FAIL_CLOSED`/`BLOCKED`. | `pnpm run gate:node-lts-coverage-ledger` |
 | Backend provider interface | Rust exposes a backend-neutral provider interface. Go backend is registered only through that interface using adapter/provider pattern. No caller reaches Go emitter directly. | `pnpm run gate:backend-provider-interface` |
 | Runtime contract ownership | JS/Node semantic policy lives in backend-neutral IR/runtime contract. Go backend renders/implements contract operations but does not decide JS semantics. | `pnpm run gate:runtime-contract-ownership` |
+| AOT emission contract | Generated Go for supported semantics is emitted as typed ahead-of-time Go source. The old IR JSON interpreter path is tracked down to zero and cannot be used as a completion shortcut. | `pnpm run gate:aot-emission-ledger` |
 | No fallback | Generated Go never embeds, shells out to, links against, or requires Node.js, V8, Node-API, N-API, native addons, or corpus-specific helper binaries. | `pnpm run gate:no-node-fallback` |
 | No corpus hardcode | Compiler/runtime/codegen has no package-name, corpus-name, or fixture-name special branches. Holdout tests using same syntax/API patterns but different package names and data must pass. | `pnpm run gate:no-corpus-hardcode` |
 | Observable parity | Node.js and generated Go match stdout, stderr, exit code, JSON/library result, env, argv, cwd, filesystem side effects, async order, and observed error shape. | `pnpm run gate:full-observable-parity` |
@@ -185,6 +186,7 @@ mise exec -- pnpm run gate:ecmascript-ledger
 mise exec -- pnpm run gate:node-lts-coverage-ledger
 mise exec -- pnpm run gate:backend-provider-interface
 mise exec -- pnpm run gate:runtime-contract-ownership
+mise exec -- pnpm run gate:aot-emission-ledger
 mise exec -- pnpm run gate:no-node-fallback
 mise exec -- pnpm run gate:no-corpus-hardcode
 mise exec -- pnpm run gate:semantics-parity
@@ -341,13 +343,25 @@ buildable/testable and commit by functional axis.
    - Add `pnpm run gate:runtime-contract-ownership`.
    - Commit: `engine: extract runtime contract`
 
-11. **Make existing 10-corpus gates run on Node.js 24.15.0 LTS**
+11. **Track and remove the IR JSON interpreter path**
+   - Add `docs/specs/AOT_EMISSION_LEDGER.md`.
+   - Track direct AOT module emission, module registry/init, direct functions,
+     lexical/captured slots, native control flow, property access, typed value
+     model, Node builtin helpers, async ordering, fail-closed diagnostics,
+     holdout parity, and benchmarks.
+   - Add `pnpm run gate:aot-emission-ledger`.
+   - Replace `tsgodownrt.RunProgram("<IR JSON>")` coverage axis by axis until
+     supported generated Go is typed AOT source and unsupported semantics fail
+     closed before codegen.
+   - Commit: `docs: add aot emission ledger`
+
+12. **Make existing 10-corpus gates run on Node.js 24.15.0 LTS**
    - Regenerate vectors if Node LTS behavior differs.
    - Run Node original, Go build, Go run, vector parity.
    - Keep 100 vectors per corpus.
    - Commit only if fixtures/vectors/gates change.
 
-12. **Add large corpus harness skeleton**
+13. **Add large corpus harness skeleton**
     - Create `test-corpus/node-large/manifest.json`.
     - Add shared vector runner, generated-Go runner, and parity report format.
     - Add scripts:
@@ -357,14 +371,14 @@ buildable/testable and commit by functional axis.
       - `pnpm run gate:node-large-general-compiler`
     - Commit: `test: add large node corpus harness`
 
-13. **Vendor large corpus entries**
+14. **Vendor large corpus entries**
     - Add the 20 framework/tooling/application targets listed below.
     - Record package version, license, source language, module format, native or
       external dependency status, probe command, and comparator.
     - Do not implement package-specific compiler branches.
     - Commit: `test: vendor large node corpus`
 
-14. **Add 100 Vitest vectors per large corpus**
+15. **Add 100 Vitest vectors per large corpus**
     - Total: 20 entries x 100 vectors = 2000 tests.
     - Tests must hit real behavior: routing, plugin hooks, config resolution,
       module loading, build output, diagnostics, FS effects, async order, error
@@ -373,14 +387,14 @@ buildable/testable and commit by functional axis.
       diff becomes unreviewable.
     - Commit: `test: add large corpus vectors`
 
-15. **Add differential/fuzz proof**
+16. **Add differential/fuzz proof**
     - Add syntax/API fuzzers for ECMAScript and Node API combinations inside
       supported artifact contract.
     - Add holdout packages/apps that are not in fixed corpus.
     - Add `pnpm run gate:differential-fuzz`.
     - Commit: `test: add differential fuzz parity`
 
-16. **Implement general JS semantics by failing gate order**
+17. **Implement general JS semantics by failing gate order**
     - Use failing 10-corpus, holdout, and large-corpus reports to choose next
       semantic axis.
     - Implement language semantics generally: scope/hoist/TDZ, prototype,
@@ -389,7 +403,7 @@ buildable/testable and commit by functional axis.
     - Add semantic-axis differential tests before or with implementation.
     - Commit sequence: one commit per semantic axis.
 
-17. **Implement Node.js LTS APIs by failing gate order**
+18. **Implement Node.js LTS APIs by failing gate order**
     - Implement API families generally:
       - process/CLI/env/stdio/signals
       - fs/path/url/querystring
@@ -403,14 +417,14 @@ buildable/testable and commit by functional axis.
       reimplementation is explicitly designed.
     - Commit sequence: one commit per API family.
 
-18. **Remove route-era product assumptions**
+19. **Remove route-era product assumptions**
     - Keep route fixtures only as compatibility samples.
     - README/docs/CLI output must describe user workflow around tsdown-bundleable
       Node packages, not Fastify/Hono route extraction.
     - Compiler core must not branch on framework names.
     - Commit: `docs: remove route-era product framing`
 
-19. **Run final release gate**
+20. **Run final release gate**
 
 Final required gate becomes:
 
@@ -428,6 +442,7 @@ pnpm run gate:tsdown-artifact-contract
 pnpm run gate:ecmascript-ledger
 pnpm run gate:backend-provider-interface
 pnpm run gate:runtime-contract-ownership
+pnpm run gate:aot-emission-ledger
 pnpm run gate:no-node-fallback
 pnpm run gate:no-corpus-hardcode
 pnpm run test:node-corpus:vitest

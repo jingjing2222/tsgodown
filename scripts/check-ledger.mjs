@@ -175,12 +175,46 @@ const LEDGERS = {
       "es.eval_dynamic",
     ],
   },
+  "aot-emission": {
+    path: "docs/specs/AOT_EMISSION_LEDGER.md",
+    columns: [
+      "Key",
+      "Area",
+      "Contract Status",
+      "Go Status",
+      "Diagnostic",
+      "Evidence",
+      "Notes",
+    ],
+    requiredKeys: [
+      "aot.entry.module",
+      "aot.module.registry",
+      "aot.module.init_order",
+      "aot.function.decl",
+      "aot.function.call",
+      "aot.scope.lexical_slots",
+      "aot.scope.captured_slots",
+      "aot.control.if_return",
+      "aot.control.loops",
+      "aot.expr.numeric",
+      "aot.expr.boolean",
+      "aot.property.static",
+      "aot.property.dynamic",
+      "aot.value.model",
+      "aot.node.builtins",
+      "aot.async.promise_timer",
+      "aot.diagnostics.fail_closed",
+      "aot.no_ir_json_interpreter",
+      "aot.holdout.parity",
+      "aot.benchmarks",
+    ],
+  },
 };
 
 if (!ledgerName || !LEDGERS[ledgerName]) {
   fail("unknown-ledger", {
     usage:
-      "node scripts/check-ledger.mjs <node-lts|tsdown-artifact|ecmascript> [--final]",
+      "node scripts/check-ledger.mjs <node-lts|tsdown-artifact|ecmascript|aot-emission> [--final]",
     received: ledgerName ?? null,
   });
 }
