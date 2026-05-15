@@ -3,10 +3,10 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const moduleCache = new Map();
+let nuxtConfigModulePromise;
+let astroConfigModulePromise;
 
 export async function runVectorCase(corpus, vector) {
   try {
@@ -367,7 +367,8 @@ async function runNext(vector) {
 }
 
 async function runNuxt(vector) {
-  const { defineNuxtConfig } = await importModule("../packages/nuxt/config.js");
+  nuxtConfigModulePromise ??= import("../packages/nuxt/config.js");
+  const { defineNuxtConfig } = await nuxtConfigModulePromise;
   return defineNuxtConfig({
     ssr: vector.ssr,
     routeRules: vector.routeRules,
@@ -376,9 +377,10 @@ async function runNuxt(vector) {
 }
 
 async function runAstro(vector) {
-  const astro = await importModule(
-    "../packages/astro/dist/config/entrypoint.js",
+  astroConfigModulePromise ??= import(
+    "../packages/astro/dist/config/entrypoint.js"
   );
+  const astro = await astroConfigModulePromise;
   if (vector.op === "mergeConfig") {
     return astro.mergeConfig(
       { site: vector.site },
@@ -712,16 +714,6 @@ function once(emitter, event) {
     emitter.once("connect_error", reject);
     emitter.once("error", reject);
   });
-}
-
-async function importModule(specifier) {
-  if (!moduleCache.has(specifier)) {
-    moduleCache.set(
-      specifier,
-      import(pathToFileURL(new URL(specifier, import.meta.url).pathname)),
-    );
-  }
-  return moduleCache.get(specifier);
 }
 
 function normalizeError(error) {
