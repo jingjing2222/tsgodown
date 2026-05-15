@@ -957,6 +957,84 @@ module.exports = function add(left, right) {
     }
 
     #[test]
+    fn emit_go_runs_commonjs_circular_mid_export_subset() {
+        let root = temp_project("engine-core-cjs-circular-mid-export");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const make = require("./a.js")
+console.log("cycle", new make("ok").value)
+"#,
+        );
+        write(
+            &root,
+            "src/a.js",
+            r#"
+function Make(value) {
+  this.value = value
+}
+module.exports = Make
+require("./b.js")
+"#,
+        );
+        write(
+            &root,
+            "src/b.js",
+            r#"
+const Make = require("./a.js")
+module.exports = new Make("side")
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/cjs-circular-mid-export".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "cycle ok\n");
+    }
+
+    #[test]
     fn emit_go_runs_function_constructor_subset() {
         let root = temp_project("engine-core-function-constructor");
         write(

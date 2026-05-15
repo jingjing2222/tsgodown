@@ -507,6 +507,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		return dynamicImportThenable(), nil
 	}}
 	for _, importDecl := range module.Imports {
+		if importDecl.Kind == "cjs" {
+			continue
+		}
 		importedExports, ok := builtinModuleExports(importDecl.Spec)
 		var importedValue any = importedExports
 		if !ok {
@@ -530,11 +533,9 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		} else if result.broke || result.continued {
 			return nil, errors.New("break/continue outside loop")
 		}
+		state.exports = currentModuleExports(env, exports)
 	}
-	exported := any(exports)
-	if moduleObject, ok := env["module"].(map[string]any); ok {
-		exported = moduleObject["exports"]
-	}
+	exported := currentModuleExports(env, exports)
 	if exportedMap, ok := exported.(map[string]any); ok {
 		for _, name := range module.Exports {
 			if value, ok := env[name]; ok {
@@ -546,6 +547,13 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	state.evaluating = false
 	state.evaluated = true
 	return exported, nil
+}
+
+func currentModuleExports(env Env, fallback map[string]any) any {
+	if moduleObject, ok := env["module"].(map[string]any); ok {
+		return moduleObject["exports"]
+	}
+	return fallback
 }
 
 func entryModule(program Program) (Module, bool) {
