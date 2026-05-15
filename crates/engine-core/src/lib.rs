@@ -3749,12 +3749,19 @@ export const value = "ok"
             "src/index.js",
             r#"
 import { readFileSync } from "fs"
+import { readFile as readFileAsync, writeFile as writeFileAsync, readdir as readdirAsync } from "fs/promises"
 import { createRequire } from "node:module"
 const require = createRequire(import.meta.url)
 const fs = require("fs")
 const left = readFileSync("src/data.txt", "utf8")
 const right = fs.readFileSync("src/data.txt", "utf8")
-console.log("fs-module", Number("20") >= 20, typeof process.cwd(), left, right)
+async function main() {
+  const asyncLeft = await readFileAsync("src/data.txt", "utf8")
+  await writeFileAsync("src/out.txt", "beta")
+  const names = await readdirAsync("src")
+  console.log("fs-module", Number("20") >= 20, typeof process.cwd(), left, right, asyncLeft, names.includes("out.txt"))
+}
+main()
 "#,
         );
 
@@ -3805,7 +3812,7 @@ console.log("fs-module", Number("20") >= 20, typeof process.cwd(), left, right)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "fs-module true string alpha alpha\n"
+            "fs-module true string alpha alpha alpha true\n"
         );
     }
 

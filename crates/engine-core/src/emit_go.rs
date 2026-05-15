@@ -994,6 +994,8 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return streamPromisesModuleExports(), true
 	case "fs", "node:fs":
 		return fsModuleExports(), true
+	case "fs/promises", "node:fs/promises":
+		return fsPromisesModuleExports(), true
 	case "node:string_decoder", "string_decoder":
 		return stringDecoderModuleExports(), true
 	case "node:timers/promises":
@@ -1004,7 +1006,7 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 		return urlModuleExports(), true
 	case "v8", "node:v8":
 		return v8ModuleExports(), true
-	case "node:module":
+	case "module", "node:module":
 		return moduleModuleExports(), true
 	default:
 		return nil, false
@@ -3195,6 +3197,103 @@ func fsModuleExports() map[string]any {
 	})
 	realpath.Props["native"] = realpath
 	exports["realpath"] = realpath
+	exports["default"] = exports
+	return exports
+}
+
+func fsPromiseResult(value any, err error) map[string]any {
+	if err != nil {
+		return promiseRejected(nodeFsError(err))
+	}
+	return promiseFulfilled(value)
+}
+
+func fsPromisesModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["readFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "readFile path is required")), nil
+		}
+		bytes, err := os.ReadFile(jsString(args[0]))
+		if err != nil {
+			return fsPromiseResult(jsUndefined, err), nil
+		}
+		return promiseFulfilled(string(bytes)), nil
+	})
+	exports["writeFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "writeFile path and data are required")), nil
+		}
+		return fsPromiseResult(jsUndefined, os.WriteFile(jsString(args[0]), bytesFromJSValue(args[1]), 0o666)), nil
+	})
+	exports["mkdir"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "mkdir path is required")), nil
+		}
+		return fsPromiseResult(jsUndefined, os.MkdirAll(jsString(args[0]), 0o777)), nil
+	})
+	exports["rm"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "rm path is required")), nil
+		}
+		return fsPromiseResult(jsUndefined, os.RemoveAll(jsString(args[0]))), nil
+	})
+	exports["copyFile"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "copyFile source and destination are required")), nil
+		}
+		return fsPromiseResult(jsUndefined, copyPath(jsString(args[0]), jsString(args[1]))), nil
+	})
+	exports["unlink"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "unlink path is required")), nil
+		}
+		return fsPromiseResult(jsUndefined, os.Remove(jsString(args[0]))), nil
+	})
+	exports["readdir"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "readdir path is required")), nil
+		}
+		entries, err := os.ReadDir(jsString(args[0]))
+		if err != nil {
+			return fsPromiseResult(jsUndefined, err), nil
+		}
+		out := []any{}
+		for _, entry := range entries {
+			out = append(out, entry.Name())
+		}
+		return promiseFulfilled(&ArrayValue{Items: out}), nil
+	})
+	for _, name := range []string{"stat", "lstat"} {
+		current := name
+		exports[current] = nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", current+" path is required")), nil
+			}
+			info, err := os.Lstat(jsString(args[0]))
+			if err != nil {
+				return fsPromiseResult(jsUndefined, err), nil
+			}
+			return promiseFulfilled(statObject(info)), nil
+		})
+	}
+	exports["realpath"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "realpath path is required")), nil
+		}
+		resolved, err := filepath.EvalSymlinks(jsString(args[0]))
+		if err != nil {
+			resolved = jsString(args[0])
+		}
+		return promiseFulfilled(resolved), nil
+	})
+	exports["access"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return promiseRejected(nodeError("ERR_INVALID_ARG_TYPE", "access path is required")), nil
+		}
+		_, err := os.Stat(jsString(args[0]))
+		return fsPromiseResult(jsUndefined, err), nil
+	})
 	exports["default"] = exports
 	return exports
 }

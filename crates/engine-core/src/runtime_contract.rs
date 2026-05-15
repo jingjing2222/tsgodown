@@ -116,6 +116,8 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:stream/promises",
     "fs",
     "node:fs",
+    "fs/promises",
+    "node:fs/promises",
     "string_decoder",
     "node:string_decoder",
     "node:timers/promises",
@@ -125,6 +127,7 @@ pub const SUPPORTED_NODE_BUILTINS: &[&str] = &[
     "node:url",
     "v8",
     "node:v8",
+    "module",
     "node:module",
 ];
 
