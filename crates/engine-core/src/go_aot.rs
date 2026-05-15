@@ -373,6 +373,7 @@ fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> boo
 
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
+    imports.insert("strconv");
     for module in &ir.modules {
         if let Some(executable) = &module.executable {
             for stmt in &executable.stmts {
@@ -457,6 +458,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
+            if is_array_map_to_string_call(callee, args) {
+                imports.insert("strconv");
+            }
             if is_regexp_test_call(callee, args) {
                 imports.insert("regexp");
                 if regexp_test_needs_to_string_helper(args) {
@@ -499,6 +503,12 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
+            }
+            if is_string_array_join_call(callee, args) {
+                imports.insert("strings");
+            }
+            if string_method_name(callee).is_some() {
+                imports.insert("strconv");
             }
             collect_expr_imports(callee, imports);
             for arg in args {
@@ -574,7 +584,34 @@ fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
 }
 
 fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
-    let mut helpers = Vec::new();
+    let mut helpers = vec![
+        r#"func tsgodownStringArrayAt(values []string, index float64) string {
+	offset := int(index)
+	if values == nil || offset < 0 || offset >= len(values) {
+		return ""
+	}
+	return values[offset]
+}
+
+func tsgodownStringArraySet(values []string, index float64, value string) []string {
+	offset := int(index)
+	if offset < 0 {
+		return values
+	}
+	for len(values) <= offset {
+		values = append(values, "")
+	}
+	values[offset] = value
+	return values
+}
+
+func tsgodownStringArrayAdd(values []string, index float64, value string) []string {
+	current := tsgodownStringArrayAt(values, index)
+	return tsgodownStringArraySet(values, index, current+value)
+}
+"#
+        .to_string(),
+    ];
     if imports.contains("encoding/json") {
         helpers.push(
             r#"func tsgodownJSONStringify(value any) string {
@@ -642,6 +679,23 @@ func tsgodownBufferIsBuffer(value any) bool {
 		return "[object Object]"
 	}
 }
+
+func tsgodownStringArrayFromAny(value any) []string {
+	switch value := value.(type) {
+	case []string:
+		out := make([]string, len(value))
+		copy(out, value)
+		return out
+	case []any:
+		out := make([]string, len(value))
+		for index, item := range value {
+			out[index] = tsgodownToString(item)
+		}
+		return out
+	default:
+		return []string{}
+	}
+}
 "#
             .to_string(),
         );
@@ -654,14 +708,6 @@ func tsgodownBufferIsBuffer(value any) bool {
 		return nil
 	}
 	return matches
-}
-
-func tsgodownStringArrayAt(values []string, index float64) string {
-	offset := int(index)
-	if values == nil || offset < 0 || offset >= len(values) {
-		return ""
-	}
-	return values[offset]
 }
 "#
             .to_string(),
@@ -1648,13 +1694,13 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Bool);
                     return Some(format!("var {ident} bool = {value}"));
                 }
-                if let Some(value) = render_bytes_expr(expr, state) {
-                    state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
-                    return Some(format!("var {ident} []byte = {value}"));
-                }
                 if let Some(value) = render_string_array_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringArray);
                     return Some(format!("var {ident} []string = {value}"));
+                }
+                if let Some(value) = render_bytes_expr(expr, state) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
+                    return Some(format!("var {ident} []byte = {value}"));
                 }
                 if let Some(value) = render_string_function_expr(expr) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringFunction);
@@ -2091,6 +2137,10 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
+        JsExpr::Call { callee, args, .. } if is_array_is_array_call(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds);
+        }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
@@ -2224,6 +2274,9 @@ fn mark_ident_param_kind(
     let Some(index) = param_index.get(name) else {
         return;
     };
+    if kinds[*index] == AotSlotKind::Any {
+        return;
+    }
     kinds[*index] = kind;
 }
 
@@ -2265,6 +2318,20 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         function.go_name,
         indent_lines(&function_body)
     ))
+}
+
+fn aot_function_state(function: &AotFunction, state: &AotState) -> AotState {
+    let mut function_state = AotState {
+        functions: state.functions.clone(),
+        classes: state.classes.clone(),
+        namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
+        ..AotState::default()
+    };
+    for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
+        function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
+    }
+    function_state
 }
 
 fn is_function_binding_stmt(stmt: &JsStmt) -> bool {
@@ -2355,6 +2422,54 @@ fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
         .map(|stmts| stmts.join("\n"))
 }
 
+fn function_returns_string_array(function: &AotFunction, state: &AotState) -> bool {
+    let mut function_state = aot_function_state(function, state);
+    let mut saw_return = false;
+    collect_string_array_returns(&function.body, &mut function_state, &mut saw_return)
+        .unwrap_or(false)
+        && saw_return
+}
+
+fn collect_string_array_returns(
+    body: &[JsStmt],
+    state: &mut AotState,
+    saw_return: &mut bool,
+) -> Option<bool> {
+    for stmt in body {
+        match stmt {
+            JsStmt::Return { value: Some(value) } => {
+                *saw_return = true;
+                if render_string_array_expr(value, state).is_none() {
+                    return Some(false);
+                }
+            }
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                let consequent_state = narrowed_typeof_state(test, state);
+                let mut consequent_state = clone_aot_state(&consequent_state);
+                if !collect_string_array_returns(consequent, &mut consequent_state, saw_return)? {
+                    return Some(false);
+                }
+                let mut alternate_state = clone_aot_state(state);
+                if !collect_string_array_returns(alternate, &mut alternate_state, saw_return)? {
+                    return Some(false);
+                }
+                render_function_stmt(stmt, state)?;
+            }
+            JsStmt::For { .. } | JsStmt::While { .. } => {
+                render_function_stmt(stmt, state)?;
+            }
+            _ => {
+                render_function_stmt(stmt, state)?;
+            }
+        }
+    }
+    Some(true)
+}
+
 fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
     match stmt {
         JsStmt::VarDecl { .. } => render_stmt(stmt, state),
@@ -2408,6 +2523,12 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_node_path_bool_call(callee, args) => {
             render_node_path_bool_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_array_is_array_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            Some(format!(
+                "func() bool {{ switch any({value}).(type) {{ case []string, []any: return true; default: return false }} }}()"
+            ))
+        }
         expr if process_env_lookup_name(expr).is_some() => {
             let value = render_process_env_lookup(expr)?;
             Some(format!("({value} != \"\")"))
@@ -2433,6 +2554,10 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_array_bindings.contains(name) => {
             let value = go_binding_ref(name, state);
             Some(format!("({value} != nil)"))
+        }
+        expr if render_string_array_index_expr(expr, state).is_some() => {
+            let value = render_string_array_index_expr(expr, state)?;
+            Some(format!("({value} != \"\")"))
         }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             let value = go_binding_ref(name, state);
@@ -2501,6 +2626,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         JsExpr::Assign { op, left, .. } if op == "=" && is_cjs_export_target(left) => {
             Some(String::new())
         }
+        JsExpr::Assign { op, left, right }
+            if render_string_array_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_string_array_assignment_stmt(op, left, right, state)
+        }
         JsExpr::Assign { op, left, right } => render_assignment_stmt(op, left, right, state),
         JsExpr::Update { op, arg, .. } => render_update_stmt(op, arg, state),
         JsExpr::Call { callee, args, .. } => {
@@ -2529,6 +2659,10 @@ fn render_assignment_stmt(
             let right = render_bool_expr(right, state)?;
             return Some(format!("{} = {right}", sanitize_go_identifier(name)));
         }
+        if state.bindings.contains(name) && op == "=" {
+            let right = render_expr(right, state)?;
+            return Some(format!("{} = {right}", sanitize_go_identifier(name)));
+        }
         return None;
     }
     let right = render_numeric_expr(right, state)?;
@@ -2536,6 +2670,45 @@ fn render_assignment_stmt(
         "=" | "+=" | "-=" | "*=" | "/=" | "%=" => {
             Some(format!("{} {op} {right}", sanitize_go_identifier(name)))
         }
+        _ => None,
+    }
+}
+
+fn render_string_array_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = left
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.string_array_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    let index = if let Some(property_expr) = property_expr {
+        render_numeric_expr(property_expr, state)?
+    } else {
+        number_literal(property)?
+    };
+    let value = render_string_expr(right, state)?;
+    match op {
+        "=" => Some(format!(
+            "{target} = tsgodownStringArraySet({target}, {index}, {value})"
+        )),
+        "+=" => Some(format!(
+            "{target} = tsgodownStringArrayAdd({target}, {index}, {value})"
+        )),
         _ => None,
     }
 }
@@ -2658,6 +2831,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Array { .. } => {
+            render_string_array_expr(expr, state).or_else(|| render_json_value_expr(expr, state))
+        }
         JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state).or_else(|| {
             let JsExpr::Binary { left, right, .. } = expr else {
                 return None;
@@ -2689,6 +2865,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
+            .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
@@ -2804,6 +2981,10 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Ident { name } if is_any_binding(name, state) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("tsgodownToString({value})"))
+        }
         expr if render_string_array_index_expr(expr, state).is_some() => {
             render_string_array_index_expr(expr, state)
         }
@@ -2834,6 +3015,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_string_array_join_call(callee, args) => {
+            render_string_array_join_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_node_path_string_call(callee, args, state)
             .or_else(|| render_node_os_homedir_call(callee, args, state))
@@ -3239,8 +3423,29 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_array_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Array { items } => {
+            let items = items
+                .iter()
+                .map(|item| render_string_expr(item, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]string{{{}}}", items.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_array_map_to_string_call(callee, args) => {
+            render_array_map_to_string_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_string_match_call(callee, args) => {
             render_string_match_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } => {
+            let JsExpr::Ident { name } = callee.as_ref() else {
+                return None;
+            };
+            let function = state.functions.get(name)?;
+            if !function_returns_string_array(function, state) {
+                return None;
+            }
+            let call = render_call_expr(callee, args, state)?;
+            Some(format!("({call}).([]string)"))
         }
         _ => None,
     }
@@ -3379,6 +3584,124 @@ fn render_array_bool_method_call(
         return Some("false".to_string());
     }
     Some(format!("({})", comparisons.join(" || ")))
+}
+
+fn is_array_is_array_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Array")
+                && property == "isArray"
+        )
+}
+
+fn is_array_map_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        property,
+        property_expr: None,
+        optional: false,
+        ..
+    } = callee
+    else {
+        return false;
+    };
+    property == "map" && is_string_coercion_map_callback(args.first().expect("one arg"))
+}
+
+fn is_string_coercion_map_callback(expr: &JsExpr) -> bool {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return false;
+    };
+    let [param] = params.as_slice() else {
+        return false;
+    };
+    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+        return false;
+    };
+    is_string_coercion_expr(value, param)
+}
+
+fn is_string_coercion_expr(expr: &JsExpr, param: &str) -> bool {
+    match expr {
+        JsExpr::Ident { name } => name == param,
+        JsExpr::Binary { op, left, right } if op == "+" => {
+            (matches!(left.as_ref(), JsExpr::Ident { name } if name == param)
+                && is_string_literal_like(right))
+                || (matches!(right.as_ref(), JsExpr::Ident { name } if name == param)
+                    && is_string_literal_like(left))
+        }
+        JsExpr::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            is_string_coercion_expr(consequent, param) && is_string_coercion_expr(alternate, param)
+        }
+        _ => false,
+    }
+}
+
+fn render_array_map_to_string_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_map_to_string_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let value = render_expr(object, state)?;
+    Some(format!("tsgodownStringArrayFromAny({value})"))
+}
+
+fn is_string_array_join_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 0 | 1)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "join"
+        )
+}
+
+fn render_string_array_join_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_string_array_join_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let values = render_string_array_expr(object, state)?;
+    let separator = args
+        .first()
+        .map(|expr| render_string_expr(expr, state))
+        .unwrap_or_else(|| Some("\",\"".to_string()))?;
+    Some(format!("strings.Join({values}, {separator})"))
 }
 
 fn is_string_match_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -4599,6 +4922,18 @@ fn render_value(value: &JsValue) -> Option<String> {
         JsValue::Null | JsValue::Undefined => Some("nil".to_string()),
         JsValue::BigInt { .. } | JsValue::RegExp { .. } => None,
     }
+}
+
+fn is_any_binding(name: &str, state: &AotState) -> bool {
+    state.bindings.contains(name)
+        && !state.numeric_bindings.contains(name)
+        && !state.string_bindings.contains(name)
+        && !state.bool_bindings.contains(name)
+        && !state.bytes_bindings.contains(name)
+        && !state.string_array_bindings.contains(name)
+        && !state.string_function_bindings.contains(name)
+        && !state.object_bindings.contains_key(name)
+        && !state.class_instance_bindings.contains_key(name)
 }
 
 fn go_binding_ref(name: &str, state: &AotState) -> String {

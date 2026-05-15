@@ -4328,6 +4328,104 @@ console.log("string-match", camelCase("--foo-bar"), camelCase("foo_bar"), camelC
     }
 
     #[test]
+    fn emit_go_runs_aot_tokenize_string_array_subset() {
+        let root = temp_project("engine-core-aot-tokenize-string-array");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function tokenizeArgString(argString) {
+  if (Array.isArray(argString)) {
+    return argString.map(e => typeof e !== "string" ? e + "" : e)
+  }
+  argString = argString.trim()
+  let i = 0
+  let prevC = null
+  let c = null
+  let opening = null
+  const args = []
+  for (let ii = 0; ii < argString.length; ii++) {
+    prevC = c
+    c = argString.charAt(ii)
+    if (c === " " && !opening) {
+      if (!(prevC === " ")) {
+        i++
+      }
+      continue
+    }
+    if (c === opening) {
+      opening = null
+    } else if ((c === "'" || c === '"') && !opening) {
+      opening = c
+    }
+    if (!args[i]) args[i] = ""
+    args[i] += c
+  }
+  return args
+}
+console.log("tokenize", tokenizeArgString(["--x", 3]).join("|"), tokenizeArgString(" a 'b c'  d ").join("|"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-tokenize-string-array".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArraySet"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "tokenize --x|3 a|'b c'|d\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_string_charat_upper_fallback_subset() {
         let root = temp_project("engine-core-aot-string-charat-upper");
         write(
