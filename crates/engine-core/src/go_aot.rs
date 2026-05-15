@@ -377,6 +377,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_json_stringify(callee) {
                 imports.insert("encoding/json");
             }
+            if is_string_cast_call(callee, args) {
+                imports.insert("strconv");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -419,10 +422,10 @@ fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
 }
 
 fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
-    if !imports.contains("encoding/json") {
-        return String::new();
-    }
-    r#"func tsgodownJSONStringify(value any) string {
+    let mut helpers = Vec::new();
+    if imports.contains("encoding/json") {
+        helpers.push(
+            r#"func tsgodownJSONStringify(value any) string {
 	bytes, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return ""
@@ -430,7 +433,37 @@ fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
 	return string(bytes)
 }
 "#
-    .to_string()
+            .to_string(),
+        );
+    }
+    if imports.contains("strconv") {
+        helpers.push(
+            r#"func tsgodownToString(value any) string {
+	switch value := value.(type) {
+	case nil:
+		return "undefined"
+	case bool:
+		if value {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(value)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case string:
+		return value
+	default:
+		return "[object Object]"
+	}
+}
+"#
+            .to_string(),
+        );
+    }
+    helpers.join("\n")
 }
 
 fn can_aot_module_graph(ir: &IrDocument) -> bool {
@@ -1692,6 +1725,12 @@ fn infer_expr_param_kinds(
                 infer_expr_param_kinds(arg, param_index, kinds);
             }
         }
+        JsExpr::Call { callee, args, .. }
+            if is_string_cast_call(callee, args) || is_boolean_cast_call(callee, args) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds);
+        }
         JsExpr::Call { callee, args, .. } => {
             infer_expr_param_kinds(callee, param_index, kinds);
             for arg in args {
@@ -2008,6 +2047,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             consequent,
             alternate,
         } => render_conditional_expr(test, consequent, alternate, state, render_bool_expr, "bool"),
+        JsExpr::Call { callee, args, .. } if is_boolean_cast_call(callee, args) => {
+            render_js_to_bool_expr(args.first()?, state)
+        }
         JsExpr::Call { callee, args, .. } => render_string_bool_method_call(callee, args, state),
         _ => None,
     }
@@ -2261,6 +2303,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(go_string_literal(&quasis[0]))
         }
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
+        JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
+            render_js_to_string_expr(args.first()?, state)
+        }
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
@@ -2278,11 +2323,73 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     }
 }
 
+fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Undefined | JsValue::Null,
+        } => Some("false".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("false".to_string()),
+        JsExpr::Value {
+            value: JsValue::Bool { value },
+        } => Some(value.to_string()),
+        JsExpr::Value {
+            value: JsValue::Number { value },
+        } => {
+            let value = number_literal(value)?;
+            Some(format!("({value} != 0)"))
+        }
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some((!value.is_empty()).to_string()),
+        JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("({value} != 0)"))
+        }
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("({value} != \"\")"))
+        }
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!(
+                "func() bool {{ switch value := any({value}).(type) {{ case nil: return false; case bool: return value; case float64: return value != 0; case int: return value != 0; case int64: return value != 0; case string: return value != \"\"; default: return true }} }}()"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn render_js_to_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some("\"undefined\"".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("\"undefined\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Null,
+        } => Some("\"null\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(go_string_literal(value)),
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        _ => {
+            let value = render_expr(expr, state)?;
+            Some(format!("tsgodownToString({value})"))
+        }
+    }
+}
+
 fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value {
             value: JsValue::Undefined,
         } => Some("\"undefined\"".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("\"undefined\"".to_string()),
         JsExpr::Value {
             value: JsValue::Null,
         } => Some("\"object\"".to_string()),
@@ -2510,6 +2617,14 @@ fn render_string_numeric_method_call(
     let object = render_string_expr(object, state)?;
     let needle = render_string_expr(args.first()?, state)?;
     Some(format!("float64(strings.Index({object}, {needle}))"))
+}
+
+fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "String")
+}
+
+fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Boolean")
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
