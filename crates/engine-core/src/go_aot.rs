@@ -609,6 +609,47 @@ func tsgodownStringArrayAdd(values []string, index float64, value string) []stri
 	current := tsgodownStringArrayAt(values, index)
 	return tsgodownStringArraySet(values, index, current+value)
 }
+
+func tsgodownStringCharAt(value string, index float64) string {
+	chars := []rune(value)
+	offset := int(index)
+	if offset < 0 || offset >= len(chars) {
+		return ""
+	}
+	return string(chars[offset])
+}
+
+func tsgodownStringSlice(value string, start float64, endValues ...float64) string {
+	chars := []rune(value)
+	length := len(chars)
+	from := int(start)
+	if from < 0 {
+		from = length + from
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > length {
+		from = length
+	}
+	to := length
+	if len(endValues) > 0 {
+		to = int(endValues[0])
+		if to < 0 {
+			to = length + to
+		}
+		if to < 0 {
+			to = 0
+		}
+		if to > length {
+			to = length
+		}
+	}
+	if to < from {
+		to = from
+	}
+	return string(chars[from:to])
+}
 "#
         .to_string(),
     ];
@@ -2981,6 +3022,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if render_string_index_expr(expr, state).is_some() => {
+            render_string_index_expr(expr, state)
+        }
         JsExpr::Ident { name } if is_any_binding(name, state) => {
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownToString({value})"))
@@ -3470,6 +3514,24 @@ fn render_string_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<Str
     Some(format!("tsgodownStringArrayAt({values}, {index})"))
 }
 
+fn render_string_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: Some(property_expr),
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if !property.is_empty() {
+        return None;
+    }
+    let value = render_string_expr(object, state)?;
+    let index = render_numeric_expr(property_expr, state)?;
+    Some(format!("tsgodownStringCharAt({value}, {index})"))
+}
+
 fn call_uses_strings_import(callee: &JsExpr) -> bool {
     matches!(
         string_method_name(callee),
@@ -3488,7 +3550,7 @@ fn string_method_name(callee: &JsExpr) -> Option<&str> {
         return None;
     };
     match property.as_str() {
-        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt" => {
+        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt" | "slice" => {
             Some(property.as_str())
         }
         _ => None,
@@ -3511,6 +3573,7 @@ fn string_method_receiver<'a>(
         "toLowerCase" | "toUpperCase" | "trim" if args.is_empty() => {}
         "includes" | "indexOf" if args.len() == 1 => {}
         "charAt" if args.len() == 1 => {}
+        "slice" if matches!(args.len(), 1 | 2) => {}
         _ => return None,
     }
     render_string_expr(object, state)?;
@@ -3537,9 +3600,16 @@ fn render_string_string_method_call(
     if let Some(object) = string_method_receiver(callee, "charAt", args, state) {
         let object = render_string_expr(object, state)?;
         let index = render_numeric_expr(args.first()?, state)?;
-        return Some(format!(
-            "func() string {{ chars := []rune({object}); index := int({index}); if index < 0 || index >= len(chars) {{ return \"\" }}; return string(chars[index]) }}()"
-        ));
+        return Some(format!("tsgodownStringCharAt({object}, {index})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "slice", args, state) {
+        let object = render_string_expr(object, state)?;
+        let start = render_numeric_expr(args.first()?, state)?;
+        if let Some(end) = args.get(1) {
+            let end = render_numeric_expr(end, state)?;
+            return Some(format!("tsgodownStringSlice({object}, {start}, {end})"));
+        }
+        return Some(format!("tsgodownStringSlice({object}, {start})"));
     }
     None
 }
