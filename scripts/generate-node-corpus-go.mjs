@@ -81,7 +81,8 @@ function analyzeEntry(testCase, entry) {
   }
 }
 
-function emitGoEntry(testCase, entry, outputKind = "main") {
+function emitGoEntry(testCase, entry, options = {}) {
+  const outputKind = options.outputKind ?? "main";
   const emit = run(engineCoreBin, ["emit-go"], {
     input: JSON.stringify({
       analyze: {
@@ -94,6 +95,7 @@ function emitGoEntry(testCase, entry, outputKind = "main") {
       packageName: "main",
       modulePath: goModulePath(testCase),
       outputKind,
+      ...(options.irSnapshot ? { irSnapshot: options.irSnapshot } : {}),
     }),
   });
 
@@ -126,62 +128,6 @@ function emittedFileContents(testCase, emitGoJson, fileName) {
 
 function goModulePath(testCase) {
   return `example.com/tsgodown-node-corpus/${testCase.id}`;
-}
-
-function renderGoMod(testCase) {
-  return [goModulePath(testCase), "", "go 1.22", ""]
-    .map((line, index) => (index === 0 ? `module ${line}` : line))
-    .join("\n");
-}
-
-function renderSourceIrGo(analyzeJson) {
-  return renderIrGoConst(
-    analyzeJson,
-    "sourceIRJSON",
-    "sourceIRJSON is the analyzer-lowered executable JS IR for this corpus package entry.",
-  );
-}
-
-function renderProbeIrGo(analyzeJson) {
-  return renderIrGoConst(
-    analyzeJson,
-    "probeIRJSON",
-    "probeIRJSON is the analyzer-lowered executable JS IR for this corpus probe app.",
-  );
-}
-
-function renderIrGoConst(analyzeJson, constName, comment) {
-  const ir = analyzeJson?.ir ?? {};
-  const sourceIr = {
-    version: ir.version ?? "unknown",
-    entry: ir.entry ?? "",
-    modules: Array.isArray(ir.modules)
-      ? ir.modules.map((module) => ({
-          id: module?.id ?? "",
-          sourcePath: module?.sourcePath ?? "",
-          imports: Array.isArray(module?.imports) ? module.imports : [],
-          exports: Array.isArray(module?.exports) ? module.exports : [],
-          executable: module?.executable ?? { stmts: [] },
-        }))
-      : [],
-    diagnostics: Array.isArray(analyzeJson?.diagnostics)
-      ? analyzeJson.diagnostics
-      : [],
-  };
-  const json = JSON.stringify(sourceIr, null, 2);
-
-  return [
-    "package main",
-    "",
-    `// ${comment}`,
-    "// It is emitted into generated Go projects so codegen can be driven by source semantics.",
-    `const ${constName} = ${goRawString(json)}`,
-    "",
-  ].join("\n");
-}
-
-function goRawString(value) {
-  return `\`${String(value).replaceAll("`", '` + "`" + `')}\``;
 }
 
 function executableIrStats(analyzeJson) {
@@ -261,11 +207,26 @@ function generateCase(testCase) {
 
   const analyzeJson = analyzeEntry(testCase, testCase.entry);
   const probeAnalyzeJson = analyzeEntry(testCase, testCase.probe);
-  const emitGoJson = emitGoEntry(testCase, testCase.probe);
+  const sourceSnapshotEmitGoJson = emitGoEntry(testCase, testCase.entry, {
+    irSnapshot: {
+      filePath: "source_ir.go",
+      constName: "sourceIRJSON",
+      description:
+        "sourceIRJSON is the analyzer-lowered executable JS IR for this corpus package entry.",
+    },
+  });
+  const emitGoJson = emitGoEntry(testCase, testCase.probe, {
+    irSnapshot: {
+      filePath: "probe_ir.go",
+      constName: "probeIRJSON",
+      description:
+        "probeIRJSON is the analyzer-lowered executable JS IR for this corpus probe app.",
+    },
+  });
   const vectorEmitGoJson = emitGoEntry(
     testCase,
     "tests/vector-suite-entry.mjs",
-    "vectorSuite",
+    { outputKind: "vectorSuite" },
   );
   const vectorAnalyzeJson = analyzeEntry(
     testCase,
@@ -273,18 +234,13 @@ function generateCase(testCase) {
   );
   const outDir = path.join(generatedRoot, testCase.id);
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(path.join(outDir, "go.mod"), renderGoMod(testCase), "utf8");
+  writeSelectedEmitGoFile(
+    testCase,
+    outDir,
+    sourceSnapshotEmitGoJson,
+    "source_ir.go",
+  );
   writeEmitGoFiles(testCase, outDir, emitGoJson, "main.go");
-  fs.writeFileSync(
-    path.join(outDir, "source_ir.go"),
-    renderSourceIrGo(analyzeJson),
-    "utf8",
-  );
-  fs.writeFileSync(
-    path.join(outDir, "probe_ir.go"),
-    renderProbeIrGo(probeAnalyzeJson),
-    "utf8",
-  );
   writeEmitGoFiles(testCase, outDir, vectorEmitGoJson, "vector_suite.go");
 
   return {
@@ -298,6 +254,13 @@ function generateCase(testCase) {
     probeExecutableIr: executableIrStats(probeAnalyzeJson),
     vectorExecutableIr: executableIrStats(vectorAnalyzeJson),
   };
+}
+
+function writeSelectedEmitGoFile(testCase, outDir, emitGoJson, fileName) {
+  const contents = emittedFileContents(testCase, emitGoJson, fileName);
+  const outPath = path.join(outDir, fileName);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, contents, "utf8");
 }
 
 function writeEmitGoFiles(testCase, outDir, emitGoJson, requiredFile) {

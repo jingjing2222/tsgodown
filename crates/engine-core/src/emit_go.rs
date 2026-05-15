@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyze;
-use crate::contract::{AnalyzeRequest, Diagnostic};
+use crate::contract::{AnalyzeRequest, AnalyzeResponse, Diagnostic};
 use crate::runtime_contract::{
     fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
 };
@@ -16,6 +16,8 @@ pub struct EmitGoRequest {
     pub module_path: Option<String>,
     #[serde(default)]
     pub output_kind: EmitGoOutputKind,
+    #[serde(default)]
+    pub ir_snapshot: Option<IrSnapshotRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -50,38 +52,65 @@ pub struct GeneratedFile {
     pub contents: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IrSnapshotRequest {
+    pub file_path: String,
+    pub const_name: String,
+    pub description: String,
+}
+
 pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     let analyzed = analyze(request.analyze);
-    let mut diagnostics = analyzed.diagnostics;
+    let mut diagnostics = analyzed.diagnostics.clone();
     diagnostics.push(unsupported_codegen_diagnostic());
+    let package_name = sanitize_package_name(request.package_name.as_deref().unwrap_or("main"));
+    let module_path = sanitize_module_path(
+        request
+            .module_path
+            .as_deref()
+            .unwrap_or("example.com/tsgodown-generated"),
+    );
+    let mut files = vec![
+        GeneratedFile {
+            path: match request.output_kind {
+                EmitGoOutputKind::Main => "main.go",
+                EmitGoOutputKind::VectorSuite => "vector_suite.go",
+            }
+            .to_string(),
+            contents: render_fail_closed_program(
+                &package_name,
+                &module_path,
+                &diagnostics,
+                request.output_kind.purpose(),
+            ),
+        },
+        GeneratedFile {
+            path: "go.mod".to_string(),
+            contents: render_go_mod(&module_path),
+        },
+        GeneratedFile {
+            path: "tsgodownrt/runtime.go".to_string(),
+            contents: render_runtime_package(),
+        },
+    ];
+
+    if let Some(snapshot) = request.ir_snapshot.as_ref() {
+        files.push(GeneratedFile {
+            path: sanitize_relative_go_path(&snapshot.file_path),
+            contents: render_ir_snapshot_file(
+                &package_name,
+                &sanitize_go_identifier(&snapshot.const_name),
+                &snapshot.description,
+                &analyzed,
+            ),
+        });
+    }
 
     EmitGoResponse {
         version: "engine-core.emit-go.v1".to_string(),
         target_backend: "go".to_string(),
-        files: vec![
-            GeneratedFile {
-                path: match request.output_kind {
-                    EmitGoOutputKind::Main => "main.go",
-                    EmitGoOutputKind::VectorSuite => "vector_suite.go",
-                }
-                .to_string(),
-                contents: render_fail_closed_program(
-                    &sanitize_package_name(request.package_name.as_deref().unwrap_or("main")),
-                    &sanitize_module_path(
-                        request
-                            .module_path
-                            .as_deref()
-                            .unwrap_or("example.com/tsgodown-generated"),
-                    ),
-                    &diagnostics,
-                    request.output_kind.purpose(),
-                ),
-            },
-            GeneratedFile {
-                path: "tsgodownrt/runtime.go".to_string(),
-                contents: render_runtime_package(),
-            },
-        ],
+        files,
         diagnostics,
     }
 }
@@ -109,6 +138,31 @@ fn sanitize_module_path(value: &str) -> String {
         return "example.com/tsgodown-generated".to_string();
     }
     cleaned.to_string()
+}
+
+fn sanitize_relative_go_path(value: &str) -> String {
+    let cleaned = value.trim();
+    if cleaned.is_empty()
+        || cleaned.contains('\\')
+        || cleaned.starts_with('/')
+        || cleaned.starts_with('.')
+        || !cleaned.ends_with(".go")
+    {
+        return "ir_snapshot.go".to_string();
+    }
+    cleaned.to_string()
+}
+
+fn sanitize_go_identifier(value: &str) -> String {
+    let cleaned: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect();
+    match cleaned.as_str() {
+        "" => "irSnapshotJSON".to_string(),
+        _ if cleaned.starts_with(|ch: char| ch.is_ascii_digit()) => format!("ir_{cleaned}"),
+        _ => cleaned,
+    }
 }
 
 fn render_fail_closed_program(
@@ -181,4 +235,46 @@ func FailClosedReport(version string, diagnostics json.RawMessage, extra map[str
 }
 "#
     .to_string()
+}
+
+fn render_go_mod(module_path: &str) -> String {
+    format!("module {module_path}\n\ngo 1.22\n")
+}
+
+fn render_ir_snapshot_file(
+    package_name: &str,
+    const_name: &str,
+    description: &str,
+    analyzed: &AnalyzeResponse,
+) -> String {
+    let snapshot = serde_json::json!({
+        "version": analyzed.ir.version,
+        "entry": analyzed.ir.entry,
+        "modules": analyzed.ir.modules,
+        "diagnostics": analyzed.diagnostics,
+    });
+    let json = serde_json::to_string_pretty(&snapshot).expect("IR snapshot should serialize");
+    let description = sanitize_go_comment_line(description);
+    let json_literal = go_raw_string_literal(&json);
+    format!(
+        r#"package {package_name}
+
+// {description}
+// It is emitted into generated projects so backend codegen can be driven by source semantics.
+const {const_name} = {json_literal}
+"#
+    )
+}
+
+fn sanitize_go_comment_line(value: &str) -> String {
+    let cleaned = value.replace(['\r', '\n'], " ");
+    if cleaned.trim().is_empty() {
+        "Analyzer-lowered executable JS IR snapshot.".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn go_raw_string_literal(value: &str) -> String {
+    format!("`{}`", value.replace('`', "` + \"`\" + `"))
 }

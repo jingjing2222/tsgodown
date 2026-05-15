@@ -9,7 +9,9 @@ pub use contract::{
     ExecutableModule, Import, InputManifest, IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue,
     Module, Route,
 };
-pub use emit_go::{emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile};
+pub use emit_go::{
+    emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile, IrSnapshotRequest,
+};
 pub use runtime_contract::{
     fail_closed_report_version, unsupported_codegen_diagnostic, ProgramPurpose,
 };
@@ -192,11 +194,12 @@ export { value };
             package_name: Some("9-bad package".to_string()),
             module_path: Some("example.com/custom-module".to_string()),
             output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
         });
 
         assert_eq!(response.version, "engine-core.emit-go.v1");
         assert_eq!(response.target_backend, "go");
-        assert_eq!(response.files.len(), 2);
+        assert_eq!(response.files.len(), 3);
         assert_eq!(response.files[0].path, "main.go");
         assert!(response.files[0]
             .contents
@@ -207,8 +210,12 @@ export { value };
         assert!(response.files[0]
             .contents
             .contains(fail_closed_report_version(ProgramPurpose::Main)));
-        assert_eq!(response.files[1].path, "tsgodownrt/runtime.go");
-        assert!(response.files[1].contents.contains("package tsgodownrt"));
+        assert_eq!(response.files[1].path, "go.mod");
+        assert!(response.files[1]
+            .contents
+            .contains("module example.com/custom-module"));
+        assert_eq!(response.files[2].path, "tsgodownrt/runtime.go");
+        assert!(response.files[2].contents.contains("package tsgodownrt"));
         assert!(response
             .diagnostics
             .iter()
@@ -231,15 +238,47 @@ export { value };
             package_name: None,
             module_path: Some("example.com/vector-suite".to_string()),
             output_kind: EmitGoOutputKind::VectorSuite,
+            ir_snapshot: None,
         });
 
-        assert_eq!(response.files.len(), 2);
+        assert_eq!(response.files.len(), 3);
         assert_eq!(response.files[0].path, "vector_suite.go");
         assert!(response.files[0]
             .contents
             .contains(fail_closed_report_version(ProgramPurpose::VectorSuite)));
         assert!(response.files[0].contents.contains("\"results\": []any{}"));
         assert!(response.files[0].contents.contains("corpus := \"\""));
+    }
+
+    #[test]
+    fn emit_go_can_include_ir_snapshot_file() {
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/server.ts".to_string(),
+                    framework: None,
+                },
+                cwd: None,
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: None,
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: Some(IrSnapshotRequest {
+                file_path: "source_ir.go".to_string(),
+                const_name: "sourceIRJSON".to_string(),
+                description: "source snapshot".to_string(),
+            }),
+        });
+
+        let snapshot = response
+            .files
+            .iter()
+            .find(|file| file.path == "source_ir.go")
+            .expect("source IR snapshot file");
+        assert!(snapshot.contents.contains("package main"));
+        assert!(snapshot.contents.contains("const sourceIRJSON = `"));
+        assert!(snapshot.contents.contains("\"entry\": \"src/server.ts\""));
     }
 
     fn write(root: &std::path::Path, rel: &str, source: &str) {
