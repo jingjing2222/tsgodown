@@ -491,6 +491,7 @@ var sharedProcess map[string]any
 var sharedGlobal map[string]any
 var httpServers map[int]map[string]any
 var nextHTTPPort int
+var microtasks []func() error
 
 type jsThrow struct {
 	value any
@@ -509,6 +510,7 @@ func RunProgram(programJSON string) error {
 	sharedGlobal = map[string]any{}
 	httpServers = map[int]map[string]any{}
 	nextHTTPPort = 31000
+	microtasks = []func() error{}
 	module, ok := entryModule(program)
 	if !ok {
 		return errors.New("entry module not found")
@@ -1706,6 +1708,9 @@ func promiseGlobal() NativeFunctionValue {
 			if _, err := callFunctionWithValues(args[0], []any{resolve, reject}, Env{}, jsUndefined); err != nil {
 				return nil, err
 			}
+			if err := drainMicrotasks(); err != nil {
+				return nil, err
+			}
 		}
 		return promise, nil
 	})
@@ -1783,6 +1788,21 @@ func promiseGlobal() NativeFunctionValue {
 		return promiseRejected(args[0]), nil
 	})
 	return constructor
+}
+
+func queueMicrotaskTask(task func() error) {
+	microtasks = append(microtasks, task)
+}
+
+func drainMicrotasks() error {
+	for len(microtasks) > 0 {
+		task := microtasks[0]
+		microtasks = microtasks[1:]
+		if err := task(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func promiseFulfilled(value any) map[string]any {
@@ -2014,7 +2034,7 @@ func objectGlobal() map[string]any {
 			}
 			descriptor, ok := args[2].(map[string]any)
 			if ok {
-				setDynamicProperty(args[0], jsPropertyKey(args[1]), descriptor["value"])
+				defineRuntimeProperty(args[0], jsPropertyKey(args[1]), descriptor)
 			}
 			return args[0], nil
 		}),
@@ -2102,6 +2122,13 @@ func objectGlobal() map[string]any {
 			}
 			key := jsPropertyKey(args[1])
 			if object, ok := args[0].(map[string]any); ok {
+				if getter, ok := accessorGetter(object, key); ok {
+					return map[string]any{
+						"get":          getter,
+						"enumerable":   true,
+						"configurable": true,
+					}, nil
+				}
 				if value, ok := lookupObjectProperty(object, key); ok {
 					return map[string]any{
 						"value":        value,
@@ -2120,6 +2147,16 @@ func objectGlobal() map[string]any {
 						return prototype, nil
 					}
 				}
+				if function, ok := args[0].(FunctionValue); ok && function.Props != nil {
+					if prototype, ok := function.Props["__prototype"]; ok {
+						return prototype, nil
+					}
+				}
+				if function, ok := args[0].(NativeFunctionValue); ok && function.Props != nil {
+					if prototype, ok := function.Props["__prototype"]; ok {
+						return prototype, nil
+					}
+				}
 			}
 			return jsNull, nil
 		}),
@@ -2128,9 +2165,50 @@ func objectGlobal() map[string]any {
 				if object, ok := args[0].(map[string]any); ok {
 					object["__prototype"] = args[1]
 				}
+				if function, ok := args[0].(FunctionValue); ok && function.Props != nil {
+					function.Props["__prototype"] = args[1]
+				}
+				if function, ok := args[0].(NativeFunctionValue); ok && function.Props != nil {
+					function.Props["__prototype"] = args[1]
+				}
 				return args[0], nil
 			}
 			return jsUndefined, nil
+		}),
+		"hasOwn": nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return false, nil
+			}
+			key := jsPropertyKey(args[1])
+			switch object := args[0].(type) {
+			case map[string]any:
+				if _, exists := accessorGetter(object, key); exists {
+					return true, nil
+				}
+				_, exists := object[key]
+				return exists, nil
+			case FunctionValue:
+				if _, exists := accessorGetter(object.Props, key); exists {
+					return true, nil
+				}
+				_, exists := object.Props[key]
+				return exists, nil
+			case NativeFunctionValue:
+				if _, exists := accessorGetter(object.Props, key); exists {
+					return true, nil
+				}
+				_, exists := object.Props[key]
+				return exists, nil
+			case *ArrayValue:
+				if _, err := strconv.ParseInt(key, 0, 64); err == nil {
+					index := jsInteger(key)
+					return index >= 0 && index < len(object.Items), nil
+				}
+				_, exists := object.Props[key]
+				return exists, nil
+			default:
+				return false, nil
+			}
 		}),
 		"keys": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -2182,7 +2260,7 @@ func reflectGlobal() map[string]any {
 				return false, nil
 			}
 			if descriptor, ok := args[2].(map[string]any); ok {
-				setDynamicProperty(args[0], jsPropertyKey(args[1]), descriptor["value"])
+				defineRuntimeProperty(args[0], jsPropertyKey(args[1]), descriptor)
 				return true, nil
 			}
 			return false, nil
@@ -2423,8 +2501,91 @@ func objectKeys(object map[string]any) []string {
 		unordered = append(unordered, key)
 	}
 	sort.Strings(unordered)
+	for _, key := range unordered {
+		seen[key] = true
+	}
 	keys = append(keys, unordered...)
+	if getters, ok := object["__getters"].(map[string]any); ok {
+		accessorKeys := []string{}
+		for key := range getters {
+			if strings.HasPrefix(key, "__") || seen[key] {
+				continue
+			}
+			accessorKeys = append(accessorKeys, key)
+		}
+		sort.Strings(accessorKeys)
+		keys = append(keys, accessorKeys...)
+	}
 	return keys
+}
+
+func defineRuntimeProperty(target any, key string, descriptor map[string]any) {
+	if getter, ok := descriptor["get"]; ok && !isNullish(getter) {
+		setAccessorGetter(target, key, getter)
+		return
+	}
+	setDynamicProperty(target, key, descriptor["value"])
+}
+
+func setAccessorGetter(target any, key string, getter any) bool {
+	switch typed := target.(type) {
+	case map[string]any:
+		ensureAccessorGetters(typed)[key] = getter
+		return true
+	case FunctionValue:
+		if typed.Props == nil {
+			return false
+		}
+		ensureAccessorGetters(typed.Props)[key] = getter
+		return true
+	case NativeFunctionValue:
+		if typed.Props == nil {
+			return false
+		}
+		ensureAccessorGetters(typed.Props)[key] = getter
+		return true
+	case BoundFunctionValue:
+		if typed.Function.Props == nil {
+			return false
+		}
+		ensureAccessorGetters(typed.Function.Props)[key] = getter
+		return true
+	default:
+		return false
+	}
+}
+
+func ensureAccessorGetters(object map[string]any) map[string]any {
+	getters, ok := object["__getters"].(map[string]any)
+	if !ok {
+		getters = map[string]any{}
+		object["__getters"] = getters
+	}
+	return getters
+}
+
+func accessorGetter(object map[string]any, key string) (any, bool) {
+	if object == nil {
+		return nil, false
+	}
+	getters, ok := object["__getters"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	getter, ok := getters[key]
+	return getter, ok
+}
+
+func callAccessorGetter(object map[string]any, key string, thisValue any) (any, bool, error) {
+	getter, ok := accessorGetter(object, key)
+	if !ok {
+		return nil, false, nil
+	}
+	value, err := callFunctionWithValues(getter, []any{}, Env{}, thisValue)
+	if err != nil {
+		return nil, true, err
+	}
+	return value, true, nil
 }
 
 func setObjectProperty(object map[string]any, key string, value any) {
@@ -3496,9 +3657,10 @@ func newHTTPServer(handler any) map[string]any {
 		server["__port"] = float64(port)
 		httpServers[port] = server
 		if callback := lastCallback(args); callback != nil {
-			if _, err := callFunctionWithValues(callback, []any{}, Env{}, server); err != nil {
-				return nil, err
-			}
+			queueMicrotaskTask(func() error {
+				_, err := callFunctionWithValues(callback, []any{}, Env{}, server)
+				return err
+			})
 		}
 		emitEvent(server, "listening")
 		return server, nil
@@ -3886,9 +4048,11 @@ func streamModuleExports() map[string]any {
 
 func eventsModuleExports() map[string]any {
 	exports := map[string]any{}
+	prototype := eventEmitterPrototype()
 	eventEmitter := nativeFunction(func(args []any) (any, error) {
-		return newEventEmitter(), nil
+		return newEventEmitterWithPrototype(prototype), nil
 	})
+	eventEmitter.Props["prototype"] = prototype
 	exports["EventEmitter"] = eventEmitter
 	exports["once"] = nativeFunction(func(args []any) (any, error) {
 		if len(args) < 2 {
@@ -4623,46 +4787,127 @@ func newDuplexStream(chunks []any) map[string]any {
 	return stream
 }
 
-func newEventEmitter() map[string]any {
-	emitter := map[string]any{
-		"__events": map[string][]any{},
-	}
-	emitter["emit"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+func eventEmitterPrototype() map[string]any {
+	prototype := map[string]any{}
+	prototype["emit"] = nativeMethod(func(thisValue any, args []any) (any, error) {
 		if len(args) == 0 {
 			return false, nil
 		}
+		emitter := eventEmitterReceiver(thisValue)
 		emitEvent(emitter, jsString(args[0]), args[1:]...)
 		return true, nil
 	})
-	emitter["on"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+	prototype["on"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) >= 2 {
+			listeners := eventEmitterListeners(emitter)
+			name := jsString(args[0])
+			listeners[name] = append(listeners[name], args[1])
+		}
 		return emitter, nil
 	})
-	emitter["once"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+	prototype["once"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) >= 2 {
+			listeners := eventEmitterListeners(emitter)
+			name := jsString(args[0])
+			listeners[name] = append(listeners[name], args[1])
+		}
 		return emitter, nil
 	})
-	emitter["addListener"] = emitter["on"]
-	emitter["removeListener"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+	prototype["addListener"] = prototype["on"]
+	prototype["removeListener"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) >= 2 {
+			listeners := eventEmitterListeners(emitter)
+			name := jsString(args[0])
+			next := []any{}
+			for _, listener := range listeners[name] {
+				if !jsSameValue(listener, args[1]) {
+					next = append(next, listener)
+				}
+			}
+			listeners[name] = next
+		}
 		return emitter, nil
 	})
-	emitter["removeAllListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+	prototype["off"] = prototype["removeListener"]
+	prototype["removeAllListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) == 0 {
+			emitter["__listeners"] = map[string][]any{}
+		} else {
+			delete(eventEmitterListeners(emitter), jsString(args[0]))
+		}
 		return emitter, nil
 	})
-	emitter["listenerCount"] = nativeMethod(func(thisValue any, args []any) (any, error) {
-		return float64(0), nil
+	prototype["listenerCount"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) == 0 {
+			return float64(0), nil
+		}
+		return float64(len(eventEmitterListeners(emitter)[jsString(args[0])])), nil
 	})
-	emitter["setMaxListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+	prototype["setMaxListeners"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		emitter := eventEmitterReceiver(thisValue)
+		if len(args) > 0 {
+			emitter["_maxListeners"] = args[0]
+		}
 		return emitter, nil
 	})
+	return prototype
+}
+
+func newEventEmitter() map[string]any {
+	return newEventEmitterWithPrototype(eventEmitterPrototype())
+}
+
+func newEventEmitterWithPrototype(prototype map[string]any) map[string]any {
+	emitter := objectWithPrototype(prototype)
+	emitter["__events"] = map[string][]any{}
+	emitter["__listeners"] = map[string][]any{}
 	return emitter
 }
 
 func emitEvent(emitter map[string]any, name string, args ...any) {
+	for _, listener := range eventEmitterListeners(emitter)[name] {
+		_, _ = callFunctionWithValues(listener, args, Env{}, emitter)
+	}
 	events, ok := emitter["__events"].(map[string][]any)
 	if !ok {
 		events = map[string][]any{}
 		emitter["__events"] = events
 	}
 	events[name] = append(events[name], &ArrayValue{Items: append([]any{}, args...)})
+}
+
+func eventEmitterReceiver(thisValue any) map[string]any {
+	switch typed := thisValue.(type) {
+	case map[string]any:
+		return typed
+	case FunctionValue:
+		if typed.Props != nil {
+			return typed.Props
+		}
+	case NativeFunctionValue:
+		if typed.Props != nil {
+			return typed.Props
+		}
+	case BoundFunctionValue:
+		if typed.Function.Props != nil {
+			return typed.Function.Props
+		}
+	}
+	return newEventEmitter()
+}
+
+func eventEmitterListeners(emitter map[string]any) map[string][]any {
+	listeners, ok := emitter["__listeners"].(map[string][]any)
+	if !ok {
+		listeners = map[string][]any{}
+		emitter["__listeners"] = listeners
+	}
+	return listeners
 }
 
 func lastEventPayload(emitter map[string]any, name string) any {
@@ -5239,6 +5484,62 @@ func processObject(entry string) map[string]any {
 		}),
 		"emitWarning": nativeFunction(func(args []any) (any, error) {
 			return jsUndefined, nil
+		}),
+		"binding": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return map[string]any{}, nil
+			}
+			switch jsString(args[0]) {
+			case "buffer":
+				return map[string]any{"kStringMaxLength": float64(1 << 28)}, nil
+			case "util":
+				return map[string]any{
+					"isArrayBuffer": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*ArrayValue)
+						return ok, nil
+					}),
+					"isDate": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*DateValue)
+						return ok, nil
+					}),
+					"isMap": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*MapValue)
+						return ok, nil
+					}),
+					"isRegExp": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*RegExpValue)
+						return ok, nil
+					}),
+					"isSet": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*SetValue)
+						return ok, nil
+					}),
+					"isTypedArray": nativeFunction(func(args []any) (any, error) {
+						if len(args) == 0 {
+							return false, nil
+						}
+						_, ok := args[0].(*ArrayValue)
+						return ok, nil
+					}),
+				}, nil
+			default:
+				return map[string]any{}, nil
+			}
 		}),
 	}
 	process["stdin"] = newWritableStream()
@@ -5955,14 +6256,14 @@ func assignTarget(target map[string]any, value any, env Env) error {
 				function.Props = map[string]any{}
 			}
 			function.Props[property] = value
-			return assignTarget(objectExpr, function, env)
+			return nil
 		}
 		if function, ok := object.(NativeFunctionValue); ok {
 			if function.Props == nil {
 				function.Props = map[string]any{}
 			}
 			function.Props[property] = value
-			return assignTarget(objectExpr, function, env)
+			return nil
 		}
 		if regExpValue, ok := object.(*RegExpValue); ok {
 			if property == "lastIndex" {
@@ -6082,13 +6383,13 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 		}
 	}
 	if function, ok := object.(NativeFunctionValue); ok {
-		if member, ok := nativeFunctionMember(function, property); ok {
-			return object, property, member, nil
+		if member, ok, err := nativeFunctionMemberWithError(function, property); ok {
+			return object, property, member, err
 		}
 	}
 	if function, ok := object.(FunctionValue); ok {
-		if member, ok := functionMember(function, property); ok {
-			return object, property, member, nil
+		if member, ok, err := functionMemberWithError(function, property); ok {
+			return object, property, member, err
 		}
 	}
 	if function, ok := object.(BoundFunctionValue); ok {
@@ -6145,6 +6446,11 @@ func evalMemberAccess(expr map[string]any, env Env) (any, string, any, error) {
 }
 
 func lookupObjectProperty(object map[string]any, property string) (any, bool) {
+	if value, ok, err := callAccessorGetter(object, property, object); ok && err == nil {
+		return value, true
+	} else if ok {
+		return jsUndefined, true
+	}
 	if value, ok := object[property]; ok {
 		return value, true
 	}
@@ -6346,9 +6652,22 @@ func callArrayPop(callee map[string]any, env Env) (any, error) {
 }
 
 func nativeFunctionMember(function NativeFunctionValue, property string) (any, bool) {
+	value, ok, _ := nativeFunctionMemberWithError(function, property)
+	return value, ok
+}
+
+func nativeFunctionMemberWithError(function NativeFunctionValue, property string) (any, bool, error) {
 	if function.Props != nil {
+		if value, ok, err := callAccessorGetter(function.Props, property, function); ok {
+			return value, true, err
+		}
 		if value, ok := function.Props[property]; ok {
-			return value, true
+			return value, true, nil
+		}
+		if prototype, ok := function.Props["__prototype"]; ok {
+			if value, ok := lookupPrototypeProperty(prototype, property); ok {
+				return value, true, nil
+			}
 		}
 	}
 	switch property {
@@ -6363,7 +6682,7 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 				return function.CallWithThis(thisValue, args)
 			}
 			return function.Call(args)
-		}), true
+		}), true, nil
 	case "apply":
 		return nativeFunction(func(args []any) (any, error) {
 			thisValue := any(jsUndefined)
@@ -6378,7 +6697,7 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 				return function.CallWithThis(thisValue, callArgs)
 			}
 			return function.Call(callArgs)
-		}), true
+		}), true, nil
 	case "bind":
 		return nativeFunction(func(args []any) (any, error) {
 			thisValue := any(jsUndefined)
@@ -6388,15 +6707,28 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 				boundArgs = append(boundArgs, args[1:]...)
 			}
 			return bindCallable(function, thisValue, boundArgs), nil
-		}), true
+		}), true, nil
 	}
-	return nil, false
+	return nil, false, nil
 }
 
 func functionMember(function FunctionValue, property string) (any, bool) {
+	value, ok, _ := functionMemberWithError(function, property)
+	return value, ok
+}
+
+func functionMemberWithError(function FunctionValue, property string) (any, bool, error) {
 	if function.Props != nil {
+		if value, ok, err := callAccessorGetter(function.Props, property, function); ok {
+			return value, true, err
+		}
 		if value, ok := function.Props[property]; ok {
-			return value, true
+			return value, true, nil
+		}
+		if prototype, ok := function.Props["__prototype"]; ok {
+			if value, ok := lookupPrototypeProperty(prototype, property); ok {
+				return value, true, nil
+			}
 		}
 	}
 	switch property {
@@ -6408,7 +6740,7 @@ func functionMember(function FunctionValue, property string) (any, bool) {
 				args = args[1:]
 			}
 			return callFunctionWithThisValues(function, args, thisValue)
-		}), true
+		}), true, nil
 	case "apply":
 		return nativeFunction(func(args []any) (any, error) {
 			thisValue := any(jsUndefined)
@@ -6420,7 +6752,7 @@ func functionMember(function FunctionValue, property string) (any, bool) {
 				callArgs = iterableValues(args[1])
 			}
 			return callFunctionWithThisValues(function, callArgs, thisValue)
-		}), true
+		}), true, nil
 	case "bind":
 		return nativeFunction(func(args []any) (any, error) {
 			thisValue := any(jsUndefined)
@@ -6430,9 +6762,9 @@ func functionMember(function FunctionValue, property string) (any, bool) {
 				boundArgs = append(boundArgs, args[1:]...)
 			}
 			return bindCallable(function, thisValue, boundArgs), nil
-		}), true
+		}), true, nil
 	}
-	return nil, false
+	return nil, false, nil
 }
 
 func boundFunctionMember(function BoundFunctionValue, property string) (any, bool) {
@@ -7813,8 +8145,8 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			if resultMap, ok := result.(map[string]any); ok {
-				return resultMap, nil
+			if isObjectLikeResult(result) {
+				return result, nil
 			}
 			return instance, nil
 		}
@@ -7830,8 +8162,8 @@ func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			if resultMap, ok := result.(map[string]any); ok {
-				return resultMap, nil
+			if isObjectLikeResult(result) {
+				return result, nil
 			}
 			return instance, nil
 		}
@@ -7897,6 +8229,15 @@ func constructClassWithValues(classValue *ClassValue, args []any) (any, error) {
 		}
 	}
 	return instance, nil
+}
+
+func isObjectLikeResult(value any) bool {
+	switch value.(type) {
+	case map[string]any, FunctionValue, NativeFunctionValue, BoundFunctionValue, *ClassValue, *ArrayValue, *RegExpValue, *DateValue, *MapValue, *SetValue, *IteratorValue:
+		return true
+	default:
+		return false
+	}
 }
 
 func isConstructable(raw any) bool {
@@ -8631,21 +8972,44 @@ func jsInstanceOf(value any, constructor any) bool {
 }
 
 func objectHasPrototype(value any, prototype any) bool {
-	object, ok := value.(map[string]any)
-	if !ok || isNullish(prototype) {
+	if isNullish(prototype) {
 		return false
 	}
-	for current, ok := object["__prototype"]; ok; {
+	for current, ok := runtimePrototypeOf(value); ok; {
 		if jsSameValue(current, prototype) {
 			return true
 		}
-		currentObject, ok := current.(map[string]any)
-		if !ok {
-			return false
-		}
-		current, ok = currentObject["__prototype"]
+		current, ok = runtimePrototypeOf(current)
 	}
 	return false
+}
+
+func runtimePrototypeOf(value any) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		prototype, ok := typed["__prototype"]
+		return prototype, ok
+	case FunctionValue:
+		if typed.Props == nil {
+			return nil, false
+		}
+		prototype, ok := typed.Props["__prototype"]
+		return prototype, ok
+	case NativeFunctionValue:
+		if typed.Props == nil {
+			return nil, false
+		}
+		prototype, ok := typed.Props["__prototype"]
+		return prototype, ok
+	case BoundFunctionValue:
+		if typed.Function.Props == nil {
+			return nil, false
+		}
+		prototype, ok := typed.Function.Props["__prototype"]
+		return prototype, ok
+	default:
+		return nil, false
+	}
 }
 
 func toNumber(value any) float64 {

@@ -242,6 +242,7 @@ function vectorEntryFor(entry) {
   }
   const selectedRunner = extractFunction(runnerSource, runnerFunction);
   const helpers = [
+    "requestHttp",
     "listenExpress",
     "normalizeHttpResult",
     "listen",

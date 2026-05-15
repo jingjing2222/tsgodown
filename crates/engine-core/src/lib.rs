@@ -2017,16 +2017,36 @@ export { parser as "module.exports" }
             "src/index.js",
             r#"
 const add = require("./add.js")
-console.log("cjs", add(2, 4))
+const outer = require("./outer.js")
+console.log("cjs", add(2, 4), add.extra(), Object.hasOwn(add, "extra"), outer.extra())
 "#,
         );
         write(
             &root,
             "src/add.js",
             r#"
-module.exports = function add(left, right) {
+exports = module.exports = function add(left, right) {
   return left + right
 }
+Object.defineProperty(exports, "extra", {
+  enumerable: true,
+  get: function () {
+    return function extra() {
+      return "getter"
+    }
+  }
+})
+"#,
+        );
+        write(
+            &root,
+            "src/outer.js",
+            r#"
+const add = require("./add.js")
+exports = module.exports = function outer() {
+  return "outer"
+}
+exports.extra = add.extra
 "#,
         );
 
@@ -2074,7 +2094,10 @@ module.exports = function add(left, right) {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "cjs 6\n");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "cjs 6 getter true getter\n"
+        );
     }
 
     #[test]
@@ -2236,8 +2259,17 @@ console.log("json-module", data.name, data.nested.ok, data.items.length)
 function Box(value) {
   this.value = value
 }
+function Factory(value) {
+  function callable() {
+    return callable.value
+  }
+  Object.setPrototypeOf(callable, this)
+  callable.value = value
+  return callable
+}
 const box = new Box(7)
-console.log("ctor", box.value)
+const factory = new Factory("fn")
+console.log("ctor", box.value, typeof factory, factory(), factory instanceof Factory)
 "#,
         );
 
@@ -2285,7 +2317,10 @@ console.log("ctor", box.value)
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "ctor 7\n");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "ctor 7 function fn true\n"
+        );
     }
 
     #[test]
@@ -2856,7 +2891,25 @@ function copyFunctionProps(env) {
   })
   return copied.load()
 }
-console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1], copyFunctionProps({ load: () => "loaded" }))
+function configure() {
+  this.cache = Object.create(null)
+  this.cache.value = "cached"
+}
+configure.call(tag)
+const callableProto = {
+  use: function (value) {
+    this.stack.push(value)
+    return this.stack.length
+  }
+}
+function makeCallable() {
+  function router() {}
+  Object.setPrototypeOf(router, callableProto)
+  router.stack = []
+  return router
+}
+const callable = makeCallable()
+console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype.kind, box.read(), child.inherited, "inherited" in child, box instanceof Box, child instanceof Box, sized.length, sized[1], copyFunctionProps({ load: () => "loaded" }), tag.cache.value, callable.use("layer"), callable.stack[0], Object.getPrototypeOf(callable) === callableProto)
 "#,
         );
 
@@ -2906,7 +2959,7 @@ console.log("fn-props", tag("7"), tag.count, typeof tag.prototype, tag.prototype
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "fn-props id:7 3 object tag ok yes true true false 3 x loaded\n"
+            "fn-props id:7 3 object tag ok yes true true false 3 x loaded cached 1 layer true\n"
         );
     }
 
@@ -3360,6 +3413,7 @@ console.log("class", counter.current, Counter.label, Counter.ANY, derived.curren
 import { format } from "util"
 const util = require("util")
 const Stream = require("stream")
+const EventEmitter = require("node:events").EventEmitter
 const wrapped = util.deprecate(function add(left, right) {
   return this.base + left + right
 }, "add is deprecated")
@@ -3378,7 +3432,16 @@ const child = new Child()
 function SendStream() {}
 util.inherits(SendStream, Stream)
 const send = new SendStream()
-console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"), wrapped.call({ base: 1 }, 2, 4), child.read(), child instanceof Child, child instanceof Parent, Child.super_ === Parent, child.constructor === Child, typeof Stream, Stream === Stream.Stream, send instanceof Stream)
+const app = function () {}
+Object.getOwnPropertyNames(EventEmitter.prototype).forEach(function (name) {
+  Object.defineProperty(app, name, Object.getOwnPropertyDescriptor(EventEmitter.prototype, name))
+})
+const hasEmitterOn = Object.hasOwn(app, "on")
+app.on("ready", function (value) {
+  this.ready = value
+})
+app.emit("ready", "ok")
+console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"), wrapped.call({ base: 1 }, 2, 4), child.read(), child instanceof Child, child instanceof Parent, Child.super_ === Parent, child.constructor === Child, typeof Stream, Stream === Stream.Stream, send instanceof Stream, app.ready, app.listenerCount("ready"), hasEmitterOn)
 "#,
         );
 
@@ -3428,7 +3491,7 @@ console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "util name:items count:3 \"quoted\" 7 p true true true true function true true\n"
+            "util name:items count:3 \"quoted\" 7 p true true true true function true true ok 1 true\n"
         );
     }
 
@@ -3978,9 +4041,12 @@ Error.prepareStackTrace = previousPrepareStackTrace
 const headers = new Headers({ "X-Trace": "one" })
 headers.append("x-trace", "two")
 const response = new Response(null, { status: 302, headers })
+const legacyUtil = process.binding("util")
+const legacyBuffer = process.binding("buffer")
 console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, performance.now() >= 0)
 console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv6("::1"), net.isIP("bad"))
 console.log("web-api", stackTarget.stack, typeof firstCallSite.getFileName, firstCallSite.getLineNumber(), firstCallSite.getColumnNumber(), firstCallSite.isEval(), firstCallSite.toString().includes("generated.js"), response.status, response.headers.get("X-Trace"))
+console.log("binding-api", legacyUtil.isRegExp(/x/), legacyUtil.isDate(new Date(0)), legacyUtil.isMap(new Map()), legacyUtil.isSet(new Set()), legacyUtil.isTypedArray(Buffer.from("x")), legacyBuffer.kStringMaxLength > 0)
 "#,
         );
 
@@ -4030,7 +4096,7 @@ console.log("web-api", stackTarget.stack, typeof firstCallSite.getFileName, firs
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok function 1 1 false true 302 one, two\n"
+            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok function 1 1 false true 302 one, two\nbinding-api true true true true true true\n"
         );
     }
 
@@ -4052,11 +4118,29 @@ async function main() {
   })
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
   const port = server.address().port
-  const response = await fetch(`http://127.0.0.1:${port}/items/7?q=x`, { method: "POST", body: "payload" })
-  const headers = Object.fromEntries(response.headers)
-  const text = await response.text()
-  await new Promise((resolve) => server.close(resolve))
-  console.log("http", methodSummary, STATUS_CODES[200], STATUS_CODES[404], response.status, headers["x-vector"], text)
+  const deferredListen = await new Promise((resolve) => {
+    const scoped = createServer((_req, res) => res.end("ok"))
+    const assigned = scoped.listen(0, "127.0.0.1", () => {
+      assigned.off("error", resolve)
+      resolve(scoped.address().port > 0)
+    })
+    assigned.once("error", resolve)
+  })
+  async function requestLike() {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/items/7?q=x`, { method: "POST", body: "payload" })
+      const headers = Object.fromEntries(response.headers)
+      const text = await response.text()
+      return { status: response.status, header: headers["x-vector"], text }
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  }
+  async function outerRequestLike() {
+    return requestLike()
+  }
+  const result = await outerRequestLike()
+  console.log("http", methodSummary, STATUS_CODES[200], STATUS_CODES[404], result.status, result.header, result.text, deferredListen)
 }
 main()
 "#,
@@ -4108,7 +4192,7 @@ main()
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "http acl|bind|checkout OK Not Found 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"}\n"
+            "http acl|bind|checkout OK Not Found 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"} true\n"
         );
     }
 
