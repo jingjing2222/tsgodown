@@ -585,9 +585,12 @@ const guarded = /^(?!bad)[a-z]+$/.test("good") + ":" + /^(?!bad)[a-z]+$/.test("b
 const protoExec = RegExp.prototype.exec.call(/[a]+/, "baa")[0]
 const boundExec = Function.prototype.bind.call(Function.prototype.call, RegExp.prototype.exec)
 const boundSegment = boundExec(/(\[[^[\]]*])/g, "user[name]")
+const globalScan = /(\[[^[\]]*])/g
+const firstScan = globalScan.exec("user[name][role]")
+const secondScan = globalScan.exec("user[name][role]")
 const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), protoSlice, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -637,7 +640,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 true:false aa name bcd 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] bcd 2|3 true\n"
         );
     }
 

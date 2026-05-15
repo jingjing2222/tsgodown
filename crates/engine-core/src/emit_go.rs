@@ -370,6 +370,7 @@ type RegExpValue struct {
 	Regex   *regexp.Regexp
 	Regex2  *regexp2.Regexp
 	Global  bool
+	LastIndex int
 	Props   map[string]any
 }
 
@@ -1129,6 +1130,10 @@ func setDynamicProperty(target any, property string, value any) bool {
 		typed[property] = value
 		return true
 	case *RegExpValue:
+		if property == "lastIndex" {
+			typed.LastIndex = jsInteger(value)
+			return true
+		}
 		if typed.Props == nil {
 			typed.Props = map[string]any{}
 		}
@@ -1278,6 +1283,7 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 		Regex:   compiled,
 		Regex2:  compiled2,
 		Global:  strings.Contains(flags, "g"),
+		LastIndex: 0,
 		Props:   map[string]any{},
 	}, nil
 }
@@ -1313,16 +1319,30 @@ func regexpMatches(value *RegExpValue, text string) any {
 }
 
 func regexpExec(value *RegExpValue, text string) any {
-	match, err := regexpFindFirst(value, text)
+	start := 0
+	if value.Global {
+		start = value.LastIndex
+	}
+	match, err := regexpFindFirstFrom(value, text, start)
 	if err != nil || match == nil {
+		if value.Global {
+			value.LastIndex = 0
+		}
 		return jsNull
 	}
-	result := []any{}
-	for _, group := range match.Groups {
+	if value.Global {
+		value.LastIndex = match.Index[1]
+	}
+	result := map[string]any{
+		"length": float64(len(match.Groups)),
+		"index":  float64(match.Index[0]),
+		"input":  text,
+	}
+	for index, group := range match.Groups {
 		if group == "" {
-			result = append(result, jsUndefined)
+			result[strconv.Itoa(index)] = jsUndefined
 		} else {
-			result = append(result, group)
+			result[strconv.Itoa(index)] = group
 		}
 	}
 	return result
@@ -1334,11 +1354,41 @@ type regexpMatch struct {
 }
 
 func regexpFindFirst(value *RegExpValue, text string) (*regexpMatch, error) {
-	matches, err := regexpFindAll(value, text)
-	if err != nil || len(matches) == 0 {
+	return regexpFindFirstFrom(value, text, 0)
+}
+
+func regexpFindFirstFrom(value *RegExpValue, text string, start int) (*regexpMatch, error) {
+	if start < 0 {
+		start = 0
+	}
+	if start > len(text) {
+		return nil, nil
+	}
+	if value.Regex != nil {
+		raw := value.Regex.FindStringSubmatchIndex(text[start:])
+		if raw == nil {
+			return nil, nil
+		}
+		for index := range raw {
+			if raw[index] >= 0 {
+				raw[index] += start
+			}
+		}
+		matches := regexpMatchesFromStd(text, [][]int{raw})
+		if len(matches) == 0 {
+			return nil, nil
+		}
+		return &matches[0], nil
+	}
+	if value.Regex2 == nil {
+		return nil, nil
+	}
+	match, err := value.Regex2.FindStringMatchStartingAt(text, byteIndexToRuneIndex(text, start))
+	if err != nil || match == nil {
 		return nil, err
 	}
-	return &matches[0], nil
+	result := regexpMatchFromRegexp2(text, match)
+	return &result, nil
 }
 
 func regexpFindAll(value *RegExpValue, text string) ([]regexpMatch, error) {
@@ -1410,6 +1460,20 @@ func runeIndexToByteIndex(value string, runeIndex int) int {
 		current++
 	}
 	return len(value)
+}
+
+func byteIndexToRuneIndex(value string, byteIndex int) int {
+	if byteIndex <= 0 {
+		return 0
+	}
+	runeIndex := 0
+	for current := range value {
+		if current >= byteIndex {
+			return runeIndex
+		}
+		runeIndex++
+	}
+	return len([]rune(value))
 }
 
 func pathModuleExports() map[string]any {
@@ -2200,6 +2264,10 @@ func assignTarget(target map[string]any, value any, env Env) error {
 			return assignTarget(objectExpr, function, env)
 		}
 		if regExpValue, ok := object.(*RegExpValue); ok {
+			if property == "lastIndex" {
+				regExpValue.LastIndex = jsInteger(value)
+				return nil
+			}
 			if regExpValue.Props == nil {
 				regExpValue.Props = map[string]any{}
 			}
@@ -2867,6 +2935,8 @@ func regexpMember(value *RegExpValue, property string) (any, bool) {
 		return value.Pattern, true
 	case "flags":
 		return value.Flags, true
+	case "lastIndex":
+		return float64(value.LastIndex), true
 	case "test":
 		return nativeFunction(func(args []any) (any, error) {
 			text := ""
