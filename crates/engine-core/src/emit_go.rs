@@ -9,6 +9,16 @@ pub struct EmitGoRequest {
     pub analyze: AnalyzeRequest,
     #[serde(default)]
     pub package_name: Option<String>,
+    #[serde(default)]
+    pub output_kind: EmitGoOutputKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum EmitGoOutputKind {
+    #[default]
+    Main,
+    VectorSuite,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,10 +50,15 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
         version: "engine-core.emit-go.v1".to_string(),
         target_backend: "go".to_string(),
         files: vec![GeneratedFile {
-            path: "main.go".to_string(),
-            contents: render_fail_closed_main(
+            path: match request.output_kind {
+                EmitGoOutputKind::Main => "main.go",
+                EmitGoOutputKind::VectorSuite => "vector_suite.go",
+            }
+            .to_string(),
+            contents: render_fail_closed_program(
                 &sanitize_package_name(request.package_name.as_deref().unwrap_or("main")),
                 &diagnostics,
+                request.output_kind,
             ),
         }],
         diagnostics,
@@ -62,9 +77,34 @@ fn sanitize_package_name(value: &str) -> String {
     }
 }
 
-fn render_fail_closed_main(package_name: &str, diagnostics: &[Diagnostic]) -> String {
+fn render_fail_closed_program(
+    package_name: &str,
+    diagnostics: &[Diagnostic],
+    output_kind: EmitGoOutputKind,
+) -> String {
     let diagnostics_json =
         serde_json::to_string(diagnostics).expect("diagnostics should serialize");
+    let (version, extra_report_fields) = match output_kind {
+        EmitGoOutputKind::Main => ("engine-core.emit-go.fail-closed.v1", ""),
+        EmitGoOutputKind::VectorSuite => (
+            "engine-core.emit-go.vector-suite.fail-closed.v1",
+            r#"
+		"corpus": corpus,
+		"total": 0,
+		"results": []any{},"#,
+        ),
+    };
+    let argv_setup = match output_kind {
+        EmitGoOutputKind::Main => "",
+        EmitGoOutputKind::VectorSuite => {
+            r#"
+	corpus := ""
+	if len(os.Args) > 1 {
+		corpus = os.Args[1]
+	}
+"#
+        }
+    };
     format!(
         r#"package {package_name}
 
@@ -75,11 +115,13 @@ import (
 )
 
 func main() {{
+{argv_setup}
 	diagnostics := json.RawMessage({diagnostics_json:?})
 	report := map[string]any{{
-		"version": "engine-core.emit-go.fail-closed.v1",
+		"version": "{version}",
 		"unsupported": true,
 		"diagnostics": diagnostics,
+{extra_report_fields}
 	}}
 	bytes, err := json.Marshal(report)
 	if err != nil {{

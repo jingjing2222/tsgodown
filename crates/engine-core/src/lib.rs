@@ -8,7 +8,7 @@ pub use contract::{
     ExecutableModule, Import, InputManifest, IrDocument, JsExpr, JsObjectProp, JsStmt, JsValue,
     Module, Route,
 };
-pub use emit_go::{emit_go, EmitGoRequest, EmitGoResponse, GeneratedFile};
+pub use emit_go::{emit_go, EmitGoOutputKind, EmitGoRequest, EmitGoResponse, GeneratedFile};
 
 #[cfg(test)]
 mod tests {
@@ -186,6 +186,7 @@ export { value };
                 config: AnalyzeConfig::default(),
             },
             package_name: Some("9-bad package".to_string()),
+            output_kind: EmitGoOutputKind::Main,
         });
 
         assert_eq!(response.version, "engine-core.emit-go.v1");
@@ -204,6 +205,30 @@ export { value };
             .any(|diagnostic| diagnostic.code == "GO_CODEGEN_NOT_IMPLEMENTED"));
         assert!(!response.files[0].contents.contains("node --"));
         assert!(!response.files[0].contents.contains("exec.Command"));
+    }
+
+    #[test]
+    fn emit_go_returns_fail_closed_vector_suite_file() {
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "tests/vector-suite-entry.mjs".to_string(),
+                    framework: None,
+                },
+                cwd: None,
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            output_kind: EmitGoOutputKind::VectorSuite,
+        });
+
+        assert_eq!(response.files.len(), 1);
+        assert_eq!(response.files[0].path, "vector_suite.go");
+        assert!(response.files[0]
+            .contents
+            .contains("engine-core.emit-go.vector-suite.fail-closed.v1"));
+        assert!(response.files[0].contents.contains("\"results\": []any{}"));
+        assert!(response.files[0].contents.contains("corpus := \"\""));
     }
 
     fn write(root: &std::path::Path, rel: &str, source: &str) {

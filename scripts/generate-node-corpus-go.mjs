@@ -83,7 +83,7 @@ function analyzeEntry(testCase, entry) {
   }
 }
 
-function emitGoEntry(testCase, entry) {
+function emitGoEntry(testCase, entry, outputKind = "main") {
   const emit = run(engineCoreBin, ["emit-go"], {
     input: JSON.stringify({
       analyze: {
@@ -94,6 +94,7 @@ function emitGoEntry(testCase, entry) {
         config: {},
       },
       packageName: "main",
+      outputKind,
     }),
   });
 
@@ -115,11 +116,19 @@ function emitGoEntry(testCase, entry) {
 }
 
 function mainGoFromEmitResponse(testCase, emitGoJson) {
+  return emittedFileContents(testCase, emitGoJson, "main.go");
+}
+
+function vectorSuiteGoFromEmitResponse(testCase, emitGoJson) {
+  return emittedFileContents(testCase, emitGoJson, "vector_suite.go");
+}
+
+function emittedFileContents(testCase, emitGoJson, fileName) {
   const file = (emitGoJson?.files ?? []).find(
-    (item) => item?.path === "main.go",
+    (item) => item?.path === fileName,
   );
   if (typeof file?.contents !== "string" || file.contents.length === 0) {
-    fail(`engine-core emit-go did not return main.go for ${testCase.id}`);
+    fail(`engine-core emit-go did not return ${fileName} for ${testCase.id}`);
   }
   return file.contents;
 }
@@ -1536,6 +1545,11 @@ function generateCase(testCase) {
   const analyzeJson = analyzeEntry(testCase, testCase.entry);
   const probeAnalyzeJson = analyzeEntry(testCase, testCase.probe);
   const emitGoJson = emitGoEntry(testCase, testCase.probe);
+  const vectorEmitGoJson = emitGoEntry(
+    testCase,
+    "tests/vector-suite-entry.mjs",
+    "vectorSuite",
+  );
   const vectorAnalyzeJson = analyzeEntry(
     testCase,
     "tests/vector-suite-entry.mjs",
@@ -1560,7 +1574,7 @@ function generateCase(testCase) {
   );
   fs.writeFileSync(
     path.join(outDir, "vector_suite.go"),
-    renderVectorSuiteGo(testCase, vectorAnalyzeJson),
+    vectorSuiteGoFromEmitResponse(testCase, vectorEmitGoJson),
     "utf8",
   );
 
@@ -1570,6 +1584,7 @@ function generateCase(testCase) {
     modules: analyzeJson?.ir?.modules?.length ?? 0,
     diagnostics: analyzeJson?.diagnostics?.length ?? 0,
     emitGoDiagnostics: emitGoJson?.diagnostics?.length ?? 0,
+    vectorEmitGoDiagnostics: vectorEmitGoJson?.diagnostics?.length ?? 0,
     executableIr: executableIrStats(analyzeJson),
     probeExecutableIr: executableIrStats(probeAnalyzeJson),
     vectorExecutableIr: executableIrStats(vectorAnalyzeJson),
