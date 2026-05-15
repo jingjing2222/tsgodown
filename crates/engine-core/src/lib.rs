@@ -3139,12 +3139,18 @@ function explode() {
   throw "wrapped"
 }
 let wrapped = "none"
+let optional = "not-run"
 try {
   explode()
 } catch (error) {
   wrapped = `wrapped:${error}`
 }
-console.log("try", risky(1), risky(3), cleanup, wrapped)
+try {
+  require("missing-optional")
+} catch (error) {
+  optional = error.name
+}
+console.log("try", risky(1), risky(3), cleanup, wrapped, optional)
 "#,
         );
 
@@ -3194,7 +3200,7 @@ console.log("try", risky(1), risky(3), cleanup, wrapped)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "try 1 caught:too-big 2 wrapped:wrapped\n"
+            "try 1 caught:too-big 2 wrapped:wrapped Error\n"
         );
     }
 

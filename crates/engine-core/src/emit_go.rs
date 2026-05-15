@@ -688,7 +688,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			importedModule, ok := moduleByID(program, importDecl.Resolved)
 			if !ok {
-				return nil, fmt.Errorf("module import %s is not resolved", importDecl.Spec)
+				return nil, jsThrow{value: nodeError("MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", importDecl.Spec))}
 			}
 			return executeModule(importedModule, program, cache)
 		}
@@ -698,7 +698,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		if importedModule, ok := resolveBareModule(program, spec); ok {
 			return executeModule(importedModule, program, cache)
 		}
-		return nil, fmt.Errorf("module import %s is not resolved", spec)
+		return nil, jsThrow{value: nodeError("MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))}
 	}}
 	env["import"] = NativeFunctionValue{Call: func(args []any) (any, error) {
 		if len(args) == 0 {
@@ -739,7 +739,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 		return promiseRejected(nodeError("ERR_MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))), nil
 	}}
 	for _, importDecl := range module.Imports {
-		if importDecl.Kind == "cjs" {
+		if importDecl.Kind == "cjs" || importDecl.Kind == "cjs-optional" {
 			continue
 		}
 		importedExports, ok := builtinModuleExportsFor(importDecl.Spec, program, module, cache)
@@ -4967,7 +4967,7 @@ func moduleModuleExports() map[string]any {
 			if exports, ok := builtinModuleExports(jsString(args[0])); ok {
 				return exports, nil
 			}
-			return nil, fmt.Errorf("module import %s is not resolved", jsString(args[0]))
+			return nil, jsThrow{value: nodeError("MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", jsString(args[0])))}
 		}}, nil
 	})
 	exports["default"] = exports
@@ -4991,7 +4991,7 @@ func moduleModuleExportsFor(program Program, module Module, cache map[string]*mo
 				}
 				importedModule, ok := moduleByID(program, importDecl.Resolved)
 				if !ok {
-					return nil, fmt.Errorf("module import %s is not resolved", spec)
+					return nil, jsThrow{value: nodeError("MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))}
 				}
 				return executeModule(importedModule, program, cache)
 			}
@@ -5001,7 +5001,7 @@ func moduleModuleExportsFor(program Program, module Module, cache map[string]*mo
 			if importedModule, ok := resolveBareModule(program, spec); ok {
 				return executeModule(importedModule, program, cache)
 			}
-			return nil, fmt.Errorf("module import %s is not resolved", spec)
+			return nil, jsThrow{value: nodeError("MODULE_NOT_FOUND", fmt.Sprintf("module import %s is not resolved", spec))}
 		}}, nil
 	})
 	exports["default"] = exports

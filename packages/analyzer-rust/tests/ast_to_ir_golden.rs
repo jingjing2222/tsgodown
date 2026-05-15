@@ -983,16 +983,31 @@ class Loader {
     return require("./three.js");
   }
 }
+try {
+  require("./four.js");
+} catch (error) {
+  require("./fallback.js");
+} finally {
+  require("./cleanup.js");
+}
 "#;
     let ir = analyze_compiler_entry("nested-require.js", source);
     let imports = &ir.modules[0].imports;
 
-    for spec in ["./one.js", "./two.js", "./three.js"] {
+    for spec in ["./one.js", "./three.js", "./two.js"] {
         assert!(
             imports
                 .iter()
                 .any(|import| import.spec == spec && import.kind == "cjs"),
             "missing nested require import {spec}"
+        );
+    }
+    for spec in ["./cleanup.js", "./fallback.js", "./four.js"] {
+        assert!(
+            imports
+                .iter()
+                .any(|import| import.spec == spec && import.kind == "cjs-optional"),
+            "missing optional nested require import {spec}"
         );
     }
 }

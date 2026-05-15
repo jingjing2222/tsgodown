@@ -1377,6 +1377,21 @@ fn collect_cjs_imports_from_stmt(imports: &mut Vec<ImportIR>, stmt: &Stmt) {
             }
         }
         Stmt::Throw(throw_stmt) => collect_cjs_imports_from_expr(imports, &throw_stmt.arg),
+        Stmt::Try(try_stmt) => {
+            let start = imports.len();
+            collect_cjs_imports_from_block(imports, &try_stmt.block);
+            if let Some(handler) = &try_stmt.handler {
+                collect_cjs_imports_from_block(imports, &handler.body);
+            }
+            if let Some(finalizer) = &try_stmt.finalizer {
+                collect_cjs_imports_from_block(imports, finalizer);
+            }
+            for import in &mut imports[start..] {
+                if import.kind == "cjs" {
+                    import.kind = "cjs-optional".to_string();
+                }
+            }
+        }
         Stmt::For(for_stmt) => {
             if let Some(init) = &for_stmt.init {
                 match init {

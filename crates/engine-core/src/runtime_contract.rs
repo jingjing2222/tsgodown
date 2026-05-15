@@ -189,6 +189,12 @@ pub fn unsupported_executable_features(ir: &IrDocument) -> Vec<String> {
     let mut unsupported = Vec::new();
     for module in &ir.modules {
         for import in &module.imports {
+            if import.kind == "cjs-optional"
+                && import.resolved.is_none()
+                && !is_supported_builtin_import(&import.spec)
+            {
+                continue;
+            }
             if import.resolved.is_none() && !is_supported_builtin_import(&import.spec) {
                 unsupported.push(format!("external module import {}", import.spec));
             }
