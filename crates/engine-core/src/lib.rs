@@ -64,6 +64,7 @@ mod tests {
                             JsStmt::FunctionDecl {
                                 name: "health".to_string(),
                                 params: vec!["request".to_string()],
+                                rest_param: None,
                                 r#async: false,
                                 body: vec![JsStmt::Return {
                                     value: Some(JsExpr::Value {
@@ -657,6 +658,13 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
 const values = [1, 2, 3, 4]
 const seen = []
 values.forEach((value, index) => seen.push(value + index))
+const queue = ["b", "c"]
+queue.unshift("a")
+const shifted = queue.shift()
+const popped = queue.pop()
+queue.push("d", "e")
+const spliced = queue.splice(1, 1, "x", "y")
+queue.push.apply(queue, ["z"])
 const result = [
   values.reduce((acc, value) => acc + value, 0),
   ["a", "b", "c"].reduceRight((acc, value) => acc + value, ""),
@@ -667,7 +675,8 @@ const result = [
   values.indexOf(3),
   values.includes(5),
   values.concat([5], 6).slice(2, 5).join(":"),
-  [1, [2, [3]]].flat(2).join(":")
+  [1, [2, [3]]].flat(2).join(":"),
+  shifted + popped + ":" + spliced.join("") + ":" + queue.join("")
 ].join("|")
 console.log("array-more", seen.join(","), result)
 "#,
@@ -719,7 +728,7 @@ console.log("array-more", seen.join(","), result)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "array-more 1,3,5,7 10|cba|true|true|3|2|2|false|3:4:5|1:2:3\n"
+            "array-more 1,3,5,7 10|cba|true|true|3|2|2|false|3:4:5|1:2:3|ac:d:bxyez\n"
         );
     }
 
@@ -993,6 +1002,7 @@ const result = [
   trimmed.substring(6, 10),
   trimmed.substr(6, 4),
   trimmed.indexOf("B"),
+  trimmed.indexOf("a", 6),
   trimmed.lastIndexOf("a"),
   trimmed.includes("pha"),
   trimmed.startsWith("Al"),
@@ -1050,7 +1060,7 @@ console.log("string-more", result)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "string-more A|65|Alpha|Beta|Beta|6|9|true|true|true|xxx|a-a\n"
+            "string-more A|65|Alpha|Beta|Beta|6|9|9|true|true|true|xxx|a-a\n"
         );
     }
 
@@ -1724,7 +1734,10 @@ console.log("ctor", box.value)
             "src/index.js",
             r#"
 const [, , corpus, vectorPath] = ["node", "entry", "semver", "vectors.json"];
-console.log("args", corpus, vectorPath)
+const rows = [["index.js", "*.js", { dot: true }], ["index.ts", "*.js"]];
+const mapped = rows.map(([path, pattern, options = {}]) => path + ":" + pattern + ":" + (options.dot === true));
+const flag = (({ windowsPathsNoEscape = false } = {}) => windowsPathsNoEscape)();
+console.log("args", corpus, vectorPath, mapped[0], mapped[1], flag)
 "#,
         );
 
@@ -1774,7 +1787,7 @@ console.log("args", corpus, vectorPath)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "args semver vectors.json\n"
+            "args semver vectors.json index.js:*.js:true index.ts:*.js:false false\n"
         );
     }
 
@@ -2630,11 +2643,31 @@ class Counter {
 
 class DerivedCounter extends Counter {}
 class CustomError extends Error {}
+class PrivateCounter {
+  #value = 1
+  #bump(step = 1) {
+    this.#value += step
+  }
+  static #seed() {
+    return 4
+  }
+  constructor(start = 2) {
+    this.#value = start
+  }
+  next() {
+    this.#bump()
+    return this.#value
+  }
+  static read() {
+    return this.#seed()
+  }
+}
 const counter = new Counter(2)
 const reused = new Counter(counter)
 const derived = new DerivedCounter(4)
 const error = new CustomError("boom")
-console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message, reused === counter, reused.current)
+const privateCounter = new PrivateCounter()
+console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1), derived instanceof Counter, error instanceof Error, error.message, reused === counter, reused.current, privateCounter.next(), PrivateCounter.read())
 "#,
         );
 
@@ -2684,7 +2717,7 @@ console.log("class", counter.inc(3), counter.current, Counter.ANY, derived.inc(1
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "class 5 5 * 5 true true boom true 5\n"
+            "class 5 5 * 5 true true boom true 5 3 4\n"
         );
     }
 

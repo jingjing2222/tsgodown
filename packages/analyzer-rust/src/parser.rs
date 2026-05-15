@@ -275,15 +275,8 @@ fn export_specifier_name(specifier: &ExportSpecifier) -> Option<String> {
 fn pat_name(pat: &Pat) -> Option<String> {
     match pat {
         Pat::Ident(binding) => Some(binding.id.sym.to_string()),
+        Pat::Assign(assign) => pat_name(&assign.left),
         _ => None,
-    }
-}
-
-fn pat_names(pat: &Pat) -> Vec<String> {
-    match pat {
-        Pat::Ident(binding) => vec![binding.id.sym.to_string()],
-        Pat::Array(array) => array.elems.iter().flatten().filter_map(pat_name).collect(),
-        _ => Vec::new(),
     }
 }
 
@@ -502,16 +495,16 @@ fn lower_fn_decl_stmt(stmts: &mut Vec<JsStmtIR>, function: &FnDecl) {
     let Some(body) = &function.function.body else {
         return;
     };
+    let (params, rest_param, body) = lower_param_bound_body(
+        function.function.params.iter().map(|param| &param.pat),
+        lower_block_stmt(body),
+    );
     stmts.push(JsStmtIR::FunctionDecl {
         name: function.ident.sym.to_string(),
-        params: function
-            .function
-            .params
-            .iter()
-            .filter_map(|param| pat_name(&param.pat))
-            .collect(),
+        params,
+        rest_param,
         r#async: function.function.is_async,
-        body: lower_block_stmt(body),
+        body,
     });
 }
 
@@ -565,6 +558,12 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                 init: Some(init),
             });
         }
+        Pat::Assign(assign) => {
+            let Some(default_expr) = lower_js_expr(&assign.right) else {
+                return;
+            };
+            lower_pat_decl_stmts(stmts, &assign.left, defaulted_expr(init, default_expr));
+        }
         Pat::Array(array) => {
             let temp_name = format!("__tsgodown_destructure_{}", stmts.len());
             stmts.push(JsStmtIR::VarDecl {
@@ -610,13 +609,18 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                     }
                     swc_ecma_ast::ObjectPatProp::Assign(assign) => {
                         let property = assign.key.sym.to_string();
+                        let member = JsExprIR::Member {
+                            object: Box::new(JsExprIR::Ident(temp_name.clone())),
+                            property: property.clone(),
+                            computed: None,
+                        };
+                        let init = match assign.value.as_deref().and_then(lower_js_expr) {
+                            Some(default_expr) => defaulted_expr(member, default_expr),
+                            None => member,
+                        };
                         stmts.push(JsStmtIR::VarDecl {
-                            name: property.clone(),
-                            init: Some(JsExprIR::Member {
-                                object: Box::new(JsExprIR::Ident(temp_name.clone())),
-                                property,
-                                computed: None,
-                            }),
+                            name: property,
+                            init: Some(init),
                         });
                     }
                     swc_ecma_ast::ObjectPatProp::Rest(_) => {}
@@ -625,6 +629,51 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
         }
         _ => {}
     }
+}
+
+fn defaulted_expr(value: JsExprIR, fallback: JsExprIR) -> JsExprIR {
+    JsExprIR::Conditional {
+        test: Box::new(JsExprIR::Binary {
+            op: "===".to_string(),
+            left: Box::new(value.clone()),
+            right: Box::new(JsExprIR::Value(JsValueIR::Undefined)),
+        }),
+        consequent: Box::new(fallback),
+        alternate: Box::new(value),
+    }
+}
+
+fn lower_param_bound_body<'a>(
+    params: impl IntoIterator<Item = &'a Pat>,
+    body: Vec<JsStmtIR>,
+) -> (Vec<String>, Option<String>, Vec<JsStmtIR>) {
+    let mut bound_params = Vec::new();
+    let mut rest_param = None;
+    let mut prefix = Vec::new();
+
+    for (index, param) in params.into_iter().enumerate() {
+        if let Pat::Ident(binding) = param {
+            bound_params.push(binding.id.sym.to_string());
+            continue;
+        }
+        if let Pat::Rest(rest) = param {
+            if let Pat::Ident(binding) = &*rest.arg {
+                rest_param = Some(binding.id.sym.to_string());
+            } else {
+                let temp_name = format!("__tsgodown_rest_{index}");
+                rest_param = Some(temp_name.clone());
+                lower_pat_decl_stmts(&mut prefix, &rest.arg, JsExprIR::Ident(temp_name));
+            }
+            continue;
+        }
+
+        let temp_name = format!("__tsgodown_param_{index}");
+        bound_params.push(temp_name.clone());
+        lower_pat_decl_stmts(&mut prefix, param, JsExprIR::Ident(temp_name));
+    }
+
+    prefix.extend(body);
+    (bound_params, rest_param, prefix)
 }
 
 fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
@@ -672,12 +721,17 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
                 .map(Box::new),
             methods: lower_class_methods(&class.class),
         }),
-        Expr::Arrow(arrow) => Some(JsExprIR::Function {
-            params: arrow.params.iter().flat_map(pat_names).collect(),
-            r#async: arrow.is_async,
-            lexical_this: true,
-            body: lower_arrow_body(&arrow.body)?,
-        }),
+        Expr::Arrow(arrow) => {
+            let (params, rest_param, body) =
+                lower_param_bound_body(arrow.params.iter(), lower_arrow_body(&arrow.body)?);
+            Some(JsExprIR::Function {
+                params,
+                rest_param,
+                r#async: arrow.is_async,
+                lexical_this: true,
+                body,
+            })
+        }
         Expr::Unary(unary) => Some(JsExprIR::Unary {
             op: unary.op.to_string(),
             arg: Box::new(lower_js_expr(&unary.arg)?),
@@ -792,7 +846,7 @@ fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
             ),
             expr => ("".to_string(), Some(Box::new(lower_js_expr(expr)?))),
         },
-        MemberProp::PrivateName(_) => return None,
+        MemberProp::PrivateName(private) => (private_name(private), None),
     };
     Some(JsExprIR::Member {
         object: Box::new(lower_js_expr(&member.obj)?),
@@ -802,47 +856,144 @@ fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
 }
 
 fn lower_class_methods(class: &Class) -> Vec<JsClassMethodIR> {
-    class
-        .body
-        .iter()
-        .filter_map(|member| match member {
-            ClassMember::Constructor(constructor) => Some(JsClassMethodIR {
+    let instance_fields = lower_class_instance_fields(class);
+    let mut has_constructor = false;
+    let mut methods = Vec::new();
+
+    for member in &class.body {
+        match member {
+            ClassMember::Constructor(constructor) => {
+                has_constructor = true;
+                let mut body = instance_fields.clone();
+                body.extend(
+                    constructor
+                        .body
+                        .as_ref()
+                        .map(lower_block_stmt)
+                        .unwrap_or_default(),
+                );
+                let (params, rest_param, body) = lower_param_bound_body(
+                    constructor.params.iter().filter_map(constructor_param_pat),
+                    body,
+                );
+                methods.push(JsClassMethodIR {
+                    name: "constructor".to_string(),
+                    kind: "constructor".to_string(),
+                    is_static: false,
+                    params,
+                    rest_param,
+                    r#async: false,
+                    body,
+                });
+            }
+            ClassMember::Method(method) => {
+                let Some(name) = prop_name(&method.key) else {
+                    continue;
+                };
+                let (params, rest_param, body) = lower_param_bound_body(
+                    method.function.params.iter().map(|param| &param.pat),
+                    method
+                        .function
+                        .body
+                        .as_ref()
+                        .map(lower_block_stmt)
+                        .unwrap_or_default(),
+                );
+                methods.push(JsClassMethodIR {
+                    name,
+                    kind: method_kind_name(&method.kind).to_string(),
+                    is_static: method.is_static,
+                    params,
+                    rest_param,
+                    r#async: method.function.is_async,
+                    body,
+                });
+            }
+            ClassMember::PrivateMethod(method) => {
+                let (params, rest_param, body) = lower_param_bound_body(
+                    method.function.params.iter().map(|param| &param.pat),
+                    method
+                        .function
+                        .body
+                        .as_ref()
+                        .map(lower_block_stmt)
+                        .unwrap_or_default(),
+                );
+                methods.push(JsClassMethodIR {
+                    name: private_name(&method.key),
+                    kind: method_kind_name(&method.kind).to_string(),
+                    is_static: method.is_static,
+                    params,
+                    rest_param,
+                    r#async: method.function.is_async,
+                    body,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    if !instance_fields.is_empty() && !has_constructor {
+        methods.insert(
+            0,
+            JsClassMethodIR {
                 name: "constructor".to_string(),
                 kind: "constructor".to_string(),
                 is_static: false,
-                params: constructor
-                    .params
-                    .iter()
-                    .filter_map(class_constructor_param_name)
-                    .collect(),
+                params: Vec::new(),
+                rest_param: None,
                 r#async: false,
-                body: constructor
-                    .body
-                    .as_ref()
-                    .map(lower_block_stmt)
-                    .unwrap_or_default(),
-            }),
-            ClassMember::Method(method) => Some(JsClassMethodIR {
-                name: prop_name(&method.key)?,
-                kind: method_kind_name(&method.kind).to_string(),
-                is_static: method.is_static,
-                params: method
-                    .function
-                    .params
-                    .iter()
-                    .filter_map(|param| pat_name(&param.pat))
-                    .collect(),
-                r#async: method.function.is_async,
-                body: method
-                    .function
-                    .body
-                    .as_ref()
-                    .map(lower_block_stmt)
-                    .unwrap_or_default(),
-            }),
-            _ => None,
-        })
-        .collect()
+                body: instance_fields,
+            },
+        );
+    }
+
+    methods
+}
+
+fn lower_class_instance_fields(class: &Class) -> Vec<JsStmtIR> {
+    let mut stmts = Vec::new();
+    for member in &class.body {
+        match member {
+            ClassMember::ClassProp(prop) if !prop.is_static => {
+                let Some(property) = prop_name(&prop.key) else {
+                    continue;
+                };
+                let init = prop
+                    .value
+                    .as_deref()
+                    .and_then(lower_js_expr)
+                    .unwrap_or(JsExprIR::Value(JsValueIR::Undefined));
+                stmts.push(class_field_initializer(property, init));
+            }
+            ClassMember::PrivateProp(prop) if !prop.is_static => {
+                let init = prop
+                    .value
+                    .as_deref()
+                    .and_then(lower_js_expr)
+                    .unwrap_or(JsExprIR::Value(JsValueIR::Undefined));
+                stmts.push(class_field_initializer(private_name(&prop.key), init));
+            }
+            _ => {}
+        }
+    }
+    stmts
+}
+
+fn class_field_initializer(property: String, init: JsExprIR) -> JsStmtIR {
+    JsStmtIR::Expr(JsExprIR::Assign {
+        op: "=".to_string(),
+        left: Box::new(JsExprIR::Member {
+            object: Box::new(JsExprIR::This),
+            property,
+            computed: None,
+        }),
+        right: Box::new(init),
+    })
+}
+
+fn private_name(name: &swc_ecma_ast::PrivateName) -> String {
+    format!("#{}", name.name)
 }
 
 fn method_kind_name(kind: &MethodKind) -> &'static str {
@@ -853,9 +1004,9 @@ fn method_kind_name(kind: &MethodKind) -> &'static str {
     }
 }
 
-fn class_constructor_param_name(param: &ParamOrTsParamProp) -> Option<String> {
+fn constructor_param_pat(param: &ParamOrTsParamProp) -> Option<&Pat> {
     match param {
-        ParamOrTsParamProp::Param(param) => pat_name(&param.pat),
+        ParamOrTsParamProp::Param(param) => Some(&param.pat),
         ParamOrTsParamProp::TsParamProp(_) => None,
     }
 }
@@ -871,15 +1022,16 @@ fn lower_assign_target_expr(target: &AssignTarget) -> Option<JsExprIR> {
 }
 
 fn lower_function_expr(function: &Function) -> Option<JsExprIR> {
+    let (params, rest_param, body) = lower_param_bound_body(
+        function.params.iter().map(|param| &param.pat),
+        lower_block_stmt(function.body.as_ref()?),
+    );
     Some(JsExprIR::Function {
-        params: function
-            .params
-            .iter()
-            .filter_map(|param| pat_name(&param.pat))
-            .collect(),
+        params,
+        rest_param,
         r#async: function.is_async,
         lexical_this: false,
-        body: lower_block_stmt(function.body.as_ref()?),
+        body,
     })
 }
 
@@ -1204,7 +1356,7 @@ fn member_path(member: &MemberExpr) -> Option<Vec<String>> {
             };
             path.push(str.value.to_string_lossy().to_string());
         }
-        MemberProp::PrivateName(_) => return None,
+        MemberProp::PrivateName(private) => path.push(private_name(private)),
     }
     Some(path)
 }

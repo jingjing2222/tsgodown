@@ -125,6 +125,7 @@ fn render_js_stmt(stmt: &JsStmtIR) -> String {
             params,
             r#async,
             body,
+            ..
         } => format!(
             "function {} async={} params=[{}] body=[{}]",
             name,
@@ -580,6 +581,61 @@ const cache = new Cache(2);
 }
 
 #[test]
+fn executable_private_class_members_are_lowered_as_semantic_properties() {
+    let source = r#"
+class Counter {
+  #value = 1;
+  #bump(step = 1) {
+    this.#value += step;
+  }
+  static #seed() {
+    return 4;
+  }
+  constructor(start = 2) {
+    this.#value = start;
+  }
+  next() {
+    this.#bump();
+    return this.#value;
+  }
+  static read() {
+    return this.#seed();
+  }
+  collect(...items) {
+    return items.length;
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("private-class.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("expr assign(=, member(this, #value), number(1))"));
+    assert!(
+        rendered.contains("#bump kind=method static=false async=false params=[__tsgodown_param_0]")
+    );
+    assert!(rendered.contains(
+        "var step = conditional(binary(===, ident(__tsgodown_param_0), undefined), number(1), ident(__tsgodown_param_0))"
+    ));
+    assert!(rendered.contains("#seed kind=method static=true async=false params=[]"));
+    assert!(rendered.contains("call(member(this, #bump), [])"));
+    assert!(rendered.contains("return call(member(this, #seed), [])"));
+    let class_methods = ir.modules[0]
+        .executable
+        .as_ref()
+        .expect("executable")
+        .stmts
+        .iter()
+        .find_map(|stmt| match stmt {
+            JsStmtIR::ClassDecl { methods, .. } => Some(methods),
+            _ => None,
+        })
+        .expect("class methods");
+    assert!(class_methods
+        .iter()
+        .any(|method| method.name == "collect" && method.rest_param.as_deref() == Some("items")));
+}
+
+#[test]
 fn executable_expression_forms_are_lowered_deterministically() {
     let source = r#"
 const capture = () => this.done;
@@ -654,12 +710,34 @@ function errorName(result) {
 #[test]
 fn executable_array_destructuring_arrow_params_are_lowered() {
     let source = r#"
-const out = rows.map(([path, pattern, options]) => ({ path, pattern, options }));
+const out = rows.map(([path, pattern, options = {}]) => ({ path, pattern, options }));
 "#;
     let ir = analyze_compiler_entry("array-destructure-arrow.js", source);
     let rendered = render_ir(&ir);
 
-    assert!(rendered.contains("function-expr async=false params=[path,pattern,options]"));
+    assert!(rendered.contains("function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains("var __tsgodown_destructure_0 = ident(__tsgodown_param_0)"));
+    assert!(rendered.contains("var path = member(ident(__tsgodown_destructure_0), 0)"));
+    assert!(rendered.contains(
+        "var options = conditional(binary(===, member(ident(__tsgodown_destructure_0), 2), undefined), object({}), member(ident(__tsgodown_destructure_0), 2))"
+    ));
+}
+
+#[test]
+fn executable_object_destructuring_default_params_are_lowered() {
+    let source = r#"
+const out = rows.map(({ dot = false } = {}) => dot);
+"#;
+    let ir = analyze_compiler_entry("object-destructure-default-param.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains(
+        "var __tsgodown_destructure_0 = conditional(binary(===, ident(__tsgodown_param_0), undefined), object({}), ident(__tsgodown_param_0))"
+    ));
+    assert!(rendered.contains(
+        "var dot = conditional(binary(===, member(ident(__tsgodown_destructure_0), dot), undefined), bool(false), member(ident(__tsgodown_destructure_0), dot))"
+    ));
 }
 
 #[test]

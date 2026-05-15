@@ -93,11 +93,13 @@ fn map_js_stmt(stmt: analyzer_rust::JsStmtIR) -> JsStmt {
         analyzer_rust::JsStmtIR::FunctionDecl {
             name,
             params,
+            rest_param,
             r#async,
             body,
         } => JsStmt::FunctionDecl {
             name,
             params,
+            rest_param,
             r#async,
             body: body.into_iter().map(map_js_stmt).collect(),
         },
@@ -208,11 +210,13 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
         },
         analyzer_rust::JsExprIR::Function {
             params,
+            rest_param,
             r#async,
             lexical_this,
             body,
         } => JsExpr::Function {
             params,
+            rest_param,
             r#async,
             lexical_this,
             body: body.into_iter().map(map_js_stmt).collect(),
@@ -288,6 +292,7 @@ fn map_js_class_method(method: analyzer_rust::JsClassMethodIR) -> JsClassMethod 
         kind: method.kind,
         is_static: method.is_static,
         params: method.params,
+        rest_param: method.rest_param,
         r#async: method.r#async,
         body: method.body.into_iter().map(map_js_stmt).collect(),
     }

@@ -339,6 +339,7 @@ type Env map[string]any
 
 type FunctionValue struct {
 	Params []string
+	RestParam string
 	Body   []map[string]any
 	Env    Env
 	Props  map[string]any
@@ -834,15 +835,16 @@ func arrayGlobal() map[string]any {
 		"push": nativeMethod(func(thisValue any, args []any) (any, error) {
 			array, ok := thisValue.(*ArrayValue)
 			if !ok {
-				return nil, errors.New("push receiver is not array")
+				return nil, fmt.Errorf("push receiver is not array: %T %s", thisValue, jsInspect(thisValue))
 			}
 			array.Items = append(array.Items, args...)
 			return float64(len(array.Items)), nil
 		}),
 	}
 	for _, property := range []string{
-		"join", "map", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find",
-		"findIndex", "indexOf", "lastIndexOf", "includes", "concat", "slice", "flat", "sort",
+		"pop", "shift", "unshift", "splice", "join", "map", "filter", "forEach", "reduce",
+		"reduceRight", "some", "every", "find", "findIndex", "indexOf", "lastIndexOf",
+		"includes", "concat", "slice", "flat", "sort",
 	} {
 		current := property
 		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
@@ -1785,9 +1787,10 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 		return completion{}, err
 	case "function-decl":
 		env[asString(stmt["name"])] = FunctionValue{
-			Params: asStringSlice(stmt["params"]),
-			Body:   asStmtSlice(stmt["body"]),
-			Env:    env,
+			Params:    asStringSlice(stmt["params"]),
+			RestParam: asString(stmt["restParam"]),
+			Body:      asStmtSlice(stmt["body"]),
+			Env:       env,
 		}
 		return completion{}, nil
 	case "class-decl":
@@ -2045,9 +2048,10 @@ func hoistFunctionDeclarations(stmts []map[string]any, env Env) {
 			continue
 		}
 		env[asString(stmt["name"])] = FunctionValue{
-			Params: asStringSlice(stmt["params"]),
-			Body:   asStmtSlice(stmt["body"]),
-			Env:    env,
+			Params:    asStringSlice(stmt["params"]),
+			RestParam: asString(stmt["restParam"]),
+			Body:      asStmtSlice(stmt["body"]),
+			Env:       env,
 		}
 	}
 }
@@ -2099,6 +2103,7 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 	case "function":
 		return FunctionValue{
 			Params:      asStringSlice(expr["params"]),
+			RestParam:   asString(expr["restParam"]),
 			Body:        asStmtSlice(expr["body"]),
 			Env:         env,
 			LexicalThis: expr["lexicalThis"] == true,
@@ -2169,12 +2174,6 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
 			return jsUndefined, nil
 		}
-		if isArrayPush(asMap(expr["callee"])) {
-			return callArrayPush(asMap(expr["callee"]), asSlice(expr["args"]), env)
-		}
-		if isArrayPop(asMap(expr["callee"])) {
-			return callArrayPop(asMap(expr["callee"]), env)
-		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
 			name := asString(callee["name"])
 			result, err := callFunction(lookupEnv(env, name), asSlice(expr["args"]), env)
@@ -2224,7 +2223,10 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 					return BoundFunctionValue{Function: method, This: objectMap}, nil
 				}
 			}
-			return objectMap[property], nil
+			if value, ok := objectMap[property]; ok {
+				return value, nil
+			}
+			return jsUndefined, nil
 		}
 		if classValue, ok := object.(*ClassValue); ok {
 			if getter, ok := classValue.StaticGetters[property]; ok {
@@ -2547,7 +2549,7 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	}
 	array, ok := current.(*ArrayValue)
 	if !ok {
-		return nil, errors.New("push receiver is not array")
+		return nil, fmt.Errorf("push receiver is not array: %T %s", current, jsInspect(current))
 	}
 	for _, arg := range rawArgs {
 		value, err := evalExpr(asMap(arg), env)
@@ -2935,7 +2937,7 @@ func stringMember(value string, property string, env Env) (any, bool) {
 			if index < 0 {
 				return float64(-1), nil
 			}
-			return float64(start + len([]rune(value[:byteIndexForRune(value, start)+index]))), nil
+			return float64(len([]rune(value[:byteIndexForRune(value, start)+index]))), nil
 		}), true
 	case "lastIndexOf":
 		return nativeFunction(func(args []any) (any, error) {
@@ -3060,6 +3062,63 @@ func arrayMember(value *ArrayValue, property string, env Env) (any, bool) {
 		}
 	}
 	switch property {
+	case "push":
+		return nativeFunction(func(args []any) (any, error) {
+			value.Items = append(value.Items, args...)
+			return float64(len(value.Items)), nil
+		}), true
+	case "pop":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(value.Items) == 0 {
+				return jsUndefined, nil
+			}
+			last := value.Items[len(value.Items)-1]
+			value.Items = value.Items[:len(value.Items)-1]
+			return last, nil
+		}), true
+	case "shift":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(value.Items) == 0 {
+				return jsUndefined, nil
+			}
+			first := value.Items[0]
+			value.Items = append([]any{}, value.Items[1:]...)
+			return first, nil
+		}), true
+	case "unshift":
+		return nativeFunction(func(args []any) (any, error) {
+			next := append([]any{}, args...)
+			next = append(next, value.Items...)
+			value.Items = next
+			return float64(len(value.Items)), nil
+		}), true
+	case "splice":
+		return nativeFunction(func(args []any) (any, error) {
+			length := len(value.Items)
+			start := length
+			if len(args) > 0 {
+				start = jsInteger(args[0])
+				if start < 0 {
+					start = maxInt(length+start, 0)
+				} else if start > length {
+					start = length
+				}
+			}
+			deleteCount := length - start
+			if len(args) > 1 {
+				deleteCount = minInt(maxInt(jsInteger(args[1]), 0), length-start)
+			}
+			insertItems := []any{}
+			if len(args) > 2 {
+				insertItems = append(insertItems, args[2:]...)
+			}
+			removed := append([]any{}, value.Items[start:start+deleteCount]...)
+			next := append([]any{}, value.Items[:start]...)
+			next = append(next, insertItems...)
+			next = append(next, value.Items[start+deleteCount:]...)
+			value.Items = next
+			return &ArrayValue{Items: removed}, nil
+		}), true
 	case "join":
 		return nativeFunction(func(args []any) (any, error) {
 			separator := ","
@@ -3762,9 +3821,10 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 	for _, rawMethod := range rawMethods {
 		method := asMap(rawMethod)
 		function := FunctionValue{
-			Params: asStringSlice(method["params"]),
-			Body:   asStmtSlice(method["body"]),
-			Env:    env,
+			Params:    asStringSlice(method["params"]),
+			RestParam: asString(method["restParam"]),
+			Body:      asStmtSlice(method["body"]),
+			Env:       env,
 		}
 		name := asString(method["name"])
 		switch asString(method["kind"]) {
@@ -3929,6 +3989,13 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 			value = args[index]
 		}
 		child[param] = value
+	}
+	if function.RestParam != "" {
+		rest := []any{}
+		if len(args) > len(function.Params) {
+			rest = append(rest, args[len(function.Params):]...)
+		}
+		child[function.RestParam] = &ArrayValue{Items: rest}
 	}
 	result, err := evalStmtList(function.Body, child)
 	if err != nil {

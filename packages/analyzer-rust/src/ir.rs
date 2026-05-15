@@ -100,6 +100,7 @@ pub enum JsStmtIR {
     FunctionDecl {
         name: String,
         params: Vec<String>,
+        rest_param: Option<String>,
         r#async: bool,
         body: Vec<JsStmtIR>,
     },
@@ -160,6 +161,7 @@ pub struct JsClassMethodIR {
     pub kind: String,
     pub is_static: bool,
     pub params: Vec<String>,
+    pub rest_param: Option<String>,
     pub r#async: bool,
     pub body: Vec<JsStmtIR>,
 }
@@ -174,6 +176,7 @@ pub enum JsExprIR {
     Object(Vec<JsObjectPropIR>),
     Function {
         params: Vec<String>,
+        rest_param: Option<String>,
         r#async: bool,
         lexical_this: bool,
         body: Vec<JsStmtIR>,

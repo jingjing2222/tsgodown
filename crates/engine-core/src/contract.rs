@@ -79,6 +79,8 @@ pub enum JsStmt {
     FunctionDecl {
         name: String,
         params: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
+        rest_param: Option<String>,
         r#async: bool,
         body: Vec<JsStmt>,
     },
@@ -167,6 +169,8 @@ pub struct JsClassMethod {
     pub kind: String,
     pub is_static: bool,
     pub params: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
+    pub rest_param: Option<String>,
     pub r#async: bool,
     pub body: Vec<JsStmt>,
 }
@@ -189,6 +193,8 @@ pub enum JsExpr {
     #[serde(rename = "function")]
     Function {
         params: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "restParam")]
+        rest_param: Option<String>,
         r#async: bool,
         #[serde(default, rename = "lexicalThis")]
         lexical_this: bool,
