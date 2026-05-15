@@ -377,6 +377,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_json_stringify(callee) {
                 imports.insert("encoding/json");
             }
+            if call_uses_strings_import(callee) {
+                imports.insert("strings");
+            }
             collect_expr_imports(callee, imports);
             for arg in args {
                 collect_expr_imports(arg, imports);
@@ -1680,6 +1683,15 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(left, param_index, kinds);
             infer_expr_param_kinds(right, param_index, kinds);
         }
+        JsExpr::Call { callee, args, .. } if string_method_name(callee).is_some() => {
+            if let JsExpr::Member { object, .. } = callee.as_ref() {
+                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::String);
+                infer_expr_param_kinds(object, param_index, kinds);
+            }
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds);
+            }
+        }
         JsExpr::Call { callee, args, .. } => {
             infer_expr_param_kinds(callee, param_index, kinds);
             for arg in args {
@@ -1990,6 +2002,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             consequent,
             alternate,
         } => render_conditional_expr(test, consequent, alternate, state, render_bool_expr, "bool"),
+        JsExpr::Call { callee, args, .. } => render_string_bool_method_call(callee, args, state),
         _ => None,
     }
 }
@@ -2140,12 +2153,18 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Unary { .. } => {
+            render_numeric_expr(expr, state).or_else(|| render_bool_expr(expr, state))
+        }
         JsExpr::Conditional {
             test,
             consequent,
             alternate,
         } => render_conditional_expr(test, consequent, alternate, state, render_expr, "any"),
-        JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
+        JsExpr::Call { callee, args, .. } => render_string_expr(expr, state)
+            .or_else(|| render_numeric_expr(expr, state))
+            .or_else(|| render_bool_expr(expr, state))
+            .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         JsExpr::Member {
             object,
@@ -2176,6 +2195,19 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } if static_member_kind(object, property, state) == Some(AotSlotKind::Number) => {
             render_static_member_expr(object, property, state)
         }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "length" => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("float64(len({object}))"))
+        }
+        JsExpr::Unary { op, arg } if op == "-" => {
+            let arg = render_numeric_expr(arg, state)?;
+            Some(format!("(-{arg})"))
+        }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
@@ -2193,6 +2225,7 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_numeric_expr,
             "float64",
         ),
+        JsExpr::Call { callee, args, .. } => render_string_numeric_method_call(callee, args, state),
         _ => None,
     }
 }
@@ -2221,6 +2254,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
         }
+        JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
             consequent,
@@ -2351,6 +2385,88 @@ fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Opti
     };
     let object = state.object_bindings.get(name)?;
     object.fields.get(property).copied()
+}
+
+fn call_uses_strings_import(callee: &JsExpr) -> bool {
+    matches!(
+        string_method_name(callee),
+        Some("toLowerCase" | "trim" | "includes" | "indexOf")
+    )
+}
+
+fn string_method_name(callee: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object: _,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    match property.as_str() {
+        "toLowerCase" | "trim" | "includes" | "indexOf" => Some(property.as_str()),
+        _ => None,
+    }
+}
+
+fn string_method_receiver<'a>(
+    callee: &'a JsExpr,
+    method: &str,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<&'a JsExpr> {
+    if string_method_name(callee) != Some(method) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    match method {
+        "toLowerCase" | "trim" if args.is_empty() => {}
+        "includes" | "indexOf" if args.len() == 1 => {}
+        _ => return None,
+    }
+    render_string_expr(object, state)?;
+    Some(object)
+}
+
+fn render_string_string_method_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if let Some(object) = string_method_receiver(callee, "toLowerCase", args, state) {
+        let object = render_string_expr(object, state)?;
+        return Some(format!("strings.ToLower({object})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "trim", args, state) {
+        let object = render_string_expr(object, state)?;
+        return Some(format!("strings.TrimSpace({object})"));
+    }
+    None
+}
+
+fn render_string_bool_method_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let object = string_method_receiver(callee, "includes", args, state)?;
+    let object = render_string_expr(object, state)?;
+    let needle = render_string_expr(args.first()?, state)?;
+    Some(format!("strings.Contains({object}, {needle})"))
+}
+
+fn render_string_numeric_method_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let object = string_method_receiver(callee, "indexOf", args, state)?;
+    let object = render_string_expr(object, state)?;
+    let needle = render_string_expr(args.first()?, state)?;
+    Some(format!("float64(strings.Index({object}, {needle}))"))
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {

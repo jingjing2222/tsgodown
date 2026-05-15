@@ -3180,6 +3180,83 @@ console.log("compare", matchText("go"), matchText("ts"), matchBool(true), matchB
     }
 
     #[test]
+    fn emit_go_runs_aot_string_method_subset() {
+        let root = temp_project("engine-core-aot-string-methods");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function normalize(value) {
+  const trimmed = value.trim()
+  return trimmed.toLowerCase()
+}
+function inspect(value) {
+  if (value.includes("go")) {
+    return value.indexOf("go") + value.length
+  }
+  return -1
+}
+console.log("string-methods", normalize(" Go "), inspect("tsgodown"), inspect("rust"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-string-methods".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("strings.TrimSpace"));
+        assert!(response.files[0].contents.contains("strings.ToLower"));
+        assert!(response.files[0].contents.contains("strings.Contains"));
+        assert!(response.files[0].contents.contains("strings.Index"));
+        assert!(response.files[0].contents.contains("float64(len(value))"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "string-methods go 10 -1\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_binary_octal_hex_number_coercion_subset() {
         let root = temp_project("engine-core-js-number-prefixes");
         write(
