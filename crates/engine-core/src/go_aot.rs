@@ -68,7 +68,14 @@ func main() {{
 }
 
 pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
+    let module_functions = collect_module_functions(ir);
     let module_classes = collect_module_classes(ir);
+    let module_default_exports = collect_module_default_exports(ir, &module_functions);
+    let module_default_class_exports = collect_module_default_class_exports(ir, &module_classes);
+    let module_object_exports = collect_module_object_function_exports(ir, &module_functions);
+    let module_named_exports =
+        collect_module_named_exports(ir, &module_functions, &module_object_exports);
+    let module_slots = collect_module_slots(ir, &module_functions);
     let mut features = BTreeSet::new();
     for module in &ir.modules {
         for import in &module.imports {
@@ -80,6 +87,24 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
             features.insert(format!("aot.module.no_executable:{}", module.source_path));
             continue;
         };
+        let state = module_aot_state(
+            module,
+            ir,
+            &AotModuleContext {
+                functions: &module_functions,
+                classes: &module_classes,
+                default_exports: &module_default_exports,
+                default_class_exports: &module_default_class_exports,
+                named_exports: &module_named_exports,
+                slots: &module_slots,
+            },
+        );
+        if state.is_none() {
+            features.insert(format!(
+                "aot.module.unsupported_bindings:{}",
+                module.source_path
+            ));
+        }
         for stmt in &executable.stmts {
             if let JsStmt::ClassDecl { name, .. } = stmt {
                 if !module_classes.contains_key(&(module.id.clone(), name.clone())) {
@@ -87,6 +112,19 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                         "aot.class.unsupported:{}:{}",
                         module.source_path, name
                     ));
+                }
+            }
+            if let Some(parts) = function_parts(stmt) {
+                if let (Some(function), Some(state)) = (
+                    module_functions.get(&(module.id.clone(), parts.name.clone())),
+                    state.as_ref(),
+                ) {
+                    if render_function_decl(function, state).is_none() {
+                        features.insert(format!(
+                            "aot.function.unsupported_body:{}:{}",
+                            module.source_path, parts.name
+                        ));
+                    }
                 }
             }
             collect_builtin_usage_features(stmt, &mut features);

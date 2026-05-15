@@ -1291,6 +1291,47 @@ console.log("unsupported", Box.make())
     }
 
     #[test]
+    fn emit_go_reports_aot_unsupported_function_body_details() {
+        let root = temp_project("engine-core-aot-unsupported-function-details");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function collect(items) {
+  const result = []
+  for (const item of items) {
+    result.push(item)
+  }
+  return result
+}
+console.log("unsupported", collect(["a"]).length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-unsupported-function-details".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(response.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"
+            && diagnostic
+                .message
+                .contains("aot.function.unsupported_body:src/index.js:collect")));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
     fn emit_go_runs_aot_json_value_model_subset() {
         let root = temp_project("engine-core-aot-json-value-model");
         write(
