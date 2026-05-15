@@ -1510,7 +1510,7 @@ fn infer_stmt_param_kinds(
             consequent,
             alternate,
         } => {
-            infer_expr_param_kinds(test, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds);
             for stmt in consequent {
                 infer_stmt_param_kinds(stmt, param_index, kinds);
             }
@@ -1528,7 +1528,7 @@ fn infer_stmt_param_kinds(
                 infer_stmt_param_kinds(stmt, param_index, kinds);
             }
             if let Some(test) = test {
-                infer_expr_param_kinds(test, param_index, kinds);
+                infer_bool_context_param_kinds(test, param_index, kinds);
             }
             if let Some(update) = update {
                 infer_expr_param_kinds(update, param_index, kinds);
@@ -1538,7 +1538,7 @@ fn infer_stmt_param_kinds(
             }
         }
         JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
-            infer_expr_param_kinds(test, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds);
             for stmt in body {
                 infer_stmt_param_kinds(stmt, param_index, kinds);
             }
@@ -1599,7 +1599,7 @@ fn infer_expr_param_kinds(
             consequent,
             alternate,
         } => {
-            infer_expr_param_kinds(test, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds);
             infer_expr_param_kinds(consequent, param_index, kinds);
             infer_expr_param_kinds(alternate, param_index, kinds);
         }
@@ -1615,6 +1615,24 @@ fn infer_expr_param_kinds(
             }
         }
         _ => {}
+    }
+}
+
+fn infer_bool_context_param_kinds(
+    expr: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match expr {
+        JsExpr::Ident { .. } => mark_ident_param_kind(expr, param_index, kinds, AotSlotKind::Bool),
+        JsExpr::Unary { op, arg } if op == "!" => {
+            infer_bool_context_param_kinds(arg, param_index, kinds);
+        }
+        JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
+            infer_bool_context_param_kinds(left, param_index, kinds);
+            infer_bool_context_param_kinds(right, param_index, kinds);
+        }
+        _ => infer_expr_param_kinds(expr, param_index, kinds),
     }
 }
 
