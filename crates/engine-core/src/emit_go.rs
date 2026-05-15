@@ -282,6 +282,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func FailClosedReport(version string, diagnostics json.RawMessage, extra map[string]any) map[string]any {
@@ -360,6 +361,10 @@ type RegExpValue struct {
 	Global  bool
 }
 
+type SymbolValue struct {
+	Description string
+}
+
 type MapEntry struct {
 	Key   any
 	Value any
@@ -431,7 +436,11 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 	cache[module.SourcePath] = state
 	env := Env{
 		"exports": exports,
-		"Error":   builtinErrorClass(),
+		"Error":   builtinErrorClass("Error"),
+		"TypeError": builtinErrorClass("TypeError"),
+		"RangeError": builtinErrorClass("RangeError"),
+		"SyntaxError": builtinErrorClass("SyntaxError"),
+		"ReferenceError": builtinErrorClass("ReferenceError"),
 		"Number": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return float64(0), nil
@@ -464,6 +473,7 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			return newRegExp(pattern, flags)
 		}),
+		"Symbol": symbolGlobal(),
 		"Array":  arrayGlobal(),
 		"Object": objectGlobal(),
 		"Math":   mathGlobal(),
@@ -773,11 +783,38 @@ func objectGlobal() map[string]any {
 
 func mathGlobal() map[string]any {
 	return map[string]any{
+		"random": nativeFunction(func(args []any) (any, error) {
+			return float64(time.Now().UnixNano()%1000000) / 1000000, nil
+		}),
+		"ceil": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			return math.Ceil(toNumber(args[0])), nil
+		}),
 		"floor": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return math.NaN(), nil
 			}
 			return math.Floor(toNumber(args[0])), nil
+		}),
+		"round": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			return math.Round(toNumber(args[0])), nil
+		}),
+		"trunc": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			return math.Trunc(toNumber(args[0])), nil
+		}),
+		"abs": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return math.NaN(), nil
+			}
+			return math.Abs(toNumber(args[0])), nil
 		}),
 		"max": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -798,6 +835,41 @@ func mathGlobal() map[string]any {
 				value = math.Min(value, toNumber(arg))
 			}
 			return value, nil
+		}),
+	}
+}
+
+func symbolGlobal() map[string]any {
+	prototype := map[string]any{}
+	prototype["toString"] = nativeMethod(func(thisValue any, args []any) (any, error) {
+		return jsString(thisValue), nil
+	})
+	call := nativeFunction(func(args []any) (any, error) {
+		description := ""
+		if len(args) > 0 {
+			description = jsString(args[0])
+		}
+		return &SymbolValue{Description: description}, nil
+	})
+	return map[string]any{
+		"__call":    call,
+		"iterator":  &SymbolValue{Description: "Symbol.iterator"},
+		"prototype": prototype,
+		"for": nativeFunction(func(args []any) (any, error) {
+			description := ""
+			if len(args) > 0 {
+				description = jsString(args[0])
+			}
+			return &SymbolValue{Description: description}, nil
+		}),
+		"keyFor": nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return jsUndefined, nil
+			}
+			if symbol, ok := args[0].(*SymbolValue); ok {
+				return symbol.Description, nil
+			}
+			return jsUndefined, nil
 		}),
 	}
 }
@@ -850,6 +922,8 @@ func objectTag(value any) string {
 		return "[object Map]"
 	case *SetValue:
 		return "[object Set]"
+	case *SymbolValue:
+		return "[object Symbol]"
 	case NullValue:
 		return "[object Null]"
 	case UndefinedValue:
@@ -1491,7 +1565,12 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return callArrayPush(asMap(expr["callee"]), asSlice(expr["args"]), env)
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
-			return callFunction(lookupEnv(env, asString(callee["name"])), asSlice(expr["args"]), env)
+			name := asString(callee["name"])
+			result, err := callFunction(lookupEnv(env, name), asSlice(expr["args"]), env)
+			if err != nil {
+				return nil, fmt.Errorf("identifier call %s failed: %w", name, err)
+			}
+			return result, nil
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "member" {
 			property := asString(callee["property"])
@@ -1556,8 +1635,18 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return member, nil
 			}
 		}
+		if numberValue, ok := object.(float64); ok {
+			if member, ok := numberMember(numberValue, property); ok {
+				return member, nil
+			}
+		}
 		if stringValue, ok := object.(string); ok {
 			if member, ok := stringMember(stringValue, property, env); ok {
+				return member, nil
+			}
+		}
+		if symbolValue, ok := object.(*SymbolValue); ok {
+			if member, ok := symbolMember(symbolValue, property); ok {
 				return member, nil
 			}
 		}
@@ -1859,6 +1948,41 @@ func boundFunctionMember(function BoundFunctionValue, property string) (any, boo
 				callArgs = iterableValues(args[1])
 			}
 			return callFunctionWithThisValues(function.Function, callArgs, function.This)
+		}), true
+	}
+	return nil, false
+}
+
+func numberMember(value float64, property string) (any, bool) {
+	switch property {
+	case "toString":
+		return nativeFunction(func(args []any) (any, error) {
+			radix := 10
+			if len(args) > 0 && !isNullish(args[0]) {
+				radix = jsInteger(args[0])
+			}
+			if radix < 2 || radix > 36 || math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value {
+				return jsString(value), nil
+			}
+			return strconv.FormatInt(int64(value), radix), nil
+		}), true
+	case "valueOf":
+		return nativeFunction(func(args []any) (any, error) {
+			return value, nil
+		}), true
+	}
+	return nil, false
+}
+
+func symbolMember(value *SymbolValue, property string) (any, bool) {
+	switch property {
+	case "toString":
+		return nativeFunction(func(args []any) (any, error) {
+			return jsString(value), nil
+		}), true
+	case "valueOf":
+		return nativeFunction(func(args []any) (any, error) {
+			return value, nil
 		}), true
 	}
 	return nil, false
@@ -2863,6 +2987,11 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 			args = append(args, value)
 		}
 		return function.Call(args)
+	case map[string]any:
+		if callable, ok := function["__call"]; ok {
+			return callFunction(callable, rawArgs, callerEnv)
+		}
+		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	default:
 		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	}
@@ -2876,6 +3005,11 @@ func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (
 		return callFunctionWithThisValues(function.Function, args, function.This)
 	case NativeFunctionValue:
 		return function.Call(args)
+	case map[string]any:
+		if callable, ok := function["__call"]; ok {
+			return callFunctionWithValues(callable, args, callerEnv, thisValue)
+		}
+		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	default:
 		return nil, fmt.Errorf("callee is not callable: %T %s", raw, jsInspect(raw))
 	}
@@ -2914,10 +3048,23 @@ func callFunctionWithThisValues(function FunctionValue, args []any, thisValue an
 	return nil, nil
 }
 
-func builtinErrorClass() *ClassValue {
+func builtinErrorClass(name string) *ClassValue {
 	constructor := FunctionValue{
 		Params: []string{"message"},
 		Body: []map[string]any{
+			{
+				"kind": "expr",
+				"expr": map[string]any{
+					"kind": "assign",
+					"op":   "=",
+					"left": map[string]any{
+						"kind":     "member",
+						"object":   map[string]any{"kind": "this"},
+						"property": "name",
+					},
+					"right": map[string]any{"kind": "value", "value": map[string]any{"kind": "string", "value": name}},
+				},
+			},
 			{
 				"kind": "expr",
 				"expr": map[string]any{
@@ -3169,6 +3316,9 @@ func jsSameValue(left any, right any) bool {
 	case *IteratorValue:
 		rightTyped, ok := right.(*IteratorValue)
 		return ok && leftTyped == rightTyped
+	case *SymbolValue:
+		rightTyped, ok := right.(*SymbolValue)
+		return ok && leftTyped == rightTyped
 	case map[string]any, []any, FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
 		return referenceIdentity(left) == referenceIdentity(right)
 	default:
@@ -3322,6 +3472,11 @@ func jsString(value any) string {
 		return "null"
 	case string:
 		return typed
+	case *SymbolValue:
+		if typed.Description == "" {
+			return "Symbol()"
+		}
+		return "Symbol(" + typed.Description + ")"
 	case float64:
 		if math.Trunc(typed) == typed {
 			return strconv.FormatInt(int64(typed), 10)
@@ -3415,8 +3570,15 @@ func jsTypeof(value any) string {
 		return "number"
 	case string:
 		return "string"
+	case *SymbolValue:
+		return "symbol"
 	case FunctionValue, BoundFunctionValue, NativeFunctionValue, *ClassValue:
 		return "function"
+	case map[string]any:
+		if _, ok := value.(map[string]any)["__call"]; ok {
+			return "function"
+		}
+		return "object"
 	default:
 		return "object"
 	}

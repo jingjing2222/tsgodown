@@ -853,6 +853,136 @@ console.log("builtins", String(12), keys, entries, has, tag, isArray, Math.min(3
     }
 
     #[test]
+    fn emit_go_runs_symbol_math_and_number_methods_subset() {
+        let root = temp_project("engine-core-symbol-math-number");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const symbol = Symbol("x")
+const integer = (255).toString(16)
+const decimal = Math.random().toString(36).slice(0, 2)
+const math = [Math.ceil(1.2), Math.round(1.6), Math.trunc(1.9), Math.abs(-3)].join(",")
+console.log("symbol-math", typeof Symbol, typeof symbol, symbol.toString(), Symbol.prototype.toString.call(Symbol.iterator), integer, decimal.length, math)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/symbol-math-number".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "symbol-math function symbol Symbol(x) Symbol(Symbol.iterator) ff 2 2,2,1,3\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_error_subclass_constructors_subset() {
+        let root = temp_project("engine-core-error-subclasses");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+try {
+  throw new TypeError("bad")
+} catch (error) {
+  console.log("error-subclass", error.name, error.message, new RangeError("range").name)
+}
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/error-subclasses".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "error-subclass TypeError bad RangeError\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_map_set_iterator_subset() {
         let root = temp_project("engine-core-map-set-iterator");
         write(
