@@ -1494,11 +1494,16 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return callFunction(lookupEnv(env, asString(callee["name"])), asSlice(expr["args"]), env)
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "member" {
+			property := asString(callee["property"])
 			value, err := evalExpr(callee, env)
 			if err != nil {
 				return nil, err
 			}
-			return callFunction(value, asSlice(expr["args"]), env)
+			result, err := callFunction(value, asSlice(expr["args"]), env)
+			if err != nil {
+				return nil, fmt.Errorf("member call %s failed: %w", property, err)
+			}
+			return result, nil
 		}
 		value, err := evalExpr(asMap(expr["callee"]), env)
 		if err != nil {
@@ -1538,6 +1543,16 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		}
 		if function, ok := object.(NativeFunctionValue); ok {
 			if member, ok := nativeFunctionMember(function, property); ok {
+				return member, nil
+			}
+		}
+		if function, ok := object.(FunctionValue); ok {
+			if member, ok := functionMember(function, property); ok {
+				return member, nil
+			}
+		}
+		if function, ok := object.(BoundFunctionValue); ok {
+			if member, ok := boundFunctionMember(function, property); ok {
 				return member, nil
 			}
 		}
@@ -1801,6 +1816,54 @@ func nativeFunctionMember(function NativeFunctionValue, property string) (any, b
 	return nil, false
 }
 
+func functionMember(function FunctionValue, property string) (any, bool) {
+	switch property {
+	case "call":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			if len(args) > 0 {
+				thisValue = args[0]
+				args = args[1:]
+			}
+			return callFunctionWithThisValues(function, args, thisValue)
+		}), true
+	case "apply":
+		return nativeFunction(func(args []any) (any, error) {
+			thisValue := any(jsUndefined)
+			callArgs := []any{}
+			if len(args) > 0 {
+				thisValue = args[0]
+			}
+			if len(args) > 1 {
+				callArgs = iterableValues(args[1])
+			}
+			return callFunctionWithThisValues(function, callArgs, thisValue)
+		}), true
+	}
+	return nil, false
+}
+
+func boundFunctionMember(function BoundFunctionValue, property string) (any, bool) {
+	switch property {
+	case "call":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) > 0 {
+				args = args[1:]
+			}
+			return callFunctionWithThisValues(function.Function, args, function.This)
+		}), true
+	case "apply":
+		return nativeFunction(func(args []any) (any, error) {
+			callArgs := []any{}
+			if len(args) > 1 {
+				callArgs = iterableValues(args[1])
+			}
+			return callFunctionWithThisValues(function.Function, callArgs, function.This)
+		}), true
+	}
+	return nil, false
+}
+
 func stringMember(value string, property string, env Env) (any, bool) {
 	switch property {
 	case "length":
@@ -1816,6 +1879,14 @@ func stringMember(value string, property string, env Env) (any, bool) {
 	case "toUpperCase":
 		return nativeFunction(func(args []any) (any, error) {
 			return strings.ToUpper(value), nil
+		}), true
+	case "trimStart", "trimLeft":
+		return nativeFunction(func(args []any) (any, error) {
+			return strings.TrimLeftFunc(value, isJSWhitespace), nil
+		}), true
+	case "trimEnd", "trimRight":
+		return nativeFunction(func(args []any) (any, error) {
+			return strings.TrimRightFunc(value, isJSWhitespace), nil
 		}), true
 	case "split":
 		return nativeFunction(func(args []any) (any, error) {
@@ -1859,6 +1930,21 @@ func stringMember(value string, property string, env Env) (any, bool) {
 			replacement := jsString(args[1])
 			return value[:index] + replacement + value[index+len(search):], nil
 		}), true
+	case "replaceAll":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return value, nil
+			}
+			if search, ok := args[0].(*RegExpValue); ok {
+				search.Global = true
+				return replaceRegExp(value, search, args[1], env)
+			}
+			search := jsString(args[0])
+			if search == "" {
+				return strings.ReplaceAll(value, "", jsString(args[1])), nil
+			}
+			return strings.ReplaceAll(value, search, jsString(args[1])), nil
+		}), true
 	case "match":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
@@ -1872,6 +1958,154 @@ func stringMember(value string, property string, env Env) (any, bool) {
 				return nil, err
 			}
 			return regexpMatches(compiled, value), nil
+		}), true
+	case "slice":
+		return nativeFunction(func(args []any) (any, error) {
+			start := 0
+			end := len([]rune(value))
+			if len(args) > 0 {
+				start = jsSliceIndex(args[0], end)
+			}
+			if len(args) > 1 {
+				end = jsSliceIndex(args[1], end)
+			}
+			return stringRuneSlice(value, start, end), nil
+		}), true
+	case "substring":
+		return nativeFunction(func(args []any) (any, error) {
+			length := len([]rune(value))
+			start := 0
+			end := length
+			if len(args) > 0 {
+				start = clampIndex(jsInteger(args[0]), length)
+			}
+			if len(args) > 1 {
+				end = clampIndex(jsInteger(args[1]), length)
+			}
+			if start > end {
+				start, end = end, start
+			}
+			return stringRuneSlice(value, start, end), nil
+		}), true
+	case "substr":
+		return nativeFunction(func(args []any) (any, error) {
+			length := len([]rune(value))
+			start := 0
+			if len(args) > 0 {
+				start = jsInteger(args[0])
+				if start < 0 {
+					start = maxInt(length+start, 0)
+				}
+			}
+			count := length - start
+			if len(args) > 1 {
+				count = maxInt(jsInteger(args[1]), 0)
+			}
+			return stringRuneSlice(value, start, start+count), nil
+		}), true
+	case "charAt":
+		return nativeFunction(func(args []any) (any, error) {
+			index := 0
+			if len(args) > 0 {
+				index = jsInteger(args[0])
+			}
+			runes := []rune(value)
+			if index < 0 || index >= len(runes) {
+				return "", nil
+			}
+			return string(runes[index]), nil
+		}), true
+	case "charCodeAt":
+		return nativeFunction(func(args []any) (any, error) {
+			index := 0
+			if len(args) > 0 {
+				index = jsInteger(args[0])
+			}
+			runes := []rune(value)
+			if index < 0 || index >= len(runes) {
+				return math.NaN(), nil
+			}
+			return float64(runes[index]), nil
+		}), true
+	case "indexOf":
+		return nativeFunction(func(args []any) (any, error) {
+			search := "undefined"
+			if len(args) > 0 {
+				search = jsString(args[0])
+			}
+			start := 0
+			if len(args) > 1 {
+				start = clampIndex(jsInteger(args[1]), len([]rune(value)))
+			}
+			index := strings.Index(stringRuneSlice(value, start, len([]rune(value))), search)
+			if index < 0 {
+				return float64(-1), nil
+			}
+			return float64(start + len([]rune(value[:byteIndexForRune(value, start)+index]))), nil
+		}), true
+	case "lastIndexOf":
+		return nativeFunction(func(args []any) (any, error) {
+			search := "undefined"
+			if len(args) > 0 {
+				search = jsString(args[0])
+			}
+			prefix := value
+			if len(args) > 1 {
+				end := clampIndex(jsInteger(args[1])+len([]rune(search)), len([]rune(value)))
+				prefix = stringRuneSlice(value, 0, end)
+			}
+			index := strings.LastIndex(prefix, search)
+			if index < 0 {
+				return float64(-1), nil
+			}
+			return float64(len([]rune(prefix[:index]))), nil
+		}), true
+	case "includes":
+		return nativeFunction(func(args []any) (any, error) {
+			search := "undefined"
+			if len(args) > 0 {
+				search = jsString(args[0])
+			}
+			start := 0
+			if len(args) > 1 {
+				start = clampIndex(jsInteger(args[1]), len([]rune(value)))
+			}
+			return strings.Contains(stringRuneSlice(value, start, len([]rune(value))), search), nil
+		}), true
+	case "startsWith":
+		return nativeFunction(func(args []any) (any, error) {
+			search := "undefined"
+			if len(args) > 0 {
+				search = jsString(args[0])
+			}
+			start := 0
+			if len(args) > 1 {
+				start = clampIndex(jsInteger(args[1]), len([]rune(value)))
+			}
+			return strings.HasPrefix(stringRuneSlice(value, start, len([]rune(value))), search), nil
+		}), true
+	case "endsWith":
+		return nativeFunction(func(args []any) (any, error) {
+			search := "undefined"
+			if len(args) > 0 {
+				search = jsString(args[0])
+			}
+			end := len([]rune(value))
+			if len(args) > 1 {
+				end = clampIndex(jsInteger(args[1]), len([]rune(value)))
+			}
+			return strings.HasSuffix(stringRuneSlice(value, 0, end), search), nil
+		}), true
+	case "repeat":
+		return nativeFunction(func(args []any) (any, error) {
+			count := 0
+			if len(args) > 0 {
+				count = jsInteger(args[0])
+			}
+			if count < 0 {
+				return nil, errors.New("repeat count must be non-negative")
+			}
+			return strings.Repeat(value, count), nil
 		}), true
 	}
 	index, err := strconv.Atoi(property)
@@ -1962,6 +2196,208 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 			}
 			return result, nil
 		}), true
+	case "forEach":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("forEach callback is required")
+			}
+			for index, item := range value {
+				if _, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined); err != nil {
+					return nil, err
+				}
+			}
+			return jsUndefined, nil
+		}), true
+	case "reduce":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("reduce callback is required")
+			}
+			if len(value) == 0 && len(args) < 2 {
+				return nil, errors.New("reduce of empty array with no initial value")
+			}
+			start := 0
+			accumulator := any(jsUndefined)
+			if len(args) > 1 {
+				accumulator = args[1]
+			} else {
+				accumulator = value[0]
+				start = 1
+			}
+			for index := start; index < len(value); index++ {
+				next, err := callFunctionWithValues(args[0], []any{accumulator, value[index], float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				accumulator = next
+			}
+			return accumulator, nil
+		}), true
+	case "reduceRight":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("reduceRight callback is required")
+			}
+			if len(value) == 0 && len(args) < 2 {
+				return nil, errors.New("reduce of empty array with no initial value")
+			}
+			index := len(value) - 1
+			accumulator := any(jsUndefined)
+			if len(args) > 1 {
+				accumulator = args[1]
+			} else {
+				accumulator = value[index]
+				index--
+			}
+			for ; index >= 0; index-- {
+				next, err := callFunctionWithValues(args[0], []any{accumulator, value[index], float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				accumulator = next
+			}
+			return accumulator, nil
+		}), true
+	case "some":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("some callback is required")
+			}
+			for index, item := range value {
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(next) {
+					return true, nil
+				}
+			}
+			return false, nil
+		}), true
+	case "every":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("every callback is required")
+			}
+			for index, item := range value {
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if !isTruthy(next) {
+					return false, nil
+				}
+			}
+			return true, nil
+		}), true
+	case "find":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("find callback is required")
+			}
+			for index, item := range value {
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(next) {
+					return item, nil
+				}
+			}
+			return jsUndefined, nil
+		}), true
+	case "findIndex":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("findIndex callback is required")
+			}
+			for index, item := range value {
+				next, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(next) {
+					return float64(index), nil
+				}
+			}
+			return float64(-1), nil
+		}), true
+	case "indexOf":
+		return nativeFunction(func(args []any) (any, error) {
+			search := any(jsUndefined)
+			if len(args) > 0 {
+				search = args[0]
+			}
+			start := 0
+			if len(args) > 1 {
+				start = jsArrayStartIndex(args[1], len(value))
+			}
+			return float64(arrayIndexOf(value, search, start)), nil
+		}), true
+	case "lastIndexOf":
+		return nativeFunction(func(args []any) (any, error) {
+			search := any(jsUndefined)
+			if len(args) > 0 {
+				search = args[0]
+			}
+			start := len(value) - 1
+			if len(args) > 1 {
+				start = jsSliceIndex(args[1], len(value))
+			}
+			for index := minInt(start, len(value)-1); index >= 0; index-- {
+				if jsSameValue(value[index], search) {
+					return float64(index), nil
+				}
+			}
+			return float64(-1), nil
+		}), true
+	case "includes":
+		return nativeFunction(func(args []any) (any, error) {
+			search := any(jsUndefined)
+			if len(args) > 0 {
+				search = args[0]
+			}
+			start := 0
+			if len(args) > 1 {
+				start = jsArrayStartIndex(args[1], len(value))
+			}
+			return arrayIndexOf(value, search, start) >= 0, nil
+		}), true
+	case "concat":
+		return nativeFunction(func(args []any) (any, error) {
+			result := append([]any{}, value...)
+			for _, arg := range args {
+				if next, ok := arg.([]any); ok {
+					result = append(result, next...)
+				} else {
+					result = append(result, arg)
+				}
+			}
+			return result, nil
+		}), true
+	case "slice":
+		return nativeFunction(func(args []any) (any, error) {
+			start := 0
+			end := len(value)
+			if len(args) > 0 {
+				start = jsSliceIndex(args[0], len(value))
+			}
+			if len(args) > 1 {
+				end = jsSliceIndex(args[1], len(value))
+			}
+			if end < start {
+				end = start
+			}
+			return append([]any{}, value[start:end]...), nil
+		}), true
+	case "flat":
+		return nativeFunction(func(args []any) (any, error) {
+			depth := 1
+			if len(args) > 0 {
+				depth = jsInteger(args[0])
+			}
+			return flattenArray(value, depth), nil
+		}), true
 	case "sort":
 		return nativeFunction(func(args []any) (any, error) {
 			var sortErr error
@@ -1992,6 +2428,106 @@ func arrayMember(value []any, property string, env Env) (any, bool) {
 		return value[index], true
 	}
 	return nil, false
+}
+
+func isJSWhitespace(value rune) bool {
+	return value == ' ' || value == '\t' || value == '\n' || value == '\r' || value == '\f' || value == '\v'
+}
+
+func jsInteger(value any) int {
+	number := toNumber(value)
+	if math.IsNaN(number) || math.IsInf(number, 0) || number == 0 {
+		return 0
+	}
+	return int(number)
+}
+
+func clampIndex(value int, length int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > length {
+		return length
+	}
+	return value
+}
+
+func jsSliceIndex(value any, length int) int {
+	index := jsInteger(value)
+	if index < 0 {
+		return maxInt(length+index, 0)
+	}
+	return minInt(index, length)
+}
+
+func jsArrayStartIndex(value any, length int) int {
+	index := jsInteger(value)
+	if index < 0 {
+		return maxInt(length+index, 0)
+	}
+	return minInt(index, length)
+}
+
+func stringRuneSlice(value string, start int, end int) string {
+	runes := []rune(value)
+	start = clampIndex(start, len(runes))
+	end = clampIndex(end, len(runes))
+	if end < start {
+		end = start
+	}
+	return string(runes[start:end])
+}
+
+func byteIndexForRune(value string, runeIndex int) int {
+	if runeIndex <= 0 {
+		return 0
+	}
+	index := 0
+	for byteIndex := range value {
+		if index == runeIndex {
+			return byteIndex
+		}
+		index++
+	}
+	return len(value)
+}
+
+func arrayIndexOf(value []any, search any, start int) int {
+	for index := start; index < len(value); index++ {
+		if jsSameValue(value[index], search) {
+			return index
+		}
+	}
+	return -1
+}
+
+func flattenArray(value []any, depth int) []any {
+	if depth < 1 {
+		return append([]any{}, value...)
+	}
+	result := []any{}
+	for _, item := range value {
+		if nested, ok := item.([]any); ok {
+			result = append(result, flattenArray(nested, depth-1)...)
+		} else {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func mapMember(value *MapValue, property string) (any, bool) {

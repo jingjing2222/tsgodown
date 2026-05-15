@@ -633,6 +633,158 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, filtered
     }
 
     #[test]
+    fn emit_go_runs_array_iteration_search_and_slice_methods_subset() {
+        let root = temp_project("engine-core-array-iteration-search-slice");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const values = [1, 2, 3, 4]
+const seen = []
+values.forEach((value, index) => seen.push(value + index))
+const result = [
+  values.reduce((acc, value) => acc + value, 0),
+  ["a", "b", "c"].reduceRight((acc, value) => acc + value, ""),
+  values.some((value) => value > 3),
+  values.every((value) => value > 0),
+  values.find((value) => value > 2),
+  values.findIndex((value) => value > 2),
+  values.indexOf(3),
+  values.includes(5),
+  values.concat([5], 6).slice(2, 5).join(":"),
+  [1, [2, [3]]].flat(2).join(":")
+].join("|")
+console.log("array-more", seen.join(","), result)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/array-iteration-search-slice".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-more 1,3,5,7 10|cba|true|true|3|2|2|false|3:4:5|1:2:3\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_string_search_and_slice_methods_subset() {
+        let root = temp_project("engine-core-string-search-slice");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const trimmed = "  Alpha-Beta  ".trimStart().trimEnd()
+const result = [
+  trimmed.charAt(0),
+  trimmed.charCodeAt(0),
+  trimmed.slice(0, 5),
+  trimmed.substring(6, 10),
+  trimmed.substr(6, 4),
+  trimmed.indexOf("B"),
+  trimmed.lastIndexOf("a"),
+  trimmed.includes("pha"),
+  trimmed.startsWith("Al"),
+  trimmed.endsWith("eta"),
+  "x".repeat(3),
+  "a_a".replaceAll("_", "-")
+].join("|")
+console.log("string-more", result)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/string-search-slice".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "string-more A|65|Alpha|Beta|Beta|6|9|true|true|true|xxx|a-a\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_global_object_array_math_builtins_subset() {
         let root = temp_project("engine-core-global-builtins");
         write(
