@@ -1300,6 +1300,14 @@ console.log("unsupported", Box.make())
 function acceptsPath(path) {
   return path.match(/x/)
 }
+function localPath(input) {
+  const path = input
+  return path.split(":")
+}
+function localFs(fn) {
+  const fs = fn
+  return fs.access("x")
+}
 console.log(acceptsPath("x"))
 "#,
         );
@@ -1326,8 +1334,14 @@ console.log(acceptsPath("x"))
             .map(|diagnostic| diagnostic.message.as_str())
             .expect("expected fail-closed diagnostic");
         assert!(message.contains("aot.function.unsupported_body:src/index.js:acceptsPath"));
+        assert!(message.contains("aot.function.unsupported_body:src/index.js:localPath"));
+        assert!(message.contains("aot.function.unsupported_body:src/index.js:localFs"));
         assert!(!message.contains("aot.node.builtin_operation:path.match"));
         assert!(!message.contains("aot.node.builtin_property:path.match"));
+        assert!(!message.contains("aot.node.builtin_operation:path.split"));
+        assert!(!message.contains("aot.node.builtin_property:path.split"));
+        assert!(!message.contains("aot.node.builtin_operation:fs.access"));
+        assert!(!message.contains("aot.node.builtin_property:fs.access"));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
     }
 

@@ -143,14 +143,30 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                     }
                 }
             }
-            collect_builtin_usage_features(stmt, &mut features);
         }
+        collect_builtin_usage_stmt_list_features(
+            &executable.stmts,
+            &mut features,
+            &BTreeSet::new(),
+        );
     }
     features.into_iter().collect()
 }
 
-fn collect_builtin_usage_features(stmt: &JsStmt, features: &mut BTreeSet<String>) {
-    collect_builtin_usage_features_with_scope(stmt, features, &BTreeSet::new());
+fn collect_builtin_usage_stmt_list_features(
+    stmts: &[JsStmt],
+    features: &mut BTreeSet<String>,
+    shadowed: &BTreeSet<String>,
+) {
+    let mut scoped = shadowed.clone();
+    for stmt in stmts {
+        collect_builtin_usage_features_with_scope(stmt, features, &scoped);
+        if let JsStmt::VarDecl { name, init } = stmt {
+            if var_decl_shadows_node_builtin(name, init.as_ref()) {
+                scoped.insert(name.clone());
+            }
+        }
+    }
 }
 
 fn collect_builtin_usage_features_with_scope(
@@ -170,16 +186,12 @@ fn collect_builtin_usage_features_with_scope(
         } => collect_builtin_usage_expr_features(expr, features, shadowed),
         JsStmt::FunctionDecl { params, body, .. } => {
             let scoped = scoped_shadowed(shadowed, params);
-            for stmt in body {
-                collect_builtin_usage_features_with_scope(stmt, features, &scoped);
-            }
+            collect_builtin_usage_stmt_list_features(body, features, &scoped);
         }
         JsStmt::ClassDecl { methods, .. } => {
             for method in methods {
                 let scoped = scoped_shadowed(shadowed, &method.params);
-                for stmt in &method.body {
-                    collect_builtin_usage_features_with_scope(stmt, features, &scoped);
-                }
+                collect_builtin_usage_stmt_list_features(&method.body, features, &scoped);
             }
         }
         JsStmt::If {
@@ -188,12 +200,8 @@ fn collect_builtin_usage_features_with_scope(
             alternate,
         } => {
             collect_builtin_usage_expr_features(test, features, shadowed);
-            for stmt in consequent {
-                collect_builtin_usage_features_with_scope(stmt, features, shadowed);
-            }
-            for stmt in alternate {
-                collect_builtin_usage_features_with_scope(stmt, features, shadowed);
-            }
+            collect_builtin_usage_stmt_list_features(consequent, features, shadowed);
+            collect_builtin_usage_stmt_list_features(alternate, features, shadowed);
         }
         JsStmt::For {
             init,
@@ -210,15 +218,11 @@ fn collect_builtin_usage_features_with_scope(
             if let Some(update) = update {
                 collect_builtin_usage_expr_features(update, features, shadowed);
             }
-            for stmt in body {
-                collect_builtin_usage_features_with_scope(stmt, features, shadowed);
-            }
+            collect_builtin_usage_stmt_list_features(body, features, shadowed);
         }
         JsStmt::While { test, body } => {
             collect_builtin_usage_expr_features(test, features, shadowed);
-            for stmt in body {
-                collect_builtin_usage_features_with_scope(stmt, features, shadowed);
-            }
+            collect_builtin_usage_stmt_list_features(body, features, shadowed);
         }
         _ => {}
     }
@@ -310,16 +314,12 @@ fn collect_builtin_usage_expr_features(
         }
         JsExpr::Function { params, body, .. } => {
             let scoped = scoped_shadowed(shadowed, params);
-            for stmt in body {
-                collect_builtin_usage_features_with_scope(stmt, features, &scoped);
-            }
+            collect_builtin_usage_stmt_list_features(body, features, &scoped);
         }
         JsExpr::Class { methods, .. } => {
             for method in methods {
                 let scoped = scoped_shadowed(shadowed, &method.params);
-                for stmt in &method.body {
-                    collect_builtin_usage_features_with_scope(stmt, features, &scoped);
-                }
+                collect_builtin_usage_stmt_list_features(&method.body, features, &scoped);
             }
         }
         JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => {}
@@ -330,6 +330,37 @@ fn scoped_shadowed(shadowed: &BTreeSet<String>, params: &[String]) -> BTreeSet<S
     let mut scoped = shadowed.clone();
     scoped.extend(params.iter().cloned());
     scoped
+}
+
+fn var_decl_shadows_node_builtin(name: &str, init: Option<&JsExpr>) -> bool {
+    if !is_observed_node_builtin_name(name, &BTreeSet::new()) {
+        return false;
+    }
+    !matches!(
+        init.and_then(require_call_spec),
+        Some(spec) if node_builtin_spec_matches_binding(spec, name)
+    )
+}
+
+fn require_call_spec(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !matches!(callee.as_ref(), JsExpr::Ident { name } if name == "require") {
+        return None;
+    }
+    let JsExpr::Value {
+        value: JsValue::String { value },
+    } = args.first()?
+    else {
+        return None;
+    };
+    Some(value)
+}
+
+fn node_builtin_spec_matches_binding(spec: &str, binding: &str) -> bool {
+    let spec = spec.strip_prefix("node:").unwrap_or(spec);
+    spec == binding || (binding == "path" && matches!(spec, "path/posix" | "path/win32"))
 }
 
 fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> bool {
