@@ -129,6 +129,14 @@ fn collect_statements(src: &str) -> Vec<&str> {
 fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) {
     for line in src.lines() {
         let trimmed = line.trim();
+        if trimmed.starts_with("//")
+            || trimmed.starts_with("/*")
+            || trimmed.starts_with('*')
+            || trimmed.contains("@type")
+            || trimmed.contains("@typedef")
+        {
+            continue;
+        }
         if trimmed.contains("import(") && !has_supported_static_builtin_dynamic_import(trimmed) {
             diagnostics.push(diag(
                 "error",

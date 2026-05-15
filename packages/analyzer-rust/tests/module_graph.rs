@@ -91,6 +91,92 @@ module.exports = missing;
     );
 }
 
+#[test]
+fn resolves_vendored_package_imports_from_node_modules() {
+    let root = temp_project("module-graph-node-modules");
+    write(
+        &root,
+        "src/index.js",
+        r#"
+import dep from "pkg-a";
+const util = require("@scope/pkg-b/utils");
+const dotted = require("pkg-a/Object.getPrototypeOf");
+export { dep, util };
+"#,
+    );
+    write(
+        &root,
+        "node_modules/pkg-a/package.json",
+        r#"{ "name": "pkg-a", "exports": { ".": { "import": "./esm.js", "require": "./cjs.js" } } }"#,
+    );
+    write(
+        &root,
+        "node_modules/pkg-a/esm.js",
+        r#"
+export default "esm";
+"#,
+    );
+    write(
+        &root,
+        "node_modules/pkg-a/Object.getPrototypeOf.js",
+        r#"
+module.exports = Object.getPrototypeOf;
+"#,
+    );
+    write(
+        &root,
+        "node_modules/@scope/pkg-b/package.json",
+        r#"{ "name": "@scope/pkg-b", "main": "index.js" }"#,
+    );
+    write(
+        &root,
+        "node_modules/@scope/pkg-b/utils.js",
+        r#"
+module.exports = { value: 1 };
+"#,
+    );
+
+    let ir = analyze_compiler_project(&root, "src/index.js");
+
+    assert_eq!(ir.diagnostics, vec![]);
+    assert_eq!(
+        ir.modules
+            .iter()
+            .map(|module| module.source_path.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "node_modules/@scope/pkg-b/utils.js",
+            "node_modules/pkg-a/Object.getPrototypeOf.js",
+            "node_modules/pkg-a/esm.js",
+            "src/index.js",
+        ]
+    );
+
+    let entry = ir
+        .modules
+        .iter()
+        .find(|module| module.source_path == "src/index.js")
+        .expect("entry module");
+    assert_eq!(
+        entry
+            .imports
+            .iter()
+            .map(|import| (import.spec.as_str(), import.resolved.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "@scope/pkg-b/utils",
+                Some("node_modules/@scope/pkg-b/utils.js")
+            ),
+            ("pkg-a", Some("node_modules/pkg-a/esm.js")),
+            (
+                "pkg-a/Object.getPrototypeOf",
+                Some("node_modules/pkg-a/Object.getPrototypeOf.js")
+            ),
+        ]
+    );
+}
+
 fn write(root: &std::path::Path, rel: &str, source: &str) {
     let path = root.join(rel);
     fs::create_dir_all(path.parent().expect("parent")).expect("create parent");

@@ -7,8 +7,8 @@ fn vendored_node_corpus_relative_module_graphs_are_deterministic() {
     let root = repo_root().join("test-corpus/node-real");
     let cases = [
         ("semver", "packages/semver/index.js", 46, 0),
-        ("minimatch", "packages/minimatch/dist/esm/index.js", 6, 0),
-        ("qs", "packages/qs/lib/index.js", 5, 0),
+        ("minimatch", "packages/minimatch/dist/esm/index.js", 8, 0),
+        ("qs", "packages/qs/lib/index.js", 46, 0),
         ("dotenv", "packages/dotenv/lib/main.js", 1, 0),
         (
             "yargs-parser",
@@ -19,8 +19,8 @@ fn vendored_node_corpus_relative_module_graphs_are_deterministic() {
         ("js-yaml", "packages/js-yaml/dist/js-yaml.mjs", 1, 0),
         ("lru-cache", "packages/lru-cache/dist/esm/index.js", 3, 0),
         ("uuid", "packages/uuid/dist-node/index.js", 21, 0),
-        ("fs-extra", "packages/fs-extra/lib/index.js", 28, 0),
-        ("execa", "packages/execa/index.js", 106, 0),
+        ("fs-extra", "packages/fs-extra/lib/index.js", 35, 0),
+        ("execa", "packages/execa/index.js", 145, 0),
     ];
 
     let actual = cases

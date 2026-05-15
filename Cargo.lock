@@ -24,6 +24,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "analyzer-rust"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "swc_common",
  "swc_ecma_ast",
  "swc_ecma_parser",
