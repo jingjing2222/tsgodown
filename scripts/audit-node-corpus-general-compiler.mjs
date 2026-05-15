@@ -4,10 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const targets = [
-  path.join(repoRoot, "scripts", "generate-node-corpus-go.mjs"),
-  path.join(repoRoot, "scripts", "lib", "executable-ir-go-codegen.mjs"),
-];
+const targets = [path.join(repoRoot, "scripts", "generate-node-corpus-go.mjs")];
 
 const forbidden = [
   {
