@@ -60,6 +60,7 @@
     "test:guard:framework-defaults": "node --test scripts/guard-framework-defaults.test.mjs",
     "harness:semantics-parity": "node scripts/differential-harness.mjs --all",
     "harness:differential": "pnpm run harness:semantics-parity",
+    "gate:differential-fuzz:generate": "node scripts/generate-differential-fuzz-go.mjs",
     "gate:differential-fuzz": "node scripts/differential-fuzz-parity.mjs"
   },
   "devDependencies": {
