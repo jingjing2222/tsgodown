@@ -102,7 +102,18 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(test, unsupported);
             collect_unsupported_stmt_list(body, false, unsupported);
         }
-        JsStmt::Switch { .. } => unsupported.push("switch statements".to_string()),
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            collect_unsupported_expr(discriminant, unsupported);
+            for case in cases {
+                if let Some(test) = &case.test {
+                    collect_unsupported_expr(test, unsupported);
+                }
+                collect_unsupported_stmt_list(&case.consequent, false, unsupported);
+            }
+        }
         JsStmt::Try { .. } => unsupported.push("try statements".to_string()),
         JsStmt::Break { label } => {
             if label.is_some() {
@@ -159,6 +170,18 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
         JsStmt::While { test, body } => {
             collect_unsupported_expr(test, unsupported);
             collect_unsupported_stmt_list(body, true, unsupported);
+        }
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            collect_unsupported_expr(discriminant, unsupported);
+            for case in cases {
+                if let Some(test) = &case.test {
+                    collect_unsupported_expr(test, unsupported);
+                }
+                collect_unsupported_stmt_list(&case.consequent, true, unsupported);
+            }
         }
         other => collect_unsupported_stmt(other, unsupported),
     }
@@ -234,6 +257,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                     | "<<"
                     | ">>"
                     | ">>>"
+                    | "in"
             ) {
                 unsupported.push(format!("binary {op}"));
             }

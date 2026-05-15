@@ -570,6 +570,68 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 				}
 			}
 		}
+	case "switch":
+		discriminant, err := evalExpr(asMap(stmt["discriminant"]), env)
+		if err != nil {
+			return completion{}, err
+		}
+		matched := false
+		defaultIndex := -1
+		cases := asSlice(stmt["cases"])
+		for index, rawCase := range cases {
+			caseMap := asMap(rawCase)
+			if rawTest, ok := caseMap["test"]; ok {
+				test, err := evalExpr(asMap(rawTest), env)
+				if err != nil {
+					return completion{}, err
+				}
+				if jsSameValue(discriminant, test) {
+					matched = true
+				}
+			} else if defaultIndex < 0 {
+				defaultIndex = index
+			}
+			if matched {
+				break
+			}
+		}
+		start := defaultIndex
+		if matched {
+			for index, rawCase := range cases {
+				caseMap := asMap(rawCase)
+				if rawTest, ok := caseMap["test"]; ok {
+					test, err := evalExpr(asMap(rawTest), env)
+					if err != nil {
+						return completion{}, err
+					}
+					if jsSameValue(discriminant, test) {
+						start = index
+						break
+					}
+				}
+			}
+		}
+		if start < 0 {
+			return completion{}, nil
+		}
+		for _, rawCase := range cases[start:] {
+			for _, child := range asStmtSlice(asMap(rawCase)["consequent"]) {
+				result, err := evalStmt(child, env)
+				if err != nil {
+					return completion{}, err
+				}
+				if result.returned {
+					return result, nil
+				}
+				if result.broke {
+					return completion{}, nil
+				}
+				if result.continued {
+					return result, nil
+				}
+			}
+		}
+		return completion{}, nil
 	case "break":
 		return completion{broke: true}, nil
 	case "continue":
@@ -951,10 +1013,12 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return float64(toInt32(left) >> (toUint32(right) & 31)), nil
 	case ">>>":
 		return float64(toUint32(left) >> (toUint32(right) & 31)), nil
+	case "in":
+		return hasProperty(right, jsPropertyKey(left)), nil
 	case "==", "===":
-		return fmt.Sprint(left) == fmt.Sprint(right), nil
+		return jsSameValue(left, right), nil
 	case "!=", "!==":
-		return fmt.Sprint(left) != fmt.Sprint(right), nil
+		return !jsSameValue(left, right), nil
 	case "<":
 		return toNumber(left) < toNumber(right), nil
 	case "<=":
@@ -1010,10 +1074,52 @@ func isTruthy(value any) bool {
 	}
 }
 
+func jsSameValue(left any, right any) bool {
+	switch leftTyped := left.(type) {
+	case UndefinedValue:
+		_, ok := right.(UndefinedValue)
+		return ok
+	case NullValue:
+		_, ok := right.(NullValue)
+		return ok
+	case float64:
+		rightTyped, ok := right.(float64)
+		return ok && leftTyped == rightTyped
+	case string:
+		rightTyped, ok := right.(string)
+		return ok && leftTyped == rightTyped
+	case bool:
+		rightTyped, ok := right.(bool)
+		return ok && leftTyped == rightTyped
+	default:
+		return fmt.Sprintf("%p", &left) == fmt.Sprintf("%p", &right)
+	}
+}
+
 func isNullish(value any) bool {
 	switch value.(type) {
 	case nil, UndefinedValue, NullValue:
 		return true
+	default:
+		return false
+	}
+}
+
+func jsPropertyKey(value any) string {
+	return jsString(value)
+}
+
+func hasProperty(value any, key string) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		_, ok := typed[key]
+		return ok
+	case []any:
+		if key == "length" {
+			return true
+		}
+		index, err := strconv.Atoi(key)
+		return err == nil && index >= 0 && index < len(typed)
 	default:
 		return false
 	}
