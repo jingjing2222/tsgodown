@@ -60,6 +60,7 @@ struct AotState {
     bindings: BTreeSet<String>,
     numeric_bindings: BTreeSet<String>,
     string_bindings: BTreeSet<String>,
+    bool_bindings: BTreeSet<String>,
     functions: BTreeMap<String, AotFunction>,
 }
 
@@ -89,6 +90,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.string_bindings.insert(name.clone());
                     return Some(format!("var {ident} string = {value}"));
+                }
+                if let Some(value) = render_bool_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.bool_bindings.insert(name.clone());
+                    return Some(format!("var {ident} bool = {value}"));
                 }
                 let value = render_expr(expr, state)?;
                 state.bindings.insert(name.clone());
@@ -137,6 +143,7 @@ fn render_for_stmt(
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
+        bool_bindings: state.bool_bindings.clone(),
         functions: state.functions.clone(),
     };
     let init = init
@@ -200,6 +207,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
+        bool_bindings: state.bool_bindings.clone(),
         functions: state.functions.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
@@ -210,6 +218,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
         string_bindings: state.string_bindings.clone(),
+        bool_bindings: state.bool_bindings.clone(),
         functions: state.functions.clone(),
     };
     stmts
@@ -291,6 +300,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::Bool { value },
         } => Some(value.to_string()),
+        JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
+            Some(sanitize_go_identifier(name))
+        }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
