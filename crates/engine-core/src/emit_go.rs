@@ -261,6 +261,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -476,25 +478,144 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 	switch spec {
 	case "util", "node:util":
 		exports := map[string]any{}
-		inspect := NativeFunctionValue{Call: func(args []any) (any, error) {
+		inspect := nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return "undefined", nil
 			}
 			return jsInspect(args[0]), nil
-		}}
-		format := NativeFunctionValue{Call: func(args []any) (any, error) {
+		})
+		format := nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return "", nil
 			}
 			return jsFormat(args), nil
-		}}
+		})
 		exports["inspect"] = inspect
 		exports["format"] = format
 		exports["default"] = exports
 		return exports, true
+	case "path", "node:path":
+		return pathModuleExports(), true
+	case "os", "node:os":
+		return osModuleExports(), true
 	default:
 		return nil, false
 	}
+}
+
+func nativeFunction(call func(args []any) (any, error)) NativeFunctionValue {
+	return NativeFunctionValue{Call: call}
+}
+
+func pathModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["sep"] = string(os.PathSeparator)
+	exports["delimiter"] = string(os.PathListSeparator)
+	exports["normalize"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return ".", nil
+		}
+		return filepath.Clean(jsString(args[0])), nil
+	})
+	exports["join"] = nativeFunction(func(args []any) (any, error) {
+		parts := []string{}
+		for _, arg := range args {
+			parts = append(parts, jsString(arg))
+		}
+		return filepath.Clean(filepath.Join(parts...)), nil
+	})
+	exports["resolve"] = nativeFunction(func(args []any) (any, error) {
+		parts := []string{}
+		for _, arg := range args {
+			parts = append(parts, jsString(arg))
+		}
+		if len(parts) == 0 || !filepath.IsAbs(parts[0]) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return nil, err
+			}
+			parts = append([]string{cwd}, parts...)
+		}
+		return filepath.Clean(filepath.Join(parts...)), nil
+	})
+	exports["dirname"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return ".", nil
+		}
+		return filepath.Dir(jsString(args[0])), nil
+	})
+	exports["basename"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		base := filepath.Base(jsString(args[0]))
+		if len(args) > 1 {
+			suffix := jsString(args[1])
+			base = strings.TrimSuffix(base, suffix)
+		}
+		return base, nil
+	})
+	exports["extname"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		return filepath.Ext(jsString(args[0])), nil
+	})
+	exports["isAbsolute"] = nativeFunction(func(args []any) (any, error) {
+		return len(args) > 0 && filepath.IsAbs(jsString(args[0])), nil
+	})
+	exports["relative"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) < 2 {
+			return "", nil
+		}
+		relative, err := filepath.Rel(jsString(args[0]), jsString(args[1]))
+		if err != nil {
+			return jsString(args[1]), nil
+		}
+		return relative, nil
+	})
+	exports["parse"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return map[string]any{"root": "", "dir": "", "base": "", "ext": "", "name": ""}, nil
+		}
+		value := jsString(args[0])
+		base := filepath.Base(value)
+		ext := filepath.Ext(base)
+		root := ""
+		if filepath.IsAbs(value) {
+			root = string(os.PathSeparator)
+		}
+		return map[string]any{
+			"root": root,
+			"dir":  filepath.Dir(value),
+			"base": base,
+			"ext":  ext,
+			"name": strings.TrimSuffix(base, ext),
+		}, nil
+	})
+	exports["default"] = exports
+	return exports
+}
+
+func osModuleExports() map[string]any {
+	exports := map[string]any{}
+	exports["EOL"] = "\n"
+	exports["constants"] = map[string]any{}
+	exports["homedir"] = nativeFunction(func(args []any) (any, error) {
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			return "", nil
+		}
+		return dir, nil
+	})
+	exports["tmpdir"] = nativeFunction(func(args []any) (any, error) {
+		return os.TempDir(), nil
+	})
+	exports["platform"] = nativeFunction(func(args []any) (any, error) {
+		return runtime.GOOS, nil
+	})
+	exports["default"] = exports
+	return exports
 }
 
 func bindImport(env Env, importDecl Import, importedExports map[string]any) {
