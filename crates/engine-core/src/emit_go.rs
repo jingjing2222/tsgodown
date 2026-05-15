@@ -917,6 +917,17 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 				return callFunctionWithValues(fn, callArgs, Env{}, thisValue)
 			}), nil
 		})
+		exports["inherits"] = nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 || !isCallable(args[0]) || !isCallable(args[1]) {
+				return nil, jsThrow{value: nodeError("ERR_INVALID_ARG_TYPE", "The \"ctor\" and \"superCtor\" arguments must be functions")}
+			}
+			superPrototype := callablePrototype(args[1])
+			prototype := objectWithPrototype(superPrototype)
+			prototype["constructor"] = args[0]
+			setCallableProperty(args[0], "super_", args[1])
+			setCallableProperty(args[0], "prototype", prototype)
+			return jsUndefined, nil
+		})
 		exports["stripVTControlCharacters"] = nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return "", nil
@@ -2460,6 +2471,67 @@ func setDynamicProperty(target any, property string, value any) bool {
 	}
 }
 
+func setCallableProperty(target any, property string, value any) bool {
+	switch typed := target.(type) {
+	case FunctionValue:
+		if typed.Props == nil {
+			return false
+		}
+		typed.Props[property] = value
+		return true
+	case NativeFunctionValue:
+		if typed.Props == nil {
+			return false
+		}
+		typed.Props[property] = value
+		return true
+	case BoundFunctionValue:
+		if typed.Function.Props == nil {
+			return false
+		}
+		typed.Function.Props[property] = value
+		return true
+	case *ClassValue:
+		if typed.Props == nil {
+			typed.Props = map[string]any{}
+		}
+		typed.Props[property] = value
+		return true
+	default:
+		return setDynamicProperty(target, property, value)
+	}
+}
+
+func callablePrototype(target any) any {
+	switch typed := target.(type) {
+	case FunctionValue:
+		if typed.Props != nil {
+			if prototype, ok := typed.Props["prototype"]; ok {
+				return prototype
+			}
+		}
+	case NativeFunctionValue:
+		if typed.Props != nil {
+			if prototype, ok := typed.Props["prototype"]; ok {
+				return prototype
+			}
+		}
+	case BoundFunctionValue:
+		return callablePrototype(typed.Function)
+	case *ClassValue:
+		if typed.Props != nil {
+			if prototype, ok := typed.Props["prototype"]; ok {
+				return prototype
+			}
+		}
+	case map[string]any:
+		if prototype, ok := typed["prototype"]; ok {
+			return prototype
+		}
+	}
+	return map[string]any{}
+}
+
 func deleteDynamicProperty(target any, property string) bool {
 	switch typed := target.(type) {
 	case map[string]any:
@@ -2664,7 +2736,7 @@ func objectTag(value any) string {
 }
 
 func newRegExp(pattern string, flags string) (*RegExpValue, error) {
-	goPattern := pattern
+	goPattern := normalizeJSRegExpPattern(pattern)
 	if strings.Contains(flags, "m") {
 		goPattern = "(?m)" + goPattern
 	}
@@ -2688,7 +2760,7 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 			options |= regexp2.Singleline
 		}
 		var err error
-		compiled2, err = regexp2.Compile(pattern, options)
+		compiled2, err = regexp2.Compile(goPattern, options)
 		if err != nil {
 			return nil, err
 		}
@@ -2702,6 +2774,23 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 		LastIndex: 0,
 		Props:   map[string]any{},
 	}, nil
+}
+
+func normalizeJSRegExpPattern(pattern string) string {
+	replacements := []struct {
+		from string
+		to   string
+	}{
+		{`\p{ID_Start}`, `\p{L}`},
+		{`\p{ID_Continue}`, `\p{L}\p{N}\p{M}\x{200C}\x{200D}`},
+		{`\P{ID_Start}`, `[^\p{L}]`},
+		{`\P{ID_Continue}`, `[^\p{L}\p{N}\p{M}\x{200C}\x{200D}]`},
+	}
+	out := pattern
+	for _, replacement := range replacements {
+		out = strings.ReplaceAll(out, replacement.from, replacement.to)
+	}
+	return out
 }
 
 func regexpMatches(value *RegExpValue, text string) any {
@@ -3345,6 +3434,34 @@ func fsPromisesModuleExports() map[string]any {
 
 func httpModuleExports() map[string]any {
 	exports := map[string]any{}
+	exports["METHODS"] = &ArrayValue{Items: stringsToAny([]string{
+		"ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD",
+		"LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL",
+		"MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH",
+		"PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE",
+		"SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE",
+	})}
+	exports["STATUS_CODES"] = map[string]any{
+		"100": "Continue", "101": "Switching Protocols", "102": "Processing", "103": "Early Hints",
+		"200": "OK", "201": "Created", "202": "Accepted", "203": "Non-Authoritative Information",
+		"204": "No Content", "205": "Reset Content", "206": "Partial Content", "207": "Multi-Status",
+		"208": "Already Reported", "226": "IM Used", "300": "Multiple Choices", "301": "Moved Permanently",
+		"302": "Found", "303": "See Other", "304": "Not Modified", "305": "Use Proxy",
+		"307": "Temporary Redirect", "308": "Permanent Redirect", "400": "Bad Request", "401": "Unauthorized",
+		"402": "Payment Required", "403": "Forbidden", "404": "Not Found", "405": "Method Not Allowed",
+		"406": "Not Acceptable", "407": "Proxy Authentication Required", "408": "Request Timeout",
+		"409": "Conflict", "410": "Gone", "411": "Length Required", "412": "Precondition Failed",
+		"413": "Payload Too Large", "414": "URI Too Long", "415": "Unsupported Media Type",
+		"416": "Range Not Satisfiable", "417": "Expectation Failed", "418": "I'm a Teapot",
+		"421": "Misdirected Request", "422": "Unprocessable Entity", "423": "Locked", "424": "Failed Dependency",
+		"425": "Too Early", "426": "Upgrade Required", "428": "Precondition Required",
+		"429": "Too Many Requests", "431": "Request Header Fields Too Large",
+		"451": "Unavailable For Legal Reasons", "500": "Internal Server Error", "501": "Not Implemented",
+		"502": "Bad Gateway", "503": "Service Unavailable", "504": "Gateway Timeout",
+		"505": "HTTP Version Not Supported", "506": "Variant Also Negotiates",
+		"507": "Insufficient Storage", "508": "Loop Detected", "509": "Bandwidth Limit Exceeded",
+		"510": "Not Extended", "511": "Network Authentication Required",
+	}
 	exports["createServer"] = nativeFunction(func(args []any) (any, error) {
 		var handler any = jsUndefined
 		if len(args) > 0 {
@@ -3751,7 +3868,11 @@ func streamModuleExports() map[string]any {
 	streamCtor := nativeFunction(func(args []any) (any, error) {
 		return newDuplexStream(nil), nil
 	})
-	stream["Stream"] = streamCtor
+	streamPrototype := map[string]any{}
+	stream["__call"] = streamCtor
+	stream["prototype"] = streamPrototype
+	streamPrototype["constructor"] = stream
+	stream["Stream"] = stream
 	stream["Readable"] = streamCtor
 	stream["Writable"] = streamCtor
 	stream["Duplex"] = streamCtor
@@ -7964,7 +8085,7 @@ func builtinErrorClass(name string) *ClassValue {
 		},
 		Env: Env{},
 	}
-	return &ClassValue{
+	classValue := &ClassValue{
 		Constructor: &constructor,
 		Methods:     map[string]FunctionValue{},
 		Getters:     map[string]FunctionValue{},
@@ -7974,16 +8095,95 @@ func builtinErrorClass(name string) *ClassValue {
 		StaticSetters: map[string]FunctionValue{},
 		Callable:    true,
 		Props: map[string]any{
-			"captureStackTrace": nativeFunction(func(args []any) (any, error) {
-				if len(args) > 0 {
-					if object, ok := args[0].(map[string]any); ok {
-						object["stack"] = jsString(object["name"]) + ": " + jsString(object["message"])
-					}
-				}
-				return jsUndefined, nil
-			}),
+			"stackTraceLimit": float64(10),
 		},
 	}
+	classValue.Props["captureStackTrace"] = nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return jsUndefined, nil
+		}
+		object, ok := args[0].(map[string]any)
+		if !ok {
+			return jsUndefined, nil
+		}
+		limit := 10
+		if rawLimit, ok := classValue.Props["stackTraceLimit"]; ok {
+			limit = jsInteger(rawLimit)
+		}
+		if limit < 0 {
+			limit = 0
+		}
+		frames := callSiteStack(limit)
+		if prepare, ok := classValue.Props["prepareStackTrace"]; ok && isCallable(prepare) {
+			prepared, err := callFunctionWithValues(prepare, []any{object, frames}, Env{}, jsUndefined)
+			if err != nil {
+				return nil, err
+			}
+			object["stack"] = prepared
+			return jsUndefined, nil
+		}
+		object["stack"] = jsString(object["name"]) + ": " + jsString(object["message"])
+		return jsUndefined, nil
+	})
+	return classValue
+}
+
+func callSiteStack(limit int) *ArrayValue {
+	items := []any{}
+	for index := 0; index < limit; index++ {
+		items = append(items, callSiteObject(index))
+	}
+	return &ArrayValue{Items: items}
+}
+
+func callSiteObject(index int) map[string]any {
+	fileName := generatedStackFileName()
+	line := float64(index + 1)
+	column := float64(1)
+	functionName := "anonymous"
+	site := map[string]any{}
+	site["getFileName"] = nativeFunction(func(args []any) (any, error) {
+		return fileName, nil
+	})
+	site["getLineNumber"] = nativeFunction(func(args []any) (any, error) {
+		return line, nil
+	})
+	site["getColumnNumber"] = nativeFunction(func(args []any) (any, error) {
+		return column, nil
+	})
+	site["getFunctionName"] = nativeFunction(func(args []any) (any, error) {
+		return functionName, nil
+	})
+	site["getMethodName"] = nativeFunction(func(args []any) (any, error) {
+		return jsNull, nil
+	})
+	site["getTypeName"] = nativeFunction(func(args []any) (any, error) {
+		return jsNull, nil
+	})
+	site["getThis"] = nativeFunction(func(args []any) (any, error) {
+		return jsUndefined, nil
+	})
+	site["isEval"] = nativeFunction(func(args []any) (any, error) {
+		return false, nil
+	})
+	site["getEvalOrigin"] = nativeFunction(func(args []any) (any, error) {
+		return jsUndefined, nil
+	})
+	site["isConstructor"] = nativeFunction(func(args []any) (any, error) {
+		return false, nil
+	})
+	site["toString"] = nativeFunction(func(args []any) (any, error) {
+		return fmt.Sprintf("%s (%s:%d:%d)", functionName, fileName, int(line), int(column)), nil
+	})
+	return site
+}
+
+func generatedStackFileName() string {
+	cwd, err := os.Getwd()
+	if err != nil || cwd == "" {
+		return "generated.js"
+	}
+	return filepath.ToSlash(filepath.Join(cwd, "generated.js"))
 }
 
 func lookupMethod(classValue *ClassValue, property string) (FunctionValue, bool) {
@@ -8417,6 +8617,15 @@ func jsInstanceOf(value any, constructor any) bool {
 	}
 	if function, ok := constructor.(FunctionValue); ok {
 		return objectHasPrototype(value, function.Props["prototype"])
+	}
+	if function, ok := constructor.(NativeFunctionValue); ok {
+		return objectHasPrototype(value, function.Props["prototype"])
+	}
+	if function, ok := constructor.(BoundFunctionValue); ok {
+		return objectHasPrototype(value, callablePrototype(function))
+	}
+	if object, ok := constructor.(map[string]any); ok {
+		return objectHasPrototype(value, object["prototype"])
 	}
 	return false
 }

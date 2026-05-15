@@ -1056,9 +1056,10 @@ const secondScan = globalScan.exec("user[name][role]")
 const comparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s*(v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:\d*[a-zA-Z-][a-zA-Z0-9-]*|0|[1-9]\d*)(?:\.(?:\d*[a-zA-Z-][a-zA-Z0-9-]*|0|[1-9]\d*))*))?(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?)$|^$/)
 const safeComparator = ">=0.0.0-0".match(/^((?:<|>)?=?)\s{0,1}(v?(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})\.(0|[1-9]\d{0,256})(?:-((?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256})(?:\.(?:\d{0,256}[a-zA-Z-][a-zA-Z0-9-]{0,250}|0|[1-9]\d{0,256}))*))?(?:\+([a-zA-Z0-9-]{1,250}(?:\.[a-zA-Z0-9-]{1,250})*))?)$|^$/)
 const dynamicWhitespace = new RegExp(`^a\\s+b$`).test("a b")
+const jsIdentifier = /^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u
 const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, protoSlice, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), firstScan.index + ":" + firstScan[1] + ":" + secondScan.index + ":" + secondScan[1], comparator[1] + ":" + comparator[2] + ":" + comparator[6], safeComparator[1] + ":" + safeComparator[2] + ":" + safeComparator[6], dynamicWhitespace, jsIdentifier.test("item_1") + ":" + jsIdentifier.test("$x") + ":" + jsIdentifier.test("9x"), protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -1108,7 +1109,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true bcd 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name 4:[name]:10:[role] >=:0.0.0-0:0 >=:0.0.0-0:0 true true:true:false bcd 2|3 true\n"
         );
     }
 
@@ -3358,10 +3359,26 @@ console.log("class", counter.current, Counter.label, Counter.ANY, derived.curren
             r#"
 import { format } from "util"
 const util = require("util")
+const Stream = require("stream")
 const wrapped = util.deprecate(function add(left, right) {
   return this.base + left + right
 }, "add is deprecated")
-console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"), wrapped.call({ base: 1 }, 2, 4))
+function Parent() {
+  this.parent = "p"
+}
+Parent.prototype.read = function () {
+  return this.parent
+}
+function Child() {
+  Parent.call(this)
+  this.child = "c"
+}
+util.inherits(Child, Parent)
+const child = new Child()
+function SendStream() {}
+util.inherits(SendStream, Stream)
+const send = new SendStream()
+console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted"), wrapped.call({ base: 1 }, 2, 4), child.read(), child instanceof Child, child instanceof Parent, Child.super_ === Parent, child.constructor === Child, typeof Stream, Stream === Stream.Stream, send instanceof Stream)
 "#,
         );
 
@@ -3411,7 +3428,7 @@ console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "util name:items count:3 \"quoted\" 7\n"
+            "util name:items count:3 \"quoted\" 7 p true true true true function true true\n"
         );
     }
 
@@ -3952,12 +3969,18 @@ timers.setImmediate(() => {
 })
 const stackTarget = { name: "Trace", message: "ok" }
 Error.captureStackTrace(stackTarget)
+const previousPrepareStackTrace = Error.prepareStackTrace
+Error.prepareStackTrace = (_error, stack) => stack
+const callSiteTarget = {}
+Error.captureStackTrace(callSiteTarget)
+const firstCallSite = callSiteTarget.stack[0]
+Error.prepareStackTrace = previousPrepareStackTrace
 const headers = new Headers({ "X-Trace": "one" })
 headers.append("x-trace", "two")
 const response = new Response(null, { status: 302, headers })
 console.log("node-api", parsed.a, parsed.b.join("|"), encoded, params.toString(), params.get("b"), gzipText, inflateText, stored, tick, performance.now() >= 0)
 console.log("net-api", net.isIP("127.0.0.1"), net.isIPv4("127.0.0.1"), net.isIPv6("::1"), net.isIP("bad"))
-console.log("web-api", stackTarget.stack, response.status, response.headers.get("X-Trace"))
+console.log("web-api", stackTarget.stack, typeof firstCallSite.getFileName, firstCallSite.getLineNumber(), firstCallSite.getColumnNumber(), firstCallSite.isEval(), firstCallSite.toString().includes("generated.js"), response.status, response.headers.get("X-Trace"))
 "#,
         );
 
@@ -4007,7 +4030,7 @@ console.log("web-api", stackTarget.stack, response.status, response.headers.get(
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok 302 one, two\n"
+            "node-api 1 x|y a=1&b=x&b=y a=1&b=x+y&b=z x y abc def 3 immediate true\nnet-api 4 true true 0\nweb-api Trace: ok function 1 1 false true 302 one, two\n"
         );
     }
 
@@ -4018,9 +4041,10 @@ console.log("web-api", stackTarget.stack, response.status, response.headers.get(
             &root,
             "src/index.js",
             r#"
-import { createServer } from "node:http"
+import { createServer, METHODS, STATUS_CODES } from "node:http"
 
 async function main() {
+  const methodSummary = METHODS.slice(0, 3).map((method) => method.toLowerCase()).join("|")
   const server = createServer((req, res) => {
     res.setHeader("x-vector", "ok")
     res.writeHead(req.method === "POST" ? 201 : 200, { "content-type": "application/json" })
@@ -4032,7 +4056,7 @@ async function main() {
   const headers = Object.fromEntries(response.headers)
   const text = await response.text()
   await new Promise((resolve) => server.close(resolve))
-  console.log("http", response.status, headers["x-vector"], text)
+  console.log("http", methodSummary, STATUS_CODES[200], STATUS_CODES[404], response.status, headers["x-vector"], text)
 }
 main()
 "#,
@@ -4084,7 +4108,7 @@ main()
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "http 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"}\n"
+            "http acl|bind|checkout OK Not Found 201 ok {\"method\":\"POST\",\"url\":\"/items/7?q=x\"}\n"
         );
     }
 
