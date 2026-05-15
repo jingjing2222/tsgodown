@@ -827,6 +827,72 @@ console.log("ops", before, after, count, fallback, mask, shifted, unsigned, void
         );
     }
 
+    #[test]
+    fn emit_go_runs_while_break_continue_subset() {
+        let root = temp_project("engine-core-while");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+let value = 0
+let total = 0
+while (value < 8) {
+  value++
+  if (value === 2) continue
+  if (value === 6) break
+  total += value
+}
+console.log("while", value, total)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/while".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "while 6 13\n");
+    }
+
     fn write(root: &std::path::Path, rel: &str, source: &str) {
         let path = root.join(rel);
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");

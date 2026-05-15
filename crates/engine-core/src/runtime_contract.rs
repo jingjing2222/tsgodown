@@ -84,11 +84,22 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(right, unsupported);
             collect_unsupported_stmt_list(body, false, unsupported);
         }
-        JsStmt::While { .. } => unsupported.push("while statements".to_string()),
+        JsStmt::While { test, body } => {
+            collect_unsupported_expr(test, unsupported);
+            collect_unsupported_stmt_list(body, false, unsupported);
+        }
         JsStmt::Switch { .. } => unsupported.push("switch statements".to_string()),
         JsStmt::Try { .. } => unsupported.push("try statements".to_string()),
-        JsStmt::Break { .. } => unsupported.push("break statements".to_string()),
-        JsStmt::Continue { .. } => unsupported.push("continue statements".to_string()),
+        JsStmt::Break { label } => {
+            if label.is_some() {
+                unsupported.push("labeled break".to_string());
+            }
+        }
+        JsStmt::Continue { label } => {
+            if label.is_some() {
+                unsupported.push("labeled continue".to_string());
+            }
+        }
         JsStmt::Return { .. } => unsupported.push("top-level return".to_string()),
         JsStmt::Throw { .. } => unsupported.push("throw statements".to_string()),
     }
@@ -111,6 +122,14 @@ fn collect_unsupported_stmt_in_function(stmt: &JsStmt, unsupported: &mut Vec<Str
             collect_unsupported_expr(test, unsupported);
             collect_unsupported_stmt_list(consequent, true, unsupported);
             collect_unsupported_stmt_list(alternate, true, unsupported);
+        }
+        JsStmt::ForOf { right, body, .. } => {
+            collect_unsupported_expr(right, unsupported);
+            collect_unsupported_stmt_list(body, true, unsupported);
+        }
+        JsStmt::While { test, body } => {
+            collect_unsupported_expr(test, unsupported);
+            collect_unsupported_stmt_list(body, true, unsupported);
         }
         other => collect_unsupported_stmt(other, unsupported),
     }

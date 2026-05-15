@@ -323,8 +323,10 @@ var jsUndefined = UndefinedValue{}
 var jsNull = NullValue{}
 
 type completion struct {
-	value    any
-	returned bool
+	value     any
+	returned  bool
+	broke     bool
+	continued bool
 }
 
 type moduleState struct {
@@ -378,6 +380,8 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			return nil, err
 		} else if result.returned {
 			return nil, errors.New("top-level return is not supported")
+		} else if result.broke || result.continued {
+			return nil, errors.New("break/continue outside loop")
 		}
 	}
 	if moduleObject, ok := env["module"].(map[string]any); ok {
@@ -471,7 +475,7 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			if err != nil {
 				return completion{}, err
 			}
-			if result.returned {
+			if result.returned || result.broke || result.continued {
 				return result, nil
 			}
 		}
@@ -491,9 +495,44 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 				if result.returned {
 					return result, nil
 				}
+				if result.broke {
+					return completion{}, nil
+				}
+				if result.continued {
+					break
+				}
 			}
 		}
 		return completion{}, nil
+	case "while":
+		for {
+			test, err := evalExpr(asMap(stmt["test"]), env)
+			if err != nil {
+				return completion{}, err
+			}
+			if !isTruthy(test) {
+				return completion{}, nil
+			}
+			for _, child := range asStmtSlice(stmt["body"]) {
+				result, err := evalStmt(child, env)
+				if err != nil {
+					return completion{}, err
+				}
+				if result.returned {
+					return result, nil
+				}
+				if result.broke {
+					return completion{}, nil
+				}
+				if result.continued {
+					break
+				}
+			}
+		}
+	case "break":
+		return completion{broke: true}, nil
+	case "continue":
+		return completion{continued: true}, nil
 	case "return":
 		value := any(jsUndefined)
 		var err error
