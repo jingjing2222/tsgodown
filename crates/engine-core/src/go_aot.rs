@@ -157,7 +157,10 @@ fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
     let value = render_numeric_expr(init, state)?;
     state.bindings.insert(name.clone());
     state.numeric_bindings.insert(name.clone());
-    Some(format!("{} := {value}", sanitize_go_identifier(name)))
+    Some(format!(
+        "{} := float64({value})",
+        sanitize_go_identifier(name)
+    ))
 }
 
 fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -299,17 +302,49 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 }
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
-    let JsExpr::Call { callee, args, .. } = expr else {
+    match expr {
+        JsExpr::Call { callee, args, .. } if is_console_log(callee) => {
+            let args = args
+                .iter()
+                .map(|arg| render_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("fmt.Println({})", args.join(", ")))
+        }
+        JsExpr::Assign { op, left, right } => render_assignment_stmt(op, left, right, state),
+        JsExpr::Update { op, arg, .. } => render_update_stmt(op, arg, state),
+        _ => None,
+    }
+}
+
+fn render_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Ident { name } = left else {
         return None;
     };
-    if !is_console_log(callee) {
+    if !state.numeric_bindings.contains(name) {
         return None;
     }
-    let args = args
-        .iter()
-        .map(|arg| render_expr(arg, state))
-        .collect::<Option<Vec<_>>>()?;
-    Some(format!("fmt.Println({})", args.join(", ")))
+    let right = render_numeric_expr(right, state)?;
+    match op {
+        "=" | "+=" | "-=" | "*=" | "/=" | "%=" => {
+            Some(format!("{} {op} {right}", sanitize_go_identifier(name)))
+        }
+        _ => None,
+    }
+}
+
+fn render_update_stmt(op: &str, arg: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Ident { name } = arg else {
+        return None;
+    };
+    if !state.numeric_bindings.contains(name) || !matches!(op, "++" | "--") {
+        return None;
+    }
+    Some(format!("{}{}", sanitize_go_identifier(name), op))
 }
 
 fn is_console_log(expr: &JsExpr) -> bool {
