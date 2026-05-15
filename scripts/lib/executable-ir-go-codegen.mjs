@@ -34,6 +34,7 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
       "encoding/json",
       "fmt",
       "os",
+      "path/filepath",
       "regexp",
       "reflect",
       "strconv",
@@ -245,6 +246,48 @@ export function renderExecutableIrGoProgram(ir, options = {}) {
     "",
     "func jsString(value any) string {",
     "\treturn fmt.Sprint(value)",
+    "}",
+    "",
+    "func jsPathJoin(parts ...any) string {",
+    "\tclean := make([]string, 0, len(parts))",
+    "\tfor _, part := range parts {",
+    "\t\tclean = append(clean, fmt.Sprint(part))",
+    "\t}",
+    "\treturn filepath.Join(clean...)",
+    "}",
+    "",
+    "func jsPathDirname(value any) string {",
+    "\treturn filepath.Dir(fmt.Sprint(value))",
+    "}",
+    "",
+    "func jsTmpdir() string {",
+    "\treturn os.TempDir()",
+    "}",
+    "",
+    "func jsMkdtempSync(prefix any) string {",
+    '\tdir, err := os.MkdirTemp(filepath.Dir(fmt.Sprint(prefix)), filepath.Base(fmt.Sprint(prefix))+"*")',
+    "\tif err != nil {",
+    "\t\tpanic(err)",
+    "\t}",
+    "\treturn dir",
+    "}",
+    "",
+    "func jsRmSync(target any, options ...any) any {",
+    "\tif len(options) > 0 {",
+    '\t\tif object, ok := options[0].(map[string]any); ok && jsTruthy(object["recursive"]) {',
+    "\t\t\t_ = os.RemoveAll(fmt.Sprint(target))",
+    "\t\t\treturn nil",
+    "\t\t}",
+    "\t}",
+    "\t_ = os.Remove(fmt.Sprint(target))",
+    "\treturn nil",
+    "}",
+    "",
+    "func jsWriteFileSync(target any, data any) any {",
+    "\tif err := os.WriteFile(fmt.Sprint(target), []byte(fmt.Sprint(data)), 0o666); err != nil {",
+    "\t\tpanic(err)",
+    "\t}",
+    "\treturn nil",
     "}",
     "",
     "func jsStringSplit(value any, separator any) []any {",
@@ -706,7 +749,9 @@ function renderExpr(expr, ctx) {
         expr.callee?.kind !== "ident" ||
         !ctx.functions.has(expr.callee.name)
       ) {
-        throw new Error("EXECUTABLE_IR_UNSUPPORTED_CALL");
+        throw new Error(
+          `EXECUTABLE_IR_UNSUPPORTED_CALL:${expr.callee?.name ?? expr.callee?.kind ?? "unknown"}`,
+        );
       }
       return `js_${goIdent(expr.callee.name)}(${(expr.args ?? [])
         .map((arg) => renderExpr(arg, ctx))
@@ -828,6 +873,24 @@ function renderBuiltinCall(expr, ctx) {
   const args = (expr.args ?? []).map((arg) => renderExpr(arg, ctx)).join(", ");
   if (expr.callee?.kind === "ident" && expr.callee.name === "String") {
     return `jsString(${args})`;
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "join") {
+    return `jsPathJoin(${args})`;
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "dirname") {
+    return `jsPathDirname(${args})`;
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "tmpdir") {
+    return "jsTmpdir()";
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "mkdtempSync") {
+    return `jsMkdtempSync(${args})`;
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "rmSync") {
+    return `jsRmSync(${args})`;
+  }
+  if (expr.callee?.kind === "ident" && expr.callee.name === "writeFileSync") {
+    return `jsWriteFileSync(${args})`;
   }
   if (
     expr.callee?.kind === "member" &&

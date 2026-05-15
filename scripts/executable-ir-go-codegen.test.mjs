@@ -809,6 +809,120 @@ test("renders executable switch statements", () => {
   assert.equal(JSON.parse(stdout), "b");
 });
 
+test("renders Node path, os, and fs sync runtime helpers", () => {
+  const source = renderExecutableIrGoProgram({
+    stmts: [
+      {
+        kind: "function-decl",
+        name: "main",
+        params: [],
+        async: false,
+        body: [
+          {
+            kind: "var-decl",
+            name: "root",
+            init: {
+              kind: "call",
+              callee: { kind: "ident", name: "mkdtempSync" },
+              args: [
+                {
+                  kind: "call",
+                  callee: { kind: "ident", name: "join" },
+                  args: [
+                    {
+                      kind: "call",
+                      callee: { kind: "ident", name: "tmpdir" },
+                      args: [],
+                    },
+                    {
+                      kind: "value",
+                      value: { kind: "string", value: "tsgodown-runtime-" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            kind: "var-decl",
+            name: "file",
+            init: {
+              kind: "call",
+              callee: { kind: "ident", name: "join" },
+              args: [
+                { kind: "ident", name: "root" },
+                { kind: "value", value: { kind: "string", value: "data.txt" } },
+              ],
+            },
+          },
+          {
+            kind: "expr",
+            expr: {
+              kind: "call",
+              callee: { kind: "ident", name: "writeFileSync" },
+              args: [
+                { kind: "ident", name: "file" },
+                { kind: "value", value: { kind: "string", value: "ok" } },
+              ],
+            },
+          },
+          {
+            kind: "var-decl",
+            name: "parent",
+            init: {
+              kind: "call",
+              callee: { kind: "ident", name: "dirname" },
+              args: [{ kind: "ident", name: "file" }],
+            },
+          },
+          {
+            kind: "expr",
+            expr: {
+              kind: "call",
+              callee: { kind: "ident", name: "rmSync" },
+              args: [
+                { kind: "ident", name: "root" },
+                {
+                  kind: "object",
+                  props: [
+                    {
+                      key: "recursive",
+                      value: {
+                        kind: "value",
+                        value: { kind: "bool", value: true },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            kind: "return",
+            value: {
+              kind: "object",
+              props: [
+                {
+                  key: "parentMatches",
+                  value: {
+                    kind: "binary",
+                    op: "===",
+                    left: { kind: "ident", name: "parent" },
+                    right: { kind: "ident", name: "root" },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  const stdout = runGoSource(source);
+  assert.deepEqual(JSON.parse(stdout), { parentMatches: true });
+});
+
 function runGoSource(source) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-ir-go-"));
   try {
