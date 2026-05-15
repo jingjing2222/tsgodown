@@ -8,12 +8,18 @@ pub enum ProgramPurpose {
     VectorSuite,
 }
 
-pub fn unsupported_codegen_diagnostic() -> Diagnostic {
+pub fn unsupported_codegen_diagnostic(features: &[String]) -> Diagnostic {
+    let detail = if features.is_empty() {
+        "unknown unsupported executable feature".to_string()
+    } else {
+        format!("unsupported features: {}", features.join(", "))
+    };
     Diagnostic {
         level: DiagnosticLevel::Error,
         code: "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED".to_string(),
-        message: "Executable JS semantics lowering is not implemented yet; failing closed."
-            .to_string(),
+        message: format!(
+            "Executable JS semantics lowering is not implemented yet; failing closed ({detail})."
+        ),
         source: None,
     }
 }

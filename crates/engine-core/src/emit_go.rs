@@ -74,7 +74,7 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
     let unsupported_features = unsupported_executable_features(&analyzed.ir);
     let can_emit_executable = diagnostics.is_empty() && unsupported_features.is_empty();
     if !can_emit_executable {
-        diagnostics.push(unsupported_codegen_diagnostic());
+        diagnostics.push(unsupported_codegen_diagnostic(&unsupported_features));
     }
     let mut files = vec![
         GeneratedFile {

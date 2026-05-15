@@ -220,6 +220,9 @@ export { value };
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(response.diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("unsupported features: entry module not found")));
         assert!(!response.files[0].contents.contains("node --"));
         assert!(!response.files[0].contents.contains("exec.Command"));
     }
