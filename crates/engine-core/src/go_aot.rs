@@ -435,11 +435,17 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             collect_expr_imports(consequent, imports);
             collect_expr_imports(alternate, imports);
         }
-        expr if is_process_stdout_is_tty(expr) || process_env_lookup_name(expr).is_some() => {
+        expr if is_process_stdout_is_tty(expr)
+            || process_env_lookup_name(expr).is_some()
+            || is_process_env_ref(expr) =>
+        {
             imports.insert("os");
         }
         expr if is_process_cwd_ref(expr) => {
             imports.insert("os");
+        }
+        expr if is_process_platform_expr(expr) => {
+            imports.insert("runtime");
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
         _ => {}
@@ -515,6 +521,31 @@ func tsgodownProcessCwd() string {
 		return ""
 	}
 	return cwd
+}
+
+func tsgodownProcessEnv() map[string]any {
+	env := map[string]any{}
+	for _, pair := range os.Environ() {
+		for index, char := range pair {
+			if char == '=' {
+				env[pair[:index]] = pair[index+1:]
+				break
+			}
+		}
+	}
+	return env
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("runtime") {
+        helpers.push(
+            r#"func tsgodownProcessPlatform() string {
+	if runtime.GOOS == "windows" {
+		return "win32"
+	}
+	return runtime.GOOS
 }
 "#
             .to_string(),
@@ -2123,6 +2154,10 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let value = render_process_env_lookup(expr)?;
             Some(format!("({value} != \"\")"))
         }
+        JsExpr::Ident { name } if name == "process" => Some("true".to_string()),
+        expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
+            Some("true".to_string())
+        }
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2370,6 +2405,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
+        expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
+        expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
+        expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
         JsExpr::Member {
             object,
@@ -2476,6 +2514,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_call_expr(callee, args, state)
         }
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
+        expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         JsExpr::Conditional {
             test,
@@ -2556,6 +2595,10 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::String { value },
         } => Some((!value.is_empty()).to_string()),
+        JsExpr::Ident { name } if name == "process" => Some("true".to_string()),
+        expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
+            Some("true".to_string())
+        }
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2970,6 +3013,9 @@ fn is_boolean_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
     is_process_stdout_is_tty(expr)
         || process_env_lookup_name(expr).is_some()
+        || is_process_env_ref(expr)
+        || is_process_versions_ref(expr)
+        || is_process_platform_expr(expr)
         || is_process_cwd_ref(expr)
         || is_process_cwd_call_expr(expr)
         || is_process_version_expr(expr)
@@ -3010,6 +3056,52 @@ fn is_process_cwd_ref(expr: &JsExpr) -> bool {
         return false;
     };
     property == "cwd" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn is_process_env_ref(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "env" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn is_process_versions_ref(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "versions" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn render_process_versions_expr() -> String {
+    format!(
+        "map[string]any{{\"node\": {}}}",
+        go_string_literal(NODE_LTS_VERSION)
+    )
+}
+
+fn is_process_platform_expr(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "platform" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
 }
 
 fn is_process_cwd_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -3323,6 +3415,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
+        expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
+        expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
+        expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Member {
