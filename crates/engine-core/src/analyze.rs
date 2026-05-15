@@ -261,9 +261,14 @@ fn map_js_expr(expr: analyzer_rust::JsExprIR) -> JsExpr {
             callee: Box::new(map_js_expr(*callee)),
             args: args.into_iter().map(map_js_expr).collect(),
         },
-        analyzer_rust::JsExprIR::Member { object, property } => JsExpr::Member {
+        analyzer_rust::JsExprIR::Member {
+            object,
+            property,
+            computed,
+        } => JsExpr::Member {
             object: Box::new(map_js_expr(*object)),
             property,
+            property_expr: computed.map(|expr| Box::new(map_js_expr(*expr))),
         },
         analyzer_rust::JsExprIR::Template { quasis, exprs } => JsExpr::Template {
             quasis,

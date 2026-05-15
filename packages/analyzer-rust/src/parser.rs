@@ -581,6 +581,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                     JsExprIR::Member {
                         object: Box::new(JsExprIR::Ident(temp_name.clone())),
                         property: index.to_string(),
+                        computed: None,
                     },
                 );
             }
@@ -603,6 +604,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                             JsExprIR::Member {
                                 object: Box::new(JsExprIR::Ident(temp_name.clone())),
                                 property,
+                                computed: None,
                             },
                         );
                     }
@@ -613,6 +615,7 @@ fn lower_pat_decl_stmts(stmts: &mut Vec<JsStmtIR>, pat: &Pat, init: JsExprIR) {
                             init: Some(JsExprIR::Member {
                                 object: Box::new(JsExprIR::Ident(temp_name.clone())),
                                 property,
+                                computed: None,
                             }),
                         });
                     }
@@ -769,22 +772,25 @@ fn lower_js_expr(expr: &Expr) -> Option<JsExprIR> {
 }
 
 fn lower_member_expr(member: &MemberExpr) -> Option<JsExprIR> {
-    let property = match &member.prop {
-        MemberProp::Ident(ident) => ident.sym.to_string(),
+    let (property, computed) = match &member.prop {
+        MemberProp::Ident(ident) => (ident.sym.to_string(), None),
         MemberProp::Computed(computed) => match &*computed.expr {
-            Expr::Lit(Lit::Str(str)) => str.value.to_string_lossy().to_string(),
-            Expr::Lit(Lit::Num(num)) => num
-                .raw
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| num.value.to_string()),
-            _ => return None,
+            Expr::Lit(Lit::Str(str)) => (str.value.to_string_lossy().to_string(), None),
+            Expr::Lit(Lit::Num(num)) => (
+                num.raw
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| num.value.to_string()),
+                None,
+            ),
+            expr => ("".to_string(), Some(Box::new(lower_js_expr(expr)?))),
         },
         MemberProp::PrivateName(_) => return None,
     };
     Some(JsExprIR::Member {
         object: Box::new(lower_js_expr(&member.obj)?),
         property,
+        computed,
     })
 }
 

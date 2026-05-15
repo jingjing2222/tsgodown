@@ -219,6 +219,7 @@ pub enum JsExprIR {
     Member {
         object: Box<JsExprIR>,
         property: String,
+        computed: Option<Box<JsExprIR>>,
     },
     Template {
         quasis: Vec<String>,

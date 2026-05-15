@@ -240,6 +240,8 @@ pub enum JsExpr {
     Member {
         object: Box<JsExpr>,
         property: String,
+        #[serde(skip_serializing_if = "Option::is_none", rename = "propertyExpr")]
+        property_expr: Option<Box<JsExpr>>,
     },
     #[serde(rename = "template")]
     Template {

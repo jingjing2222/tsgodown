@@ -325,7 +325,16 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                 collect_unsupported_expr(arg, unsupported);
             }
         }
-        JsExpr::Member { object, .. } => collect_unsupported_expr(object, unsupported),
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            collect_unsupported_expr(object, unsupported);
+            if let Some(property_expr) = property_expr {
+                collect_unsupported_expr(property_expr, unsupported);
+            }
+        }
         JsExpr::Template { exprs, .. } => {
             for expr in exprs {
                 collect_unsupported_expr(expr, unsupported);

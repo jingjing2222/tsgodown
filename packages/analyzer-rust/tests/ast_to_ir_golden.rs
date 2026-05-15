@@ -367,9 +367,18 @@ fn render_js_expr(expr: &JsExprIR) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        JsExprIR::Member { object, property } => {
-            format!("member({}, {})", render_js_expr(object), property)
-        }
+        JsExprIR::Member {
+            object,
+            property,
+            computed,
+        } => match computed {
+            Some(computed) => format!(
+                "member({}, [{}])",
+                render_js_expr(object),
+                render_js_expr(computed)
+            ),
+            None => format!("member({}, {})", render_js_expr(object), property),
+        },
         JsExprIR::Template { quasis, exprs } => format!(
             "template([{}], [{}])",
             quasis.join(","),

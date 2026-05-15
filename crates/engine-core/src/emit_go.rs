@@ -103,6 +103,10 @@ pub fn emit_go(request: EmitGoRequest) -> EmitGoResponse {
             contents: render_go_mod(&module_path),
         },
         GeneratedFile {
+            path: "go.sum".to_string(),
+            contents: render_go_sum(),
+        },
+        GeneratedFile {
             path: "tsgodownrt/runtime.go".to_string(),
             contents: render_runtime_package(),
         },
@@ -284,6 +288,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dlclark/regexp2"
 )
 
 func FailClosedReport(version string, diagnostics json.RawMessage, extra map[string]any) map[string]any {
@@ -355,12 +361,14 @@ type BoundFunctionValue struct {
 type NativeFunctionValue struct {
 	Call         func(args []any) (any, error)
 	CallWithThis func(thisValue any, args []any) (any, error)
+	Props        map[string]any
 }
 
 type RegExpValue struct {
 	Pattern string
 	Flags   string
 	Regex   *regexp.Regexp
+	Regex2  *regexp2.Regexp
 	Global  bool
 	Props   map[string]any
 }
@@ -452,32 +460,14 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 			}
 			return toNumber(args[0]), nil
 		}),
-		"String": nativeFunction(func(args []any) (any, error) {
-			if len(args) == 0 {
-				return "", nil
-			}
-			return jsString(args[0]), nil
-		}),
+		"String": stringGlobal(),
 		"Boolean": nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
 				return false, nil
 			}
 			return isTruthy(args[0]), nil
 		}),
-		"RegExp": nativeFunction(func(args []any) (any, error) {
-			pattern := ""
-			flags := ""
-			if len(args) > 0 {
-				if existing, ok := args[0].(*RegExpValue); ok && len(args) == 1 {
-					return existing, nil
-				}
-				pattern = jsString(args[0])
-			}
-			if len(args) > 1 {
-				flags = jsString(args[1])
-			}
-			return newRegExp(pattern, flags)
-		}),
+		"RegExp": regexpGlobal(),
 		"Symbol": symbolGlobal(),
 		"Array":  arrayGlobal(),
 		"Object": objectGlobal(),
@@ -693,6 +683,7 @@ func nativeFunction(call func(args []any) (any, error)) NativeFunctionValue {
 		CallWithThis: func(thisValue any, args []any) (any, error) {
 			return call(args)
 		},
+		Props: map[string]any{},
 	}
 }
 
@@ -702,6 +693,7 @@ func nativeMethod(call func(thisValue any, args []any) (any, error)) NativeFunct
 			return call(jsUndefined, args)
 		},
 		CallWithThis: call,
+		Props:        map[string]any{},
 	}
 }
 
@@ -743,6 +735,78 @@ func functionGlobal() map[string]any {
 	}
 }
 
+func regexpGlobal() NativeFunctionValue {
+	constructor := nativeFunction(func(args []any) (any, error) {
+		pattern := ""
+		flags := ""
+		if len(args) > 0 {
+			if existing, ok := args[0].(*RegExpValue); ok && len(args) == 1 {
+				return existing, nil
+			}
+			pattern = jsString(args[0])
+		}
+		if len(args) > 1 {
+			flags = jsString(args[1])
+		}
+		return newRegExp(pattern, flags)
+	})
+	constructor.Props["prototype"] = regexpPrototype()
+	return constructor
+}
+
+func regexpPrototype() map[string]any {
+	return map[string]any{
+		"exec": nativeMethod(func(thisValue any, args []any) (any, error) {
+			regexpValue, ok := thisValue.(*RegExpValue)
+			if !ok {
+				return nil, errors.New("RegExp.prototype.exec called on incompatible receiver")
+			}
+			text := ""
+			if len(args) > 0 {
+				text = jsString(args[0])
+			}
+			return regexpExec(regexpValue, text), nil
+		}),
+		"test": nativeMethod(func(thisValue any, args []any) (any, error) {
+			regexpValue, ok := thisValue.(*RegExpValue)
+			if !ok {
+				return false, errors.New("RegExp.prototype.test called on incompatible receiver")
+			}
+			text := ""
+			if len(args) > 0 {
+				text = jsString(args[0])
+			}
+			return regexpTest(regexpValue, text)
+		}),
+	}
+}
+
+func stringGlobal() NativeFunctionValue {
+	constructor := nativeFunction(func(args []any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		return jsString(args[0]), nil
+	})
+	prototype := map[string]any{}
+	for _, property := range []string{
+		"trim", "toLowerCase", "toUpperCase", "trimStart", "trimLeft", "trimEnd", "trimRight",
+		"split", "replace", "replaceAll", "match", "slice", "substring", "substr", "charAt",
+		"charCodeAt", "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith", "repeat",
+	} {
+		current := property
+		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			member, ok := stringMember(jsString(thisValue), current, Env{})
+			if !ok {
+				return jsUndefined, nil
+			}
+			return callFunctionWithValues(member, args, Env{}, thisValue)
+		})
+	}
+	constructor.Props["prototype"] = prototype
+	return constructor
+}
+
 func arrayGlobal() map[string]any {
 	prototype := map[string]any{
 		"push": nativeMethod(func(thisValue any, args []any) (any, error) {
@@ -753,6 +817,23 @@ func arrayGlobal() map[string]any {
 			array = append(array, args...)
 			return float64(len(array)), nil
 		}),
+	}
+	for _, property := range []string{
+		"join", "map", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find",
+		"findIndex", "indexOf", "lastIndexOf", "includes", "concat", "slice", "flat", "sort",
+	} {
+		current := property
+		prototype[current] = nativeMethod(func(thisValue any, args []any) (any, error) {
+			array, ok := thisValue.([]any)
+			if !ok {
+				return jsUndefined, nil
+			}
+			member, ok := arrayMember(array, current, Env{})
+			if !ok {
+				return jsUndefined, nil
+			}
+			return callFunctionWithValues(member, args, Env{}, thisValue)
+		})
 	}
 	return map[string]any{
 		"isArray": nativeFunction(func(args []any) (any, error) {
@@ -1062,6 +1143,12 @@ func setDynamicProperty(target any, property string, value any) bool {
 		}
 		typed.Props[property] = value
 		return true
+	case NativeFunctionValue:
+		if typed.Props == nil {
+			typed.Props = map[string]any{}
+		}
+		typed.Props[property] = value
+		return true
 	default:
 		return false
 	}
@@ -1166,14 +1253,30 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 	if strings.Contains(flags, "i") {
 		goPattern = "(?i)" + goPattern
 	}
-	compiled, err := regexp.Compile(goPattern)
-	if err != nil {
-		return nil, err
+	compiled, stdErr := regexp.Compile(goPattern)
+	var compiled2 *regexp2.Regexp
+	if stdErr != nil {
+		options := regexp2.RegexOptions(regexp2.ECMAScript)
+		if strings.Contains(flags, "i") {
+			options |= regexp2.IgnoreCase
+		}
+		if strings.Contains(flags, "m") {
+			options |= regexp2.Multiline
+		}
+		if strings.Contains(flags, "s") {
+			options |= regexp2.Singleline
+		}
+		var err error
+		compiled2, err = regexp2.Compile(pattern, options)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &RegExpValue{
 		Pattern: pattern,
 		Flags:   flags,
 		Regex:   compiled,
+		Regex2:  compiled2,
 		Global:  strings.Contains(flags, "g"),
 		Props:   map[string]any{},
 	}, nil
@@ -1181,25 +1284,132 @@ func newRegExp(pattern string, flags string) (*RegExpValue, error) {
 
 func regexpMatches(value *RegExpValue, text string) any {
 	if value.Global {
-		matches := value.Regex.FindAllString(text, -1)
-		if matches == nil {
+		matches, err := regexpFindAll(value, text)
+		if err != nil {
+			return jsNull
+		}
+		if len(matches) == 0 {
 			return jsNull
 		}
 		result := []any{}
 		for _, match := range matches {
-			result = append(result, match)
+			result = append(result, match.Groups[0])
 		}
 		return result
 	}
-	matches := value.Regex.FindStringSubmatch(text)
-	if matches == nil {
+	match, err := regexpFindFirst(value, text)
+	if err != nil || match == nil {
 		return jsNull
 	}
 	result := []any{}
-	for _, match := range matches {
-		result = append(result, match)
+	for _, group := range match.Groups {
+		if group == "" {
+			result = append(result, jsUndefined)
+		} else {
+			result = append(result, group)
+		}
 	}
 	return result
+}
+
+func regexpExec(value *RegExpValue, text string) any {
+	match, err := regexpFindFirst(value, text)
+	if err != nil || match == nil {
+		return jsNull
+	}
+	result := []any{}
+	for _, group := range match.Groups {
+		if group == "" {
+			result = append(result, jsUndefined)
+		} else {
+			result = append(result, group)
+		}
+	}
+	return result
+}
+
+type regexpMatch struct {
+	Groups []string
+	Index  []int
+}
+
+func regexpFindFirst(value *RegExpValue, text string) (*regexpMatch, error) {
+	matches, err := regexpFindAll(value, text)
+	if err != nil || len(matches) == 0 {
+		return nil, err
+	}
+	return &matches[0], nil
+}
+
+func regexpFindAll(value *RegExpValue, text string) ([]regexpMatch, error) {
+	if value.Regex != nil {
+		raw := value.Regex.FindAllStringSubmatchIndex(text, -1)
+		return regexpMatchesFromStd(text, raw), nil
+	}
+	if value.Regex2 == nil {
+		return nil, nil
+	}
+	out := []regexpMatch{}
+	match, err := value.Regex2.FindStringMatch(text)
+	for match != nil {
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, regexpMatchFromRegexp2(text, match))
+		match, err = value.Regex2.FindNextMatch(match)
+	}
+	return out, err
+}
+
+func regexpMatchesFromStd(text string, raw [][]int) []regexpMatch {
+	if raw == nil {
+		return nil
+	}
+	out := []regexpMatch{}
+	for _, indexes := range raw {
+		match := regexpMatch{Groups: []string{}, Index: append([]int{}, indexes...)}
+		for index := 0; index < len(indexes); index += 2 {
+			if indexes[index] < 0 || indexes[index+1] < 0 {
+				match.Groups = append(match.Groups, "")
+			} else {
+				match.Groups = append(match.Groups, text[indexes[index]:indexes[index+1]])
+			}
+		}
+		out = append(out, match)
+	}
+	return out
+}
+
+func regexpMatchFromRegexp2(text string, match *regexp2.Match) regexpMatch {
+	groups := match.Groups()
+	indexes := []int{}
+	values := []string{}
+	for _, group := range groups {
+		if len(group.Captures) == 0 {
+			values = append(values, "")
+			indexes = append(indexes, -1, -1)
+			continue
+		}
+		start := runeIndexToByteIndex(text, group.Index)
+		end := runeIndexToByteIndex(text, group.Index+group.Length)
+		values = append(values, text[start:end])
+		indexes = append(indexes, start, end)
+	}
+	return regexpMatch{Groups: values, Index: indexes}
+}
+
+func runeIndexToByteIndex(value string, runeIndex int) int {
+	if runeIndex <= 0 {
+		return 0
+	}
+	current := 0
+	for byteIndex := range value {
+		if current == runeIndex {
+			return byteIndex
+		}
+		current++
+	}
+	return len(value)
 }
 
 func pathModuleExports() map[string]any {
@@ -1807,6 +2017,9 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if isArrayPush(asMap(expr["callee"])) {
 			return callArrayPush(asMap(expr["callee"]), asSlice(expr["args"]), env)
 		}
+		if isArrayPop(asMap(expr["callee"])) {
+			return callArrayPop(asMap(expr["callee"]), env)
+		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
 			name := asString(callee["name"])
 			result, err := callFunction(lookupEnv(env, name), asSlice(expr["args"]), env)
@@ -1843,7 +2056,10 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		property := asString(expr["property"])
+		property, err := evalMemberProperty(expr, env)
+		if err != nil {
+			return nil, err
+		}
 		if objectMap, ok := object.(map[string]any); ok {
 			if classValue, ok := objectMap["__class"].(*ClassValue); ok {
 				if getter, ok := lookupGetter(classValue, property); ok {
@@ -1960,13 +2176,23 @@ func assignTarget(target map[string]any, value any, env Env) error {
 		if err != nil {
 			return err
 		}
-		property := asString(target["property"])
+		property, err := evalMemberProperty(target, env)
+		if err != nil {
+			return err
+		}
 		objectMap, ok := object.(map[string]any)
 		if ok {
 			objectMap[property] = value
 			return nil
 		}
 		if function, ok := object.(FunctionValue); ok {
+			if function.Props == nil {
+				function.Props = map[string]any{}
+			}
+			function.Props[property] = value
+			return assignTarget(objectExpr, function, env)
+		}
+		if function, ok := object.(NativeFunctionValue); ok {
 			if function.Props == nil {
 				function.Props = map[string]any{}
 			}
@@ -1991,6 +2217,17 @@ func assignTarget(target map[string]any, value any, env Env) error {
 	default:
 		return fmt.Errorf("unsupported assignment target %v", target["kind"])
 	}
+}
+
+func evalMemberProperty(member map[string]any, env Env) (string, error) {
+	if raw, ok := member["propertyExpr"]; ok {
+		value, err := evalExpr(asMap(raw), env)
+		if err != nil {
+			return "", err
+		}
+		return jsPropertyKey(value), nil
+	}
+	return asString(member["property"]), nil
 }
 
 func assignArrayMember(array []any, property string, value any) ([]any, bool) {
@@ -2161,7 +2398,33 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	return float64(len(array)), nil
 }
 
+func callArrayPop(callee map[string]any, env Env) (any, error) {
+	objectExpr := asMap(callee["object"])
+	current, err := evalExpr(objectExpr, env)
+	if err != nil {
+		return nil, err
+	}
+	array, ok := current.([]any)
+	if !ok {
+		return nil, errors.New("pop receiver is not array")
+	}
+	if len(array) == 0 {
+		return jsUndefined, nil
+	}
+	value := array[len(array)-1]
+	array = array[:len(array)-1]
+	if err := assignTarget(objectExpr, array, env); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
 func nativeFunctionMember(function NativeFunctionValue, property string) (any, bool) {
+	if function.Props != nil {
+		if value, ok := function.Props[property]; ok {
+			return value, true
+		}
+	}
 	switch property {
 	case "call":
 		return nativeFunction(func(args []any) (any, error) {
@@ -2366,9 +2629,8 @@ func stringMember(value string, property string, env Env) (any, bool) {
 				return []any{value}, nil
 			}
 			if separator, ok := args[0].(*RegExpValue); ok {
-				parts := separator.Regex.Split(value, -1)
 				result := []any{}
-				for _, part := range parts {
+				for _, part := range regexpSplit(separator, value) {
 					result = append(result, part)
 				}
 				return result, nil
@@ -2420,7 +2682,11 @@ func stringMember(value string, property string, env Env) (any, bool) {
 	case "match":
 		return nativeFunction(func(args []any) (any, error) {
 			if len(args) == 0 {
-				return regexpMatches(&RegExpValue{Regex: regexp.MustCompile("")}, value), nil
+				compiled, err := newRegExp("", "")
+				if err != nil {
+					return nil, err
+				}
+				return regexpMatches(compiled, value), nil
 			}
 			if search, ok := args[0].(*RegExpValue); ok {
 				return regexpMatches(search, value), nil
@@ -2607,7 +2873,7 @@ func regexpMember(value *RegExpValue, property string) (any, bool) {
 			if len(args) > 0 {
 				text = jsString(args[0])
 			}
-			return value.Regex.MatchString(text), nil
+			return regexpTest(value, text)
 		}), true
 	case "exec":
 		return nativeFunction(func(args []any) (any, error) {
@@ -2615,7 +2881,7 @@ func regexpMember(value *RegExpValue, property string) (any, bool) {
 			if len(args) > 0 {
 				text = jsString(args[0])
 			}
-			return regexpMatches(value, text), nil
+			return regexpExec(value, text), nil
 		}), true
 	}
 	return nil, false
@@ -3177,9 +3443,46 @@ func setIndex(value *SetValue, item any) int {
 	return -1
 }
 
+func regexpTest(value *RegExpValue, text string) (bool, error) {
+	if value.Regex != nil {
+		return value.Regex.MatchString(text), nil
+	}
+	if value.Regex2 == nil {
+		return false, nil
+	}
+	return value.Regex2.MatchString(text)
+}
+
+func regexpSplit(value *RegExpValue, text string) []string {
+	if value.Regex != nil {
+		return value.Regex.Split(text, -1)
+	}
+	matches, err := regexpFindAll(value, text)
+	if err != nil || len(matches) == 0 {
+		return []string{text}
+	}
+	parts := []string{}
+	last := 0
+	for _, match := range matches {
+		if len(match.Index) < 2 || match.Index[0] < 0 {
+			continue
+		}
+		parts = append(parts, text[last:match.Index[0]])
+		last = match.Index[1]
+		if match.Index[0] == match.Index[1] && last < len(text) {
+			last++
+		}
+	}
+	parts = append(parts, text[last:])
+	return parts
+}
+
 func replaceRegExp(value string, search *RegExpValue, replacement any, env Env) (any, error) {
-	matches := search.Regex.FindAllStringSubmatchIndex(value, -1)
-	if matches == nil {
+	matches, err := regexpFindAll(search, value)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
 		return value, nil
 	}
 	if !search.Global && len(matches) > 1 {
@@ -3188,37 +3491,77 @@ func replaceRegExp(value string, search *RegExpValue, replacement any, env Env) 
 	var out strings.Builder
 	last := 0
 	for _, match := range matches {
-		start := match[0]
-		end := match[1]
+		if len(match.Index) < 2 || match.Index[0] < 0 {
+			continue
+		}
+		start := match.Index[0]
+		end := match.Index[1]
 		out.WriteString(value[last:start])
 		if _, ok := replacement.(FunctionValue); ok {
-			args := regexpReplacementArgs(value, match)
+			args := regexpReplacementArgs(value, match.Index)
 			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
 			if err != nil {
 				return nil, err
 			}
 			out.WriteString(jsString(next))
 		} else if _, ok := replacement.(BoundFunctionValue); ok {
-			args := regexpReplacementArgs(value, match)
+			args := regexpReplacementArgs(value, match.Index)
 			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
 			if err != nil {
 				return nil, err
 			}
 			out.WriteString(jsString(next))
 		} else if _, ok := replacement.(NativeFunctionValue); ok {
-			args := regexpReplacementArgs(value, match)
+			args := regexpReplacementArgs(value, match.Index)
 			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
 			if err != nil {
 				return nil, err
 			}
 			out.WriteString(jsString(next))
 		} else {
-			out.WriteString(string(search.Regex.ExpandString(nil, jsString(replacement), value, match)))
+			out.WriteString(expandRegExpReplacement(jsString(replacement), match.Groups))
 		}
 		last = end
 	}
 	out.WriteString(value[last:])
 	return out.String(), nil
+}
+
+func expandRegExpReplacement(replacement string, groups []string) string {
+	var out strings.Builder
+	for index := 0; index < len(replacement); index++ {
+		if replacement[index] != '$' || index+1 >= len(replacement) {
+			out.WriteByte(replacement[index])
+			continue
+		}
+		next := replacement[index+1]
+		switch {
+		case next == '$':
+			out.WriteByte('$')
+			index++
+		case next == '&':
+			if len(groups) > 0 {
+				out.WriteString(groups[0])
+			}
+			index++
+		case next >= '0' && next <= '9':
+			groupIndex := int(next - '0')
+			if index+2 < len(replacement) && replacement[index+2] >= '0' && replacement[index+2] <= '9' {
+				candidate := groupIndex*10 + int(replacement[index+2]-'0')
+				if candidate < len(groups) {
+					groupIndex = candidate
+					index++
+				}
+			}
+			if groupIndex > 0 && groupIndex < len(groups) {
+				out.WriteString(groups[groupIndex])
+			}
+			index++
+		default:
+			out.WriteByte(replacement[index])
+		}
+	}
+	return out.String()
 }
 
 func regexpReplacementArgs(value string, match []int) []any {
@@ -3617,6 +3960,10 @@ func isArrayPush(callee map[string]any) bool {
 	return callee["kind"] == "member" && asString(callee["property"]) == "push"
 }
 
+func isArrayPop(callee map[string]any) bool {
+	return callee["kind"] == "member" && asString(callee["property"]) == "pop"
+}
+
 func iterableValues(value any) []any {
 	switch typed := value.(type) {
 	case []any:
@@ -3870,6 +4217,12 @@ func jsString(value any) string {
 		}
 		return strings.Join(parts, ",")
 	case map[string]any:
+		if message, ok := typed["message"]; ok {
+			if name, ok := typed["name"]; ok {
+				return jsString(name) + ": " + jsString(message)
+			}
+			return jsString(message)
+		}
 		return objectTag(typed)
 	case *RegExpValue:
 		return "/" + typed.Pattern + "/" + typed.Flags
@@ -4024,7 +4377,11 @@ func asStringSlice(value any) []string {
 }
 
 fn render_go_mod(module_path: &str) -> String {
-    format!("module {module_path}\n\ngo 1.22\n")
+    format!("module {module_path}\n\ngo 1.22\n\nrequire github.com/dlclark/regexp2 v1.12.0\n")
+}
+
+fn render_go_sum() -> String {
+    "github.com/dlclark/regexp2 v1.12.0 h1:0j4c5qQmnC6XOWNjP3PIXURXN2gWx76rd3KvgdPkCz8=\ngithub.com/dlclark/regexp2 v1.12.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=\n".to_string()
 }
 
 fn render_ir_snapshot_file(

@@ -199,7 +199,7 @@ export { value };
 
         assert_eq!(response.version, "engine-core.emit-go.v1");
         assert_eq!(response.target_backend, "go");
-        assert_eq!(response.files.len(), 3);
+        assert_eq!(response.files.len(), 4);
         assert_eq!(response.files[0].path, "main.go");
         assert!(response.files[0]
             .contents
@@ -214,8 +214,12 @@ export { value };
         assert!(response.files[1]
             .contents
             .contains("module example.com/custom-module"));
-        assert_eq!(response.files[2].path, "tsgodownrt/runtime.go");
-        assert!(response.files[2].contents.contains("package tsgodownrt"));
+        assert_eq!(response.files[2].path, "go.sum");
+        assert!(response.files[2]
+            .contents
+            .contains("github.com/dlclark/regexp2"));
+        assert_eq!(response.files[3].path, "tsgodownrt/runtime.go");
+        assert!(response.files[3].contents.contains("package tsgodownrt"));
         assert!(response
             .diagnostics
             .iter()
@@ -244,7 +248,7 @@ export { value };
             ir_snapshot: None,
         });
 
-        assert_eq!(response.files.len(), 3);
+        assert_eq!(response.files.len(), 4);
         assert_eq!(response.files[0].path, "vector_suite.go");
         assert!(response.files[0]
             .contents
@@ -577,8 +581,13 @@ const normalized = "  a   b  ".trim().replace(/\s+/g, "-")
 const parts = "1.2.3".split(/\./).map((value) => Number(value))
 const matched = "v1.2.3".match(/^v?(\d+)\.(\d+)\.(\d+)$/)
 const replaced = "x1 y2".replace(/([a-z])(\d)/g, (_, letter, number) => letter.toUpperCase() + number)
+const guarded = /^(?!bad)[a-z]+$/.test("good") + ":" + /^(?!bad)[a-z]+$/.test("bad")
+const protoExec = RegExp.prototype.exec.call(/[a]+/, "baa")[0]
+const boundExec = Function.prototype.bind.call(Function.prototype.call, RegExp.prototype.exec)
+const boundSegment = boundExec(/(\[[^[\]]*])/g, "user[name]")
+const protoSlice = String.prototype.slice.call("abcdef", 1, 4)
 const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
-console.log("regex", normalized, parts.join("."), matched[1], replaced, filtered, /^[0-9]+$/.test("123"))
+console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded, protoExec, boundSegment[1].slice(1, -1), protoSlice, filtered, /^[0-9]+$/.test("123"))
 "#,
         );
 
@@ -628,7 +637,7 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, filtered
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regex a-b 1.2.3 1 X1 Y2 2|3 true\n"
+            "regex a-b 1.2.3 1 X1 Y2 true:false aa name bcd 2|3 true\n"
         );
     }
 
@@ -720,9 +729,13 @@ values[0] = "a"
 values[2] = "c"
 values[1] = "b"
 values.length = 2
+values[values.length] = "c"
+values[1 + 3] = "e"
 const nested = { items: [] }
 nested.items[0] = values.join("")
-console.log("array-assign", values.length, values.join(","), nested.items[0])
+const protoSlice = Array.prototype.slice.call(values, 1, 3).join("")
+const popped = values.pop()
+console.log("array-assign", values.length, values.join(","), nested.items[0], protoSlice, popped)
 "#,
         );
 
@@ -772,7 +785,7 @@ console.log("array-assign", values.length, values.join(","), nested.items[0])
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "array-assign 2 a,b ab\n"
+            "array-assign 4 a,b,c, abce bc e\n"
         );
     }
 
