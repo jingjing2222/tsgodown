@@ -57,7 +57,8 @@
     "test:guard:core-path": "node --test scripts/guard-core-path-no-framework-branching.test.mjs",
     "test:guard:framework-defaults": "node --test scripts/guard-framework-defaults.test.mjs",
     "harness:semantics-parity": "node scripts/differential-harness.mjs --all",
-    "harness:differential": "pnpm run harness:semantics-parity"
+    "harness:differential": "pnpm run harness:semantics-parity",
+    "gate:differential-fuzz": "node scripts/differential-fuzz-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
