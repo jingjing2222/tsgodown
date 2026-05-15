@@ -315,6 +315,16 @@ type FunctionValue struct {
 	Env    Env
 }
 
+type ClassValue struct {
+	Constructor *FunctionValue
+	Methods     map[string]FunctionValue
+}
+
+type BoundFunctionValue struct {
+	Function FunctionValue
+	This     any
+}
+
 type UndefinedValue struct{}
 
 type NullValue struct{}
@@ -457,6 +467,13 @@ func evalStmt(stmt map[string]any, env Env) (completion, error) {
 			Body:   asStmtSlice(stmt["body"]),
 			Env:    env,
 		}
+		return completion{}, nil
+	case "class-decl":
+		classValue, err := evalClass(asSlice(stmt["methods"]), env)
+		if err != nil {
+			return completion{}, err
+		}
+		env[asString(stmt["name"])] = classValue
 		return completion{}, nil
 	case "var-decl":
 		value := any(jsUndefined)
@@ -705,6 +722,8 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		return evalValue(asMap(expr["value"]))
 	case "ident":
 		return lookupEnv(env, asString(expr["name"])), nil
+	case "this":
+		return lookupEnv(env, "this"), nil
 	case "array":
 		out := []any{}
 		for _, item := range asSlice(expr["items"]) {
@@ -747,6 +766,8 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			Body:   asStmtSlice(expr["body"]),
 			Env:    env,
 		}, nil
+	case "class":
+		return evalClass(asSlice(expr["methods"]), env)
 	case "unary":
 		if asString(expr["op"]) == "delete" {
 			return evalDelete(asMap(expr["arg"]), env)
@@ -815,9 +836,26 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 			return callArrayPush(asMap(expr["callee"]), asSlice(expr["args"]), env)
 		}
 		if callee := asMap(expr["callee"]); callee["kind"] == "ident" {
-			return callFunction(env[asString(callee["name"])], asSlice(expr["args"]), env)
+			return callFunction(lookupEnv(env, asString(callee["name"])), asSlice(expr["args"]), env)
 		}
-		return nil, errors.New("unsupported call")
+		if callee := asMap(expr["callee"]); callee["kind"] == "member" {
+			value, err := evalExpr(callee, env)
+			if err != nil {
+				return nil, err
+			}
+			return callFunction(value, asSlice(expr["args"]), env)
+		}
+		value, err := evalExpr(asMap(expr["callee"]), env)
+		if err != nil {
+			return nil, err
+		}
+		return callFunction(value, asSlice(expr["args"]), env)
+	case "new":
+		callee, err := evalExpr(asMap(expr["callee"]), env)
+		if err != nil {
+			return nil, err
+		}
+		return constructValue(callee, asSlice(expr["args"]), env)
 	case "member":
 		object, err := evalExpr(asMap(expr["object"]), env)
 		if err != nil {
@@ -825,6 +863,11 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 		}
 		property := asString(expr["property"])
 		if objectMap, ok := object.(map[string]any); ok {
+			if classValue, ok := objectMap["__class"].(*ClassValue); ok {
+				if method, ok := classValue.Methods[property]; ok {
+					return BoundFunctionValue{Function: method, This: objectMap}, nil
+				}
+			}
 			return objectMap[property], nil
 		}
 		if objectArray, ok := object.([]any); ok {
@@ -928,6 +971,16 @@ func evalAssign(expr map[string]any, env Env) (any, error) {
 			return nil, evalErr
 		}
 		value, err = evalBinary("-", current, right)
+	case "|=":
+		current, readErr := readTarget(left, env)
+		if readErr != nil {
+			return nil, readErr
+		}
+		right, evalErr := evalExpr(rightExpr, env)
+		if evalErr != nil {
+			return nil, evalErr
+		}
+		value, err = evalBinary("|", current, right)
 	case "??=":
 		current, readErr := readTarget(left, env)
 		if readErr != nil {
@@ -1011,12 +1064,58 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	return float64(len(array)), nil
 }
 
-func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
-	function, ok := raw.(FunctionValue)
+func evalClass(rawMethods []any, env Env) (*ClassValue, error) {
+	classValue := &ClassValue{Methods: map[string]FunctionValue{}}
+	for _, rawMethod := range rawMethods {
+		method := asMap(rawMethod)
+		function := FunctionValue{
+			Params: asStringSlice(method["params"]),
+			Body:   asStmtSlice(method["body"]),
+			Env:    env,
+		}
+		name := asString(method["name"])
+		switch asString(method["kind"]) {
+		case "constructor":
+			classValue.Constructor = &function
+		case "method":
+			if method["isStatic"] == true {
+				return nil, errors.New("static class methods are not supported")
+			}
+			classValue.Methods[name] = function
+		default:
+			return nil, fmt.Errorf("unsupported class method %s", asString(method["kind"]))
+		}
+	}
+	return classValue, nil
+}
+
+func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
+	classValue, ok := raw.(*ClassValue)
 	if !ok {
+		return nil, errors.New("constructor is not callable")
+	}
+	instance := map[string]any{"__class": classValue}
+	if classValue.Constructor != nil {
+		if _, err := callFunctionWithThis(*classValue.Constructor, rawArgs, callerEnv, instance); err != nil {
+			return nil, err
+		}
+	}
+	return instance, nil
+}
+
+func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
+	switch function := raw.(type) {
+	case FunctionValue:
+		return callFunctionWithThis(function, rawArgs, callerEnv, jsUndefined)
+	case BoundFunctionValue:
+		return callFunctionWithThis(function.Function, rawArgs, callerEnv, function.This)
+	default:
 		return nil, errors.New("callee is not callable")
 	}
-	child := Env{"__parent": function.Env}
+}
+
+func callFunctionWithThis(function FunctionValue, rawArgs []any, callerEnv Env, thisValue any) (any, error) {
+	child := Env{"__parent": function.Env, "this": thisValue}
 	for index, param := range function.Params {
 		value := any(jsUndefined)
 		if index < len(rawArgs) {
@@ -1101,6 +1200,8 @@ func evalUnary(op string, arg any) (any, error) {
 		return toNumber(arg), nil
 	case "-":
 		return -toNumber(arg), nil
+	case "~":
+		return float64(^toInt32(arg)), nil
 	case "typeof":
 		return jsTypeof(arg), nil
 	case "void":
@@ -1140,6 +1241,8 @@ func evalBinary(op string, left any, right any) (any, error) {
 		return float64(toUint32(left) >> (toUint32(right) & 31)), nil
 	case "in":
 		return hasProperty(right, jsPropertyKey(left)), nil
+	case "instanceof":
+		return jsInstanceOf(left, right), nil
 	case "==", "===":
 		return jsSameValue(left, right), nil
 	case "!=", "!==":
@@ -1248,6 +1351,18 @@ func hasProperty(value any, key string) bool {
 	default:
 		return false
 	}
+}
+
+func jsInstanceOf(value any, constructor any) bool {
+	classValue, ok := constructor.(*ClassValue)
+	if !ok {
+		return false
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	return object["__class"] == classValue
 }
 
 func toNumber(value any) float64 {

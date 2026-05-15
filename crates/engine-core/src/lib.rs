@@ -770,10 +770,11 @@ const after = ++count
 let fallback = null
 fallback ??= "set"
 count += 5
+count |= 2
 const mask = (5 & 3) | (1 << 4)
 const shifted = -8 >> 1
 const unsigned = -1 >>> 31
-console.log("ops", before, after, count, fallback, mask, shifted, unsigned, void count)
+console.log("ops", before, after, count, fallback, mask, shifted, unsigned, ~0, void count)
 "#,
         );
 
@@ -823,7 +824,7 @@ console.log("ops", before, after, count, fallback, mask, shifted, unsigned, void
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "ops 1 3 8 set 17 -4 1 undefined\n"
+            "ops 1 3 10 set 17 -4 1 -1 undefined\n"
         );
     }
 
@@ -1106,7 +1107,10 @@ const multiply = function (value) {
   return value * factor
 }
 const add = (left, right) => left + right
-console.log("fnexpr", multiply(4), add(5, 7))
+const immediate = (function (value) {
+  return value - 2
+})(11)
+console.log("fnexpr", multiply(4), add(5, 7), immediate)
 "#,
         );
 
@@ -1154,7 +1158,7 @@ console.log("fnexpr", multiply(4), add(5, 7))
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(String::from_utf8_lossy(&output.stdout), "fnexpr 12 12\n");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "fnexpr 12 12 9\n");
     }
 
     #[test]
@@ -1293,6 +1297,79 @@ console.log("try", risky(1), risky(3), cleanup)
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "try 1 caught:too-big 2\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_basic_class_new_instanceof_subset() {
+        let root = temp_project("engine-core-class-new");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+class Counter {
+  constructor(start) {
+    this.value = start
+  }
+
+  inc(step) {
+    this.value += step
+    return this.value
+  }
+}
+
+const counter = new Counter(2)
+console.log("class", counter.inc(3), counter instanceof Counter, "value" in counter)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/class-new".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "class 5 true true\n"
         );
     }
 

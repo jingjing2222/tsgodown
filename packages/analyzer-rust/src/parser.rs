@@ -852,25 +852,7 @@ fn lower_assign_target_expr(target: &AssignTarget) -> Option<JsExprIR> {
         AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
             Some(JsExprIR::Ident(ident.id.sym.to_string()))
         }
-        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
-            let mut parts = member_path(member)?;
-            let property = parts.pop()?;
-            let object = parts
-                .into_iter()
-                .fold(None, |object: Option<JsExprIR>, part| {
-                    Some(match object {
-                        Some(object) => JsExprIR::Member {
-                            object: Box::new(object),
-                            property: part,
-                        },
-                        None => JsExprIR::Ident(part),
-                    })
-                })?;
-            Some(JsExprIR::Member {
-                object: Box::new(object),
-                property,
-            })
-        }
+        AssignTarget::Simple(SimpleAssignTarget::Member(member)) => lower_member_expr(member),
         _ => None,
     }
 }

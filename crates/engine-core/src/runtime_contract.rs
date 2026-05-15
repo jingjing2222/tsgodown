@@ -1,5 +1,6 @@
 use crate::contract::{
-    Diagnostic, DiagnosticLevel, IrDocument, JsArrayElement, JsExpr, JsObjectProp, JsStmt, Module,
+    Diagnostic, DiagnosticLevel, IrDocument, JsArrayElement, JsClassMethod, JsExpr, JsObjectProp,
+    JsStmt, Module,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +70,11 @@ fn collect_unsupported_stmt(stmt: &JsStmt, unsupported: &mut Vec<String>) {
                 collect_unsupported_stmt_in_function(stmt, unsupported);
             }
         }
-        JsStmt::ClassDecl { .. } => unsupported.push("class declarations".to_string()),
+        JsStmt::ClassDecl {
+            super_class,
+            methods,
+            ..
+        } => collect_unsupported_class(super_class.as_ref(), methods, unsupported),
         JsStmt::If {
             test,
             consequent,
@@ -246,7 +251,10 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             }
         }
         JsExpr::Unary { op, arg } => {
-            if !matches!(op.as_str(), "!" | "+" | "-" | "typeof" | "void" | "delete") {
+            if !matches!(
+                op.as_str(),
+                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete"
+            ) {
                 unsupported.push(format!("unary {op}"));
             }
             if op == "delete" && !matches!(arg.as_ref(), JsExpr::Member { .. }) {
@@ -278,6 +286,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
                     | ">>"
                     | ">>>"
                     | "in"
+                    | "instanceof"
             ) {
                 unsupported.push(format!("binary {op}"));
             }
@@ -294,10 +303,7 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             collect_unsupported_expr(alternate, unsupported);
         }
         JsExpr::Call { callee, args } => {
-            if !is_supported_member_call(callee) && !matches!(callee.as_ref(), JsExpr::Ident { .. })
-            {
-                unsupported.push("function calls".to_string());
-            }
+            collect_unsupported_expr(callee, unsupported);
             for arg in args {
                 collect_unsupported_expr(arg, unsupported);
             }
@@ -316,10 +322,13 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
         JsExpr::Function { body, .. } => {
             collect_unsupported_stmt_list(body, true, unsupported);
         }
-        JsExpr::Class { .. } => unsupported.push("class expressions".to_string()),
+        JsExpr::Class {
+            super_class,
+            methods,
+        } => collect_unsupported_class(super_class.as_deref(), methods, unsupported),
         JsExpr::Await { arg } => collect_unsupported_expr(arg, unsupported),
         JsExpr::Assign { op, left, right } => {
-            if !matches!(op.as_str(), "=" | "+=" | "-=" | "??=") {
+            if !matches!(op.as_str(), "=" | "+=" | "-=" | "|=" | "??=") {
                 unsupported.push(format!("assignment {op}"));
             }
             if !matches!(left.as_ref(), JsExpr::Ident { .. } | JsExpr::Member { .. }) {
@@ -334,17 +343,33 @@ fn collect_unsupported_expr(expr: &JsExpr, unsupported: &mut Vec<String>) {
             }
             collect_unsupported_expr(arg, unsupported);
         }
-        JsExpr::New { .. } => unsupported.push("new expressions".to_string()),
+        JsExpr::New { callee, args } => {
+            collect_unsupported_expr(callee, unsupported);
+            for arg in args {
+                collect_unsupported_expr(arg, unsupported);
+            }
+        }
     }
 }
 
-fn is_supported_member_call(callee: &JsExpr) -> bool {
-    matches!(
-        callee,
-        JsExpr::Member { object, property }
-            if (property == "log" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "console"))
-                || property == "push"
-    )
+fn collect_unsupported_class(
+    super_class: Option<&JsExpr>,
+    methods: &[JsClassMethod],
+    unsupported: &mut Vec<String>,
+) {
+    if let Some(super_class) = super_class {
+        unsupported.push("class extends".to_string());
+        collect_unsupported_expr(super_class, unsupported);
+    }
+    for method in methods {
+        if method.is_static {
+            unsupported.push("static class methods".to_string());
+        }
+        if method.kind != "constructor" && method.kind != "method" {
+            unsupported.push(format!("class {} methods", method.kind));
+        }
+        collect_unsupported_stmt_list(&method.body, true, unsupported);
+    }
 }
 
 pub fn fail_closed_report_version(purpose: ProgramPurpose) -> &'static str {
