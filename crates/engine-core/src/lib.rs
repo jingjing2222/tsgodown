@@ -4159,16 +4159,22 @@ console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1], em
             &root,
             "src/index.js",
             r#"
-function looksLikeNumber(value) {
-  if (/^0x[0-9a-f]+$/i.test(value)) {
-    return true
-  }
-  if (/^0[^.]/.test(value)) {
+function looksLikeNumber(x) {
+  if (x === null || x === undefined) {
     return false
   }
-  return /^[-]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(value)
+  if (typeof x === "number") {
+    return true
+  }
+  if (/^0x[0-9a-f]+$/i.test(x)) {
+    return true
+  }
+  if (/^0[^.]/.test(x)) {
+    return false
+  }
+  return /^[-]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(x)
 }
-console.log("regexp", looksLikeNumber("0x1f"), looksLikeNumber("012"), looksLikeNumber("1.5e-2"), looksLikeNumber("no"))
+console.log("regexp", looksLikeNumber(null), looksLikeNumber(undefined), looksLikeNumber(12), looksLikeNumber("0x1f"), looksLikeNumber("012"), looksLikeNumber("1.5e-2"), looksLikeNumber("no"))
 "#,
         );
 
@@ -4224,7 +4230,7 @@ console.log("regexp", looksLikeNumber("0x1f"), looksLikeNumber("012"), looksLike
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "regexp true false true false\n"
+            "regexp false false true true false true false\n"
         );
     }
 

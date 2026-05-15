@@ -459,6 +459,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             }
             if is_regexp_test_call(callee, args) {
                 imports.insert("regexp");
+                if regexp_test_needs_to_string_helper(args) {
+                    imports.insert("strconv");
+                }
             }
             if is_node_path_string_call(callee, args) {
                 imports.insert("path/filepath");
@@ -2051,7 +2054,7 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
-            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::String);
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
         JsExpr::Call { callee, args, .. } => {
@@ -2117,6 +2120,9 @@ fn infer_comparison_param_kind(
     kinds: &mut [AotSlotKind],
 ) {
     match other {
+        expr if is_nullish_expr(expr) => {
+            mark_ident_param_kind(candidate, param_index, kinds, AotSlotKind::Any);
+        }
         expr if is_string_literal_like(expr) => {
             if let JsExpr::Unary { op, arg } = candidate {
                 if op == "typeof" {
@@ -2436,14 +2442,14 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_console_log(callee) => {
             let args = args
                 .iter()
-                .map(|arg| render_expr(arg, state))
+                .map(|arg| render_console_arg_expr(arg, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("fmt.Println({})", args.join(", ")))
         }
         JsExpr::Call { callee, args, .. } if is_console_error(callee) => {
             let args = args
                 .iter()
-                .map(|arg| render_expr(arg, state))
+                .map(|arg| render_console_arg_expr(arg, state))
                 .collect::<Option<Vec<_>>>()?;
             if args.is_empty() {
                 return Some("fmt.Fprintln(os.Stderr)".to_string());
@@ -2519,6 +2525,19 @@ fn render_new_class_expr(expr: &JsExpr, state: &AotState) -> Option<(String, Str
     ))
 }
 
+fn render_console_arg_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Null,
+        } => Some("\"null\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some("\"undefined\"".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("\"undefined\"".to_string()),
+        _ => render_expr(expr, state),
+    }
+}
+
 fn is_console_log(expr: &JsExpr) -> bool {
     matches!(
         expr,
@@ -2589,6 +2608,7 @@ fn is_node_builtin_spec(spec: &str) -> bool {
 fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
+        JsExpr::Ident { name } if name == "undefined" => Some("nil".to_string()),
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -2997,6 +3017,9 @@ fn render_comparison_expr(
     state: &AotState,
 ) -> Option<String> {
     let op = go_comparison_op(op)?;
+    if let Some(value) = render_nullish_comparison_expr(op, left, right, state) {
+        return Some(value);
+    }
     if let (Some(left), Some(right)) = (
         render_numeric_expr(left, state),
         render_numeric_expr(right, state),
@@ -3018,6 +3041,38 @@ fn render_comparison_expr(
         }
     }
     None
+}
+
+fn render_nullish_comparison_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let go_op = match op {
+        "==" | "===" => "==",
+        "!=" | "!==" => "!=",
+        _ => return None,
+    };
+    if is_nullish_expr(left) {
+        let right = render_expr(right, state)?;
+        return Some(format!("({right} {go_op} nil)"));
+    }
+    if is_nullish_expr(right) {
+        let left = render_expr(left, state)?;
+        return Some(format!("({left} {go_op} nil)"));
+    }
+    None
+}
+
+fn is_nullish_expr(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Null | JsValue::Undefined,
+        } => true,
+        JsExpr::Ident { name } if name == "undefined" => true,
+        _ => false,
+    }
 }
 
 fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
@@ -3279,11 +3334,36 @@ fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
     } else {
         pattern.clone()
     };
-    let value = render_string_expr(args.first()?, state)?;
+    let value = render_regexp_test_value_expr(args.first()?, state)?;
     Some(format!(
         "regexp.MustCompile({}).MatchString({value})",
         go_string_literal(&pattern)
     ))
+}
+
+fn regexp_test_needs_to_string_helper(args: &[JsExpr]) -> bool {
+    match args.first() {
+        Some(JsExpr::Value {
+            value: JsValue::String { .. },
+        }) => false,
+        Some(JsExpr::Template { quasis, exprs }) if exprs.is_empty() && quasis.len() == 1 => false,
+        _ => true,
+    }
+}
+
+fn render_regexp_test_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(go_string_literal(value)),
+        JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
+            Some(go_string_literal(&quasis[0]))
+        }
+        _ => {
+            let value = render_expr(expr, state)?;
+            Some(format!("tsgodownToString({value})"))
+        }
+    }
 }
 
 fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
