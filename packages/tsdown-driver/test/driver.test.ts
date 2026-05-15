@@ -133,6 +133,63 @@ test("runBuild invokes rust adapter with JSON request contract", async () => {
   }
 });
 
+test("runBuild carries serializable tsdown-compatible compiler config to rust adapter boundary", async () => {
+  let seenRequest: RustEngineRequest | undefined;
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
+
+  try {
+    await runBuild(cwd, "tsgodown.config.ts", {
+      tsdownConfig: {
+        dts: true,
+        format: "esm",
+        onSuccess: () => {},
+        outDir: "dist-go",
+        plugins: [() => ({ name: "js-side-only" })],
+        sourcemap: true,
+        target: "node20",
+        go: {
+          package: "main",
+          strictSemantics: true,
+        },
+      },
+      executeRustEngine: async (request) => {
+        seenRequest = request;
+        return {
+          ok: true,
+          manifest: {
+            buildId: "aabbccddeeff0011",
+            entries: ["src/index.ts"],
+            bundles: [
+              {
+                file: "dist/index.mjs",
+                map: "dist/index.mjs.map",
+                format: "esm",
+                exports: [],
+              },
+            ],
+            types: ["dist/index.d.ts"],
+            tsconfigPath: "tsconfig.json",
+          },
+        };
+      },
+    });
+
+    assert.deepEqual(seenRequest?.config, {
+      dts: true,
+      format: "esm",
+      outDir: "dist-go",
+      sourcemap: true,
+      target: "node20",
+      go: {
+        package: "main",
+        strictSemantics: true,
+      },
+    });
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runBuild rejects path-escaping manifest values from rust engine", async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-driver-test-"));
 

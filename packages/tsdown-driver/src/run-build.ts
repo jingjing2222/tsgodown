@@ -19,6 +19,9 @@ export async function runBuild(
     action: "build",
     cwd,
     ...(configPath ? { configPath } : {}),
+    ...(options.tsdownConfig
+      ? { config: toSerializableTsdownConfig(options.tsdownConfig) }
+      : {}),
   };
 
   const executeRustEngine =
@@ -57,6 +60,42 @@ export async function runBuild(
     manifest: response.manifest,
     diagnostics: response.diagnostics ?? [],
   };
+}
+
+function toSerializableTsdownConfig(
+  config: NonNullable<RunBuildOptions["tsdownConfig"]>,
+): Record<string, unknown> {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(JSON.stringify(config));
+  } catch (cause) {
+    throw new Error(
+      [
+        "[tsdown-driver] config serialization failed",
+        "source=tsdown-config-serialization",
+        `cause=${cause instanceof Error ? cause.message : String(cause)}`,
+        "guidance=Use JSON-serializable tsdown config values at the Rust adapter boundary; plugin functions remain JS-side only.",
+      ].join("; "),
+    );
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+
+  const out = parsed as Record<string, unknown>;
+  for (const jsOnlyKey of [
+    "hooks",
+    "inputOptions",
+    "onSuccess",
+    "outputOptions",
+    "plugins",
+  ]) {
+    Reflect.deleteProperty(out, jsOnlyKey);
+  }
+
+  return out;
 }
 
 function assertRunBuildArtifactContract(input: {

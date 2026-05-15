@@ -13,6 +13,12 @@ function withTempRepo(run) {
   );
 
   try {
+    fs.mkdirSync(path.join(tmp, "packages", "config", "src"), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(tmp, "examples", "fastify-scaffold-real"), {
+      recursive: true,
+    });
     fs.mkdirSync(path.join(tmp, "scripts"), { recursive: true });
     process.chdir(tmp);
     run(tmp);
@@ -24,6 +30,14 @@ function withTempRepo(run) {
 
 test("framework defaults guard passes for generic defaults", () => {
   withTempRepo((tmp) => {
+    fs.writeFileSync(
+      path.join(tmp, "packages", "config", "src", "types.ts"),
+      "export interface UserConfig extends TsdownUserConfig { go?: GoConfig; }",
+    );
+    fs.writeFileSync(
+      path.join(tmp, "examples", "fastify-scaffold-real", "tsgodown.config.ts"),
+      'export default { entry: "src/app.ts", target: "node20" };',
+    );
     fs.writeFileSync(
       path.join(tmp, "scripts", "rust-engine-launcher.mjs"),
       "const request = { action: 'build' };",
@@ -43,6 +57,14 @@ test("framework defaults guard passes for generic defaults", () => {
 
 test("framework defaults guard fails when framework default is reintroduced", () => {
   withTempRepo((tmp) => {
+    fs.writeFileSync(
+      path.join(tmp, "packages", "config", "src", "types.ts"),
+      "export interface UserConfig { fastify?: { detectPlugins?: boolean } }",
+    );
+    fs.writeFileSync(
+      path.join(tmp, "examples", "fastify-scaffold-real", "tsgodown.config.ts"),
+      "export default { fastify: { detectPlugins: true } };",
+    );
     fs.writeFileSync(
       path.join(tmp, "scripts", "rust-engine-launcher.mjs"),
       'const request = { framework: "fastify" };',

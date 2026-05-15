@@ -49,27 +49,32 @@ test("assertCompileInputContract enforces minimal delegated compile envelope", (
 
 test("orchestratePipelineStages emits deterministic stage events through delivery stream", async () => {
   const stages: string[] = [];
+  const seenConfigs: unknown[] = [];
 
   await orchestratePipelineStages({
     cwd: process.cwd(),
-    configs: [{ entry: "src/index.ts" }],
+    configs: [{ entry: "src/index.ts", target: "node20" }],
     log: () => {},
     onStage: (event) => stages.push(event.stage),
-    runBuildArtifacts: async () => ({
-      mode: "rust-engine-adapter",
-      manifestPath: "artifacts/manifest.json",
-      manifestIndexPath: "artifacts/manifest.index.json",
-      manifest: {
-        buildId: "build-1",
-        entries: ["src/index.ts"],
-        bundles: [{ file: "dist/index.js" }],
-        types: [],
-        tsconfigPath: "tsconfig.json",
-      },
-      diagnostics: [],
-    }),
+    runBuildArtifacts: async (_cwd, config) => {
+      seenConfigs.push(config);
+      return {
+        mode: "rust-engine-adapter",
+        manifestPath: "artifacts/manifest.json",
+        manifestIndexPath: "artifacts/manifest.index.json",
+        manifest: {
+          buildId: "build-1",
+          entries: ["src/index.ts"],
+          bundles: [{ file: "dist/index.js" }],
+          types: [],
+          tsconfigPath: "tsconfig.json",
+        },
+        diagnostics: [],
+      };
+    },
   });
 
+  assert.deepEqual(seenConfigs, [{ entry: "src/index.ts", target: "node20" }]);
   assert.deepEqual(stages, [
     "BUILD_ARTIFACTS",
     "BUILD_IR",
