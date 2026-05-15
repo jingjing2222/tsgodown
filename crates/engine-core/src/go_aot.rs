@@ -1050,6 +1050,25 @@ impl AotState {
     }
 }
 
+fn clone_aot_state(state: &AotState) -> AotState {
+    AotState {
+        go_imports: state.go_imports.clone(),
+        bindings: state.bindings.clone(),
+        binding_refs: state.binding_refs.clone(),
+        numeric_bindings: state.numeric_bindings.clone(),
+        string_bindings: state.string_bindings.clone(),
+        bool_bindings: state.bool_bindings.clone(),
+        object_bindings: state.object_bindings.clone(),
+        class_instance_bindings: state.class_instance_bindings.clone(),
+        current_receiver: state.current_receiver.clone(),
+        current_fields: state.current_fields.clone(),
+        functions: state.functions.clone(),
+        classes: state.classes.clone(),
+        namespace_functions: state.namespace_functions.clone(),
+        builtin_bindings: state.builtin_bindings.clone(),
+    }
+}
+
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
@@ -1516,14 +1535,17 @@ fn function_parts(stmt: &JsStmt) -> Option<AotFunctionParts<'_>> {
 }
 
 fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
+    let mut function_state = clone_aot_state(state);
     body.iter()
-        .map(|stmt| render_function_stmt(stmt, state))
+        .map(|stmt| render_function_stmt(stmt, &mut function_state))
         .collect::<Option<Vec<_>>>()
         .map(|stmts| stmts.join("\n"))
 }
 
-fn render_function_stmt(stmt: &JsStmt, state: &AotState) -> Option<String> {
+fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
     match stmt {
+        JsStmt::VarDecl { .. } => render_stmt(stmt, state),
+        JsStmt::Expr { expr } => render_expr_stmt(expr, state),
         JsStmt::Return { value: Some(value) } => {
             let returned = render_expr(value, state)?;
             Some(format!("return {returned}"))
