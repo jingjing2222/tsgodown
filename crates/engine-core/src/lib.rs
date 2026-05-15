@@ -449,6 +449,133 @@ console.log("sum", add(2, 3))
     }
 
     #[test]
+    fn emit_go_runs_binary_octal_hex_number_coercion_subset() {
+        let root = temp_project("engine-core-js-number-prefixes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const fromLiteral = 0b001 + 0o10 + 0x10
+const fromNumber = Number("0b101") + Number("0o7") + Number("0x20")
+const empty = Number("")
+console.log("numbers", fromLiteral, fromNumber, empty)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/js-number-prefixes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "numbers 25 44 0\n");
+    }
+
+    #[test]
+    fn emit_go_runs_regexp_string_and_array_methods_subset() {
+        let root = temp_project("engine-core-regexp-string-array-methods");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const normalized = "  a   b  ".trim().replace(/\s+/g, "-")
+const parts = "1.2.3".split(/\./).map((value) => Number(value))
+const matched = "v1.2.3".match(/^v?(\d+)\.(\d+)\.(\d+)$/)
+const replaced = "x1 y2".replace(/([a-z])(\d)/g, (_, letter, number) => letter.toUpperCase() + number)
+const filtered = [3, 1, 2].sort((a, b) => a - b).filter((value) => value > 1).join("|")
+console.log("regex", normalized, parts.join("."), matched[1], replaced, filtered, /^[0-9]+$/.test("123"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/regexp-string-array-methods".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "regex a-b 1.2.3 1 X1 Y2 2|3 true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_member_assignment_subset() {
         let root = temp_project("engine-core-member-assignment");
         write(

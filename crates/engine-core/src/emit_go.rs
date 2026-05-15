@@ -275,7 +275,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -348,6 +350,13 @@ type NativeFunctionValue struct {
 	Call func(args []any) (any, error)
 }
 
+type RegExpValue struct {
+	Pattern string
+	Flags   string
+	Regex   *regexp.Regexp
+	Global  bool
+}
+
 type UndefinedValue struct{}
 
 type NullValue struct{}
@@ -407,6 +416,20 @@ func executeModule(module Module, program Program, cache map[string]*moduleState
 				return float64(0), nil
 			}
 			return toNumber(args[0]), nil
+		}),
+		"RegExp": nativeFunction(func(args []any) (any, error) {
+			pattern := ""
+			flags := ""
+			if len(args) > 0 {
+				if existing, ok := args[0].(*RegExpValue); ok && len(args) == 1 {
+					return existing, nil
+				}
+				pattern = jsString(args[0])
+			}
+			if len(args) > 1 {
+				flags = jsString(args[1])
+			}
+			return newRegExp(pattern, flags)
 		}),
 		"process": processObject(),
 		"module": map[string]any{
@@ -534,6 +557,46 @@ func builtinModuleExports(spec string) (map[string]any, bool) {
 
 func nativeFunction(call func(args []any) (any, error)) NativeFunctionValue {
 	return NativeFunctionValue{Call: call}
+}
+
+func newRegExp(pattern string, flags string) (*RegExpValue, error) {
+	goPattern := pattern
+	if strings.Contains(flags, "i") {
+		goPattern = "(?i)" + goPattern
+	}
+	compiled, err := regexp.Compile(goPattern)
+	if err != nil {
+		return nil, err
+	}
+	return &RegExpValue{
+		Pattern: pattern,
+		Flags:   flags,
+		Regex:   compiled,
+		Global:  strings.Contains(flags, "g"),
+	}, nil
+}
+
+func regexpMatches(value *RegExpValue, text string) any {
+	if value.Global {
+		matches := value.Regex.FindAllString(text, -1)
+		if matches == nil {
+			return jsNull
+		}
+		result := []any{}
+		for _, match := range matches {
+			result = append(result, match)
+		}
+		return result
+	}
+	matches := value.Regex.FindStringSubmatch(text)
+	if matches == nil {
+		return jsNull
+	}
+	result := []any{}
+	for _, match := range matches {
+		result = append(result, match)
+	}
+	return result
 }
 
 func pathModuleExports() map[string]any {
@@ -1172,13 +1235,19 @@ func evalExpr(expr map[string]any, env Env) (any, error) {
 				return BoundFunctionValue{Function: method, This: classValue}, nil
 			}
 		}
-		if objectArray, ok := object.([]any); ok {
-			if property == "length" {
-				return float64(len(objectArray)), nil
+		if stringValue, ok := object.(string); ok {
+			if member, ok := stringMember(stringValue, property, env); ok {
+				return member, nil
 			}
-			index, err := strconv.Atoi(property)
-			if err == nil && index >= 0 && index < len(objectArray) {
-				return objectArray[index], nil
+		}
+		if regExpValue, ok := object.(*RegExpValue); ok {
+			if member, ok := regexpMember(regExpValue, property); ok {
+				return member, nil
+			}
+		}
+		if objectArray, ok := object.([]any); ok {
+			if member, ok := arrayMember(objectArray, property, env); ok {
+				return member, nil
 			}
 		}
 		return jsUndefined, nil
@@ -1376,6 +1445,255 @@ func callArrayPush(callee map[string]any, rawArgs []any, env Env) (any, error) {
 	return float64(len(array)), nil
 }
 
+func stringMember(value string, property string, env Env) (any, bool) {
+	switch property {
+	case "length":
+		return float64(len([]rune(value))), true
+	case "trim":
+		return nativeFunction(func(args []any) (any, error) {
+			return strings.TrimSpace(value), nil
+		}), true
+	case "toLowerCase":
+		return nativeFunction(func(args []any) (any, error) {
+			return strings.ToLower(value), nil
+		}), true
+	case "toUpperCase":
+		return nativeFunction(func(args []any) (any, error) {
+			return strings.ToUpper(value), nil
+		}), true
+	case "split":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 || isNullish(args[0]) {
+				return []any{value}, nil
+			}
+			if separator, ok := args[0].(*RegExpValue); ok {
+				parts := separator.Regex.Split(value, -1)
+				result := []any{}
+				for _, part := range parts {
+					result = append(result, part)
+				}
+				return result, nil
+			}
+			separator := jsString(args[0])
+			result := []any{}
+			if separator == "" {
+				for _, char := range value {
+					result = append(result, string(char))
+				}
+				return result, nil
+			}
+			for _, part := range strings.Split(value, separator) {
+				result = append(result, part)
+			}
+			return result, nil
+		}), true
+	case "replace":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) < 2 {
+				return value, nil
+			}
+			if search, ok := args[0].(*RegExpValue); ok {
+				return replaceRegExp(value, search, args[1], env)
+			}
+			search := jsString(args[0])
+			index := strings.Index(value, search)
+			if index < 0 {
+				return value, nil
+			}
+			replacement := jsString(args[1])
+			return value[:index] + replacement + value[index+len(search):], nil
+		}), true
+	case "match":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return regexpMatches(&RegExpValue{Regex: regexp.MustCompile("")}, value), nil
+			}
+			if search, ok := args[0].(*RegExpValue); ok {
+				return regexpMatches(search, value), nil
+			}
+			compiled, err := newRegExp(jsString(args[0]), "")
+			if err != nil {
+				return nil, err
+			}
+			return regexpMatches(compiled, value), nil
+		}), true
+	}
+	index, err := strconv.Atoi(property)
+	if err == nil {
+		runes := []rune(value)
+		if index >= 0 && index < len(runes) {
+			return string(runes[index]), true
+		}
+	}
+	return nil, false
+}
+
+func regexpMember(value *RegExpValue, property string) (any, bool) {
+	switch property {
+	case "source":
+		return value.Pattern, true
+	case "flags":
+		return value.Flags, true
+	case "test":
+		return nativeFunction(func(args []any) (any, error) {
+			text := ""
+			if len(args) > 0 {
+				text = jsString(args[0])
+			}
+			return value.Regex.MatchString(text), nil
+		}), true
+	case "exec":
+		return nativeFunction(func(args []any) (any, error) {
+			text := ""
+			if len(args) > 0 {
+				text = jsString(args[0])
+			}
+			return regexpMatches(value, text), nil
+		}), true
+	}
+	return nil, false
+}
+
+func arrayMember(value []any, property string, env Env) (any, bool) {
+	switch property {
+	case "length":
+		return float64(len(value)), true
+	case "join":
+		return nativeFunction(func(args []any) (any, error) {
+			separator := ","
+			if len(args) > 0 {
+				separator = jsString(args[0])
+			}
+			parts := []string{}
+			for _, item := range value {
+				if isNullish(item) {
+					parts = append(parts, "")
+				} else {
+					parts = append(parts, jsString(item))
+				}
+			}
+			return strings.Join(parts, separator), nil
+		}), true
+	case "map":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("map callback is required")
+			}
+			result := []any{}
+			for index, item := range value {
+				mapped, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, mapped)
+			}
+			return result, nil
+		}), true
+	case "filter":
+		return nativeFunction(func(args []any) (any, error) {
+			if len(args) == 0 {
+				return nil, errors.New("filter callback is required")
+			}
+			result := []any{}
+			for index, item := range value {
+				keep, err := callFunctionWithValues(args[0], []any{item, float64(index), value}, env, jsUndefined)
+				if err != nil {
+					return nil, err
+				}
+				if isTruthy(keep) {
+					result = append(result, item)
+				}
+			}
+			return result, nil
+		}), true
+	case "sort":
+		return nativeFunction(func(args []any) (any, error) {
+			var sortErr error
+			sort.SliceStable(value, func(leftIndex int, rightIndex int) bool {
+				if sortErr != nil {
+					return false
+				}
+				left := value[leftIndex]
+				right := value[rightIndex]
+				if len(args) > 0 && !isNullish(args[0]) {
+					compared, err := callFunctionWithValues(args[0], []any{left, right}, env, jsUndefined)
+					if err != nil {
+						sortErr = err
+						return false
+					}
+					return toNumber(compared) < 0
+				}
+				return jsString(left) < jsString(right)
+			})
+			if sortErr != nil {
+				return nil, sortErr
+			}
+			return value, nil
+		}), true
+	}
+	index, err := strconv.Atoi(property)
+	if err == nil && index >= 0 && index < len(value) {
+		return value[index], true
+	}
+	return nil, false
+}
+
+func replaceRegExp(value string, search *RegExpValue, replacement any, env Env) (any, error) {
+	matches := search.Regex.FindAllStringSubmatchIndex(value, -1)
+	if matches == nil {
+		return value, nil
+	}
+	if !search.Global && len(matches) > 1 {
+		matches = matches[:1]
+	}
+	var out strings.Builder
+	last := 0
+	for _, match := range matches {
+		start := match[0]
+		end := match[1]
+		out.WriteString(value[last:start])
+		if _, ok := replacement.(FunctionValue); ok {
+			args := regexpReplacementArgs(value, match)
+			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
+			if err != nil {
+				return nil, err
+			}
+			out.WriteString(jsString(next))
+		} else if _, ok := replacement.(BoundFunctionValue); ok {
+			args := regexpReplacementArgs(value, match)
+			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
+			if err != nil {
+				return nil, err
+			}
+			out.WriteString(jsString(next))
+		} else if _, ok := replacement.(NativeFunctionValue); ok {
+			args := regexpReplacementArgs(value, match)
+			next, err := callFunctionWithValues(replacement, args, env, jsUndefined)
+			if err != nil {
+				return nil, err
+			}
+			out.WriteString(jsString(next))
+		} else {
+			out.WriteString(string(search.Regex.ExpandString(nil, jsString(replacement), value, match)))
+		}
+		last = end
+	}
+	out.WriteString(value[last:])
+	return out.String(), nil
+}
+
+func regexpReplacementArgs(value string, match []int) []any {
+	args := []any{}
+	for index := 0; index < len(match); index += 2 {
+		if match[index] < 0 || match[index+1] < 0 {
+			args = append(args, jsUndefined)
+		} else {
+			args = append(args, value[match[index]:match[index+1]])
+		}
+	}
+	return args
+}
+
 func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue, error) {
 	classValue := &ClassValue{
 		Methods:       map[string]FunctionValue{},
@@ -1427,6 +1745,9 @@ func evalClass(superExpr map[string]any, rawMethods []any, env Env) (*ClassValue
 func constructValue(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	classValue, ok := raw.(*ClassValue)
 	if !ok {
+		if _, nativeOk := raw.(NativeFunctionValue); nativeOk {
+			return callFunction(raw, rawArgs, callerEnv)
+		}
 		return nil, errors.New("constructor is not callable")
 	}
 	instance := map[string]any{"__class": classValue}
@@ -1463,16 +1784,37 @@ func callFunction(raw any, rawArgs []any, callerEnv Env) (any, error) {
 	}
 }
 
+func callFunctionWithValues(raw any, args []any, callerEnv Env, thisValue any) (any, error) {
+	switch function := raw.(type) {
+	case FunctionValue:
+		return callFunctionWithThisValues(function, args, thisValue)
+	case BoundFunctionValue:
+		return callFunctionWithThisValues(function.Function, args, function.This)
+	case NativeFunctionValue:
+		return function.Call(args)
+	default:
+		return nil, errors.New("callee is not callable")
+	}
+}
+
 func callFunctionWithThis(function FunctionValue, rawArgs []any, callerEnv Env, thisValue any) (any, error) {
+	args := []any{}
+	for _, rawArg := range rawArgs {
+		value, err := evalExpr(asMap(rawArg), callerEnv)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, value)
+	}
+	return callFunctionWithThisValues(function, args, thisValue)
+}
+
+func callFunctionWithThisValues(function FunctionValue, args []any, thisValue any) (any, error) {
 	child := Env{"__parent": function.Env, "this": thisValue}
 	for index, param := range function.Params {
 		value := any(jsUndefined)
-		if index < len(rawArgs) {
-			evaluated, err := evalExpr(asMap(rawArgs[index]), callerEnv)
-			if err != nil {
-				return nil, err
-			}
-			value = evaluated
+		if index < len(args) {
+			value = args[index]
 		}
 		child[param] = value
 	}
@@ -1576,13 +1918,15 @@ func evalValue(value map[string]any) (any, error) {
 	case "bool":
 		return value["value"] == true, nil
 	case "number":
-		number, err := strconv.ParseFloat(asString(value["value"]), 64)
+		number, err := parseJSNumberLiteral(asString(value["value"]))
 		if err != nil {
 			return nil, err
 		}
 		return number, nil
 	case "string", "bigint":
 		return asString(value["value"]), nil
+	case "regexp":
+		return newRegExp(asString(value["pattern"]), asString(value["flags"]))
 	default:
 		return nil, fmt.Errorf("unsupported value %v", value["kind"])
 	}
@@ -1786,7 +2130,7 @@ func toNumber(value any) float64 {
 		}
 		return 0
 	case string:
-		number, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		number, err := parseJSNumberLiteral(strings.TrimSpace(typed))
 		if err != nil {
 			return math.NaN()
 		}
@@ -1794,6 +2138,45 @@ func toNumber(value any) float64 {
 	default:
 		return math.NaN()
 	}
+}
+
+func parseJSNumberLiteral(raw string) (float64, error) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return 0, nil
+	}
+	sign := 1.0
+	if strings.HasPrefix(text, "+") || strings.HasPrefix(text, "-") {
+		if text[0] == '-' {
+			sign = -1
+		}
+		text = text[1:]
+	}
+	lower := strings.ToLower(text)
+	for _, prefixed := range []struct {
+		prefix string
+		base   int
+	}{
+		{"0b", 2},
+		{"0o", 8},
+		{"0x", 16},
+	} {
+		if strings.HasPrefix(lower, prefixed.prefix) {
+			if sign < 0 {
+				return math.NaN(), nil
+			}
+			integer, err := strconv.ParseUint(lower[len(prefixed.prefix):], prefixed.base, 64)
+			if err != nil {
+				return math.NaN(), nil
+			}
+			return float64(integer), nil
+		}
+	}
+	number, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return math.NaN(), nil
+	}
+	return sign * number, nil
 }
 
 func toInt32(value any) int32 {
