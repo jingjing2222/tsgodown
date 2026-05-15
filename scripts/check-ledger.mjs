@@ -197,6 +197,7 @@ const LEDGERS = {
       "aot.control.if_return",
       "aot.control.loops",
       "aot.expr.numeric",
+      "aot.expr.string",
       "aot.expr.boolean",
       "aot.property.static",
       "aot.property.dynamic",

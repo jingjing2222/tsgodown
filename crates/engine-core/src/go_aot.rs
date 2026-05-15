@@ -442,6 +442,7 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
                     (module.id.clone(), parts.name.clone()),
                     AotFunction {
                         params: parts.params.clone(),
+                        param_kinds: infer_function_param_kinds(parts.params, parts.body),
                         rest_param: parts.rest_param.clone(),
                         r#async: *parts.r#async,
                         generator: *parts.generator,
@@ -1078,6 +1079,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
 #[derive(Clone)]
 struct AotFunction {
     params: Vec<String>,
+    param_kinds: Vec<AotSlotKind>,
     rest_param: Option<String>,
     r#async: bool,
     generator: bool,
@@ -1472,6 +1474,175 @@ fn render_class_method_decl(
     ))
 }
 
+fn infer_function_param_kinds(params: &[String], body: &[JsStmt]) -> Vec<AotSlotKind> {
+    let mut kinds = params
+        .iter()
+        .map(|_| AotSlotKind::Number)
+        .collect::<Vec<_>>();
+    let param_index = params
+        .iter()
+        .enumerate()
+        .map(|(index, param)| (param.clone(), index))
+        .collect::<BTreeMap<_, _>>();
+    for stmt in body {
+        infer_stmt_param_kinds(stmt, &param_index, &mut kinds);
+    }
+    kinds
+}
+
+fn infer_stmt_param_kinds(
+    stmt: &JsStmt,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match stmt {
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        }
+        | JsStmt::Expr { expr }
+        | JsStmt::Return { value: Some(expr) }
+        | JsStmt::Throw { value: expr }
+        | JsStmt::Yield {
+            value: Some(expr), ..
+        } => infer_expr_param_kinds(expr, param_index, kinds),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            infer_expr_param_kinds(test, param_index, kinds);
+            for stmt in consequent {
+                infer_stmt_param_kinds(stmt, param_index, kinds);
+            }
+            for stmt in alternate {
+                infer_stmt_param_kinds(stmt, param_index, kinds);
+            }
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            for stmt in init {
+                infer_stmt_param_kinds(stmt, param_index, kinds);
+            }
+            if let Some(test) = test {
+                infer_expr_param_kinds(test, param_index, kinds);
+            }
+            if let Some(update) = update {
+                infer_expr_param_kinds(update, param_index, kinds);
+            }
+            for stmt in body {
+                infer_stmt_param_kinds(stmt, param_index, kinds);
+            }
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            infer_expr_param_kinds(test, param_index, kinds);
+            for stmt in body {
+                infer_stmt_param_kinds(stmt, param_index, kinds);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn infer_expr_param_kinds(
+    expr: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match expr {
+        JsExpr::Binary { op, left, right } if op == "+" => {
+            if is_string_literal_like(right) {
+                mark_ident_param_kind(left, param_index, kinds, AotSlotKind::String);
+            }
+            if is_string_literal_like(left) {
+                mark_ident_param_kind(right, param_index, kinds, AotSlotKind::String);
+            }
+            infer_expr_param_kinds(left, param_index, kinds);
+            infer_expr_param_kinds(right, param_index, kinds);
+        }
+        JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
+            infer_expr_param_kinds(left, param_index, kinds);
+            infer_expr_param_kinds(right, param_index, kinds);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            infer_expr_param_kinds(callee, param_index, kinds);
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds);
+            }
+        }
+        JsExpr::Member { object, .. } => infer_expr_param_kinds(object, param_index, kinds),
+        JsExpr::Array { items } => {
+            for item in items {
+                infer_expr_param_kinds(item, param_index, kinds);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                infer_expr_param_kinds(&item.value, param_index, kinds);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                infer_expr_param_kinds(&prop.value, param_index, kinds);
+            }
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => infer_expr_param_kinds(arg, param_index, kinds),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            infer_expr_param_kinds(test, param_index, kinds);
+            infer_expr_param_kinds(consequent, param_index, kinds);
+            infer_expr_param_kinds(alternate, param_index, kinds);
+        }
+        JsExpr::New { callee, args } => {
+            infer_expr_param_kinds(callee, param_index, kinds);
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds);
+            }
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                infer_expr_param_kinds(expr, param_index, kinds);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_string_literal_like(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { .. },
+        } => true,
+        JsExpr::Template { quasis, exprs } => exprs.is_empty() && quasis.len() == 1,
+        _ => false,
+    }
+}
+
+fn mark_ident_param_kind(
+    expr: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+    kind: AotSlotKind,
+) {
+    let JsExpr::Ident { name } = expr else {
+        return;
+    };
+    let Some(index) = param_index.get(name) else {
+        return;
+    };
+    kinds[*index] = kind;
+}
+
 fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<String> {
     if function.rest_param.is_some() || function.r#async || function.generator {
         return None;
@@ -1483,13 +1654,20 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         builtin_bindings: state.builtin_bindings.clone(),
         ..AotState::default()
     };
-    for param in &function.params {
-        function_state.numeric_bindings.insert(param.clone());
+    for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
+        function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
     }
     let rendered_params = function
         .params
         .iter()
-        .map(|param| format!("{} float64", sanitize_go_identifier(param)))
+        .zip(function.param_kinds.iter())
+        .map(|(param, kind)| {
+            format!(
+                "{} {}",
+                sanitize_go_identifier(param),
+                go_type_for_slot(*kind)
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let function_body = render_function_body(&function.body, &function_state)?;
@@ -1657,6 +1835,10 @@ fn render_assignment_stmt(
         return None;
     };
     if !state.numeric_bindings.contains(name) {
+        if state.string_bindings.contains(name) && matches!(op, "=" | "+=") {
+            let right = render_string_expr(right, state)?;
+            return Some(format!("{} {op} {right}", sanitize_go_identifier(name)));
+        }
         return None;
     }
     let right = render_numeric_expr(right, state)?;
@@ -1949,7 +2131,8 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         }
         let rendered_args = args
             .iter()
-            .map(|arg| render_numeric_expr(arg, state))
+            .zip(function.param_kinds.iter())
+            .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
             .collect::<Option<Vec<_>>>()?;
         return Some(format!(
             "{}({})",
@@ -1966,13 +2149,23 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     }
     let rendered_args = args
         .iter()
-        .map(|arg| render_numeric_expr(arg, state))
+        .zip(function.param_kinds.iter())
+        .map(|(arg, kind)| render_arg_for_kind(arg, *kind, state))
         .collect::<Option<Vec<_>>>()?;
     Some(format!(
         "{}({})",
         function.go_name,
         rendered_args.join(", ")
     ))
+}
+
+fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Option<String> {
+    match kind {
+        AotSlotKind::Any => render_expr(expr, state),
+        AotSlotKind::Bool => render_bool_expr(expr, state),
+        AotSlotKind::Number => render_numeric_expr(expr, state),
+        AotSlotKind::String => render_string_expr(expr, state),
+    }
 }
 
 fn is_json_stringify(expr: &JsExpr) -> bool {
