@@ -59,6 +59,7 @@ func main() {{
 struct AotState {
     bindings: BTreeSet<String>,
     numeric_bindings: BTreeSet<String>,
+    string_bindings: BTreeSet<String>,
     functions: BTreeMap<String, AotFunction>,
 }
 
@@ -83,6 +84,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.numeric_bindings.insert(name.clone());
                     return Some(format!("var {ident} float64 = {value}"));
+                }
+                if let Some(value) = render_string_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.string_bindings.insert(name.clone());
+                    return Some(format!("var {ident} string = {value}"));
                 }
                 let value = render_expr(expr, state)?;
                 state.bindings.insert(name.clone());
@@ -130,6 +136,7 @@ fn render_for_stmt(
     let mut loop_state = AotState {
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
+        string_bindings: state.string_bindings.clone(),
         functions: state.functions.clone(),
     };
     let init = init
@@ -192,6 +199,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
     let block_state = AotState {
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
+        string_bindings: state.string_bindings.clone(),
         functions: state.functions.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
@@ -201,6 +209,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
     let mut block_state = AotState {
         bindings: state.bindings.clone(),
         numeric_bindings: state.numeric_bindings.clone(),
+        string_bindings: state.string_bindings.clone(),
         functions: state.functions.clone(),
     };
     stmts
@@ -370,6 +379,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
             Some(go_string_literal(&quasis[0]))
@@ -390,6 +400,26 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
+        }
+        _ => None,
+    }
+}
+
+fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(go_string_literal(value)),
+        JsExpr::Ident { name } if state.string_bindings.contains(name) => {
+            Some(sanitize_go_identifier(name))
+        }
+        JsExpr::Binary { op, left, right } if op == "+" => {
+            let left = render_string_expr(left, state)?;
+            let right = render_string_expr(right, state)?;
+            Some(format!("({left} + {right})"))
+        }
+        JsExpr::Template { quasis, exprs } if exprs.is_empty() && quasis.len() == 1 => {
+            Some(go_string_literal(&quasis[0]))
         }
         _ => None,
     }

@@ -20,7 +20,7 @@ semantics. Corpus success does not count if codegen emits
 | aot.expr.boolean | Boolean expressions | WIP | WIP | AOT_BOOLEAN_EXPR_UNSUPPORTED | focused unit tests | Boolean literals, comparison predicates, logical-not, logical-and, logical-or for bool subset. Truthiness pending. |
 | aot.property.static | Static property access | TODO | TODO | AOT_STATIC_PROPERTY_UNSUPPORTED | planned | Need contract ops for object/array/string/module property lookup. |
 | aot.property.dynamic | Dynamic property access | TODO | TODO | AOT_DYNAMIC_PROPERTY_UNSUPPORTED | planned | Need computed keys, symbol keys, prototype lookup, getters/setters. |
-| aot.value.model | Typed Value model | WIP | WIP | AOT_VALUE_MODEL_UNSUPPORTED | focused unit tests | Numeric slots emit typed Go `float64`; full backend-neutral JS value contract still pending. |
+| aot.value.model | Typed Value model | WIP | WIP | AOT_VALUE_MODEL_UNSUPPORTED | focused unit tests | Numeric slots emit typed Go `float64` and string slots emit typed Go `string`; full backend-neutral JS value contract still pending. |
 | aot.node.builtins | Node builtin helpers | TODO | TODO | AOT_NODE_BUILTIN_UNSUPPORTED | planned | Builtins must render generic Node LTS helpers, not package branches. |
 | aot.async.promise_timer | Promise and timer ordering | TODO | TODO | AOT_ASYNC_UNSUPPORTED | planned | Need direct async contract ops for Promise jobs, nextTick, timers, immediates. |
 | aot.diagnostics.fail_closed | Deterministic fail-closed diagnostics | WIP | WIP | AOT_UNSUPPORTED_SEMANTIC | runtime contract tests | Unsupported AOT semantics must fail before wrong Go output when interpreter fallback is removed. |
