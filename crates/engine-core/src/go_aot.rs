@@ -53,6 +53,7 @@ pub(crate) fn render_aot_executable_program(
             default_exports: &module_default_exports,
             default_class_exports: &module_default_class_exports,
             named_exports: &module_named_exports,
+            object_exports: &module_object_exports,
             slots: &module_slots,
         },
     )?;
@@ -133,6 +134,7 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                 default_exports: &module_default_exports,
                 default_class_exports: &module_default_class_exports,
                 named_exports: &module_named_exports,
+                object_exports: &module_object_exports,
                 slots: &module_slots,
             },
         );
@@ -3013,6 +3015,7 @@ fn collect_module_slots(
                 default_exports: &BTreeMap::new(),
                 default_class_exports: &BTreeMap::new(),
                 named_exports: &BTreeMap::new(),
+                object_exports: &BTreeMap::new(),
                 slots: &BTreeMap::new(),
             },
         ) else {
@@ -3094,6 +3097,7 @@ fn render_module_decls(
                 default_exports: &module_default_exports,
                 default_class_exports: &module_default_class_exports,
                 named_exports: &module_named_exports,
+                object_exports: &module_object_exports,
                 slots: module_slots,
             },
         )?;
@@ -3174,6 +3178,15 @@ fn module_aot_state(
     for ((module_id, name), class) in context.classes {
         if module_id == &module.id {
             state.classes.insert(name.clone(), class.clone());
+        }
+    }
+    for ((module_id, namespace), functions) in context.object_exports {
+        if module_id == &module.id {
+            for (property, function) in functions {
+                state
+                    .namespace_functions
+                    .insert((namespace.clone(), property.clone()), function.clone());
+            }
         }
     }
     for import in &module.imports {
@@ -3576,6 +3589,7 @@ struct AotModuleContext<'a> {
     default_exports: &'a BTreeMap<String, AotFunction>,
     default_class_exports: &'a BTreeMap<String, AotClass>,
     named_exports: &'a BTreeMap<String, BTreeMap<String, AotFunction>>,
+    object_exports: &'a BTreeMap<(String, String), BTreeMap<String, AotFunction>>,
     slots: &'a BTreeMap<(String, String), AotModuleSlot>,
 }
 
@@ -3681,6 +3695,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     }
                 }
                 if matches!(expr, JsExpr::Function { .. }) && state.functions.contains_key(name) {
+                    return Some(String::new());
+                }
+                if is_local_function_namespace_object(name, expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
                     return Some(String::new());
                 }
                 if state.number_array_bindings.contains(name) && is_nullish_expr(expr) {
@@ -6643,6 +6662,14 @@ fn is_require_call(expr: &JsExpr) -> bool {
     )
 }
 
+fn is_local_function_namespace_object(name: &str, expr: &JsExpr, state: &AotState) -> bool {
+    matches!(expr, JsExpr::Object { .. })
+        && state
+            .namespace_functions
+            .keys()
+            .any(|(namespace, _)| namespace == name)
+}
+
 fn is_node_builtin_spec(spec: &str) -> bool {
     let spec = spec.strip_prefix("node:").unwrap_or(spec);
     matches!(
@@ -7094,8 +7121,17 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("tsgodownToString({value})"))
         }
         JsExpr::Binary { op, left, right } if op == "+" => {
-            let left = render_string_expr(left, state)?;
-            let right = render_string_expr(right, state)?;
+            if let (Some(left), Some(right)) = (
+                render_string_expr(left, state),
+                render_string_expr(right, state),
+            ) {
+                return Some(format!("({left} + {right})"));
+            }
+            if !is_string_concat_operand(left, state) && !is_string_concat_operand(right, state) {
+                return None;
+            }
+            let left = render_concat_operand_string_expr(left, state)?;
+            let right = render_concat_operand_string_expr(right, state)?;
             Some(format!("({left} + {right})"))
         }
         JsExpr::Binary { op, left, right } if op == "||" => {
@@ -7173,6 +7209,19 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         ),
         _ => None,
     }
+}
+
+fn is_string_concat_operand(expr: &JsExpr, state: &AotState) -> bool {
+    is_string_literal_like(expr)
+        || matches!(expr, JsExpr::Ident { name } if state.string_bindings.contains(name))
+        || render_string_array_index_expr(expr, state).is_some()
+}
+
+fn render_concat_operand_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_string_expr(expr, state).or_else(|| {
+        let value = render_expr(expr, state)?;
+        Some(format!("tsgodownToString({value})"))
+    })
 }
 
 fn render_template_string_expr(
