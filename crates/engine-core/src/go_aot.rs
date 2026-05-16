@@ -1321,6 +1321,22 @@ func tsgodownAnyArrayFromLengthMap(length float64, mapper func(any, float64) any
 	return values
 }
 
+func tsgodownAnyArrayMap(values []any, mapper func(any, float64) any) []any {
+	mapped := make([]any, len(values))
+	for index, value := range values {
+		mapped[index] = mapper(value, float64(index))
+	}
+	return mapped
+}
+
+func tsgodownStringArrayMap(values []string, mapper func(any, float64) any) []any {
+	mapped := make([]any, len(values))
+	for index, value := range values {
+		mapped[index] = mapper(value, float64(index))
+	}
+	return mapped
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -9192,6 +9208,9 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         {
             render_any_array_prototype_slice_alias_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_array_map_call(callee, args) => {
+            render_any_array_map_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_array_from_length_map_call(callee, args) => {
             render_array_from_length_map_call(args, state)
         }
@@ -9342,6 +9361,34 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
     Some(format!(
         "func({value_param} any, {index_param} float64) any {{ return {value} }}"
     ))
+}
+
+fn is_array_map_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "map"
+        )
+}
+
+fn render_any_array_map_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_array_map_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let mapper = render_array_from_mapper_expr(args.first()?, state)?;
+    if let Some(values) = render_any_array_expr(object, state) {
+        return Some(format!("tsgodownAnyArrayMap({values}, {mapper})"));
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!("tsgodownStringArrayMap({values}, {mapper})"))
 }
 
 fn object_literal_length_expr(expr: &JsExpr) -> Option<&JsExpr> {

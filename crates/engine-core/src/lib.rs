@@ -7015,6 +7015,80 @@ console.log("array-from-map", copied.join("|"))
     }
 
     #[test]
+    fn emit_go_runs_aot_array_map_subset() {
+        let root = temp_project("engine-core-aot-array-map");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const words = ["zero", "one", "two"]
+const mixed = [1, "two", false]
+const copiedWords = words.map((value, index) => value)
+const indexes = mixed.map((value, index) => index)
+console.log("array-map", copiedWords.join("|"), indexes.join("|"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-array-map".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArrayMap"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArrayMap"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-map zero|one|two 0|1|2\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_date_iso_subset() {
         let root = temp_project("engine-core-aot-date-iso");
         write(
