@@ -991,6 +991,11 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_crypto_random_fill_sync_call_shape(callee, args) {
                 imports.insert("crypto/rand");
             }
+            if is_crypto_random_uuid_call_shape(callee, args) {
+                imports.insert("crypto/rand");
+                imports.insert("encoding/base64");
+                imports.insert("encoding/hex");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -1064,6 +1069,11 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         }
         expr if is_process_platform_expr(expr) || is_process_arch_expr(expr) => {
             imports.insert("runtime");
+        }
+        JsExpr::Ident { name } if name == "randomUUID" => {
+            imports.insert("crypto/rand");
+            imports.insert("encoding/base64");
+            imports.insert("encoding/hex");
         }
         expr if is_node_path_sep_expr(expr) => {
             imports.insert("os");
@@ -1595,6 +1605,22 @@ func tsgodownQuerystringParse(value string) map[string]any {
 		out[base+3] = byte(value)
 	}
 	return hex.EncodeToString(out)
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("crypto/rand") && imports.contains("encoding/hex") {
+        helpers.push(
+            r#"func tsgodownCryptoRandomUUID() string {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return ""
+	}
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	text := hex.EncodeToString(bytes)
+	return text[0:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:32]
 }
 "#
             .to_string(),
@@ -2554,6 +2580,8 @@ fn collect_module_slots(
         ) else {
             continue;
         };
+        let mut dynamic_object_writes = BTreeSet::new();
+        collect_dynamic_object_candidates(&executable.stmts, &mut dynamic_object_writes);
         mark_any_array_locals(&executable.stmts, &mut state);
         for stmt in &executable.stmts {
             let JsStmt::VarDecl {
@@ -2563,14 +2591,21 @@ fn collect_module_slots(
             else {
                 continue;
             };
+            if dynamic_object_writes.contains(name) {
+                continue;
+            }
             let rendered_any_array = state
                 .any_array_bindings
                 .contains(name)
                 .then(|| render_any_array_expr(init, &state))
                 .flatten()
-                .map(|rendered| (AotSlotKind::AnyArray, rendered, "[]any"));
-            let Some((kind, rendered, go_type)) =
-                rendered_any_array.or_else(|| render_typed_slot_expr(init, &state))
+                .map(|rendered| (AotSlotKind::AnyArray, rendered, Some("[]any"), None));
+            let rendered_typed = render_typed_slot_expr(init, &state)
+                .map(|(kind, rendered, go_type)| (kind, rendered, Some(go_type), None));
+            let rendered_object = render_object_literal(init, &state)
+                .map(|(rendered, object)| (AotSlotKind::Any, rendered, None, Some(object)));
+            let Some((kind, rendered, go_type, object)) =
+                rendered_any_array.or(rendered_typed).or(rendered_object)
             else {
                 continue;
             };
@@ -2582,6 +2617,7 @@ fn collect_module_slots(
                     go_name: go_name.clone(),
                     go_type,
                     rendered,
+                    object,
                 },
             );
             state.bind_slot(name, go_name, kind);
@@ -2643,10 +2679,13 @@ fn render_module_decls(
                 let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) else {
                     continue;
                 };
-                declarations.push(format!(
-                    "var {} {} = {}",
-                    slot.go_name, slot.go_type, slot.rendered
-                ));
+                let declaration = match slot.go_type {
+                    Some(go_type) => {
+                        format!("var {} {} = {}", slot.go_name, go_type, slot.rendered)
+                    }
+                    None => format!("var {} = {}", slot.go_name, slot.rendered),
+                };
+                declarations.push(declaration);
             }
         }
         for stmt in &module.executable.as_ref()?.stmts {
@@ -2683,6 +2722,9 @@ fn module_aot_state(
         if let JsStmt::VarDecl { name, .. } = stmt {
             if let Some(slot) = context.slots.get(&(module.id.clone(), name.clone())) {
                 state.bind_slot(name, slot.go_name.clone(), slot.kind);
+                if let Some(object) = &slot.object {
+                    state.object_bindings.insert(name.clone(), object.clone());
+                }
             }
         }
         if let JsStmt::ClassDecl { name, .. } = stmt {
@@ -2755,6 +2797,11 @@ fn module_aot_state(
                     .get(&(imported_module.id.clone(), local.clone()))
                 {
                     state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
+                    if let Some(object) = &slot.object {
+                        state
+                            .object_bindings
+                            .insert(binding.local.clone(), object.clone());
+                    }
                     continue;
                 }
             }
@@ -2778,6 +2825,11 @@ fn module_aot_state(
                 .slots
                 .get(&(imported_module.id.clone(), imported.to_string()))?;
             state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
+            if let Some(object) = &slot.object {
+                state
+                    .object_bindings
+                    .insert(binding.local.clone(), object.clone());
+            }
         }
     }
     Some(state)
@@ -3038,8 +3090,9 @@ struct AotMethod {
 struct AotModuleSlot {
     kind: AotSlotKind,
     go_name: String,
-    go_type: &'static str,
+    go_type: Option<&'static str>,
     rendered: String,
+    object: Option<AotObject>,
 }
 
 #[derive(Clone)]
@@ -3216,7 +3269,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
                     return Some(format!("var {ident} []byte = {value}"));
                 }
-                if let Some(value) = render_string_function_expr(expr) {
+                if let Some(value) = render_string_function_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringFunction);
                     return Some(format!("var {ident} func() string = {value}"));
                 }
@@ -5796,7 +5849,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_exec_path_expr(expr) => Some("tsgodownProcessExecPath()".to_string()),
         expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
         expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
-        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
+        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr, state),
         expr if is_process_stdio_ref(expr).is_some() => render_process_stdio_expr(expr),
         expr if is_process_function_ref(expr).is_some() => render_process_function_ref(expr),
         JsExpr::Member {
@@ -6420,6 +6473,18 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some("\"boolean\"".to_string())
         }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(
+            static_member_kind(object, property, state),
+            Some(AotSlotKind::BoolFunction | AotSlotKind::StringFunction)
+        ) =>
+        {
+            Some("\"function\"".to_string())
+        }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             let value = go_binding_ref(name, state);
             Some(format!(
@@ -6764,6 +6829,20 @@ fn is_crypto_random_fill_sync_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bo
             ))
 }
 
+fn is_crypto_random_uuid_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && (matches!(callee, JsExpr::Ident { name } if name == "randomUUID")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    property,
+                    property_expr: None,
+                    optional: false,
+                    ..
+                } if property == "randomUUID"
+            ))
+}
+
 fn is_crypto_random_fill_sync_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
     if !is_crypto_random_fill_sync_call_shape(callee, args) {
         return false;
@@ -6772,6 +6851,24 @@ fn is_crypto_random_fill_sync_call(callee: &JsExpr, args: &[JsExpr], state: &Aot
         JsExpr::Ident { name } => state.builtin_bindings.contains(name),
         JsExpr::Member { object, .. } => {
             matches!(object.as_ref(), JsExpr::Ident { name } if state.builtin_bindings.contains(name))
+        }
+        _ => false,
+    }
+}
+
+fn is_crypto_random_uuid_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if !is_crypto_random_uuid_call_shape(callee, args) {
+        return false;
+    }
+    match callee {
+        JsExpr::Ident { name } => state.builtin_bindings.contains(name),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "randomUUID" => {
+            matches!(object.as_ref(), JsExpr::Ident { name } if name == "crypto" && state.builtin_bindings.contains(name))
         }
         _ => false,
     }
@@ -6840,7 +6937,7 @@ fn render_typed_slot_expr(
     if let Some(value) = render_bool_function_expr(expr, state) {
         return Some((AotSlotKind::BoolFunction, value, "func() bool"));
     }
-    if let Some(value) = render_string_function_expr(expr) {
+    if let Some(value) = render_string_function_expr(expr, state) {
         return Some((AotSlotKind::StringFunction, value, "func() string"));
     }
     None
@@ -6857,7 +6954,7 @@ fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) 
     };
     Some(format!(
         "{}.{}",
-        sanitize_go_identifier(name),
+        go_binding_ref(name, state),
         sanitize_go_identifier(property)
     ))
 }
@@ -9401,11 +9498,28 @@ fn render_bool_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> 
     }
 }
 
-fn render_string_function_expr(expr: &JsExpr) -> Option<String> {
+fn render_string_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if is_process_cwd_ref(expr) {
         return Some("tsgodownProcessCwd".to_string());
     }
+    if is_crypto_random_uuid_ref(expr, state) {
+        return Some("tsgodownCryptoRandomUUID".to_string());
+    }
     None
+}
+
+fn is_crypto_random_uuid_ref(expr: &JsExpr, state: &AotState) -> bool {
+    matches!(expr, JsExpr::Ident { name } if name == "randomUUID" && state.builtin_bindings.contains(name))
+        || matches!(
+            expr,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "randomUUID"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "crypto" && state.builtin_bindings.contains(name))
+        )
 }
 
 fn is_process_version_expr(expr: &JsExpr) -> bool {
@@ -9591,6 +9705,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         let path = render_string_expr(args.first()?, state)?;
         return Some(format!("tsgodownProcessChdir({path})"));
     }
+    if is_crypto_random_uuid_call(callee, args, state) {
+        return Some("tsgodownCryptoRandomUUID()".to_string());
+    }
     if let JsExpr::Member {
         object,
         property,
@@ -9765,7 +9882,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::String => render_string_expr(expr, state),
         AotSlotKind::StringArray => render_string_array_expr(expr, state),
         AotSlotKind::BoolFunction => render_bool_function_expr(expr, state),
-        AotSlotKind::StringFunction => render_string_function_expr(expr),
+        AotSlotKind::StringFunction => render_string_function_expr(expr, state),
     }
 }
 
@@ -9856,7 +9973,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
         expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
         expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
-        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
+        expr if is_process_cwd_ref(expr) => render_string_function_expr(expr, state),
         JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
         JsExpr::Member {
             object,
