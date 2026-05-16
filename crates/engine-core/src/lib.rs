@@ -3818,6 +3818,77 @@ console.log("compare", matchText("go"), matchText("ts"), matchBool(true), matchB
     }
 
     #[test]
+    fn emit_go_runs_aot_number_static_properties_subset() {
+        let root = temp_project("engine-core-aot-number-static-properties");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const max = Number.MAX_SAFE_INTEGER
+const min = Number.MIN_SAFE_INTEGER
+const fallback = Number.MAX_SAFE_INTEGER || 42
+const zeroFallback = 0 || 42
+const span = max - min
+console.log("number-static", max > 9000, min < 0, span === 18014398509481982, fallback === max, zeroFallback === 42)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-number-static-properties".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics: {:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "number-static true true true true true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_string_method_subset() {
         let root = temp_project("engine-core-aot-string-methods");
         write(

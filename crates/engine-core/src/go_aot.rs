@@ -5788,6 +5788,14 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
+        } if render_number_static_member_expr(object, property).is_some() => {
+            render_number_static_member_expr(object, property)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
         } if static_member_kind(object, property, state) == Some(AotSlotKind::Number) => {
             render_static_member_expr(object, property, state)
         }
@@ -5860,6 +5868,13 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
+        }
+        JsExpr::Binary { op, left, right } if op == "||" => {
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            Some(format!(
+                "func() float64 {{ if tsgodownToBool({left}) {{ return {left} }}; return {right} }}()"
+            ))
         }
         JsExpr::Conditional {
             test,
@@ -6262,6 +6277,22 @@ fn render_comparison_expr(
         }
     }
     None
+}
+
+fn render_number_static_member_expr(object: &JsExpr, property: &str) -> Option<String> {
+    if !matches!(object, JsExpr::Ident { name } if name == "Number") {
+        return None;
+    }
+    match property {
+        "MAX_SAFE_INTEGER" => Some("9007199254740991".to_string()),
+        "MIN_SAFE_INTEGER" => Some("-9007199254740991".to_string()),
+        "MAX_VALUE" => Some("1.7976931348623157e+308".to_string()),
+        "MIN_VALUE" => Some("5e-324".to_string()),
+        "EPSILON" => Some("2.220446049250313e-16".to_string()),
+        "NaN" => None,
+        "POSITIVE_INFINITY" | "NEGATIVE_INFINITY" => None,
+        _ => None,
+    }
 }
 
 fn render_mixed_number_string_equality_expr(
