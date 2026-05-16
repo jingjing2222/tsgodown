@@ -1460,6 +1460,22 @@ func tsgodownStringArrayFind(values []string, predicate func(any, float64) bool,
 	return nil
 }
 
+func tsgodownAnyArrayReduce(values []any, reducer func(any, any, float64) any, initial any) any {
+	accumulator := initial
+	for index, value := range values {
+		accumulator = reducer(accumulator, value, float64(index))
+	}
+	return accumulator
+}
+
+func tsgodownStringArrayReduce(values []string, reducer func(any, any, float64) any, initial any) any {
+	accumulator := initial
+	for index, value := range values {
+		accumulator = reducer(accumulator, value, float64(index))
+	}
+	return accumulator
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -9689,6 +9705,87 @@ fn render_array_find_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) ->
     ))
 }
 
+fn is_array_reduce_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 2
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "reduce"
+        )
+}
+
+fn render_array_reduce_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_array_reduce_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let reducer = render_array_reducer_expr(args.first()?, state)?;
+    let initial =
+        render_json_value_expr(args.get(1)?, state).or_else(|| render_expr(args.get(1)?, state))?;
+    if let Some(values) = render_any_array_expr(object, state) {
+        return Some(format!(
+            "tsgodownAnyArrayReduce({values}, {reducer}, {initial})"
+        ));
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!(
+        "tsgodownStringArrayReduce({values}, {reducer}, {initial})"
+    ))
+}
+
+fn render_array_reducer_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if !(2..=3).contains(&params.len()) {
+        return None;
+    }
+    let mut reducer_state = clone_aot_state(state);
+    reducer_state.bind_slot(
+        params.first()?,
+        sanitize_go_identifier(params.first()?),
+        AotSlotKind::Any,
+    );
+    reducer_state.bind_slot(
+        params.get(1)?,
+        sanitize_go_identifier(params.get(1)?),
+        AotSlotKind::Any,
+    );
+    if let Some(param) = params.get(2) {
+        reducer_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
+    }
+    let body = render_function_body(body, &reducer_state)?;
+    let body = if body.trim_end().ends_with("return nil") || body.contains("return ") {
+        body
+    } else {
+        format!("{body}\nreturn nil")
+    };
+    let accumulator_param = sanitize_go_identifier(params.first()?);
+    let value_param = sanitize_go_identifier(params.get(1)?);
+    let index_param = params
+        .get(2)
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    Some(format!(
+        "func({accumulator_param} any, {value_param} any, {index_param} float64) any {{\n{}\n}}",
+        indent_lines(&body)
+    ))
+}
+
 fn is_array_predicate_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
@@ -13548,6 +13645,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return Some(value);
     }
     if let Some(value) = render_array_at_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_array_reduce_call(callee, args, state) {
         return Some(value);
     }
     if is_json_stringify(callee) {
