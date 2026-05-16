@@ -58,6 +58,8 @@ pub(crate) fn render_aot_executable_program(
     )?;
     state.go_imports = collect_aot_imports(&analyzed.ir);
     mark_dynamic_object_locals(&module.executable.as_ref()?.stmts, &mut state);
+    mark_string_array_locals(&module.executable.as_ref()?.stmts, &mut state);
+    mark_any_array_locals(&module.executable.as_ref()?.stmts, &mut state);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
         if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
@@ -166,6 +168,8 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
         if let Some(state) = state.as_ref() {
             let mut render_state = clone_aot_state(state);
             mark_dynamic_object_locals(&executable.stmts, &mut render_state);
+            mark_string_array_locals(&executable.stmts, &mut render_state);
+            mark_any_array_locals(&executable.stmts, &mut render_state);
             for stmt in &executable.stmts {
                 if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
                     || is_function_binding_stmt(stmt)
@@ -1174,6 +1178,18 @@ func tsgodownAnyArrayAt(values []any, index float64) any {
 		return nil
 	}
 	return values[offset]
+}
+
+func tsgodownAnyArraySet(values []any, index float64, value any) []any {
+	offset := int(index)
+	if offset < 0 {
+		return values
+	}
+	for len(values) <= offset {
+		values = append(values, nil)
+	}
+	values[offset] = value
+	return values
 }
 
 func tsgodownArrayAt(value any, index float64) any {
@@ -3334,6 +3350,34 @@ fn cjs_named_export_property(expr: &JsExpr) -> Option<String> {
     }
 }
 
+fn is_exports_module_exports_alias_assignment(expr: &JsExpr) -> bool {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return false;
+    };
+    if op != "=" || !matches!(left.as_ref(), JsExpr::Ident { name } if name == "exports") {
+        return false;
+    }
+    let JsExpr::Assign {
+        op: right_op,
+        left: right_left,
+        ..
+    } = right.as_ref()
+    else {
+        return false;
+    };
+    right_op == "=" && is_module_exports_member(right_left)
+}
+
+fn cjs_export_alias_assignment_value(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return None;
+    };
+    if op != "=" || cjs_named_export_property(left).is_none() {
+        return None;
+    }
+    Some(right)
+}
+
 fn this_member_property(expr: &JsExpr) -> Option<String> {
     let JsExpr::Member {
         object,
@@ -3730,6 +3774,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     return Some(format!("var {ident} any = {value}"));
+                }
+                if let Some(value) = render_cjs_export_alias_var_decl(name, expr, state) {
+                    return Some(value);
                 }
                 if let Some((value, object)) = render_object_literal(expr, state) {
                     state.bindings.insert(name.clone());
@@ -5181,13 +5228,16 @@ fn collect_call_initialized_bindings(stmts: &[JsStmt], candidates: &mut BTreeSet
 fn dynamic_object_assignment_target(expr: &JsExpr) -> Option<&str> {
     let JsExpr::Member {
         object,
+        property,
         property_expr: None,
         optional: false,
-        ..
     } = expr
     else {
         return None;
     };
+    if property.parse::<usize>().is_ok() {
+        return None;
+    }
     let JsExpr::Ident { name } = object.as_ref() else {
         return None;
     };
@@ -6046,6 +6096,9 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             Some(String::new())
         }
+        JsExpr::Assign { .. } if is_exports_module_exports_alias_assignment(expr) => {
+            Some(String::new())
+        }
         JsExpr::Assign { op, left, right }
             if render_function_static_member_assignment_stmt(op, left, right, state).is_some() =>
         {
@@ -6060,6 +6113,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_number_array_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_number_array_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Assign { op, left, right }
+            if render_any_array_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_any_array_assignment_stmt(op, left, right, state)
         }
         JsExpr::Assign { op, left, right }
             if render_bytes_assignment_stmt(op, left, right, state).is_some() =>
@@ -6215,6 +6273,34 @@ fn render_assignment_stmt(
     }
 }
 
+fn render_cjs_export_alias_var_decl(
+    name: &str,
+    expr: &JsExpr,
+    state: &mut AotState,
+) -> Option<String> {
+    let init = cjs_export_alias_assignment_value(expr)?;
+    let ident = sanitize_go_identifier(name);
+    if state.string_array_bindings.contains(name) {
+        let value = render_string_array_expr(init, state)?;
+        state.bind_slot(name, ident.clone(), AotSlotKind::StringArray);
+        return Some(format!("var {ident} []string = {value}"));
+    }
+    if state.dynamic_object_bindings.contains(name) {
+        let value = render_dynamic_object_init_expr(init, state)?;
+        state.bindings.insert(name.to_string());
+        state.binding_refs.insert(name.to_string(), ident.clone());
+        return Some(format!("var {ident} map[string]any = {value}"));
+    }
+    if matches!(init, JsExpr::Array { items } if items.is_empty()) {
+        state.bind_slot(name, ident.clone(), AotSlotKind::AnyArray);
+        return Some(format!("var {ident} []any = []any{{}}"));
+    }
+    let value = render_json_value_expr(init, state)?;
+    state.bindings.insert(name.to_string());
+    state.binding_refs.insert(name.to_string(), ident.clone());
+    Some(format!("var {ident} any = {value}"))
+}
+
 fn render_numeric_assignment_expr(
     op: &str,
     left: &JsExpr,
@@ -6277,6 +6363,44 @@ fn render_string_array_assignment_stmt(
         )),
         _ => None,
     }
+}
+
+fn render_any_array_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = left
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.any_array_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
+    let value = render_any_array_value_expr(right, state)?;
+    Some(format!(
+        "{target} = tsgodownAnyArraySet({target}, {index}, {value})"
+    ))
+}
+
+fn render_any_array_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_json_value_expr(expr, state)
+        .or_else(|| render_regexp_expr(expr, state).map(|value| format!("any({value})")))
+        .or_else(|| render_expr(expr, state))
 }
 
 fn render_function_static_member_assignment_stmt(
@@ -7663,6 +7787,13 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
             Some(go_binding_ref(name, state))
         }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
+            if state.number_array_bindings.contains(name)
+                || state.string_array_bindings.contains(name)
+                || state.any_array_bindings.contains(name)
+                || state.bytes_bindings.contains(name)
+            {
+                return None;
+            }
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownObjectFromAny({value})"))
         }
