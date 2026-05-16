@@ -2317,6 +2317,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    number_closure_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
     dynamic_object_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
@@ -2374,6 +2375,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
@@ -2542,6 +2544,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringArray);
                     return Some(format!("var {ident} []string = {value}"));
                 }
+                if let Some(value) = render_number_closure_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.number_closure_bindings.insert(name.clone());
+                    return Some(format!("var {ident} func(float64) any = {value}"));
+                }
                 if let Some(value) = render_any_array_expr(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -2635,6 +2643,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => render_try_finally_stmt(body, catch_body, finally_body, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
@@ -2662,6 +2676,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
@@ -2693,6 +2708,33 @@ fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option
     let test = render_bool_expr(test, &loop_state)?;
     let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
     Some(format!("for {test} {{\n{body}\n}}"))
+}
+
+fn render_try_finally_stmt(
+    body: &[JsStmt],
+    catch_body: &[JsStmt],
+    finally_body: &[JsStmt],
+    state: &mut AotState,
+) -> Option<String> {
+    if !catch_body.is_empty() {
+        return None;
+    }
+    let mut rendered = Vec::new();
+    if !body.is_empty() {
+        rendered.push(render_stmt_sequence(body, state)?);
+    }
+    if !finally_body.is_empty() {
+        rendered.push(render_stmt_sequence(finally_body, state)?);
+    }
+    Some(rendered.join("\n"))
+}
+
+fn render_stmt_sequence(stmts: &[JsStmt], state: &mut AotState) -> Option<String> {
+    stmts
+        .iter()
+        .map(|stmt| render_stmt(stmt, state))
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
 }
 
 fn render_for_init(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
@@ -2772,6 +2814,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
@@ -2799,6 +2842,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
@@ -3251,6 +3295,9 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
     if function.rest_param.is_some() || function.r#async || function.generator {
         return None;
     }
+    if let Some(rendered) = render_number_closure_function_decl(function) {
+        return Some(rendered);
+    }
     let mut function_state = AotState {
         functions: state.functions.clone(),
         classes: state.classes.clone(),
@@ -3285,6 +3332,75 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         function.go_name,
         indent_lines(&function_body)
     ))
+}
+
+fn render_number_closure_function_decl(function: &AotFunction) -> Option<String> {
+    let value = render_number_closure_function_value(function)?;
+    let function_name = &function.go_name;
+    Some(format!(
+        "func {function_name}{}",
+        value.trim_start_matches("func")
+    ))
+}
+
+fn render_number_closure_function_value(function: &AotFunction) -> Option<String> {
+    if function.params.len() != 1 {
+        return None;
+    }
+    let [JsStmt::VarDecl {
+        name: captured,
+        init: Some(init),
+    }, JsStmt::Return {
+        value:
+            Some(JsExpr::Function {
+                params,
+                rest_param: None,
+                r#async: false,
+                generator: false,
+                body,
+                ..
+            }),
+    }] = function.body.as_slice()
+    else {
+        return None;
+    };
+    if params.len() != 1 {
+        return None;
+    }
+    let seed_param = function.params.first()?;
+    let init = match init {
+        JsExpr::Ident { name } if name == seed_param => sanitize_go_identifier(seed_param),
+        JsExpr::Value {
+            value: JsValue::Number { value },
+        } => number_literal(value)?,
+        _ => return None,
+    };
+    let delta_param = params.first()?;
+    let [JsStmt::Expr {
+        expr: JsExpr::Assign { op, left, right },
+    }, JsStmt::Return {
+        value: Some(returned),
+    }] = body.as_slice()
+    else {
+        return None;
+    };
+    if op != "+="
+        || !matches!(left.as_ref(), JsExpr::Ident { name } if name == captured)
+        || !matches!(right.as_ref(), JsExpr::Ident { name } if name == delta_param)
+        || !matches!(returned, JsExpr::Ident { name } if name == captured)
+    {
+        return None;
+    }
+    let seed = sanitize_go_identifier(seed_param);
+    let captured = sanitize_go_identifier(captured);
+    let delta = sanitize_go_identifier(delta_param);
+    Some(format!(
+        "func({seed} float64) any {{\n\t{captured} := {init}\n\treturn func({delta} float64) any {{\n\t\t{captured} += {delta}\n\t\treturn {captured}\n\t}}\n}}"
+    ))
+}
+
+fn function_returns_number_closure(function: &AotFunction) -> bool {
+    render_number_closure_function_decl(function).is_some()
 }
 
 fn aot_function_state(function: &AotFunction, state: &AotState) -> AotState {
@@ -3349,6 +3465,24 @@ fn function_parts(stmt: &JsStmt) -> Option<AotFunctionParts<'_>> {
         }),
         _ => None,
     }
+}
+
+fn aot_function_from_stmt(stmt: &JsStmt, name: &str) -> Option<AotFunction> {
+    let parts = function_parts(stmt)?;
+    Some(AotFunction {
+        params: parts.params.clone(),
+        param_kinds: infer_function_param_kinds(parts.params, parts.body),
+        rest_param: parts.rest_param.clone(),
+        r#async: *parts.r#async,
+        generator: *parts.generator,
+        body: parts.body.clone(),
+        go_name: sanitize_go_identifier(name),
+    })
+}
+
+fn render_local_function_decl(function: &AotFunction) -> Option<String> {
+    let value = render_number_closure_function_value(function)?;
+    Some(format!("{} := {value}", function.go_name))
 }
 
 fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>> {
@@ -3457,6 +3591,16 @@ fn collect_any_array_candidates(stmts: &[JsStmt], candidates: &mut BTreeSet<Stri
                 collect_any_array_candidates_expr(test, candidates);
                 collect_any_array_candidates(body, candidates);
             }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_any_array_candidates(body, candidates);
+                collect_any_array_candidates(catch_body, candidates);
+                collect_any_array_candidates(finally_body, candidates);
+            }
             _ => {}
         }
     }
@@ -3499,6 +3643,9 @@ fn collect_any_array_candidates_expr(expr: &JsExpr, candidates: &mut BTreeSet<St
             for prop in props {
                 collect_any_array_candidates_expr(&prop.value, candidates);
             }
+        }
+        JsExpr::Function { body, .. } => {
+            collect_any_array_candidates(body, candidates);
         }
         JsExpr::Conditional {
             test,
@@ -3815,6 +3962,12 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => render_try_finally_stmt(body, catch_body, finally_body, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
@@ -3937,6 +4090,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
     match expr {
+        JsExpr::Await { arg } => render_await_promise_then_stmt(arg, state),
         JsExpr::Call { callee, args, .. } if is_console_log(callee) => {
             let args = args
                 .iter()
@@ -3985,6 +4139,70 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_await_promise_then_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "then" || !is_promise_resolve_call(object) {
+        return None;
+    }
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = args.first()?
+    else {
+        return None;
+    };
+    if !params.is_empty() {
+        return None;
+    }
+    render_promise_then_body(body, state)
+}
+
+fn is_promise_resolve_call(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Call { callee, .. }
+            if matches!(
+                callee.as_ref(),
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Promise")
+                    && property == "resolve"
+            )
+    )
+}
+
+fn render_promise_then_body(body: &[JsStmt], state: &mut AotState) -> Option<String> {
+    body.iter()
+        .map(|stmt| match stmt {
+            JsStmt::Return { value: Some(expr) } => render_expr_stmt(expr, state),
+            JsStmt::Return { value: None } => Some(String::new()),
+            stmt => render_stmt(stmt, state),
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
 }
 
 fn render_assignment_stmt(
@@ -4344,7 +4562,13 @@ fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut rendered = Vec::new();
     for stmt in body {
         match stmt {
-            JsStmt::FunctionDecl { .. } | JsStmt::Break { .. } | JsStmt::Continue { .. } => {
+            JsStmt::FunctionDecl { name, .. } => {
+                let function = aot_function_from_stmt(stmt, name)?;
+                let rendered_function = render_local_function_decl(&function)?;
+                block_state.functions.insert(name.clone(), function);
+                rendered.push(rendered_function);
+            }
+            JsStmt::Break { .. } | JsStmt::Continue { .. } => {
                 return None;
             }
             JsStmt::ClassDecl { name, .. } if block_state.classes.contains_key(name) => {}
@@ -4845,34 +5069,60 @@ fn render_comparison_expr(
     right: &JsExpr,
     state: &AotState,
 ) -> Option<String> {
-    let op = go_comparison_op(op)?;
-    if let Some(value) = render_nullish_comparison_expr(op, left, right, state) {
+    let go_op = go_comparison_op(op)?;
+    if let Some(value) = render_nullish_comparison_expr(go_op, left, right, state) {
         return Some(value);
     }
-    if let Some(value) = render_any_equality_expr(op, left, right, state) {
+    if let Some(value) = render_any_equality_expr(go_op, left, right, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_mixed_number_string_equality_expr(op, left, right, state) {
         return Some(value);
     }
     if let (Some(left), Some(right)) = (
         render_numeric_expr(left, state),
         render_numeric_expr(right, state),
     ) {
-        return Some(format!("({left} {op} {right})"));
+        return Some(format!("({left} {go_op} {right})"));
     }
     if let (Some(left), Some(right)) = (
         render_string_expr(left, state),
         render_string_expr(right, state),
     ) {
-        return Some(format!("({left} {op} {right})"));
+        return Some(format!("({left} {go_op} {right})"));
     }
-    if matches!(op, "==" | "!=") {
+    if matches!(go_op, "==" | "!=") {
         if let (Some(left), Some(right)) = (
             render_bool_expr(left, state),
             render_bool_expr(right, state),
         ) {
-            return Some(format!("({left} {op} {right})"));
+            return Some(format!("({left} {go_op} {right})"));
         }
     }
     None
+}
+
+fn render_mixed_number_string_equality_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if !matches!(op, "==" | "!=" | "===" | "!==") {
+        return None;
+    }
+    let mixed = render_numeric_expr(left, state)
+        .zip(render_string_expr(right, state))
+        .or_else(|| render_numeric_expr(right, state).zip(render_string_expr(left, state)))?;
+    if matches!(op, "===" | "!==") {
+        return Some((op == "!==").to_string());
+    }
+    let comparison = format!("({} == tsgodownToFloat64({}))", mixed.0, mixed.1);
+    if op == "!=" {
+        Some(format!("(!{comparison})"))
+    } else {
+        Some(comparison)
+    }
 }
 
 fn render_any_equality_expr(
@@ -5191,6 +5441,26 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .map(|item| render_json_value_expr(item, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]any{{{}}}", items.join(", ")))
+        }
+        _ => None,
+    }
+}
+
+fn render_number_closure_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.number_closure_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Call { callee, args, .. } => {
+            let JsExpr::Ident { name } = callee.as_ref() else {
+                return None;
+            };
+            let function = state.functions.get(name)?;
+            if !function_returns_number_closure(function) {
+                return None;
+            }
+            let call = render_call_expr(callee, args, state)?;
+            Some(format!("({call}).(func(float64) any)"))
         }
         _ => None,
     }
@@ -6913,6 +7183,10 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     let JsExpr::Ident { name } = callee else {
         return None;
     };
+    if args.len() == 1 && state.number_closure_bindings.contains(name) {
+        let arg = render_numeric_expr(args.first()?, state)?;
+        return Some(format!("{}({arg})", go_binding_ref(name, state)));
+    }
     if args.is_empty() && state.string_function_bindings.contains(name) {
         return Some(format!("{}()", go_binding_ref(name, state)));
     }
@@ -7045,6 +7319,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
+        JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
+            render_bool_expr(expr, state)
+        }
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),

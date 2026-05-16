@@ -5109,6 +5109,98 @@ console.log("string-index-slice", dropEndingNewline("a\n"), dropEndingNewline("b
     }
 
     #[test]
+    fn emit_go_runs_aot_closure_try_finally_promise_then_subset() {
+        let root = temp_project("engine-core-aot-closure-try-finally-promise");
+        write(
+            &root,
+            "src/index.mjs",
+            r#"
+const value = await (async () => {
+  const log = []
+  const base = { value: 1, nested: { flag: false } }
+  const clone = { ...base, extra: [1, 2] }
+  class Box {
+    constructor(input) { this.input = input }
+    get doubled() { return this.input * 2 }
+  }
+  function closure(seed) {
+    let state = seed
+    return (delta) => { state += delta; return state }
+  }
+  const next = closure(1)
+  try {
+    log.push(["try", next(1)])
+  } finally {
+    log.push(["finally", new Box(1).doubled])
+  }
+  await Promise.resolve().then(() => log.push(["microtask", clone.extra.at(-1)]))
+  return {
+    value: clone.value,
+    flag: clone.nested.flag,
+    eq: 1 == "1",
+    strict: 1 === "1",
+    log
+  }
+})()
+console.log(JSON.stringify(value))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.mjs".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: legacy_ir_interpreter_config(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-closure-try-finally-promise".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("func(delta float64) any"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"eq\":true,\"flag\":false,\"log\":[[\"try\",2],[\"finally\",2],[\"microtask\",2]],\"strict\":false,\"value\":1}\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_tokenize_string_array_subset() {
         let root = temp_project("engine-core-aot-tokenize-string-array");
         write(
