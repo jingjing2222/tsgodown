@@ -1030,6 +1030,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_array_join_call(callee, args) {
                 imports.insert("strings");
             }
+            if string_method_alias_call_uses_regexp(callee, args) {
+                imports.insert("regexp");
+            }
             if string_method_name(callee).is_some() {
                 imports.insert("strconv");
             }
@@ -3205,6 +3208,21 @@ fn module_aot_state(
                 }
             }
         }
+        if let JsStmt::VarDecl {
+            name,
+            init: Some(expr),
+        } = stmt
+        {
+            if let Some(method) = string_prototype_method_alias(expr) {
+                state.bindings.insert(name.clone());
+                state
+                    .binding_refs
+                    .insert(name.clone(), sanitize_go_identifier(name));
+                state
+                    .string_method_aliases
+                    .insert(name.clone(), method.to_string());
+            }
+        }
         if let JsStmt::ClassDecl { name, .. } = stmt {
             let class = context.classes.get(&(module.id.clone(), name.clone()))?;
             state.classes.insert(name.clone(), class.clone());
@@ -3504,6 +3522,7 @@ struct AotState {
     event_emitter_bindings: BTreeSet<String>,
     number_closure_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
+    string_method_aliases: BTreeMap<String, String>,
     dynamic_object_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     class_instance_bindings: BTreeMap<String, String>,
@@ -3574,6 +3593,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        string_method_aliases: state.string_method_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -3730,6 +3750,14 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     }
                 }
                 if matches!(expr, JsExpr::Function { .. }) && state.functions.contains_key(name) {
+                    return Some(String::new());
+                }
+                if let Some(method) = string_prototype_method_alias(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state
+                        .string_method_aliases
+                        .insert(name.clone(), method.to_string());
                     return Some(String::new());
                 }
                 if is_local_function_namespace_object(name, expr, state) {
@@ -3965,6 +3993,7 @@ fn render_for_stmt(
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        string_method_aliases: state.string_method_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -4150,6 +4179,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        string_method_aliases: state.string_method_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -4184,6 +4214,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
+        string_method_aliases: state.string_method_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
@@ -4498,6 +4529,13 @@ fn infer_expr_param_kinds(
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
+        }
+        JsExpr::Call { callee, args, .. } if is_string_replace_alias_call_shape(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::String);
+            infer_expr_param_kinds(&args[0], param_index, kinds);
+            for arg in args.iter().skip(1) {
+                infer_expr_param_kinds(arg, param_index, kinds);
+            }
         }
         JsExpr::Call { callee, args, .. } if is_map_method_call_shape(callee, args) => {
             if matches!(
@@ -6765,6 +6803,36 @@ fn is_local_function_namespace_object(name: &str, expr: &JsExpr, state: &AotStat
             .any(|(namespace, _)| namespace == name)
 }
 
+fn string_prototype_method_alias(expr: &JsExpr) -> Option<&'static str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if property != "replace" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property: prototype,
+        property_expr: None,
+        optional: false,
+    } = object.as_ref()
+    else {
+        return None;
+    };
+    if prototype == "prototype"
+        && matches!(object.as_ref(), JsExpr::Ident { name } if name == "String")
+    {
+        return Some("replace");
+    }
+    None
+}
+
 fn is_node_builtin_spec(spec: &str) -> bool {
     let spec = spec.strip_prefix("node:").unwrap_or(spec);
     matches!(
@@ -7271,6 +7339,11 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_string_array_join_call(callee, args) => {
             render_string_array_join_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_method_alias_call(callee, args, state).is_some() =>
+        {
+            render_string_method_alias_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_node_path_string_call(callee, args, state)
             .or_else(|| render_node_os_homedir_call(callee, args, state))
@@ -9241,6 +9314,95 @@ fn render_string_array_join_call(
         .map(|expr| render_string_expr(expr, state))
         .unwrap_or_else(|| Some("\",\"".to_string()))?;
     Some(format!("strings.Join({values}, {separator})"))
+}
+
+fn render_string_method_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "call" {
+        return None;
+    }
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    match state.string_method_aliases.get(name)?.as_str() {
+        "replace" => render_string_replace_alias_call(args, state),
+        _ => None,
+    }
+}
+
+fn is_string_replace_alias_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 3
+        && matches!(
+            args.get(1),
+            Some(
+                JsExpr::Value {
+                    value: JsValue::String { .. },
+                } | JsExpr::Value {
+                    value: JsValue::RegExp { .. },
+                }
+            )
+        )
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "call" && matches!(object.as_ref(), JsExpr::Ident { .. })
+        )
+}
+
+fn string_method_alias_call_uses_regexp(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if !is_string_replace_alias_call_shape(callee, args)
+        || !matches!(
+            args.get(1),
+            Some(JsExpr::Value {
+                value: JsValue::RegExp { .. }
+            })
+        )
+    {
+        return false;
+    }
+    true
+}
+
+fn render_string_replace_alias_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    if args.len() != 3 {
+        return None;
+    }
+    let object = render_string_expr(args.first()?, state)?;
+    let replacement = render_string_expr(args.get(2)?, state)?;
+    match args.get(1)? {
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(format!(
+            "strings.Replace({object}, {}, {replacement}, 1)",
+            go_string_literal(value)
+        )),
+        JsExpr::Value {
+            value: JsValue::RegExp { .. },
+        } => {
+            let (pattern, global) = render_supported_regexp_replace_pattern(args.get(1)?)?;
+            Some(format!(
+                "tsgodownRegexpReplace({object}, {}, {replacement}, {global})",
+                go_string_literal(&pattern)
+            ))
+        }
+        _ => None,
+    }
 }
 
 fn is_string_array_slice_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
