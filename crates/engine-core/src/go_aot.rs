@@ -816,7 +816,15 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
         JsStmt::Expr { expr } => collect_expr_imports(expr, imports),
         JsStmt::VarDecl {
             init: Some(init), ..
-        } => collect_expr_imports(init, imports),
+        } => {
+            if matches!(
+                builtin_function_alias(init),
+                Some(AotBuiltinFunctionAlias::RegExpTest)
+            ) {
+                imports.insert("regexp");
+            }
+            collect_expr_imports(init, imports);
+        }
         JsStmt::VarDecl { init: None, .. } => {}
         JsStmt::Return { value: Some(expr) } | JsStmt::Throw { value: expr } => {
             collect_expr_imports(expr, imports)
@@ -1112,6 +1120,13 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         }
         expr if is_node_path_delimiter_expr(expr) => {
             imports.insert("runtime");
+        }
+        expr if matches!(
+            builtin_function_alias(expr),
+            Some(AotBuiltinFunctionAlias::RegExpTest)
+        ) =>
+        {
+            imports.insert("regexp");
         }
         JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
         _ => {}
@@ -3693,6 +3708,8 @@ enum AotBuiltinFunctionAlias {
     ArrayIsArray,
     ArrayPush,
     ObjectHasOwnProperty,
+    ObjectToString,
+    RegExpTest,
 }
 
 impl AotState {
@@ -4740,6 +4757,20 @@ fn infer_expr_param_kinds(
         JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_object_to_string_alias_call_in_context(callee, args, builtin_aliases) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_regexp_test_alias_call_in_context(callee, args, builtin_aliases) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::RegExp);
+            mark_ident_param_kind(&args[1], param_index, kinds, AotSlotKind::String);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. }
             if is_array_push_apply_call_in_context(callee, args, builtin_aliases) =>
@@ -6677,12 +6708,18 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_map_bool_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
+            if render_regexp_test_alias_call(callee, args, state).is_some() =>
+        {
+            render_regexp_test_alias_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
             if render_regexp_test_call(callee, args, state).is_some() =>
         {
             render_regexp_test_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
             .or_else(|| render_bool_function_call(callee, args, state))
+            .or_else(|| render_string_bool_method_alias_call(callee, args, state))
             .or_else(|| render_string_bool_method_call(callee, args, state))
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
@@ -7318,9 +7355,11 @@ fn string_prototype_method_alias(expr: &JsExpr) -> Option<&'static str> {
     else {
         return None;
     };
-    if property != "replace" {
-        return None;
-    }
+    let method = match property.as_str() {
+        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt"
+        | "charCodeAt" | "replace" | "slice" => property.as_str(),
+        _ => return None,
+    };
     let JsExpr::Member {
         object,
         property: prototype,
@@ -7333,7 +7372,18 @@ fn string_prototype_method_alias(expr: &JsExpr) -> Option<&'static str> {
     if prototype == "prototype"
         && matches!(object.as_ref(), JsExpr::Ident { name } if name == "String")
     {
-        return Some("replace");
+        return Some(match method {
+            "toLowerCase" => "toLowerCase",
+            "toUpperCase" => "toUpperCase",
+            "trim" => "trim",
+            "includes" => "includes",
+            "indexOf" => "indexOf",
+            "charAt" => "charAt",
+            "charCodeAt" => "charCodeAt",
+            "replace" => "replace",
+            "slice" => "slice",
+            _ => return None,
+        });
     }
     None
 }
@@ -7754,7 +7804,10 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 args.join(", ")
             ))
         }
-        JsExpr::Call { callee, args, .. } => render_string_numeric_method_call(callee, args, state),
+        JsExpr::Call { callee, args, .. } => {
+            render_string_numeric_method_alias_call(callee, args, state)
+                .or_else(|| render_string_numeric_method_call(callee, args, state))
+        }
         _ => None,
     }
 }
@@ -7848,6 +7901,16 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
             render_object_prototype_to_string_call(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_object_to_string_alias_call(callee, args, state) =>
+        {
+            render_object_prototype_to_string_call(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_method_alias_call(callee, args, state).is_some() =>
+        {
+            render_string_method_alias_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_string_array_join_call(callee, args, state).is_some() =>
@@ -9851,6 +9914,12 @@ fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
     if is_object_has_own_property_ref(expr) {
         return Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty);
     }
+    if is_object_prototype_to_string_ref(expr) {
+        return Some(AotBuiltinFunctionAlias::ObjectToString);
+    }
+    if is_regexp_prototype_test_ref(expr) {
+        return Some(AotBuiltinFunctionAlias::RegExpTest);
+    }
     None
 }
 
@@ -10117,6 +10186,52 @@ fn is_object_prototype_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool 
     property == "call" && is_object_prototype_to_string_ref(object)
 }
 
+fn is_object_to_string_alias_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if matches!(
+            state.builtin_function_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::ObjectToString)
+        ))
+}
+
+fn is_object_to_string_alias_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if matches!(
+            builtin_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::ObjectToString)
+        ))
+}
+
 fn is_object_prototype_to_string_ref(expr: &JsExpr) -> bool {
     matches!(
         expr,
@@ -10291,6 +10406,87 @@ fn render_string_method_alias_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
+    let (method, object) = string_method_alias_call_parts(callee, args, state)?;
+    match method.as_str() {
+        "toLowerCase" if args.len() == 1 => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("strings.ToLower({object})"))
+        }
+        "toUpperCase" if args.len() == 1 => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("strings.ToUpper({object})"))
+        }
+        "trim" if args.len() == 1 => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("strings.TrimSpace({object})"))
+        }
+        "slice" if matches!(args.len(), 2 | 3) => {
+            let object = render_string_expr(object, state)?;
+            let start = render_numeric_expr(args.get(1)?, state)?;
+            if let Some(end) = args.get(2) {
+                let end = render_numeric_expr(end, state)?;
+                return Some(format!("tsgodownStringSlice({object}, {start}, {end})"));
+            }
+            Some(format!("tsgodownStringSlice({object}, {start})"))
+        }
+        "charAt" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let index = render_numeric_expr(args.get(1)?, state)?;
+            Some(format!("tsgodownStringCharAt({object}, {index})"))
+        }
+        "replace" => render_string_replace_alias_call(args, state),
+        _ => None,
+    }
+}
+
+fn render_string_bool_method_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let (method, object) = string_method_alias_call_parts(callee, args, state)?;
+    match method.as_str() {
+        "includes" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            Some(format!("strings.Contains({object}, {needle})"))
+        }
+        _ => None,
+    }
+}
+
+fn render_string_numeric_method_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let (method, object) = string_method_alias_call_parts(callee, args, state)?;
+    match method.as_str() {
+        "indexOf" if matches!(args.len(), 2 | 3) => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            if let Some(start) = args.get(2) {
+                let start = render_numeric_expr(start, state)?;
+                return Some(format!(
+                    "func() float64 {{ value := {object}; offset := int({start}); if offset < 0 {{ offset = 0 }}; if offset > len(value) {{ offset = len(value) }}; found := strings.Index(value[offset:], {needle}); if found < 0 {{ return -1 }}; return float64(offset + found) }}()"
+                ));
+            }
+            Some(format!("float64(strings.Index({object}, {needle}))"))
+        }
+        "charCodeAt" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let index = render_numeric_expr(args.get(1)?, state)?;
+            Some(format!("tsgodownStringCharCodeAt({object}, {index})"))
+        }
+        _ => None,
+    }
+}
+
+fn string_method_alias_call_parts<'a>(
+    callee: &'a JsExpr,
+    args: &'a [JsExpr],
+    state: &AotState,
+) -> Option<(String, &'a JsExpr)> {
     let JsExpr::Member {
         object,
         property,
@@ -10306,10 +10502,9 @@ fn render_string_method_alias_call(
     let JsExpr::Ident { name } = object.as_ref() else {
         return None;
     };
-    match state.string_method_aliases.get(name)?.as_str() {
-        "replace" => render_string_replace_alias_call(args, state),
-        _ => None,
-    }
+    let method = state.string_method_aliases.get(name)?.clone();
+    let receiver = args.first()?;
+    Some((method, receiver))
 }
 
 fn is_string_replace_alias_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -10499,6 +10694,77 @@ fn is_regexp_test_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     )
 }
 
+fn is_regexp_prototype_test_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "test" && is_regexp_prototype_expr(object)
+    )
+}
+
+fn is_regexp_prototype_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "prototype"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "RegExp")
+    )
+}
+
+fn is_regexp_test_alias_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if matches!(
+            state.builtin_function_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::RegExpTest)
+        ))
+}
+
+fn is_regexp_test_alias_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if matches!(
+            builtin_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::RegExpTest)
+        ))
+}
+
 fn render_regexp_pattern_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if let Some(pattern) = render_supported_regexp_pattern(expr) {
         return Some(go_string_literal(&pattern));
@@ -10512,6 +10778,21 @@ fn render_regexp_pattern_expr(expr: &JsExpr, state: &AotState) -> Option<String>
         }
         _ => None,
     }
+}
+
+fn render_regexp_test_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_regexp_test_alias_call(callee, args, state) {
+        return None;
+    }
+    let pattern = render_regexp_pattern_expr(args.first()?, state)?;
+    let value = render_regexp_test_value_expr(args.get(1)?, state)?;
+    Some(format!(
+        "regexp.MustCompile({pattern}).MatchString({value})"
+    ))
 }
 
 fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -12140,6 +12421,21 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     }
     if is_object_has_own_property_call(callee, args, state) {
         return render_object_has_own_property_call(callee, args, state);
+    }
+    if let Some(value) = render_regexp_test_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_string_bool_method_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_string_numeric_method_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_string_method_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if is_object_to_string_alias_call(callee, args, state) {
+        return render_object_prototype_to_string_call(args.first()?, state);
     }
     if let Some(value) = render_any_array_push_call_expr(callee, args, state) {
         return Some(value);
