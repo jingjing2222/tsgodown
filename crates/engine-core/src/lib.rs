@@ -6551,6 +6551,88 @@ console.log("any-concat", combined.join("|"), prefixed.join("|"), scalar.join("|
     }
 
     #[test]
+    fn emit_go_runs_aot_object_prototype_to_string_subset() {
+        let root = temp_project("engine-core-aot-object-prototype-to-string");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function tag(value) {
+  return Object.prototype.toString.call(value)
+}
+function isString(value) {
+  return Object.prototype.toString.call(value) === "[object String]"
+}
+const values = [
+  Object.prototype.toString.call(/x/),
+  tag("x"),
+  tag(1),
+  tag(false),
+  tag(["a"]),
+  tag({ name: "kim" }),
+  isString("x"),
+  isString(1)
+]
+console.log("object-tag", values.join("|"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-object-prototype-to-string".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "object-tag [object RegExp]|[object String]|[object Number]|[object Boolean]|[object Array]|[object Object]|true|false\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_default_object_options_subset() {
         let root = temp_project("engine-core-aot-default-object-options");
         write(

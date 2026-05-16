@@ -1133,8 +1133,34 @@ fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
 }
 
 fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
-    let mut helpers = vec![
-        r#"func tsgodownStringArrayAt(values []string, index float64) string {
+    let mut helpers = vec![r#"type tsgodownRegExp string
+
+func tsgodownObjectToStringTag(value any) string {
+	switch value.(type) {
+	case nil:
+		return "[object Undefined]"
+	case tsgodownRegExp:
+		return "[object RegExp]"
+	case bool:
+		return "[object Boolean]"
+	case float64, int, int64:
+		return "[object Number]"
+	case string:
+		return "[object String]"
+	case []any, []string, []float64:
+		return "[object Array]"
+	case []byte:
+		return "[object Uint8Array]"
+	case map[string]any:
+		return "[object Object]"
+	case func() any, func(any) any, func(any, any) any:
+		return "[object Function]"
+	default:
+		return "[object Object]"
+	}
+}
+
+func tsgodownStringArrayAt(values []string, index float64) string {
 	offset := int(index)
 	if values == nil || offset < 0 || offset >= len(values) {
 		return ""
@@ -1511,8 +1537,7 @@ func tsgodownCall(value any, args ...any) any {
 	return nil
 }
 "#
-        .to_string(),
-    ];
+    .to_string()];
     if imports.contains("encoding/json") {
         helpers.push(
             r#"func tsgodownJSONStringify(value any) string {
@@ -4712,6 +4737,10 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
         }
+        JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
         JsExpr::Call { callee, args, .. }
             if is_array_push_apply_call_in_context(callee, args, builtin_aliases) =>
         {
@@ -7817,6 +7846,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             }
             Some(format!("tsgodownJSONStringify({value})"))
         }
+        JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
+            render_object_prototype_to_string_call(args.first()?, state)
+        }
         JsExpr::Call { callee, args, .. }
             if render_string_array_join_call(callee, args, state).is_some() =>
         {
@@ -10067,6 +10099,68 @@ fn render_object_has_own_property_call(
     }
     let object = render_expr(receiver, state)?;
     Some(format!("tsgodownObjectHasOwn({object}, {key})"))
+}
+
+fn is_object_prototype_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call" && is_object_prototype_to_string_ref(object)
+}
+
+fn is_object_prototype_to_string_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if is_object_prototype_expr(object) && property == "toString"
+    )
+}
+
+fn render_object_prototype_to_string_call(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::RegExp { .. },
+        } => Some(go_string_literal("[object RegExp]")),
+        JsExpr::Value {
+            value: JsValue::String { .. },
+        } => Some(go_string_literal("[object String]")),
+        JsExpr::Value {
+            value: JsValue::Number { .. },
+        } => Some(go_string_literal("[object Number]")),
+        JsExpr::Value {
+            value: JsValue::Bool { .. },
+        } => Some(go_string_literal("[object Boolean]")),
+        JsExpr::Value {
+            value: JsValue::Null,
+        } => Some(go_string_literal("[object Null]")),
+        JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some(go_string_literal("[object Undefined]")),
+        JsExpr::Ident { name } if name == "undefined" => {
+            Some(go_string_literal("[object Undefined]"))
+        }
+        JsExpr::Array { .. } => Some(go_string_literal("[object Array]")),
+        JsExpr::Ident { name } if state.regexp_bindings.contains(name) => {
+            Some(go_string_literal("[object RegExp]"))
+        }
+        _ => {
+            let value = render_json_value_expr(expr, state).or_else(|| render_expr(expr, state))?;
+            Some(format!("tsgodownObjectToStringTag({value})"))
+        }
+    }
 }
 
 fn is_array_map_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
