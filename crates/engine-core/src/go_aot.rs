@@ -680,6 +680,67 @@ fn require_call_spec(expr: &JsExpr) -> Option<&str> {
     Some(value)
 }
 
+fn awaited_dynamic_import_spec(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Await { arg } = expr else {
+        return None;
+    };
+    dynamic_import_call_spec(arg)
+}
+
+fn awaited_dynamic_import_default_spec(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if property != "default" {
+        return None;
+    }
+    awaited_dynamic_import_spec(object)
+}
+
+fn dynamic_import_namespace_member<'a>(
+    expr: &'a JsExpr,
+    state: &'a AotState,
+) -> Option<(&'a str, &'a str)> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    Some((
+        state.dynamic_import_namespaces.get(name)?.as_str(),
+        property,
+    ))
+}
+
+fn dynamic_import_call_spec(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !matches!(callee.as_ref(), JsExpr::Ident { name } if name == "import") {
+        return None;
+    }
+    let JsExpr::Value {
+        value: JsValue::String { value },
+    } = args.first()?
+    else {
+        return None;
+    };
+    Some(value)
+}
+
 fn node_builtin_spec_matches_binding(spec: &str, binding: &str) -> bool {
     let spec = spec.strip_prefix("node:").unwrap_or(spec);
     spec == binding || (binding == "path" && matches!(spec, "path/posix" | "path/win32"))
@@ -687,7 +748,17 @@ fn node_builtin_spec_matches_binding(spec: &str, binding: &str) -> bool {
 
 fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> bool {
     !shadowed.contains(name)
-        && matches!(name, "fs" | "path" | "os" | "crypto" | "Buffer" | "process")
+        && matches!(
+            name,
+            "fs" | "path"
+                | "os"
+                | "crypto"
+                | "Buffer"
+                | "URL"
+                | "EventEmitter"
+                | "querystring"
+                | "process"
+        )
 }
 
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
@@ -774,6 +845,9 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
 fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
     match expr {
         JsExpr::Call { callee, args, .. } => {
+            if is_json_parse_call(callee, args) {
+                imports.insert("encoding/json");
+            }
             if is_process_cwd_call(callee, args) {
                 imports.insert("os");
             }
@@ -825,10 +899,35 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 }
             }
             if is_node_path_string_call(callee, args) {
-                imports.insert("path/filepath");
+                if is_node_path_posix_call(callee) {
+                    imports.insert("path");
+                } else {
+                    imports.insert("path/filepath");
+                }
                 if is_node_path_basename_call(callee, args) {
                     imports.insert("strings");
                 }
+            }
+            if is_node_fs_mkdtemp_sync_call(callee, args)
+                || is_node_fs_write_file_sync_call(callee, args)
+                || is_node_fs_read_file_sync_call(callee, args)
+                || is_node_fs_rm_sync_call(callee, args)
+            {
+                imports.insert("os");
+                imports.insert("path/filepath");
+            }
+            if is_node_os_tmpdir_call(callee, args) {
+                imports.insert("os");
+            }
+            if is_querystring_parse_call(callee, args) {
+                imports.insert("net/url");
+                imports.insert("strings");
+            }
+            if is_crypto_sha256_hex_slice_call(callee) || is_crypto_sha256_hex_digest_call(callee) {
+                imports.insert("encoding/hex");
+            }
+            if is_url_search_params_get_call(callee, args) {
+                imports.insert("net/url");
             }
             if is_node_path_bool_call(callee, args) {
                 imports.insert("path/filepath");
@@ -855,6 +954,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("encoding/base64");
                 imports.insert("encoding/hex");
             }
+            if is_buffer_to_string_call(callee, args) {
+                imports.insert("encoding/base64");
+                imports.insert("encoding/hex");
+            }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
@@ -865,6 +968,14 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("strconv");
             }
             collect_expr_imports(callee, imports);
+            for arg in args {
+                collect_expr_imports(arg, imports);
+            }
+        }
+        JsExpr::New { callee, args } => {
+            if is_new_url_expr(callee, args) {
+                imports.insert("net/url");
+            }
             for arg in args {
                 collect_expr_imports(arg, imports);
             }
@@ -1264,6 +1375,14 @@ func tsgodownJSONStringifyIndent(value any, indent string) string {
 	}
 	return string(bytes)
 }
+
+func tsgodownJSONParseObject(value string) map[string]any {
+	var out map[string]any
+	if err := json.Unmarshal([]byte(value), &out); err != nil {
+		return map[string]any{}
+	}
+	return out
+}
 "#
             .to_string(),
         );
@@ -1295,10 +1414,219 @@ func tsgodownBufferIsBuffer(value any) bool {
 	_, ok := value.([]byte)
 	return ok
 }
+
+func tsgodownBytesToString(value []byte, encoding string) string {
+	switch encoding {
+	case "base64":
+		return base64.StdEncoding.EncodeToString(value)
+	case "hex":
+		return hex.EncodeToString(value)
+	default:
+		return string(value)
+	}
+}
 "#
             .to_string(),
         );
     }
+    if imports.contains("net/url") {
+        helpers.push(
+            r#"type tsgodownURL struct {
+	value *url.URL
+}
+
+func tsgodownNewURL(input string, base string) *tsgodownURL {
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return &tsgodownURL{value: &url.URL{}}
+	}
+	value, err := baseURL.Parse(input)
+	if err != nil {
+		return &tsgodownURL{value: &url.URL{}}
+	}
+	return &tsgodownURL{value: value}
+}
+
+func tsgodownURLPathname(value *tsgodownURL) string {
+	if value == nil || value.value == nil {
+		return ""
+	}
+	return value.value.Path
+}
+
+func tsgodownURLSearchParam(value *tsgodownURL, key string) string {
+	if value == nil || value.value == nil {
+		return ""
+	}
+	return value.value.Query().Get(key)
+}
+
+func tsgodownQuerystringParse(value string) map[string]any {
+	parsed, err := url.ParseQuery(value)
+	if err != nil {
+		return map[string]any{}
+	}
+	out := map[string]any{}
+	for key, values := range parsed {
+		if len(values) == 1 {
+			out[key] = values[0]
+			continue
+		}
+		items := make([]any, len(values))
+		for index, value := range values {
+			items[index] = value
+		}
+		out[key] = items
+	}
+	return out
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("encoding/hex") {
+        helpers.push(
+            r#"func tsgodownSHA256Hex(value string) string {
+	hashes := [8]uint32{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19}
+	rounds := [64]uint32{
+		0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+		0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+		0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+		0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+		0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+		0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+		0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+		0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+	}
+	rotateRight := func(value uint32, shift uint) uint32 {
+		return value>>shift | value<<(32-shift)
+	}
+	message := append([]byte(value), 0x80)
+	for (len(message)+8)%64 != 0 {
+		message = append(message, 0)
+	}
+	bitLength := uint64(len(value)) * 8
+	for shift := 56; shift >= 0; shift -= 8 {
+		message = append(message, byte(bitLength>>uint(shift)))
+		if shift == 0 {
+			break
+		}
+	}
+	for offset := 0; offset < len(message); offset += 64 {
+		chunk := message[offset : offset+64]
+		var words [64]uint32
+		for index := 0; index < 16; index++ {
+			base := index * 4
+			words[index] = uint32(chunk[base])<<24 | uint32(chunk[base+1])<<16 | uint32(chunk[base+2])<<8 | uint32(chunk[base+3])
+		}
+		for index := 16; index < 64; index++ {
+			s0 := rotateRight(words[index-15], 7) ^ rotateRight(words[index-15], 18) ^ (words[index-15] >> 3)
+			s1 := rotateRight(words[index-2], 17) ^ rotateRight(words[index-2], 19) ^ (words[index-2] >> 10)
+			words[index] = words[index-16] + s0 + words[index-7] + s1
+		}
+		a, b, c, d := hashes[0], hashes[1], hashes[2], hashes[3]
+		e, f, g, h := hashes[4], hashes[5], hashes[6], hashes[7]
+		for index := 0; index < 64; index++ {
+			s1 := rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25)
+			ch := (e & f) ^ (^e & g)
+			temp1 := h + s1 + ch + rounds[index] + words[index]
+			s0 := rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22)
+			maj := (a & b) ^ (a & c) ^ (b & c)
+			temp2 := s0 + maj
+			h, g, f, e = g, f, e, d+temp1
+			d, c, b, a = c, b, a, temp1+temp2
+		}
+		hashes[0] += a
+		hashes[1] += b
+		hashes[2] += c
+		hashes[3] += d
+		hashes[4] += e
+		hashes[5] += f
+		hashes[6] += g
+		hashes[7] += h
+	}
+	out := make([]byte, 32)
+	for index, value := range hashes {
+		base := index * 4
+		out[base] = byte(value >> 24)
+		out[base+1] = byte(value >> 16)
+		out[base+2] = byte(value >> 8)
+		out[base+3] = byte(value)
+	}
+	return hex.EncodeToString(out)
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("os") && imports.contains("path/filepath") {
+        helpers.push(
+            r#"func tsgodownFsMkdtempSync(prefix string) string {
+	dir := filepath.Dir(prefix)
+	pattern := filepath.Base(prefix)
+	if dir == "." {
+		dir = ""
+	}
+	value, err := os.MkdirTemp(dir, pattern)
+	if err != nil {
+		return ""
+	}
+	return value
+}
+
+func tsgodownFsWriteFileSync(path string, data string) {
+	_ = os.WriteFile(path, []byte(data), 0o666)
+}
+
+func tsgodownFsReadFileSync(path string, encoding string) string {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(bytes)
+}
+
+func tsgodownFsRmSync(path string) {
+	_ = os.RemoveAll(path)
+}
+
+func tsgodownOsTmpdir() string {
+	return os.TempDir()
+}
+"#
+            .to_string(),
+        );
+    }
+    helpers.push(
+        r#"type tsgodownEventEmitter struct {
+	listeners map[string][]func(any) any
+}
+
+func tsgodownNewEventEmitter() *tsgodownEventEmitter {
+	return &tsgodownEventEmitter{listeners: map[string][]func(any) any{}}
+}
+
+func tsgodownEventEmitterOn(target *tsgodownEventEmitter, name string, listener func(any) any) any {
+	if target == nil {
+		return nil
+	}
+	target.listeners[name] = append(target.listeners[name], listener)
+	return target
+}
+
+func tsgodownEventEmitterEmit(target *tsgodownEventEmitter, name string, payload any) bool {
+	if target == nil {
+		return false
+	}
+	listeners := target.listeners[name]
+	for _, listener := range listeners {
+		_ = listener(payload)
+	}
+	return len(listeners) > 0
+}
+"#
+        .to_string(),
+    );
     if imports.contains("strconv") {
         helpers.push(
             r#"func tsgodownToString(value any) string {
@@ -2459,6 +2787,8 @@ struct AotState {
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
     map_bindings: BTreeSet<String>,
+    url_bindings: BTreeSet<String>,
+    event_emitter_bindings: BTreeSet<String>,
     number_closure_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
     dynamic_object_bindings: BTreeSet<String>,
@@ -2470,6 +2800,7 @@ struct AotState {
     classes: BTreeMap<String, AotClass>,
     namespace_functions: BTreeMap<(String, String), AotFunction>,
     builtin_bindings: BTreeSet<String>,
+    dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
 }
 
@@ -2518,6 +2849,8 @@ fn clone_aot_state(state: &AotState) -> AotState {
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        url_bindings: state.url_bindings.clone(),
+        event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2529,6 +2862,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
     }
 }
@@ -2639,6 +2973,33 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::VarDecl { name, init } => {
             let ident = sanitize_go_identifier(name);
             if let Some(expr) = init {
+                if let Some(spec) = awaited_dynamic_import_spec(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state
+                        .dynamic_import_namespaces
+                        .insert(name.clone(), spec.to_string());
+                    if is_node_builtin_spec(spec) && !name.starts_with("__tsgodown_destructure_") {
+                        state.builtin_bindings.insert(name.clone());
+                    }
+                    return Some(String::new());
+                }
+                if let Some(spec) = awaited_dynamic_import_default_spec(expr) {
+                    if is_node_builtin_spec(spec) {
+                        state.bindings.insert(name.clone());
+                        state.binding_refs.insert(name.clone(), ident.clone());
+                        state.builtin_bindings.insert(name.clone());
+                        return Some(String::new());
+                    }
+                }
+                if let Some((spec, _property)) = dynamic_import_namespace_member(expr, state) {
+                    if is_node_builtin_spec(spec) {
+                        state.bindings.insert(name.clone());
+                        state.binding_refs.insert(name.clone(), ident.clone());
+                        state.builtin_bindings.insert(name.clone());
+                        return Some(String::new());
+                    }
+                }
                 if matches!(expr, JsExpr::Function { .. }) && state.functions.contains_key(name) {
                     return Some(String::new());
                 }
@@ -2704,6 +3065,18 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.map_bindings.insert(name.clone());
                     return Some(format!("var {ident} *tsgodownJSMap = {value}"));
+                }
+                if let Some(value) = render_url_new_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.url_bindings.insert(name.clone());
+                    return Some(format!("var {ident} *tsgodownURL = {value}"));
+                }
+                if let Some(value) = render_event_emitter_new_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.event_emitter_bindings.insert(name.clone());
+                    return Some(format!("var {ident} *tsgodownEventEmitter = {value}"));
                 }
                 if state.dynamic_object_bindings.contains(name) {
                     if let Some(value) = render_dynamic_object_init_expr(expr, state) {
@@ -2833,6 +3206,8 @@ fn render_for_stmt(
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        url_bindings: state.url_bindings.clone(),
+        event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2844,6 +3219,7 @@ fn render_for_stmt(
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
     };
     let init = init
@@ -2972,6 +3348,8 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        url_bindings: state.url_bindings.clone(),
+        event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2983,6 +3361,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
@@ -3001,6 +3380,8 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        url_bindings: state.url_bindings.clone(),
+        event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -3012,6 +3393,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
     };
     mark_number_array_locals(stmts, &mut block_state);
@@ -4748,6 +5130,16 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             render_number_array_call_stmt(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. }
+            if render_node_fs_write_file_sync_stmt(callee, args, state).is_some() =>
+        {
+            render_node_fs_write_file_sync_stmt(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_node_fs_rm_sync_stmt(callee, args, state).is_some() =>
+        {
+            render_node_fs_rm_sync_stmt(callee, args, state)
+        }
         JsExpr::Assign { op, left, right } => render_assignment_stmt(op, left, right, state),
         JsExpr::Update { op, arg, .. } => render_update_stmt(op, arg, state),
         JsExpr::Call { callee, args, .. } => {
@@ -5152,7 +5544,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
         }
-        JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
+        JsExpr::New { .. } => render_url_new_expr(expr, state)
+            .or_else(|| render_event_emitter_new_expr(expr, state))
+            .or_else(|| render_new_class_expr(expr, state).map(|(_, value)| value)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
         expr if is_process_arch_expr(expr) => Some("tsgodownProcessArch()".to_string()),
@@ -5491,11 +5885,24 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("tsgodownStringFromCharCode({})", args.join(", ")))
         }
+        JsExpr::Call { callee, args, .. } if is_json_stringify(callee) => {
+            let value = render_json_value_expr(args.first()?, state)?;
+            if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
+                return Some(format!("tsgodownJSONStringifyIndent({value}, {space})"));
+            }
+            Some(format!("tsgodownJSONStringify({value})"))
+        }
         JsExpr::Call { callee, args, .. } if is_string_array_join_call(callee, args) => {
             render_string_array_join_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_node_path_string_call(callee, args, state)
             .or_else(|| render_node_os_homedir_call(callee, args, state))
+            .or_else(|| render_node_os_tmpdir_call(callee, args, state))
+            .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
+            .or_else(|| render_node_fs_read_file_sync_call(callee, args, state))
+            .or_else(|| render_buffer_to_string_call(callee, args, state))
+            .or_else(|| render_url_search_params_get_call(callee, args, state))
+            .or_else(|| render_crypto_sha256_hex_call(callee, args, state))
             .or_else(|| {
                 if is_process_cwd_call(callee, args) {
                     Some("tsgodownProcessCwd()".to_string())
@@ -5570,6 +5977,14 @@ fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<S
             optional: false,
         } if static_member_kind(object, property, state) == Some(AotSlotKind::String) => {
             render_static_member_expr(object, property, state)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if render_url_string_member_expr(object, property, state).is_some() => {
+            render_url_string_member_expr(object, property, state)
         }
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
         _ => None,
@@ -6164,6 +6579,140 @@ fn render_js_map_expr(expr: &JsExpr) -> Option<String> {
     .then(|| "tsgodownNewMap()".to_string())
 }
 
+fn is_new_url_expr(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 2 && matches!(callee, JsExpr::Ident { name } if name == "URL")
+}
+
+fn render_url_new_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::New { callee, args } = expr else {
+        return None;
+    };
+    if !is_new_url_expr(callee, args) || !state.builtin_bindings.contains("URL") {
+        return None;
+    }
+    let input = render_string_expr(args.first()?, state)?;
+    let base = render_string_expr(args.get(1)?, state)?;
+    Some(format!("tsgodownNewURL({input}, {base})"))
+}
+
+fn render_url_string_member_expr(
+    object: &JsExpr,
+    property: &str,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Ident { name } = object else {
+        return None;
+    };
+    if !state.url_bindings.contains(name) || property != "pathname" {
+        return None;
+    }
+    Some(format!(
+        "tsgodownURLPathname({})",
+        go_binding_ref(name, state)
+    ))
+}
+
+fn is_url_search_params_get_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "get" && matches!(
+                object.as_ref(),
+                JsExpr::Member {
+                    property,
+                    property_expr: None,
+                    optional: false,
+                    ..
+                } if property == "searchParams"
+            )
+        )
+}
+
+fn render_url_search_params_get_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_url_search_params_get_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Member { object, .. } = object.as_ref() else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.url_bindings.contains(name) {
+        return None;
+    }
+    let key = render_string_expr(args.first()?, state)?;
+    Some(format!(
+        "tsgodownURLSearchParam({}, {key})",
+        go_binding_ref(name, state)
+    ))
+}
+
+fn render_event_emitter_new_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::New { callee, args } = expr else {
+        return None;
+    };
+    if !args.is_empty()
+        || !state.builtin_bindings.contains("EventEmitter")
+        || !matches!(callee.as_ref(), JsExpr::Ident { name } if name == "EventEmitter")
+    {
+        return None;
+    }
+    Some("tsgodownNewEventEmitter()".to_string())
+}
+
+fn render_event_emitter_call_expr(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.event_emitter_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    match property.as_str() {
+        "on" if args.len() == 2 => {
+            let event = render_string_expr(args.first()?, state)?;
+            let listener = render_inline_function_value_expr(args.get(1)?, state)?;
+            Some(format!(
+                "tsgodownEventEmitterOn({target}, {event}, {listener})"
+            ))
+        }
+        "emit" if args.len() == 2 => {
+            let event = render_string_expr(args.first()?, state)?;
+            let payload = render_json_value_expr(args.get(1)?, state)?;
+            Some(format!(
+                "tsgodownEventEmitterEmit({target}, {event}, {payload})"
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn render_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Ident { name } if state.map_bindings.contains(name) => {
@@ -6348,6 +6897,39 @@ fn render_any_array_call_stmt(
     let target = go_binding_ref(name, state);
     let value = render_json_value_expr(args.first()?, state)?;
     Some(format!("{target} = append({target}, {value})"))
+}
+
+fn render_any_array_push_call_expr(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "push" {
+        return None;
+    }
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.any_array_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    let value = render_json_value_expr(args.first()?, state)?;
+    Some(format!(
+        "func() any {{ {target} = append({target}, {value}); return float64(len({target})) }}()"
+    ))
 }
 
 fn render_number_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -6991,11 +7573,46 @@ fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             property,
             property_expr: None,
             optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+            } if is_node_path_call_receiver(object)
             && matches!(
                 property.as_str(),
                 "basename" | "dirname" | "join" | "normalize" | "relative" | "resolve"
             )
+    )
+}
+
+fn is_node_path_call_receiver(object: &JsExpr) -> bool {
+    matches!(object, JsExpr::Ident { name } if name == "path")
+        || matches!(
+            object,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                && matches!(property.as_str(), "posix" | "win32")
+        )
+}
+
+fn is_node_path_posix_call(callee: &JsExpr) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property_expr: None,
+            optional: false,
+            ..
+        } if matches!(
+            object.as_ref(),
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "path")
+                && property == "posix"
+        )
     )
 }
 
@@ -7027,16 +7644,28 @@ fn render_node_path_string_call(
     else {
         return None;
     };
-    let JsExpr::Ident { name } = object.as_ref() else {
-        return None;
-    };
-    if name != "path" || !state.builtin_bindings.contains(name) {
+    if !state.builtin_bindings.contains("path") || !is_node_path_call_receiver(object) {
         return None;
     }
     let rendered_args = args
         .iter()
         .map(|arg| render_string_expr(arg, state))
         .collect::<Option<Vec<_>>>()?;
+    if is_node_path_posix_call(callee) {
+        return match property.as_str() {
+            "join" => Some(format!("path.Join({})", rendered_args.join(", "))),
+            "normalize" if rendered_args.len() == 1 => {
+                Some(format!("path.Clean({})", rendered_args[0]))
+            }
+            "dirname" if rendered_args.len() == 1 => {
+                Some(format!("path.Dir({})", rendered_args[0]))
+            }
+            "basename" if rendered_args.len() == 1 => {
+                Some(format!("path.Base({})", rendered_args[0]))
+            }
+            _ => None,
+        };
+    }
     match property.as_str() {
         "basename" if rendered_args.len() == 1 => Some(format!("filepath.Base({})", rendered_args[0])),
         "basename" if rendered_args.len() == 2 => Some(format!(
@@ -7231,6 +7860,37 @@ fn render_node_os_homedir_call(
     None
 }
 
+fn is_node_os_tmpdir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
+                && property == "tmpdir"
+        )
+}
+
+fn render_node_os_tmpdir_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if state.builtin_bindings.contains(name) && is_node_os_tmpdir_call(callee, args) {
+        return Some("tsgodownOsTmpdir()".to_string());
+    }
+    None
+}
+
 fn is_node_fs_exists_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
@@ -7261,6 +7921,129 @@ fn render_node_fs_exists_sync_call(
     }
     let path = render_string_expr(args.first()?, state)?;
     Some(format!("tsgodownFsExistsSync({path})"))
+}
+
+fn is_node_fs_mkdtemp_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "mkdtempSync"
+        )
+}
+
+fn is_node_fs_write_file_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 2 | 3)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "writeFileSync"
+        )
+}
+
+fn is_node_fs_read_file_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "readFileSync"
+        )
+}
+
+fn is_node_fs_rm_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                && property == "rmSync"
+        )
+}
+
+fn node_fs_builtin_receiver(callee: &JsExpr, state: &AotState) -> Option<()> {
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    state.builtin_bindings.contains(name).then_some(())
+}
+
+fn render_node_fs_mkdtemp_sync_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    node_fs_builtin_receiver(callee, state)?;
+    if !is_node_fs_mkdtemp_sync_call(callee, args) {
+        return None;
+    }
+    let prefix = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownFsMkdtempSync({prefix})"))
+}
+
+fn render_node_fs_read_file_sync_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    node_fs_builtin_receiver(callee, state)?;
+    if !is_node_fs_read_file_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    let encoding = args
+        .get(1)
+        .and_then(|expr| render_string_expr(expr, state))
+        .unwrap_or_else(|| "\"utf8\"".to_string());
+    Some(format!("tsgodownFsReadFileSync({path}, {encoding})"))
+}
+
+fn render_node_fs_write_file_sync_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    node_fs_builtin_receiver(callee, state)?;
+    if !is_node_fs_write_file_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    let data = render_string_expr(args.get(1)?, state)?;
+    Some(format!("tsgodownFsWriteFileSync({path}, {data})"))
+}
+
+fn render_node_fs_rm_sync_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    node_fs_builtin_receiver(callee, state)?;
+    if !is_node_fs_rm_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownFsRmSync({path})"))
 }
 
 fn is_node_fs_stat_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -7429,6 +8212,231 @@ fn render_node_buffer_from_call(
             ))
         }
     }
+}
+
+fn is_buffer_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 0 | 1)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "toString" && matches!(
+                object.as_ref(),
+                JsExpr::Call { callee, args, .. } if is_node_buffer_from_call(callee, args)
+                    || is_node_buffer_alloc_call(callee, args)
+            )
+        )
+}
+
+fn render_buffer_to_string_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_buffer_to_string_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let value = render_bytes_expr(object, state)?;
+    let encoding = args
+        .first()
+        .and_then(|expr| render_string_expr(expr, state))
+        .unwrap_or_else(|| "\"utf8\"".to_string());
+    Some(format!("tsgodownBytesToString({value}, {encoding})"))
+}
+
+fn is_querystring_parse_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "querystring")
+                && property == "parse"
+        )
+}
+
+fn render_querystring_parse_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !state.builtin_bindings.contains("querystring") || !is_querystring_parse_call(callee, args) {
+        return None;
+    }
+    let value = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownQuerystringParse({value})"))
+}
+
+fn is_json_parse_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "JSON")
+                && property == "parse"
+        )
+}
+
+fn render_json_parse_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_json_parse_call(callee, args) {
+        return None;
+    }
+    let value = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownJSONParseObject({value})"))
+}
+
+fn crypto_sha256_digest_source_expr(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if args.len() != 1
+        || !matches!(
+            args.first().and_then(string_literal_value).as_deref(),
+            Some("hex")
+        )
+    {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "digest" {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: update_callee,
+        args: update_args,
+        ..
+    } = object.as_ref()
+    else {
+        return None;
+    };
+    if update_args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object: hash_object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = update_callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "update" {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: create_hash_callee,
+        args: create_hash_args,
+        ..
+    } = hash_object.as_ref()
+    else {
+        return None;
+    };
+    if create_hash_args.len() != 1
+        || !matches!(
+            create_hash_args
+                .first()
+                .and_then(string_literal_value)
+                .as_deref(),
+            Some("sha256")
+        )
+    {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = create_hash_callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "createHash"
+        || !matches!(object.as_ref(), JsExpr::Ident { name } if name == "crypto")
+    {
+        return None;
+    }
+    update_args.first()
+}
+
+fn is_crypto_sha256_hex_digest_call(callee: &JsExpr) -> bool {
+    let JsExpr::Member { object, .. } = callee else {
+        return false;
+    };
+    crypto_sha256_digest_source_expr(object).is_some()
+}
+
+fn is_crypto_sha256_hex_slice_call(callee: &JsExpr) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "slice" && crypto_sha256_digest_source_expr(object).is_some()
+    )
+}
+
+fn render_crypto_sha256_hex_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !state.builtin_bindings.contains("crypto") {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property == "digest" {
+        let source = crypto_sha256_digest_source_expr(object)?;
+        let source = render_string_expr(source, state)?;
+        return Some(format!("tsgodownSHA256Hex({source})"));
+    }
+    if property == "slice" && matches!(args.len(), 1 | 2) {
+        let source = crypto_sha256_digest_source_expr(object)?;
+        let source = render_string_expr(source, state)?;
+        let start = render_numeric_expr(args.first()?, state)?;
+        if let Some(end) = args.get(1) {
+            let end = render_numeric_expr(end, state)?;
+            return Some(format!(
+                "tsgodownStringSlice(tsgodownSHA256Hex({source}), {start}, {end})"
+            ));
+        }
+        return Some(format!(
+            "tsgodownStringSlice(tsgodownSHA256Hex({source}), {start})"
+        ));
+    }
+    None
 }
 
 fn render_string_numeric_method_call(
@@ -7974,6 +8982,12 @@ fn string_literal_value(expr: &JsExpr) -> Option<String> {
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if let Some(value) = render_any_array_push_call_expr(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_event_emitter_call_expr(callee, args, state) {
+        return Some(value);
+    }
     if let Some(value) = render_map_call_expr(callee, args, state) {
         return Some(value);
     }
@@ -8228,6 +9242,20 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_bool_expr(expr, state)
         }
         JsExpr::Unary { .. } => render_expr(expr, state),
+        JsExpr::Call { callee, args, .. } if is_json_parse_call(callee, args) => {
+            render_json_parse_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_querystring_parse_call(callee, args) => {
+            render_querystring_parse_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_expr(expr, state)
+                .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
+                .is_some() =>
+        {
+            render_string_expr(expr, state)
+                .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
+        }
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
@@ -8242,6 +9270,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } => render_class_getter_member_expr(object, property, state)
             .or_else(|| render_static_member_expr(object, property, state))
+            .or_else(|| render_url_string_member_expr(object, property, state))
             .or_else(|| {
                 if property == "length" || property.parse::<usize>().is_ok() {
                     render_numeric_expr(expr, state).or_else(|| render_string_expr(expr, state))
@@ -8342,6 +9371,8 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.number_array_bindings.contains(name)
         && !state.string_array_bindings.contains(name)
         && !state.map_bindings.contains(name)
+        && !state.url_bindings.contains(name)
+        && !state.event_emitter_bindings.contains(name)
         && !state.number_closure_bindings.contains(name)
         && !state.string_function_bindings.contains(name)
         && !state.object_bindings.contains_key(name)

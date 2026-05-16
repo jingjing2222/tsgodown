@@ -5297,6 +5297,105 @@ console.log(JSON.stringify(value))
     }
 
     #[test]
+    fn emit_go_runs_aot_dynamic_node_builtin_import_subset() {
+        let root = temp_project("engine-core-aot-dynamic-node-builtin-import");
+        write(
+            &root,
+            "src/index.mjs",
+            r#"
+const value = await (async () => {
+  const path = (await import("node:path")).default
+  const { URL } = await import("node:url")
+  const { Buffer } = await import("node:buffer")
+  const crypto = (await import("node:crypto")).default
+  const { EventEmitter } = await import("node:events")
+  const querystring = (await import("node:querystring")).default
+  const fs = (await import("node:fs")).default
+  const os = (await import("node:os")).default
+  const url = new URL("/items/1?q=a+b", "https://example.test/base/")
+  const emitter = new EventEmitter()
+  const events = []
+  emitter.on("data", (payload) => events.push(payload))
+  emitter.emit("data", { value: 1 })
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsgodown-fuzz-"))
+  const file = path.join(dir, "value.json")
+  fs.writeFileSync(file, JSON.stringify({ value: 1 }))
+  const read = JSON.parse(fs.readFileSync(file, "utf8"))
+  fs.rmSync(dir, { recursive: true, force: true })
+  return {
+    joined: path.posix.join("a", "b", "..", "c"),
+    url: { pathname: url.pathname, q: url.searchParams.get("q") },
+    buffer: Buffer.from("value-1").toString("base64"),
+    hash: crypto.createHash("sha256").update("value-1").digest("hex").slice(0, 12),
+    query: querystring.parse("a=1&a=2&b=1"),
+    events,
+    read
+  }
+})()
+console.log(JSON.stringify(value))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.mjs".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-dynamic-node-builtin-import".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownNewURL"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownEventEmitterOn"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"buffer\":\"dmFsdWUtMQ==\",\"events\":[{\"value\":1}],\"hash\":\"eff9eb68b7ea\",\"joined\":\"a/c\",\"query\":{\"a\":[\"1\",\"2\"],\"b\":\"1\"},\"read\":{\"value\":1},\"url\":{\"pathname\":\"/items/1\",\"q\":\"a b\"}}\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_map_object_get_set_subset() {
         let root = temp_project("engine-core-aot-map-object-get-set");
         write(
