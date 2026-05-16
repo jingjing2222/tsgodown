@@ -1274,6 +1274,37 @@ func tsgodownAnyArraySet(values []any, index float64, value any) []any {
 	return values
 }
 
+func tsgodownAnyArraySlice(values []any, start float64, endValues ...float64) []any {
+	length := len(values)
+	from := int(start)
+	if from < 0 {
+		from = length + from
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > length {
+		from = length
+	}
+	to := length
+	if len(endValues) > 0 {
+		to = int(endValues[0])
+		if to < 0 {
+			to = length + to
+		}
+		if to < 0 {
+			to = 0
+		}
+		if to > length {
+			to = length
+		}
+	}
+	if to < from {
+		to = from
+	}
+	return append([]any(nil), values[from:to]...)
+}
+
 func tsgodownAnyArrayFromAny(value any) []any {
 	switch values := value.(type) {
 	case []any:
@@ -1294,6 +1325,29 @@ func tsgodownAnyArrayFromAny(value any) []any {
 		return out
 	default:
 		return []any{}
+	}
+}
+
+func tsgodownAnyArrayConcatBase(value any) []any {
+	switch values := value.(type) {
+	case []any:
+		out := make([]any, len(values))
+		copy(out, values)
+		return out
+	case []string:
+		out := make([]any, len(values))
+		for index, item := range values {
+			out[index] = item
+		}
+		return out
+	case []float64:
+		out := make([]any, len(values))
+		for index, item := range values {
+			out[index] = item
+		}
+		return out
+	default:
+		return []any{value}
 	}
 }
 
@@ -3703,10 +3757,13 @@ struct AotState {
     entry_source_path: Option<String>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum AotBuiltinFunctionAlias {
     ArrayIsArray,
+    ArrayConcat,
+    ArrayJoin,
     ArrayPush,
+    ArraySlice,
     ObjectHasOwnProperty,
     ObjectToString,
     RegExpTest,
@@ -4779,6 +4836,48 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[1], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_array_prototype_alias_call_in_context(
+                callee,
+                args,
+                builtin_aliases,
+                AotBuiltinFunctionAlias::ArrayConcat,
+            ) =>
+        {
+            for arg in args {
+                mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
+            }
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_array_prototype_alias_call_in_context(
+                callee,
+                args,
+                builtin_aliases,
+                AotBuiltinFunctionAlias::ArrayJoin,
+            ) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            if let Some(separator) = args.get(1) {
+                mark_ident_param_kind(separator, param_index, kinds, AotSlotKind::String);
+            }
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
+            }
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_array_prototype_alias_call_in_context(
+                callee,
+                args,
+                builtin_aliases,
+                AotBuiltinFunctionAlias::ArraySlice,
+            ) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
+            }
         }
         JsExpr::Call { callee, args, .. } if is_array_concat_call_shape(callee) => {
             if let JsExpr::Member { object, .. } = callee.as_ref() {
@@ -7913,6 +8012,11 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_string_method_alias_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
+            if render_array_prototype_join_alias_call(callee, args, state).is_some() =>
+        {
+            render_array_prototype_join_alias_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
             if render_string_array_join_call(callee, args, state).is_some() =>
         {
             render_string_array_join_call(callee, args, state)
@@ -8946,6 +9050,16 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_array_concat_call_shape(callee) => {
             render_any_array_concat_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. }
+            if render_any_array_prototype_concat_alias_call(callee, args, state).is_some() =>
+        {
+            render_any_array_prototype_concat_alias_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_any_array_prototype_slice_alias_call(callee, args, state).is_some() =>
+        {
+            render_any_array_prototype_slice_alias_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } => {
             let JsExpr::Ident { name } = callee.as_ref() else {
                 return None;
@@ -9908,8 +10022,17 @@ fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
     if is_array_is_array_ref(expr) {
         return Some(AotBuiltinFunctionAlias::ArrayIsArray);
     }
+    if is_array_prototype_method_ref(expr, "concat") {
+        return Some(AotBuiltinFunctionAlias::ArrayConcat);
+    }
+    if is_array_prototype_method_ref(expr, "join") {
+        return Some(AotBuiltinFunctionAlias::ArrayJoin);
+    }
     if is_array_prototype_push_ref(expr) {
         return Some(AotBuiltinFunctionAlias::ArrayPush);
+    }
+    if is_array_prototype_method_ref(expr, "slice") {
+        return Some(AotBuiltinFunctionAlias::ArraySlice);
     }
     if is_object_has_own_property_ref(expr) {
         return Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty);
@@ -9921,6 +10044,18 @@ fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
         return Some(AotBuiltinFunctionAlias::RegExpTest);
     }
     None
+}
+
+fn is_array_prototype_method_ref(expr: &JsExpr, method: &str) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == method && is_array_prototype_expr(object)
+    )
 }
 
 fn is_array_is_array_ref(expr: &JsExpr) -> bool {
@@ -10076,6 +10211,117 @@ fn is_array_push_apply_call_in_context(
         builtin_aliases.get(name),
         Some(AotBuiltinFunctionAlias::ArrayPush)
     ))
+}
+
+fn is_array_prototype_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+    alias: AotBuiltinFunctionAlias,
+) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if state.builtin_function_aliases.get(name).copied() == Some(alias))
+}
+
+fn is_array_prototype_alias_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+    alias: AotBuiltinFunctionAlias,
+) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if builtin_aliases.get(name).copied() == Some(alias))
+}
+
+fn render_any_array_prototype_concat_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_prototype_alias_call(callee, args, state, AotBuiltinFunctionAlias::ArrayConcat) {
+        return None;
+    }
+    let receiver = render_json_value_expr(args.first()?, state)
+        .or_else(|| render_expr(args.first()?, state))?;
+    let base = format!("tsgodownAnyArrayConcatBase({receiver})");
+    let values = args
+        .iter()
+        .skip(1)
+        .map(|arg| render_json_value_expr(arg, state).or_else(|| render_expr(arg, state)))
+        .collect::<Option<Vec<_>>>()?;
+    if values.is_empty() {
+        return Some(format!("tsgodownAnyArrayConcat({base})"));
+    }
+    Some(format!(
+        "tsgodownAnyArrayConcat({base}, {})",
+        values.join(", ")
+    ))
+}
+
+fn render_any_array_prototype_slice_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_prototype_alias_call(callee, args, state, AotBuiltinFunctionAlias::ArraySlice)
+        || !matches!(args.len(), 1..=3)
+    {
+        return None;
+    }
+    let values = render_any_array_from_any_expr(args.first()?, state)?;
+    let start = args
+        .get(1)
+        .map(|expr| render_numeric_expr(expr, state))
+        .unwrap_or_else(|| Some("0".to_string()))?;
+    if let Some(end) = args.get(2) {
+        let end = render_numeric_expr(end, state)?;
+        return Some(format!("tsgodownAnyArraySlice({values}, {start}, {end})"));
+    }
+    Some(format!("tsgodownAnyArraySlice({values}, {start})"))
+}
+
+fn render_array_prototype_join_alias_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_prototype_alias_call(callee, args, state, AotBuiltinFunctionAlias::ArrayJoin)
+        || !matches!(args.len(), 1 | 2)
+    {
+        return None;
+    }
+    let values = render_any_array_from_any_expr(args.first()?, state)?;
+    let separator = args
+        .get(1)
+        .map(|expr| render_string_expr(expr, state))
+        .unwrap_or_else(|| Some("\",\"".to_string()))?;
+    Some(format!("tsgodownAnyArrayJoin({values}, {separator})"))
 }
 
 fn render_array_push_apply_stmt(
@@ -12432,6 +12678,15 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return Some(value);
     }
     if let Some(value) = render_string_method_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_array_prototype_join_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_any_array_prototype_concat_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_any_array_prototype_slice_alias_call(callee, args, state) {
         return Some(value);
     }
     if is_object_to_string_alias_call(callee, args, state) {

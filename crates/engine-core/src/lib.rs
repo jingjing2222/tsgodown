@@ -6724,6 +6724,84 @@ console.log("prototype-call", values.join("|"))
     }
 
     #[test]
+    fn emit_go_runs_aot_array_prototype_call_alias_subset() {
+        let root = temp_project("engine-core-aot-array-prototype-call-alias");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const slice = Array.prototype.slice
+const join = Array.prototype.join
+const concat = Array.prototype.concat
+
+const copied = slice.call(["root", "leaf", "twig"], 1, 3)
+const combined = concat.call(["a"], ["b", "c"], "d")
+const boxed = concat.call("x", ["y"])
+console.log("array-prototype-call", join.call(copied, "/"), join.call(combined, ","), join.call(boxed, ":"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-array-prototype-call-alias".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(!response.files[0].contents.contains("var slice"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArraySlice"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownAnyArrayConcatBase"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-prototype-call leaf/twig a,b,c,d x:y\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_default_object_options_subset() {
         let root = temp_project("engine-core-aot-default-object-options");
         write(
