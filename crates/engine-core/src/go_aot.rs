@@ -1535,6 +1535,24 @@ func tsgodownQuerystringParse(value string) map[string]any {
             .to_string(),
         );
     }
+    helpers.push(
+        r#"type tsgodownError struct {
+	Name string
+	Message string
+}
+
+func (err tsgodownError) Error() string {
+	if err.Name == "" {
+		return err.Message
+	}
+	if err.Message == "" {
+		return err.Name
+	}
+	return err.Name + ": " + err.Message
+}
+"#
+        .to_string(),
+    );
     if imports.contains("encoding/hex") {
         helpers.push(
             r#"func tsgodownSHA256Hex(value string) string {
@@ -3334,7 +3352,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             alternate,
         } => {
             let test_expr = test;
-            let test = render_bool_expr(test_expr, state)?;
+            let test = render_bool_test_expr(test_expr, state)?;
             let consequent_state = narrowed_typeof_state(test_expr, state);
             let consequent = indent_lines(&render_stmt_block(consequent, &consequent_state)?);
             if alternate.is_empty() {
@@ -3358,6 +3376,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             finally_body,
             ..
         } => render_try_finally_stmt(body, catch_body, finally_body, state),
+        JsStmt::Throw { value } => render_throw_stmt(value, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
@@ -3408,7 +3427,7 @@ fn render_for_stmt(
         .map(|stmt| render_for_init(stmt, &mut loop_state))
         .unwrap_or_else(|| Some(String::new()))?;
     let test = test
-        .map(|expr| render_bool_expr(expr, &loop_state))
+        .map(|expr| render_bool_test_expr(expr, &loop_state))
         .unwrap_or_else(|| Some(String::new()))?;
     let update = update
         .map(|expr| render_for_update(expr, &loop_state))
@@ -3419,7 +3438,7 @@ fn render_for_stmt(
 
 fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option<String> {
     let loop_state = clone_aot_state(state);
-    let test = render_bool_expr(test, &loop_state)?;
+    let test = render_bool_test_expr(test, &loop_state)?;
     let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
     Some(format!("for {test} {{\n{body}\n}}"))
 }
@@ -3441,6 +3460,33 @@ fn render_try_finally_stmt(
         rendered.push(render_stmt_sequence(finally_body, state)?);
     }
     Some(rendered.join("\n"))
+}
+
+fn render_throw_stmt(value: &JsExpr, state: &AotState) -> Option<String> {
+    let (name, message) = render_error_constructor_expr(value, state)?;
+    Some(format!(
+        "panic(tsgodownError{{Name: {name}, Message: {message}}})"
+    ))
+}
+
+fn render_error_constructor_expr(expr: &JsExpr, state: &AotState) -> Option<(String, String)> {
+    let (callee, args) = match expr {
+        JsExpr::Call { callee, args, .. } | JsExpr::New { callee, args } => {
+            (callee.as_ref(), args.as_slice())
+        }
+        _ => return None,
+    };
+    let JsExpr::Ident { name } = callee else {
+        return None;
+    };
+    if !matches!(name.as_str(), "Error" | "TypeError" | "RangeError") {
+        return None;
+    }
+    let message = args
+        .first()
+        .map(|arg| render_string_expr(arg, state))
+        .unwrap_or_else(|| Some("\"\"".to_string()))?;
+    Some((go_string_literal(name), message))
 }
 
 fn render_stmt_sequence(stmts: &[JsStmt], state: &mut AotState) -> Option<String> {
@@ -5143,7 +5189,7 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             alternate,
         } => {
             let test_expr = test;
-            let test = render_bool_expr(test_expr, state)?;
+            let test = render_bool_test_expr(test_expr, state)?;
             let consequent_state = narrowed_typeof_state(test_expr, state);
             let consequent = indent_lines(&render_function_body(consequent, &consequent_state)?);
             if alternate.is_empty() {
@@ -5167,6 +5213,7 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             finally_body,
             ..
         } => render_try_finally_stmt(body, catch_body, finally_body, state),
+        JsStmt::Throw { value } => render_throw_stmt(value, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
@@ -5290,6 +5337,13 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
     }
+}
+
+fn render_bool_test_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_bool_expr(expr, state).or_else(|| {
+        let value = render_expr(expr, state)?;
+        Some(format!("tsgodownToBool({value})"))
+    })
 }
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
@@ -5831,12 +5885,12 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } => render_conditional_expr(test, consequent, alternate, state, render_expr, "any"),
         JsExpr::Call { callee, args, .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
-            .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
-            .or_else(|| render_call_expr(callee, args, state)),
+            .or_else(|| render_call_expr(callee, args, state))
+            .or_else(|| render_bool_expr(expr, state)),
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
         }
@@ -6364,9 +6418,6 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 }
 
 fn render_bool_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
-    if !args.is_empty() {
-        return None;
-    }
     let JsExpr::Ident { name } = callee else {
         return None;
     };
@@ -6382,13 +6433,24 @@ fn function_returns_bool(function: &AotFunction, state: &AotState) -> bool {
     let [JsStmt::Return { value: Some(value) }] = function.body.as_slice() else {
         return false;
     };
-    matches!(
+    if matches!(
         value,
         JsExpr::Value {
             value: JsValue::Bool { .. },
         }
     ) || is_process_stdout_is_tty(value)
         || matches!(value, JsExpr::Ident { name } if state.bool_bindings.contains(name))
+    {
+        return true;
+    }
+    if matches!(value, JsExpr::Call { .. }) {
+        return false;
+    }
+    let mut function_state = clone_aot_state(state);
+    for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
+        function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
+    }
+    render_bool_expr(value, &function_state).is_some()
 }
 
 fn render_js_to_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -9748,6 +9810,12 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         }
         if args.is_empty()
             && static_member_kind(object, property, state) == Some(AotSlotKind::StringFunction)
+        {
+            let function = render_static_member_expr(object, property, state)?;
+            return Some(format!("{function}()"));
+        }
+        if args.is_empty()
+            && static_member_kind(object, property, state) == Some(AotSlotKind::BoolFunction)
         {
             let function = render_static_member_expr(object, property, state)?;
             return Some(format!("{function}()"));

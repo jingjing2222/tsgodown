@@ -5278,6 +5278,84 @@ console.log("native-object", ok, typeof native.randomUUID)
     }
 
     #[test]
+    fn emit_go_runs_aot_error_guarded_bool_function_subset() {
+        let root = temp_project("engine-core-aot-error-guarded-bool-function");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+function validate(value) {
+  return typeof value === "string" && REGEX.test(value)
+}
+function version(uuid) {
+  if (!validate(uuid)) {
+    throw TypeError("Invalid UUID")
+  }
+  return parseInt(uuid.slice(14, 15), 16)
+}
+console.log("guarded-version", version("6fa459ea-ee8a-3ca4-894e-db77e160355e"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-error-guarded-bool-function".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("panic(tsgodownError"));
+        assert!(response.files[0].contents.contains("regexp.MustCompile"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "guarded-version 3\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_string_match_subset() {
         let root = temp_project("engine-core-aot-string-match");
         write(
