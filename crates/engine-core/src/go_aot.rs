@@ -796,8 +796,10 @@ fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> boo
 
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
+    imports.insert("fmt");
     imports.insert("strconv");
     imports.insert("strings");
+    imports.insert("time");
     for module in &ir.modules {
         if let Some(executable) = &module.executable {
             for stmt in &executable.stmts {
@@ -1173,6 +1175,35 @@ func tsgodownObjectToStringTag(value any) string {
 	default:
 		return "[object Object]"
 	}
+}
+
+func tsgodownDateFormatISO(value time.Time) string {
+	value = value.UTC()
+	return value.Format("2006-01-02T15:04:05.") + fmt.Sprintf("%03dZ", value.Nanosecond()/int(time.Millisecond))
+}
+
+func tsgodownDateUTCISOString(year float64, month float64, day float64, values ...float64) string {
+	hour := 0
+	minute := 0
+	second := 0
+	millisecond := 0
+	if len(values) > 0 {
+		hour = int(values[0])
+	}
+	if len(values) > 1 {
+		minute = int(values[1])
+	}
+	if len(values) > 2 {
+		second = int(values[2])
+	}
+	if len(values) > 3 {
+		millisecond = int(values[3])
+	}
+	return tsgodownDateFormatISO(time.Date(int(year), time.Month(int(month)+1), int(day), hour, minute, second, millisecond*int(time.Millisecond), time.UTC))
+}
+
+func tsgodownDateFromUnixMilliISOString(value float64) string {
+	return tsgodownDateFormatISO(time.UnixMilli(int64(value)))
 }
 
 func tsgodownStringArrayAt(values []string, index float64) string {
@@ -3733,6 +3764,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    date_bindings: BTreeSet<String>,
     regexp_bindings: BTreeSet<String>,
     regexp_replace_bindings: BTreeMap<String, (String, bool)>,
     map_bindings: BTreeSet<String>,
@@ -3764,6 +3796,7 @@ enum AotBuiltinFunctionAlias {
     ArrayJoin,
     ArrayPush,
     ArraySlice,
+    DateToISOString,
     ObjectHasOwnProperty,
     ObjectToString,
     RegExpTest,
@@ -3780,6 +3813,9 @@ impl AotState {
             }
             AotSlotKind::Number => {
                 self.numeric_bindings.insert(name.to_string());
+            }
+            AotSlotKind::Date => {
+                self.date_bindings.insert(name.to_string());
             }
             AotSlotKind::String => {
                 self.string_bindings.insert(name.to_string());
@@ -3819,6 +3855,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
@@ -3919,6 +3956,7 @@ enum AotSlotKind {
     Any,
     Bool,
     Bytes,
+    Date,
     Number,
     AnyArray,
     NumberArray,
@@ -3934,6 +3972,7 @@ fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
         AotSlotKind::Any => "any",
         AotSlotKind::Bool => "bool",
         AotSlotKind::Bytes => "[]byte",
+        AotSlotKind::Date => "string",
         AotSlotKind::Number => "float64",
         AotSlotKind::AnyArray => "[]any",
         AotSlotKind::NumberArray => "[]float64",
@@ -4034,6 +4073,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if let Some(value) = render_numeric_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Number);
                     return Some(format!("var {ident} float64 = {value}"));
+                }
+                if let Some(value) = render_date_expr(expr, state) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Date);
+                    return Some(format!("var {ident} string = {value}"));
                 }
                 if let Some(value) = render_string_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::String);
@@ -4243,6 +4286,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
@@ -4432,6 +4476,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
@@ -4470,6 +4515,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
@@ -4828,6 +4874,12 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[1], param_index, kinds, AotSlotKind::String);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_date_to_iso_alias_call_in_context(callee, args, builtin_aliases) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Date);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. }
             if is_array_push_apply_call_in_context(callee, args, builtin_aliases) =>
@@ -6787,6 +6839,11 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_bool_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Binary { op, left, right }
+            if op == "instanceof" && is_date_constructor_ref(right) =>
+        {
+            render_date_instanceof_expr(left, state)
+        }
         JsExpr::Unary { op, arg } if op == "!" => {
             let arg = render_bool_test_expr(arg, state)?;
             Some(format!("(!{arg})"))
@@ -7566,6 +7623,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let right = render_numeric_expr(right, state)?;
             Some(format!("({left} {op} {right})"))
         }
+        JsExpr::Binary { op, .. } if op == "instanceof" => render_bool_expr(expr, state),
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
         }
@@ -7595,7 +7653,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
         }
-        JsExpr::New { .. } => render_url_new_expr(expr, state)
+        JsExpr::New { .. } => render_date_expr(expr, state)
+            .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
             .or_else(|| render_new_class_expr(expr, state).map(|(_, value)| value)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
@@ -7919,6 +7978,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        JsExpr::Ident { name } if state.date_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
         expr if render_any_array_index_expr(expr, state).is_some() => {
             let value = render_any_array_index_expr(expr, state)?;
             Some(format!("tsgodownToString({value})"))
@@ -7985,6 +8047,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .map(|arg| render_numeric_expr(arg, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("tsgodownStringFromCharCode({})", args.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_date_to_iso_call(callee, args, state) => {
+            render_date_to_iso_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_number_to_string_call(callee, args, state).is_some() =>
@@ -9184,6 +9249,140 @@ fn render_regexp_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     }
 }
 
+fn render_date_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.date_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::New { callee, args } => render_date_new_expr(callee, args, state),
+        _ => None,
+    }
+}
+
+fn render_date_new_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !matches!(callee, JsExpr::Ident { name } if name == "Date") {
+        return None;
+    }
+    match args {
+        [JsExpr::Call {
+            callee: utc_callee,
+            args: utc_args,
+            ..
+        }] if is_date_utc_call(utc_callee) => render_date_utc_iso_expr(utc_args, state),
+        [value] => {
+            let value = render_numeric_expr(value, state)?;
+            Some(format!("tsgodownDateFromUnixMilliISOString({value})"))
+        }
+        _ => None,
+    }
+}
+
+fn is_date_utc_call(callee: &JsExpr) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "UTC" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Date")
+    )
+}
+
+fn render_date_utc_iso_expr(args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !(3..=7).contains(&args.len()) {
+        return None;
+    }
+    let values = args
+        .iter()
+        .map(|arg| render_numeric_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    Some(format!("tsgodownDateUTCISOString({})", values.join(", ")))
+}
+
+fn is_date_to_iso_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if args.is_empty() {
+        let JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } = callee
+        else {
+            return false;
+        };
+        return matches!(property.as_str(), "toISOString" | "toJSON")
+            && render_date_expr(object, state).is_some();
+    }
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if state.builtin_function_aliases.get(name).copied() == Some(AotBuiltinFunctionAlias::DateToISOString))
+}
+
+fn is_date_to_iso_alias_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call"
+        && matches!(object.as_ref(), JsExpr::Ident { name }
+        if builtin_aliases.get(name).copied() == Some(AotBuiltinFunctionAlias::DateToISOString))
+}
+
+fn render_date_to_iso_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_date_to_iso_call(callee, args, state) {
+        return None;
+    }
+    if args.is_empty() {
+        let JsExpr::Member { object, .. } = callee else {
+            return None;
+        };
+        return render_date_expr(object, state);
+    }
+    render_date_expr(args.first()?, state)
+}
+
+fn is_date_constructor_ref(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Ident { name } if name == "Date")
+}
+
+fn render_date_instanceof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.date_bindings.contains(name) => Some("true".to_string()),
+        JsExpr::New { callee, args } if render_date_new_expr(callee, args, state).is_some() => {
+            Some("true".to_string())
+        }
+        JsExpr::Value { .. } | JsExpr::Array { .. } | JsExpr::Object { .. } => {
+            Some("false".to_string())
+        }
+        _ => None,
+    }
+}
+
 fn render_regexp_new_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
     if !matches!(args.len(), 1 | 2) {
         return None;
@@ -10034,6 +10233,9 @@ fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
     if is_array_prototype_method_ref(expr, "slice") {
         return Some(AotBuiltinFunctionAlias::ArraySlice);
     }
+    if is_date_prototype_to_iso_ref(expr) {
+        return Some(AotBuiltinFunctionAlias::DateToISOString);
+    }
     if is_object_has_own_property_ref(expr) {
         return Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty);
     }
@@ -10044,6 +10246,31 @@ fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
         return Some(AotBuiltinFunctionAlias::RegExpTest);
     }
     None
+}
+
+fn is_date_prototype_to_iso_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "toISOString" && is_date_prototype_expr(object)
+    )
+}
+
+fn is_date_prototype_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "prototype"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Date")
+    )
 }
 
 fn is_array_prototype_method_ref(expr: &JsExpr, method: &str) -> bool {
@@ -12898,6 +13125,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::AnyArray => render_any_array_expr(expr, state),
         AotSlotKind::Bool => render_bool_expr(expr, state),
         AotSlotKind::Bytes => render_bytes_expr(expr, state),
+        AotSlotKind::Date => render_date_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
         AotSlotKind::NumberArray => render_number_array_expr(expr, state),
         AotSlotKind::RegExp => render_regexp_expr(expr, state),
@@ -13092,6 +13320,7 @@ fn render_any_arg_to_kind(name: &str, kind: AotSlotKind) -> String {
         AotSlotKind::AnyArray => format!("{name}.([]any)"),
         AotSlotKind::Bool => format!("tsgodownToBool({name})"),
         AotSlotKind::Bytes => format!("{name}.([]byte)"),
+        AotSlotKind::Date => format!("tsgodownToString({name})"),
         AotSlotKind::Number => format!("tsgodownToFloat64({name})"),
         AotSlotKind::NumberArray => format!("{name}.([]float64)"),
         AotSlotKind::RegExp => format!("tsgodownToString({name})"),
@@ -13118,6 +13347,7 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.string_bindings.contains(name)
         && !state.bool_bindings.contains(name)
         && !state.bytes_bindings.contains(name)
+        && !state.date_bindings.contains(name)
         && !state.number_array_bindings.contains(name)
         && !state.string_array_bindings.contains(name)
         && !state.map_bindings.contains(name)
