@@ -6,7 +6,7 @@ use crate::emit_go::{go_string_literal, sanitize_go_identifier};
 const CJS_DEFAULT_EXPORT_FUNCTION: &str = "__cjs_default_export";
 const NODE_LTS_VERSION: &str = "24.15.0";
 const NODE_LTS_VERSION_WITH_PREFIX: &str = "v24.15.0";
-const AOT_FUNCTION_RENDER_LIMIT: usize = 256;
+const AOT_FUNCTION_RENDER_LIMIT: usize = 4096;
 
 pub(crate) fn render_aot_executable_program(
     package_name: &str,

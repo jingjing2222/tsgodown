@@ -1465,10 +1465,76 @@ console.log("unsupported", collect(["a"]).length)
     }
 
     #[test]
+    fn emit_go_runs_aot_large_function_graph_below_limit() {
+        let root = temp_project("engine-core-aot-large-function-graph");
+        let mut source = String::new();
+        for index in 0..300 {
+            source.push_str(&format!("function f{index}() {{ return {index} }}\n"));
+        }
+        source.push_str("console.log('large-functions', f0(), f299())\n");
+        write(&root, "src/index.js", &source);
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-large-function-graph".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("func f299() any"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "large-functions 0 299\n"
+        );
+    }
+
+    #[test]
     fn emit_go_fails_closed_on_aot_function_count_limit() {
         let root = temp_project("engine-core-aot-function-count-limit");
         let mut source = String::new();
-        for index in 0..257 {
+        for index in 0..4097 {
             source.push_str(&format!("function f{index}() {{ return {index} }}\n"));
         }
         source.push_str("console.log(f0())\n");
@@ -1495,7 +1561,7 @@ console.log("unsupported", collect(["a"]).length)
             .find(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED")
             .map(|diagnostic| diagnostic.message.as_str())
             .expect("expected fail-closed diagnostic");
-        assert!(message.contains("aot.program.function_count_limit:257>256"));
+        assert!(message.contains("aot.program.function_count_limit:4097>4096"));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
     }
 
