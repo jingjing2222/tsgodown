@@ -1116,6 +1116,80 @@ export const score = (left, right) => {
     }
 
     #[test]
+    fn emit_go_runs_aot_esm_default_alias_function_import_subset() {
+        let root = temp_project("engine-core-aot-esm-default-alias-function");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import score from "./score.js"
+console.log("aot-esm-default-alias", score(2, 3))
+"#,
+        );
+        write(
+            &root,
+            "src/score.js",
+            r#"
+const score = (left, right) => {
+  return left * 10 + right
+}
+export default score
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-esm-default-alias-function".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("src_score_js_score"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "aot-esm-default-alias 23\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_named_esm_value_import_subset() {
         let root = temp_project("engine-core-aot-esm-value-import");
         write(
@@ -1389,6 +1463,41 @@ console.log("unsupported", collect(["a"]).length)
             && diagnostic
                 .message
                 .contains("aot.function.unsupported_body:src/index.js:collect")));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+    }
+
+    #[test]
+    fn emit_go_fails_closed_on_aot_function_count_limit() {
+        let root = temp_project("engine-core-aot-function-count-limit");
+        let mut source = String::new();
+        for index in 0..257 {
+            source.push_str(&format!("function f{index}() {{ return {index} }}\n"));
+        }
+        source.push_str("console.log(f0())\n");
+        write(&root, "src/index.js", &source);
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-function-count-limit".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        let message = response
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED")
+            .map(|diagnostic| diagnostic.message.as_str())
+            .expect("expected fail-closed diagnostic");
+        assert!(message.contains("aot.program.function_count_limit:257>256"));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
     }
 

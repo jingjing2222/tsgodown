@@ -6,6 +6,7 @@ use crate::emit_go::{go_string_literal, sanitize_go_identifier};
 const CJS_DEFAULT_EXPORT_FUNCTION: &str = "__cjs_default_export";
 const NODE_LTS_VERSION: &str = "24.15.0";
 const NODE_LTS_VERSION_WITH_PREFIX: &str = "v24.15.0";
+const AOT_FUNCTION_RENDER_LIMIT: usize = 256;
 
 pub(crate) fn render_aot_executable_program(
     package_name: &str,
@@ -16,7 +17,11 @@ pub(crate) fn render_aot_executable_program(
         return None;
     }
     let module_functions = collect_module_functions(&analyzed.ir);
+    if aot_function_render_limit_feature(module_functions.len()).is_some() {
+        return None;
+    }
     let module_classes = collect_module_classes(&analyzed.ir);
+    let module_export_aliases = collect_module_export_aliases(&analyzed.ir);
     let module_default_exports = collect_module_default_exports(&analyzed.ir, &module_functions);
     let module_default_class_exports =
         collect_module_default_class_exports(&analyzed.ir, &module_classes);
@@ -44,6 +49,7 @@ pub(crate) fn render_aot_executable_program(
         &AotModuleContext {
             functions: &module_functions,
             classes: &module_classes,
+            export_aliases: &module_export_aliases,
             default_exports: &module_default_exports,
             default_class_exports: &module_default_class_exports,
             named_exports: &module_named_exports,
@@ -81,7 +87,11 @@ func main() {{
 
 pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
     let module_functions = collect_module_functions(ir);
+    if let Some(feature) = aot_function_render_limit_feature(module_functions.len()) {
+        return vec![feature];
+    }
     let module_classes = collect_module_classes(ir);
+    let module_export_aliases = collect_module_export_aliases(ir);
     let module_default_exports = collect_module_default_exports(ir, &module_functions);
     let module_default_class_exports = collect_module_default_class_exports(ir, &module_classes);
     let module_object_exports =
@@ -110,6 +120,7 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
             &AotModuleContext {
                 functions: &module_functions,
                 classes: &module_classes,
+                export_aliases: &module_export_aliases,
                 default_exports: &module_default_exports,
                 default_class_exports: &module_default_class_exports,
                 named_exports: &module_named_exports,
@@ -308,6 +319,15 @@ fn collect_aot_render_unsupported_stmt_features(
         | JsStmt::Break { .. }
         | JsStmt::Continue { .. } => {}
     }
+}
+
+fn aot_function_render_limit_feature(function_count: usize) -> Option<String> {
+    if function_count <= AOT_FUNCTION_RENDER_LIMIT {
+        return None;
+    }
+    Some(format!(
+        "aot.program.function_count_limit:{function_count}>{AOT_FUNCTION_RENDER_LIMIT}"
+    ))
 }
 
 fn collect_aot_render_unsupported_expr_features(
@@ -2280,6 +2300,29 @@ fn collect_module_default_class_exports(
     exports
 }
 
+fn collect_module_export_aliases(ir: &IrDocument) -> BTreeMap<(String, String), String> {
+    let mut aliases = BTreeMap::new();
+    for module in &ir.modules {
+        let Some(executable) = &module.executable else {
+            continue;
+        };
+        for stmt in &executable.stmts {
+            let JsStmt::VarDecl {
+                name,
+                init: Some(JsExpr::Ident { name: local }),
+            } = stmt
+            else {
+                continue;
+            };
+            if !is_exported_name(module, name) || name == local {
+                continue;
+            }
+            aliases.insert((module.id.clone(), name.clone()), local.clone());
+        }
+    }
+    aliases
+}
+
 fn collect_module_named_exports(
     ir: &IrDocument,
     module_functions: &BTreeMap<(String, String), AotFunction>,
@@ -2470,6 +2513,7 @@ fn collect_module_slots(
     module_functions: &BTreeMap<(String, String), AotFunction>,
 ) -> BTreeMap<(String, String), AotModuleSlot> {
     let mut slots = BTreeMap::new();
+    let module_export_aliases = collect_module_export_aliases(ir);
     for module in &ir.modules {
         let Some(executable) = &module.executable else {
             continue;
@@ -2480,6 +2524,7 @@ fn collect_module_slots(
             &AotModuleContext {
                 functions: module_functions,
                 classes: &BTreeMap::new(),
+                export_aliases: &module_export_aliases,
                 default_exports: &BTreeMap::new(),
                 default_class_exports: &BTreeMap::new(),
                 named_exports: &BTreeMap::new(),
@@ -2522,6 +2567,7 @@ fn render_module_decls(
     let mut declarations = Vec::new();
     let module_default_exports = collect_module_default_exports(ir, module_functions);
     let module_default_class_exports = collect_module_default_class_exports(ir, module_classes);
+    let module_export_aliases = collect_module_export_aliases(ir);
     let module_object_exports =
         collect_module_object_function_exports(ir, module_functions, &module_default_exports);
     let module_named_exports = collect_module_named_exports(
@@ -2537,6 +2583,7 @@ fn render_module_decls(
             &AotModuleContext {
                 functions: module_functions,
                 classes: module_classes,
+                export_aliases: &module_export_aliases,
                 default_exports: &module_default_exports,
                 default_class_exports: &module_default_class_exports,
                 named_exports: &module_named_exports,
@@ -2654,6 +2701,34 @@ fn module_aot_state(
                 continue;
             }
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+            if let Some(local) = context
+                .export_aliases
+                .get(&(imported_module.id.clone(), imported.to_string()))
+            {
+                if let Some(function) = context
+                    .functions
+                    .get(&(imported_module.id.clone(), local.clone()))
+                {
+                    state
+                        .functions
+                        .insert(binding.local.clone(), function.clone());
+                    continue;
+                }
+                if let Some(class) = context
+                    .classes
+                    .get(&(imported_module.id.clone(), local.clone()))
+                {
+                    state.classes.insert(binding.local.clone(), class.clone());
+                    continue;
+                }
+                if let Some(slot) = context
+                    .slots
+                    .get(&(imported_module.id.clone(), local.clone()))
+                {
+                    state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
+                    continue;
+                }
+            }
             if let Some(function) = context
                 .functions
                 .get(&(imported_module.id.clone(), imported.to_string()))
@@ -2898,6 +2973,7 @@ struct AotInlineFunctionParts<'a> {
 struct AotModuleContext<'a> {
     functions: &'a BTreeMap<(String, String), AotFunction>,
     classes: &'a BTreeMap<(String, String), AotClass>,
+    export_aliases: &'a BTreeMap<(String, String), String>,
     default_exports: &'a BTreeMap<String, AotFunction>,
     default_class_exports: &'a BTreeMap<String, AotClass>,
     named_exports: &'a BTreeMap<String, BTreeMap<String, AotFunction>>,
