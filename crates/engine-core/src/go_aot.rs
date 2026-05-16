@@ -5001,6 +5001,7 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             let returned = render_expr(value, state)?;
             Some(format!("return {returned}"))
         }
+        JsStmt::Return { value: None } => Some("return nil".to_string()),
         JsStmt::If {
             test,
             consequent,
@@ -5616,6 +5617,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_map_call_expr(callee, args, state))
+            .or_else(|| render_object_map_expr(expr, state))
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
@@ -6340,6 +6342,9 @@ fn is_nullish_expr(expr: &JsExpr) -> bool {
 }
 
 fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, AotObject)> {
+    if let Some(arg) = object_freeze_arg(expr) {
+        return render_object_literal(arg, state);
+    }
     let JsExpr::Object { props } = expr else {
         return None;
     };
@@ -6356,17 +6361,22 @@ fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, Aot
         type_fields.push(format!("{field_name} {go_type}"));
         value_fields.push(format!("{field_name}: {rendered}"));
     }
+    let type_fields = indent_lines(&type_fields.join("\n"));
+    let value_fields = if value_fields.is_empty() {
+        String::new()
+    } else {
+        format!("{},\n", indent_lines(&value_fields.join(",\n")))
+    };
     Some((
-        format!(
-            "struct {{\n{}\n}}{{\n{},\n}}",
-            indent_lines(&type_fields.join("\n")),
-            indent_lines(&value_fields.join(",\n"))
-        ),
+        format!("struct {{\n{type_fields}\n}}{{\n{value_fields}}}"),
         AotObject { fields },
     ))
 }
 
 fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some(arg) = object_freeze_arg(expr) {
+        return render_object_map_expr(arg, state);
+    }
     match expr {
         JsExpr::Object { props } => {
             if props.iter().any(|prop| prop.spread) {
@@ -7081,6 +7091,30 @@ fn is_object_keys_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
             } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
                 && property == "keys"
         )
+}
+
+fn object_freeze_arg(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if !matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+        || property != "freeze"
+    {
+        return None;
+    }
+    args.first()
 }
 
 fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -9276,6 +9310,9 @@ fn is_json_stringify(expr: &JsExpr) -> bool {
 }
 
 fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some(arg) = object_freeze_arg(expr) {
+        return render_json_value_expr(arg, state);
+    }
     match expr {
         JsExpr::Value { value } => render_value(value),
         JsExpr::Function { .. } => render_inline_function_value_expr(expr, state),
