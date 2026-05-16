@@ -1404,6 +1404,26 @@ func tsgodownStringArrayEvery(values []string, predicate func(any, float64) bool
 	return true
 }
 
+func tsgodownAnyArrayFilter(values []any, predicate func(any, float64) bool) []any {
+	filtered := make([]any, 0, len(values))
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
+}
+
+func tsgodownStringArrayFilter(values []string, predicate func(any, float64) bool) []string {
+	filtered := make([]string, 0, len(values))
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -9324,6 +9344,9 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_array_map_call(callee, args) => {
             render_any_array_map_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_array_filter_call(callee, args) => {
+            render_any_array_filter_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_array_from_length_map_call(callee, args) => {
             render_array_from_length_map_call(args, state)
         }
@@ -9477,6 +9500,11 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
 }
 
 fn render_array_predicate_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if matches!(expr, JsExpr::Ident { name } if name == "Boolean") {
+        return Some(
+            "func(value any, _ float64) bool { return tsgodownToBool(value) }".to_string(),
+        );
+    }
     let JsExpr::Function {
         params,
         rest_param: None,
@@ -9541,6 +9569,51 @@ fn render_any_array_map_call(callee: &JsExpr, args: &[JsExpr], state: &AotState)
     }
     let values = render_string_array_expr(object, state)?;
     Some(format!("tsgodownStringArrayMap({values}, {mapper})"))
+}
+
+fn is_array_filter_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "filter"
+        )
+}
+
+fn render_any_array_filter_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_filter_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let values = render_any_array_expr(object, state)?;
+    let predicate = render_array_predicate_expr(args.first()?, state)?;
+    Some(format!("tsgodownAnyArrayFilter({values}, {predicate})"))
+}
+
+fn render_string_array_filter_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_filter_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let values = render_string_array_expr(object, state)?;
+    let predicate = render_array_predicate_expr(args.first()?, state)?;
+    Some(format!("tsgodownStringArrayFilter({values}, {predicate})"))
 }
 
 fn is_array_predicate_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -10187,6 +10260,9 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_array_map_to_string_call(callee, args) => {
             render_array_map_to_string_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_array_filter_call(callee, args) => {
+            render_string_array_filter_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_string_match_call(callee, args) => {
             render_string_match_call(callee, args, state)
