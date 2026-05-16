@@ -3283,6 +3283,14 @@ fn module_aot_state(
                     .insert(name.clone(), sanitize_go_identifier(name));
                 state.builtin_function_aliases.insert(name.clone(), alias);
             }
+            if let Some((pattern, global)) = render_supported_regexp_replace_pattern(expr) {
+                if !state.bindings.contains(name) {
+                    state.bind_slot(name, sanitize_go_identifier(name), AotSlotKind::RegExp);
+                }
+                state
+                    .regexp_replace_bindings
+                    .insert(name.clone(), (pattern, global));
+            }
         }
         if let JsStmt::ClassDecl { name, .. } = stmt {
             let class = context.classes.get(&(module.id.clone(), name.clone()))?;
@@ -3578,6 +3586,7 @@ struct AotState {
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
     regexp_bindings: BTreeSet<String>,
+    regexp_replace_bindings: BTreeMap<String, (String, bool)>,
     map_bindings: BTreeSet<String>,
     url_bindings: BTreeSet<String>,
     event_emitter_bindings: BTreeSet<String>,
@@ -3657,6 +3666,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
+        regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -3889,6 +3899,16 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bind_slot(name, ident.clone(), AotSlotKind::NumberArray);
                     return Some(format!("var {ident} []float64 = {value}"));
                 }
+                if let Some((pattern, global)) = render_supported_regexp_replace_pattern(expr) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::RegExp);
+                    state
+                        .regexp_replace_bindings
+                        .insert(name.clone(), (pattern.clone(), global));
+                    return Some(format!(
+                        "var {ident} string = {}",
+                        go_string_literal(&pattern)
+                    ));
+                }
                 if let Some(value) = render_regexp_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::RegExp);
                     return Some(format!("var {ident} string = {value}"));
@@ -4070,6 +4090,7 @@ fn render_for_stmt(
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
+        regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -4258,6 +4279,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
+        regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -4295,6 +4317,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
+        regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -8284,6 +8307,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_number_array_expr(expr, state) {
         return Some((AotSlotKind::NumberArray, value, "[]float64"));
     }
+    if let Some((pattern, _global)) = render_supported_regexp_replace_pattern(expr) {
+        return Some((AotSlotKind::RegExp, go_string_literal(&pattern), "string"));
+    }
     if let Some(value) = render_regexp_expr(expr, state) {
         return Some((AotSlotKind::RegExp, value, "string"));
     }
@@ -9659,7 +9685,7 @@ fn is_string_replace_alias_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool 
                     value: JsValue::String { .. },
                 } | JsExpr::Value {
                     value: JsValue::RegExp { .. },
-                }
+                } | JsExpr::Ident { .. }
             )
         )
         && matches!(
@@ -9679,7 +9705,7 @@ fn string_method_alias_call_uses_regexp(callee: &JsExpr, args: &[JsExpr]) -> boo
             args.get(1),
             Some(JsExpr::Value {
                 value: JsValue::RegExp { .. }
-            })
+            }) | Some(JsExpr::Ident { .. })
         )
     {
         return false;
@@ -9707,6 +9733,13 @@ fn render_string_replace_alias_call(args: &[JsExpr], state: &AotState) -> Option
             Some(format!(
                 "tsgodownRegexpReplace({object}, {}, {replacement}, {global})",
                 go_string_literal(&pattern)
+            ))
+        }
+        JsExpr::Ident { name } => {
+            let (_pattern, global) = state.regexp_replace_bindings.get(name)?;
+            Some(format!(
+                "tsgodownRegexpReplace({object}, {}, {replacement}, {global})",
+                go_binding_ref(name, state)
             ))
         }
         _ => None,

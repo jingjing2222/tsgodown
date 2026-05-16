@@ -6262,8 +6262,9 @@ console.log("replace", normalize("a_b\r\nline\n"), "feed".replace("e", "E"))
             "src/index.js",
             r#"
 const replace = String.prototype.replace
+const percentTwenties = /%20/g
 function format(value) {
-  return replace.call(value, /%20/g, "+")
+  return replace.call(value, percentTwenties, "+")
 }
 console.log("replace-alias", format("a%20b%20c"))
 "#,
