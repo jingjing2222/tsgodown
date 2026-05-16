@@ -2846,7 +2846,15 @@ console.log("object-spread", clone.value, clone.nested.flag, clone.extra.at(-1),
 const value = await (async () => {
   const base = { value: 4, nested: { flag: false } }
   const clone = { ...base, extra: [4, 5] }
-  return { value: clone.value, flag: clone.nested.flag, last: clone.extra.at(-1) }
+  class Box {
+    constructor(input) {
+      this.input = input
+    }
+    get doubled() {
+      return this.input * 2
+    }
+  }
+  return { value: clone.value, flag: clone.nested.flag, last: clone.extra.at(-1), doubled: new Box(6).doubled }
 })()
 console.log(JSON.stringify(value))
 "#,
@@ -2900,7 +2908,7 @@ console.log(JSON.stringify(value))
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "{\"flag\":false,\"last\":5,\"value\":4}\n"
+            "{\"doubled\":12,\"flag\":false,\"last\":5,\"value\":4}\n"
         );
     }
 

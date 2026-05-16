@@ -1466,13 +1466,155 @@ fn collect_module_classes(ir: &IrDocument) -> BTreeMap<(String, String), AotClas
         let Some(executable) = &module.executable else {
             continue;
         };
-        for stmt in &executable.stmts {
-            if let Some(class) = collect_class(module, entry, stmt) {
-                classes.insert((module.id.clone(), class.name.clone()), class);
-            }
-        }
+        collect_classes_from_stmts(module, entry, &executable.stmts, &mut classes);
     }
     classes
+}
+
+fn collect_classes_from_stmts(
+    module: &Module,
+    entry: &Module,
+    stmts: &[JsStmt],
+    classes: &mut BTreeMap<(String, String), AotClass>,
+) {
+    for stmt in stmts {
+        if let Some(class) = collect_class(module, entry, stmt) {
+            classes.insert((module.id.clone(), class.name.clone()), class);
+        }
+        match stmt {
+            JsStmt::FunctionDecl { body, .. } => {
+                collect_classes_from_stmts(module, entry, body, classes);
+            }
+            JsStmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                collect_classes_from_stmts(module, entry, consequent, classes);
+                collect_classes_from_stmts(module, entry, alternate, classes);
+            }
+            JsStmt::For { init, body, .. } => {
+                collect_classes_from_stmts(module, entry, init, classes);
+                collect_classes_from_stmts(module, entry, body, classes);
+            }
+            JsStmt::ForOf { body, .. }
+            | JsStmt::While { body, .. }
+            | JsStmt::DoWhile { body, .. }
+            | JsStmt::Label { body, .. } => {
+                collect_classes_from_stmts(module, entry, body, classes);
+            }
+            JsStmt::Switch { cases, .. } => {
+                for case in cases {
+                    collect_classes_from_stmts(module, entry, &case.consequent, classes);
+                }
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_classes_from_stmts(module, entry, body, classes);
+                collect_classes_from_stmts(module, entry, catch_body, classes);
+                collect_classes_from_stmts(module, entry, finally_body, classes);
+            }
+            JsStmt::Expr { expr }
+            | JsStmt::Return { value: Some(expr) }
+            | JsStmt::Throw { value: expr }
+            | JsStmt::Yield {
+                value: Some(expr), ..
+            }
+            | JsStmt::VarDecl {
+                init: Some(expr), ..
+            } => {
+                collect_classes_from_expr(module, entry, expr, classes);
+            }
+            JsStmt::ClassDecl { .. }
+            | JsStmt::Return { value: None }
+            | JsStmt::Yield { value: None, .. }
+            | JsStmt::VarDecl { init: None, .. }
+            | JsStmt::Break { .. }
+            | JsStmt::Continue { .. } => {}
+        }
+    }
+}
+
+fn collect_classes_from_expr(
+    module: &Module,
+    entry: &Module,
+    expr: &JsExpr,
+    classes: &mut BTreeMap<(String, String), AotClass>,
+) {
+    match expr {
+        JsExpr::Function { body, .. } => {
+            collect_classes_from_stmts(module, entry, body, classes);
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_classes_from_expr(module, entry, item, classes);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_classes_from_expr(module, entry, &item.value, classes);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                if let Some(key_expr) = &prop.key_expr {
+                    collect_classes_from_expr(module, entry, key_expr, classes);
+                }
+                collect_classes_from_expr(module, entry, &prop.value, classes);
+            }
+        }
+        JsExpr::ObjectRest { object, .. }
+        | JsExpr::Unary { arg: object, .. }
+        | JsExpr::Await { arg: object }
+        | JsExpr::Update { arg: object, .. }
+        | JsExpr::Spread { arg: object } => {
+            collect_classes_from_expr(module, entry, object, classes);
+        }
+        JsExpr::Class { methods, .. } => {
+            for method in methods {
+                collect_classes_from_stmts(module, entry, &method.body, classes);
+            }
+        }
+        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
+            collect_classes_from_expr(module, entry, left, classes);
+            collect_classes_from_expr(module, entry, right, classes);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_classes_from_expr(module, entry, test, classes);
+            collect_classes_from_expr(module, entry, consequent, classes);
+            collect_classes_from_expr(module, entry, alternate, classes);
+        }
+        JsExpr::Call { callee, args, .. } | JsExpr::New { callee, args } => {
+            collect_classes_from_expr(module, entry, callee, classes);
+            for arg in args {
+                collect_classes_from_expr(module, entry, arg, classes);
+            }
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            collect_classes_from_expr(module, entry, object, classes);
+            if let Some(property_expr) = property_expr {
+                collect_classes_from_expr(module, entry, property_expr, classes);
+            }
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_classes_from_expr(module, entry, expr, classes);
+            }
+        }
+        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => {}
+    }
 }
 
 fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotClass> {
@@ -1901,9 +2043,16 @@ fn render_module_decls(
                 slots: module_slots,
             },
         )?;
+        let mut rendered_classes = BTreeSet::new();
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::ClassDecl { name, .. } = stmt {
                 let class = module_classes.get(&(module.id.clone(), name.clone()))?;
+                declarations.push(render_class_decl(class)?);
+                rendered_classes.insert(name.clone());
+            }
+        }
+        for ((module_id, name), class) in module_classes {
+            if module_id == &module.id && !rendered_classes.contains(name) {
                 declarations.push(render_class_decl(class)?);
             }
         }
@@ -1959,6 +2108,11 @@ fn module_aot_state(
         }
         if let JsStmt::ClassDecl { name, .. } = stmt {
             let class = context.classes.get(&(module.id.clone(), name.clone()))?;
+            state.classes.insert(name.clone(), class.clone());
+        }
+    }
+    for ((module_id, name), class) in context.classes {
+        if module_id == &module.id {
             state.classes.insert(name.clone(), class.clone());
         }
     }
@@ -3991,10 +4145,11 @@ fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut rendered = Vec::new();
     for stmt in body {
         match stmt {
-            JsStmt::FunctionDecl { .. }
-            | JsStmt::ClassDecl { .. }
-            | JsStmt::Break { .. }
-            | JsStmt::Continue { .. } => {
+            JsStmt::FunctionDecl { .. } | JsStmt::Break { .. } | JsStmt::Continue { .. } => {
+                return None;
+            }
+            JsStmt::ClassDecl { name, .. } if block_state.classes.contains_key(name) => {}
+            JsStmt::ClassDecl { .. } => {
                 return None;
             }
             JsStmt::Return { value: Some(value) } => {
