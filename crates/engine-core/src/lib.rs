@@ -2844,6 +2844,7 @@ console.log("object-spread", clone.value, clone.nested.flag, clone.extra.at(-1),
             "src/index.mjs",
             r#"
 const value = await (async () => {
+  const log = []
   const base = { value: 4, nested: { flag: false } }
   const clone = { ...base, extra: [4, 5] }
   class Box {
@@ -2854,7 +2855,8 @@ const value = await (async () => {
       return this.input * 2
     }
   }
-  return { value: clone.value, flag: clone.nested.flag, last: clone.extra.at(-1), doubled: new Box(6).doubled }
+  log.push(["last", clone.extra.at(-1)])
+  return { value: clone.value, flag: clone.nested.flag, last: clone.extra.at(-1), doubled: new Box(6).doubled, log }
 })()
 console.log(JSON.stringify(value))
 "#,
@@ -2908,7 +2910,7 @@ console.log(JSON.stringify(value))
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "{\"doubled\":12,\"flag\":false,\"last\":5,\"value\":4}\n"
+            "{\"doubled\":12,\"flag\":false,\"last\":5,\"log\":[[\"last\",5]],\"value\":4}\n"
         );
     }
 
