@@ -1256,6 +1256,28 @@ func tsgodownAnyArrayFromAny(value any) []any {
 	}
 }
 
+func tsgodownAnyArrayConcat(base []any, values ...any) []any {
+	out := make([]any, len(base))
+	copy(out, base)
+	for _, value := range values {
+		switch items := value.(type) {
+		case []any:
+			out = append(out, items...)
+		case []string:
+			for _, item := range items {
+				out = append(out, item)
+			}
+		case []float64:
+			for _, item := range items {
+				out = append(out, item)
+			}
+		default:
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func tsgodownArrayAt(value any, index float64) any {
 	offset := int(index)
 	switch values := value.(type) {
@@ -4698,6 +4720,16 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
         }
+        JsExpr::Call { callee, args, .. } if is_array_concat_call_shape(callee) => {
+            if let JsExpr::Member { object, .. } = callee.as_ref() {
+                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::AnyArray);
+                infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
+            }
+            for arg in args {
+                mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
+            }
+        }
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
@@ -4916,6 +4948,7 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         return Some(rendered);
     }
     let mutated_any_array_param = function_mutated_any_array_param(function, state);
+    let returns_any_array = function_returns_any_array(function, state);
     let mut function_state = clone_aot_state(state);
     for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
         function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
@@ -4934,7 +4967,7 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
         .collect::<Vec<_>>()
         .join(", ");
     let function_body = render_function_body(&function.body, &function_state)?;
-    let return_type = if mutated_any_array_param.is_some() {
+    let return_type = if mutated_any_array_param.is_some() || returns_any_array {
         "[]any"
     } else {
         "any"
@@ -4942,7 +4975,7 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
     let function_body = if let Some(index) = mutated_any_array_param {
         let param = function.params.get(index)?;
         format!("{function_body}\nreturn {}", sanitize_go_identifier(param))
-    } else if function_body.trim_end().ends_with("return nil") {
+    } else if returns_any_array || function_body.trim_end().ends_with("return nil") {
         function_body
     } else {
         format!("{function_body}\nreturn nil")
@@ -5102,6 +5135,7 @@ fn render_local_function_decl(function: &AotFunction, state: &AotState) -> Optio
         return None;
     }
     let mutated_any_array_param = function_mutated_any_array_param(function, state);
+    let returns_any_array = function_returns_any_array(function, state);
     let mut function_state = clone_aot_state(state);
     for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
         function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
@@ -5120,7 +5154,7 @@ fn render_local_function_decl(function: &AotFunction, state: &AotState) -> Optio
         .collect::<Vec<_>>()
         .join(", ");
     let function_body = render_function_body(&function.body, &function_state)?;
-    let return_type = if mutated_any_array_param.is_some() {
+    let return_type = if mutated_any_array_param.is_some() || returns_any_array {
         "[]any"
     } else {
         "any"
@@ -5128,7 +5162,7 @@ fn render_local_function_decl(function: &AotFunction, state: &AotState) -> Optio
     let function_body = if let Some(index) = mutated_any_array_param {
         let param = function.params.get(index)?;
         format!("{function_body}\nreturn {}", sanitize_go_identifier(param))
-    } else if function_body.trim_end().ends_with("return nil") {
+    } else if returns_any_array || function_body.trim_end().ends_with("return nil") {
         function_body
     } else {
         format!("{function_body}\nreturn nil")
@@ -6315,6 +6349,64 @@ fn function_returns_number_array(function: &AotFunction, state: &AotState) -> bo
         && saw_return
 }
 
+fn function_returns_any_array(function: &AotFunction, state: &AotState) -> bool {
+    if function.body.iter().any(|stmt| {
+        matches!(
+            stmt,
+            JsStmt::For { .. } | JsStmt::While { .. } | JsStmt::DoWhile { .. } | JsStmt::Try { .. }
+        )
+    }) {
+        return false;
+    }
+    let mut function_state = aot_function_state(function, state);
+    mark_any_array_locals(&function.body, &mut function_state);
+    let mut saw_return = false;
+    collect_any_array_returns(&function.body, &mut function_state, &mut saw_return).unwrap_or(false)
+        && saw_return
+}
+
+fn collect_any_array_returns(
+    body: &[JsStmt],
+    state: &mut AotState,
+    saw_return: &mut bool,
+) -> Option<bool> {
+    for stmt in body {
+        match stmt {
+            JsStmt::Return { value: Some(value) } => {
+                *saw_return = true;
+                if render_any_array_expr(value, state).is_none() {
+                    return Some(false);
+                }
+            }
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                let consequent_state = narrowed_typeof_state(test, state);
+                let mut consequent_state = clone_aot_state(&consequent_state);
+                mark_any_array_locals(consequent, &mut consequent_state);
+                if !collect_any_array_returns(consequent, &mut consequent_state, saw_return)? {
+                    return Some(false);
+                }
+                let mut alternate_state = clone_aot_state(state);
+                mark_any_array_locals(alternate, &mut alternate_state);
+                if !collect_any_array_returns(alternate, &mut alternate_state, saw_return)? {
+                    return Some(false);
+                }
+                render_function_stmt(stmt, state)?;
+            }
+            JsStmt::For { .. } | JsStmt::While { .. } => {
+                render_function_stmt(stmt, state)?;
+            }
+            _ => {
+                render_function_stmt(stmt, state)?;
+            }
+        }
+    }
+    Some(true)
+}
+
 fn collect_number_array_returns(
     body: &[JsStmt],
     state: &mut AotState,
@@ -7316,6 +7408,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
+            .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
@@ -8755,6 +8848,19 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]any{{{}}}", items.join(", ")))
         }
+        JsExpr::Call { callee, args, .. } if is_array_concat_call_shape(callee) => {
+            render_any_array_concat_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } => {
+            let JsExpr::Ident { name } = callee.as_ref() else {
+                return None;
+            };
+            let function = state.functions.get(name)?;
+            if !function_returns_any_array(function, state) {
+                return None;
+            }
+            render_call_expr(callee, args, state)
+        }
         JsExpr::Conditional {
             test,
             consequent,
@@ -8799,6 +8905,43 @@ fn render_any_array_from_any_expr(expr: &JsExpr, state: &AotState) -> Option<Str
     }
     let value = render_json_value_expr(expr, state).or_else(|| render_expr(expr, state))?;
     Some(format!("tsgodownAnyArrayFromAny({value})"))
+}
+
+fn is_array_concat_call_shape(callee: &JsExpr) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            property,
+            property_expr: None,
+            optional: false,
+            ..
+        } if property == "concat"
+    )
+}
+
+fn render_any_array_concat_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_concat_call_shape(callee) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let base = render_any_array_expr(object, state)?;
+    let values = args
+        .iter()
+        .map(|arg| render_json_value_expr(arg, state).or_else(|| render_expr(arg, state)))
+        .collect::<Option<Vec<_>>>()?;
+    if values.is_empty() {
+        return Some(format!("tsgodownAnyArrayConcat({base})"));
+    }
+    Some(format!(
+        "tsgodownAnyArrayConcat({base}, {})",
+        values.join(", ")
+    ))
 }
 
 fn render_any_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {

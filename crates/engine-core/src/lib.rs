@@ -6477,6 +6477,80 @@ console.log("push-apply-alias", values.join("|"))
     }
 
     #[test]
+    fn emit_go_runs_aot_any_array_concat_subset() {
+        let root = temp_project("engine-core-aot-any-array-concat");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function combine(a, b) {
+  return [].concat(a, b)
+}
+const left = ["a"]
+const right = ["b", "c"]
+const combined = combine(left, right)
+const prefixed = ["root"].concat(combined)
+const scalar = [].concat("x", "y")
+console.log("any-concat", combined.join("|"), prefixed.join("|"), scalar.join("|"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-any-array-concat".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "any-concat a|b|c root|a|b|c x|y\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_default_object_options_subset() {
         let root = temp_project("engine-core-aot-default-object-options");
         write(
