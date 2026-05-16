@@ -3888,7 +3888,7 @@ fn infer_bool_context_param_kinds(
     kinds: &mut [AotSlotKind],
 ) {
     match expr {
-        JsExpr::Ident { .. } => mark_ident_param_kind(expr, param_index, kinds, AotSlotKind::Bool),
+        JsExpr::Ident { .. } => mark_ident_param_kind(expr, param_index, kinds, AotSlotKind::Any),
         JsExpr::Unary { op, arg } if op == "!" => {
             infer_bool_context_param_kinds(arg, param_index, kinds);
         }
@@ -6460,7 +6460,7 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
-        JsExpr::Ident { name } if state.bindings.contains(name) => {
+        JsExpr::Ident { name } if is_any_binding(name, state) => {
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownObjectFromAny({value})"))
         }
@@ -6491,6 +6491,9 @@ fn render_dynamic_object_member_expr(
     property: &str,
     state: &AotState,
 ) -> Option<String> {
+    if render_map_expr(object, state).is_some() {
+        return None;
+    }
     let object = render_dynamic_object_source_expr(object, state)?;
     Some(format!(
         "tsgodownObjectProp({object}, {})",
@@ -6547,6 +6550,10 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
     match object {
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
+        }
+        JsExpr::Ident { name } if state.bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("tsgodownObjectFromAny({value})"))
         }
         JsExpr::Member {
             object,

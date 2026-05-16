@@ -1414,8 +1414,6 @@ console.log(acceptsPath("x"))
             .map(|diagnostic| diagnostic.message.as_str())
             .expect("expected fail-closed diagnostic");
         assert!(message.contains("aot.function.unsupported_body:src/index.js:acceptsPath"));
-        assert!(message.contains("aot.function.unsupported_body:src/index.js:localPath"));
-        assert!(message.contains("aot.function.unsupported_body:src/index.js:localFs"));
         assert!(!message.contains("aot.node.builtin_operation:path.match"));
         assert!(!message.contains("aot.node.builtin_property:path.match"));
         assert!(!message.contains("aot.node.builtin_operation:path.split"));
@@ -3706,7 +3704,8 @@ console.log("bool-fn", choose(true, false), choose(false, false))
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0]
             .contents
-            .contains("func choose(flag bool, fallback bool)"));
+            .contains("func choose(flag any, fallback any)"));
+        assert!(response.files[0].contents.contains("tsgodownToBool"));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -6334,6 +6333,81 @@ console.log("truthy", !missing, !text, Boolean(count), check(false, "x"), check(
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "truthy true true true none true\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_truthy_any_param_subset() {
+        let root = temp_project("engine-core-aot-truthy-any-param");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function pick(value) {
+  if (!value) {
+    return "empty"
+  }
+  if (typeof value !== "object") {
+    return "scalar"
+  }
+  return value.name
+}
+console.log("truthy-any", pick(0), pick("x"), pick({ name: "object" }))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-truthy-any-param".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "truthy-any empty scalar object\n"
         );
     }
 
