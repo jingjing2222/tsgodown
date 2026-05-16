@@ -1305,6 +1305,48 @@ func tsgodownAnyArraySet(values []any, index float64, value any) []any {
 	return values
 }
 
+func tsgodownAnyArrayWithLength(length float64) []any {
+	size := int(length)
+	if size < 0 {
+		size = 0
+	}
+	return make([]any, size)
+}
+
+func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
+	length := len(values)
+	start := 0
+	end := length
+	if len(indexes) > 0 {
+		start = int(indexes[0])
+		if start < 0 {
+			start = length + start
+		}
+	}
+	if len(indexes) > 1 {
+		end = int(indexes[1])
+		if end < 0 {
+			end = length + end
+		}
+	}
+	if start < 0 {
+		start = 0
+	}
+	if start > length {
+		start = length
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end > length {
+		end = length
+	}
+	for index := start; index < end; index++ {
+		values[index] = value
+	}
+	return values
+}
+
 func tsgodownAnyArraySlice(values []any, start float64, endValues ...float64) []any {
 	length := len(values)
 	from := int(start)
@@ -2080,6 +2122,10 @@ func tsgodownStringArrayFromAny(value any) []string {
 func tsgodownAnyArrayJoin(values []any, separator string) string {
 	parts := make([]string, len(values))
 	for index, item := range values {
+		if item == nil {
+			parts[index] = ""
+			continue
+		}
 		parts[index] = tsgodownToString(item)
 	}
 	return strings.Join(parts, separator)
@@ -4941,6 +4987,18 @@ fn infer_expr_param_kinds(
                 infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
+        JsExpr::Call { callee, args, .. } if is_array_fill_call_shape(callee) => {
+            if let JsExpr::Member { object, .. } = callee.as_ref() {
+                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::AnyArray);
+                infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
+            }
+            if let Some(value) = args.first() {
+                mark_ident_param_kind(value, param_index, kinds, AotSlotKind::Any);
+            }
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
+            }
+        }
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
@@ -6928,6 +6986,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             render_function_static_member_assignment_stmt(op, left, right, state)
         }
         JsExpr::Assign { op, left, right }
+            if render_any_array_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_any_array_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Assign { op, left, right }
             if render_string_array_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_string_array_assignment_stmt(op, left, right, state)
@@ -6936,11 +6999,6 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_number_array_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_number_array_assignment_stmt(op, left, right, state)
-        }
-        JsExpr::Assign { op, left, right }
-            if render_any_array_assignment_stmt(op, left, right, state).is_some() =>
-        {
-            render_any_array_assignment_stmt(op, left, right, state)
         }
         JsExpr::Assign { op, left, right }
             if render_bytes_assignment_stmt(op, left, right, state).is_some() =>
@@ -7654,6 +7712,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
         }
         JsExpr::New { .. } => render_date_expr(expr, state)
+            .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
             .or_else(|| render_new_class_expr(expr, state).map(|(_, value)| value)),
@@ -9125,6 +9184,18 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         {
             render_any_array_prototype_slice_alias_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_array_from_length_call(callee, args) => {
+            render_array_from_length_call(args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_any_array_fill_call(callee, args, state).is_some() =>
+        {
+            render_any_array_fill_call(callee, args, state)
+        }
+        JsExpr::New { callee, args } if is_array_constructor_length_new(callee, args) => {
+            let length = render_numeric_expr(args.first()?, state)?;
+            Some(format!("tsgodownAnyArrayWithLength({length})"))
+        }
         JsExpr::Call { callee, args, .. } => {
             let JsExpr::Ident { name } = callee.as_ref() else {
                 return None;
@@ -9181,6 +9252,76 @@ fn render_any_array_from_any_expr(expr: &JsExpr, state: &AotState) -> Option<Str
     Some(format!("tsgodownAnyArrayFromAny({value})"))
 }
 
+fn is_array_from_length_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "from"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Array")
+        )
+        && args.first().and_then(object_literal_length_expr).is_some()
+}
+
+fn render_array_from_length_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    let length = render_numeric_expr(object_literal_length_expr(args.first()?)?, state)?;
+    Some(format!("tsgodownAnyArrayWithLength({length})"))
+}
+
+fn object_literal_length_expr(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Object { props } = expr else {
+        return None;
+    };
+    props
+        .iter()
+        .find(|prop| !prop.spread && prop.key == "length" && prop.key_expr.is_none())
+        .map(|prop| &prop.value)
+}
+
+fn is_array_constructor_length_new(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Array")
+}
+
+fn render_any_array_fill_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !(1..=3).contains(&args.len()) {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "fill" {
+        return None;
+    }
+    let values = render_any_array_expr(object, state)?;
+    let fill = render_any_array_value_expr(args.first()?, state)?;
+    let indexes = args
+        .iter()
+        .skip(1)
+        .map(|arg| render_numeric_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    if indexes.is_empty() {
+        return Some(format!("tsgodownAnyArrayFill({values}, {fill})"));
+    }
+    Some(format!(
+        "tsgodownAnyArrayFill({values}, {fill}, {})",
+        indexes.join(", ")
+    ))
+}
+
 fn is_array_concat_call_shape(callee: &JsExpr) -> bool {
     matches!(
         callee,
@@ -9190,6 +9331,18 @@ fn is_array_concat_call_shape(callee: &JsExpr) -> bool {
             optional: false,
             ..
         } if property == "concat"
+    )
+}
+
+fn is_array_fill_call_shape(callee: &JsExpr) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            property,
+            property_expr: None,
+            optional: false,
+            ..
+        } if property == "fill"
     )
 }
 
@@ -9702,7 +9855,10 @@ fn render_map_bool_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> O
 fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
-        JsExpr::Ident { name } if state.string_array_bindings.contains(name) => {
+        JsExpr::Ident { name }
+            if state.string_array_bindings.contains(name)
+                && !state.any_array_bindings.contains(name) =>
+        {
             Some(go_binding_ref(name, state))
         }
         JsExpr::Array { items } => {
@@ -12920,6 +13076,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return render_object_prototype_to_string_call(args.first()?, state);
     }
     if let Some(value) = render_any_array_push_call_expr(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_any_array_fill_call(callee, args, state) {
         return Some(value);
     }
     if let Some(value) = render_event_emitter_call_expr(callee, args, state) {
