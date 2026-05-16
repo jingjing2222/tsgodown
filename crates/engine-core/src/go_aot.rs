@@ -1424,6 +1424,42 @@ func tsgodownStringArrayFilter(values []string, predicate func(any, float64) boo
 	return filtered
 }
 
+func tsgodownAnyArrayFind(values []any, predicate func(any, float64) bool, reverse bool) any {
+	if reverse {
+		for index := len(values) - 1; index >= 0; index-- {
+			value := values[index]
+			if predicate(value, float64(index)) {
+				return value
+			}
+		}
+		return nil
+	}
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			return value
+		}
+	}
+	return nil
+}
+
+func tsgodownStringArrayFind(values []string, predicate func(any, float64) bool, reverse bool) any {
+	if reverse {
+		for index := len(values) - 1; index >= 0; index-- {
+			value := values[index]
+			if predicate(value, float64(index)) {
+				return value
+			}
+		}
+		return nil
+	}
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			return value
+		}
+	}
+	return nil
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -7818,6 +7854,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
+            .or_else(|| render_array_find_call(callee, args, state))
             .or_else(|| render_call_expr(callee, args, state))
             .or_else(|| render_bool_expr(expr, state)),
         JsExpr::Await { arg } => {
@@ -9614,6 +9651,42 @@ fn render_string_array_filter_call(
     let values = render_string_array_expr(object, state)?;
     let predicate = render_array_predicate_expr(args.first()?, state)?;
     Some(format!("tsgodownStringArrayFilter({values}, {predicate})"))
+}
+
+fn is_array_find_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if matches!(property.as_str(), "find" | "findLast")
+        )
+}
+
+fn render_array_find_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_array_find_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member {
+        object, property, ..
+    } = callee
+    else {
+        return None;
+    };
+    let predicate = render_array_predicate_expr(args.first()?, state)?;
+    let reverse = (property == "findLast").to_string();
+    if let Some(values) = render_any_array_expr(object, state) {
+        return Some(format!(
+            "tsgodownAnyArrayFind({values}, {predicate}, {reverse})"
+        ));
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!(
+        "tsgodownStringArrayFind({values}, {predicate}, {reverse})"
+    ))
 }
 
 fn is_array_predicate_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
