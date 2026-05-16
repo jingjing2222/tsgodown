@@ -2342,6 +2342,76 @@ console.log("aot-fn-static", tag("go"), tag.label)
     }
 
     #[test]
+    fn emit_go_runs_aot_conditional_variadic_debug_function_subset() {
+        let root = temp_project("engine-core-aot-conditional-variadic-debug-function");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const debug = (
+  typeof process === "object" &&
+  process.env &&
+  process.env.TSGODOWN_DEBUG &&
+  /\bgo\b/i.test(process.env.TSGODOWN_DEBUG)
+) ? (...args) => console.error("DBG", ...args)
+  : () => {}
+debug("go", 2)
+console.log("aot-debug", "done")
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-conditional-variadic-debug-function".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("func(args ...any) any"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .env("TSGODOWN_DEBUG", "go")
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "aot-debug done\n");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "DBG go 2\n");
+    }
+
+    #[test]
     fn emit_go_runs_aot_basic_class_instance_subset() {
         let root = temp_project("engine-core-aot-basic-class-instance");
         write(

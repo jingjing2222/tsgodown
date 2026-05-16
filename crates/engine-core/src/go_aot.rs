@@ -1391,6 +1391,8 @@ func tsgodownMapSize(target *tsgodownJSMap) float64 {
 
 func tsgodownCall(value any, args ...any) any {
 	switch fn := value.(type) {
+	case func(...any) any:
+		return fn(args...)
 	case func() any:
 		if len(args) == 0 {
 			return fn()
@@ -3723,6 +3725,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if let Some(value) = render_string_function_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringFunction);
                     return Some(format!("var {ident} func() string = {value}"));
+                }
+                if let Some(value) = render_any_function_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    return Some(format!("var {ident} any = {value}"));
                 }
                 if let Some((value, object)) = render_object_literal(expr, state) {
                     state.bindings.insert(name.clone());
@@ -7217,6 +7224,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::Null,
         } => Some("\"object\"".to_string()),
+        JsExpr::Ident { name } if name == "process" => Some("\"object\"".to_string()),
         JsExpr::Value {
             value: JsValue::Bool { .. },
         } => Some("\"boolean\"".to_string()),
@@ -10325,6 +10333,93 @@ fn render_string_function_expr(expr: &JsExpr, state: &AotState) -> Option<String
         return Some("tsgodownCryptoRandomUUID".to_string());
     }
     None
+}
+
+fn render_any_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Function { .. } => render_variadic_any_function_expr(expr, state),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            let test = render_bool_expr(test, state)?;
+            let consequent = render_variadic_any_function_expr(consequent, state)?;
+            let alternate = render_variadic_any_function_expr(alternate, state)?;
+            Some(format!(
+                "func() any {{ if {test} {{ return {consequent} }}; return {alternate} }}()"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn render_variadic_any_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if !params.is_empty() {
+        return None;
+    }
+    if body.is_empty() {
+        return Some("func(args ...any) any { return nil }".to_string());
+    }
+    let rest_param = rest_param.as_deref()?;
+    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+        return None;
+    };
+    let console = render_variadic_console_call(value, rest_param, state)?;
+    Some(format!(
+        "func({rest_param} ...any) any {{ {console}; return nil }}"
+    ))
+}
+
+fn render_variadic_console_call(
+    expr: &JsExpr,
+    rest_param: &str,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    let is_error = is_console_error(callee);
+    if !is_error && !is_console_log(callee) {
+        return None;
+    }
+    let mut fixed = Vec::new();
+    let mut saw_rest = false;
+    for arg in args {
+        match arg {
+            JsExpr::Spread { arg } if matches!(arg.as_ref(), JsExpr::Ident { name } if name == rest_param) =>
+            {
+                saw_rest = true;
+            }
+            _ => fixed.push(render_console_arg_expr(arg, state)?),
+        }
+    }
+    if !saw_rest {
+        return None;
+    }
+    let prefix = if fixed.is_empty() {
+        "[]any{}".to_string()
+    } else {
+        format!("[]any{{{}}}", fixed.join(", "))
+    };
+    if is_error {
+        Some(format!(
+            "fmt.Fprintln(os.Stderr, append({prefix}, {rest_param}...)...)"
+        ))
+    } else {
+        Some(format!("fmt.Println(append({prefix}, {rest_param}...)...)"))
+    }
 }
 
 fn is_crypto_random_uuid_ref(expr: &JsExpr, state: &AotState) -> bool {
