@@ -2890,6 +2890,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    regexp_bindings: BTreeSet<String>,
     map_bindings: BTreeSet<String>,
     url_bindings: BTreeSet<String>,
     event_emitter_bindings: BTreeSet<String>,
@@ -2932,6 +2933,9 @@ impl AotState {
             AotSlotKind::AnyArray => {
                 self.any_array_bindings.insert(name.to_string());
             }
+            AotSlotKind::RegExp => {
+                self.regexp_bindings.insert(name.to_string());
+            }
             AotSlotKind::StringArray => {
                 self.string_array_bindings.insert(name.to_string());
             }
@@ -2955,6 +2959,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        regexp_bindings: state.regexp_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -3050,6 +3055,7 @@ enum AotSlotKind {
     Number,
     AnyArray,
     NumberArray,
+    RegExp,
     String,
     StringArray,
     BoolFunction,
@@ -3064,6 +3070,7 @@ fn go_type_for_slot(kind: AotSlotKind) -> &'static str {
         AotSlotKind::Number => "float64",
         AotSlotKind::AnyArray => "[]any",
         AotSlotKind::NumberArray => "[]float64",
+        AotSlotKind::RegExp => "string",
         AotSlotKind::String => "string",
         AotSlotKind::StringArray => "[]string",
         AotSlotKind::BoolFunction => "func() bool",
@@ -3159,6 +3166,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if let Some(value) = render_number_array_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::NumberArray);
                     return Some(format!("var {ident} []float64 = {value}"));
+                }
+                if let Some(value) = render_regexp_expr(expr, state) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::RegExp);
+                    return Some(format!("var {ident} string = {value}"));
                 }
                 if let Some(value) = render_string_array_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::StringArray);
@@ -3321,6 +3332,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        regexp_bindings: state.regexp_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -3463,6 +3475,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        regexp_bindings: state.regexp_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -3495,6 +3508,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        regexp_bindings: state.regexp_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
@@ -5212,7 +5226,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_map_has_call(callee, args, state) => {
             render_map_bool_call(callee, args, state)
         }
-        JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
+        JsExpr::Call { callee, args, .. }
+            if render_regexp_test_call(callee, args, state).is_some() =>
+        {
             render_regexp_test_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
@@ -6812,6 +6828,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_number_array_expr(expr, state) {
         return Some((AotSlotKind::NumberArray, value, "[]float64"));
     }
+    if let Some(value) = render_regexp_expr(expr, state) {
+        return Some((AotSlotKind::RegExp, value, "string"));
+    }
     if let Some(value) = render_string_array_expr(expr, state) {
         return Some((AotSlotKind::StringArray, value, "[]string"));
     }
@@ -7027,6 +7046,18 @@ fn render_any_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<String
     let values = render_any_array_expr(object, state)?;
     let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
     Some(format!("tsgodownAnyArrayAt({values}, {index})"))
+}
+
+fn render_regexp_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some(pattern) = render_supported_regexp_pattern(expr) {
+        return Some(go_string_literal(&pattern));
+    }
+    match expr {
+        JsExpr::Ident { name } if state.regexp_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        _ => None,
+    }
 }
 
 fn render_number_closure_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -7999,18 +8030,29 @@ fn is_regexp_test_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         JsExpr::Value {
             value: JsValue::RegExp { flags, .. },
         } if flags.chars().all(|flag| flag == 'i')
-    )
+    ) || matches!(object.as_ref(), JsExpr::Ident { .. })
+}
+
+fn render_regexp_pattern_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some(pattern) = render_supported_regexp_pattern(expr) {
+        return Some(go_string_literal(&pattern));
+    }
+    match expr {
+        JsExpr::Ident { name } if state.regexp_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        _ => None,
+    }
 }
 
 fn render_regexp_test_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
     let JsExpr::Member { object, .. } = callee else {
         return None;
     };
-    let pattern = render_supported_regexp_pattern(object)?;
+    let pattern = render_regexp_pattern_expr(object, state)?;
     let value = render_regexp_test_value_expr(args.first()?, state)?;
     Some(format!(
-        "regexp.MustCompile({}).MatchString({value})",
-        go_string_literal(&pattern)
+        "regexp.MustCompile({pattern}).MatchString({value})"
     ))
 }
 
@@ -9719,6 +9761,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::Bytes => render_bytes_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
         AotSlotKind::NumberArray => render_number_array_expr(expr, state),
+        AotSlotKind::RegExp => render_regexp_expr(expr, state),
         AotSlotKind::String => render_string_expr(expr, state),
         AotSlotKind::StringArray => render_string_array_expr(expr, state),
         AotSlotKind::BoolFunction => render_bool_function_expr(expr, state),
@@ -9898,6 +9941,7 @@ fn render_any_arg_to_kind(name: &str, kind: AotSlotKind) -> String {
         AotSlotKind::Bytes => format!("{name}.([]byte)"),
         AotSlotKind::Number => format!("tsgodownToFloat64({name})"),
         AotSlotKind::NumberArray => format!("{name}.([]float64)"),
+        AotSlotKind::RegExp => format!("tsgodownToString({name})"),
         AotSlotKind::String => format!("tsgodownToString({name})"),
         AotSlotKind::StringArray => format!("{name}.([]string)"),
         AotSlotKind::BoolFunction => format!("{name}.(func() bool)"),

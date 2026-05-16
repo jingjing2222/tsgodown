@@ -5115,6 +5115,87 @@ console.log("regexp", looksLikeNumber(null), looksLikeNumber(undefined), looksLi
     }
 
     #[test]
+    fn emit_go_runs_aot_imported_default_regexp_test_subset() {
+        let root = temp_project("engine-core-aot-imported-default-regexp-test");
+        write(
+            &root,
+            "src/regex.js",
+            r#"
+export default /^(?:[a-f]{2}|000)$/i
+"#,
+        );
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import REGEX from "./regex.js"
+function validate(value) {
+  return typeof value === "string" && REGEX.test(value)
+}
+console.log("regex-import", validate("AF"), validate("000"), validate("xyz"), validate(null))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-imported-default-regexp-test".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("var src_regex_js_default_ string"));
+        assert!(response.files[0].contents.contains("regexp.MustCompile"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "regex-import true true false false\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_string_match_subset() {
         let root = temp_project("engine-core-aot-string-match");
         write(
