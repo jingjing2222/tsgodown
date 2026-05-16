@@ -2770,6 +2770,73 @@ console.log("item", item.label, item.count + 2, item.ready)
     }
 
     #[test]
+    fn emit_go_runs_aot_object_spread_map_subset() {
+        let root = temp_project("engine-core-aot-object-spread");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const base = { value: 7, nested: { flag: true } }
+const clone = { ...base, value: 9, extra: ["a", "b"] }
+console.log("object-spread", clone.value, clone.nested.flag, JSON.stringify(clone.extra))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: legacy_ir_interpreter_config(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-object-spread".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("for key, value := range tsgodownObjectFromAny"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "object-spread 9 true [\"a\",\"b\"]\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_function_if_return_subset() {
         let root = temp_project("engine-core-aot-function-if-return");
         write(

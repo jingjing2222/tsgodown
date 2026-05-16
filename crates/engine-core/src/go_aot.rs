@@ -333,11 +333,6 @@ fn collect_aot_render_unsupported_expr_features(
         }
         JsExpr::Object { props } => {
             for prop in props {
-                if prop.spread {
-                    features.insert(format!(
-                        "aot.expression.unsupported:{source_path}:object-spread"
-                    ));
-                }
                 if let Some(key_expr) = &prop.key_expr {
                     features.insert(format!(
                         "aot.expression.unsupported:{source_path}:computed-key"
@@ -1082,7 +1077,15 @@ func tsgodownStrictEqual(left any, right any) bool {
     if imports.contains("encoding/json") {
         helpers.push(
             r#"func tsgodownJSONStringify(value any) string {
-	bytes, err := json.MarshalIndent(value, "", "  ")
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(bytes)
+}
+
+func tsgodownJSONStringifyIndent(value any, indent string) string {
+	bytes, err := json.MarshalIndent(value, "", indent)
 	if err != nil {
 		return ""
 	}
@@ -4491,9 +4494,31 @@ fn render_object_literal(expr: &JsExpr, state: &AotState) -> Option<(String, Aot
 fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Object { props } => {
+            if props.iter().any(|prop| prop.spread) {
+                let mut statements = vec!["out := map[string]any{}".to_string()];
+                for prop in props {
+                    if prop.key_expr.is_some() {
+                        return None;
+                    }
+                    if prop.spread {
+                        let value = render_object_map_expr(&prop.value, state)?;
+                        statements.push(format!(
+                            "for key, value := range tsgodownObjectFromAny({value}) {{ out[key] = value }}"
+                        ));
+                        continue;
+                    }
+                    let value = render_json_value_expr(&prop.value, state)?;
+                    statements.push(format!("out[{}] = {value}", go_string_literal(&prop.key)));
+                }
+                statements.push("return out".to_string());
+                return Some(format!(
+                    "func() map[string]any {{ {} }}()",
+                    statements.join("; ")
+                ));
+            }
             let mut fields = Vec::new();
             for prop in props {
-                if prop.spread || prop.key_expr.is_some() {
+                if prop.key_expr.is_some() {
                     return None;
                 }
                 let value = render_json_value_expr(&prop.value, state)?;
@@ -4529,17 +4554,26 @@ fn render_dynamic_object_member_expr(
     property: &str,
     state: &AotState,
 ) -> Option<String> {
-    let JsExpr::Ident { name } = object else {
-        return None;
-    };
-    if !state.dynamic_object_bindings.contains(name) {
-        return None;
-    }
-    let object = go_binding_ref(name, state);
+    let object = render_dynamic_object_source_expr(object, state)?;
     Some(format!(
         "tsgodownObjectProp({object}, {})",
         go_string_literal(property)
     ))
+}
+
+fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Option<String> {
+    match object {
+        JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } => render_dynamic_object_member_expr(object, property, state),
+        _ => None,
+    }
 }
 
 fn render_typed_slot_expr(
@@ -6212,6 +6246,9 @@ fn string_literal_value(expr: &JsExpr) -> Option<String> {
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
     if is_json_stringify(callee) {
         let value = render_json_value_expr(args.first()?, state)?;
+        if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
+            return Some(format!("tsgodownJSONStringifyIndent({value}, {space})"));
+        }
         return Some(format!("tsgodownJSONStringify({value})"));
     }
     if is_process_noop_call(callee, args) {
@@ -6281,6 +6318,21 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     ))
 }
 
+fn render_json_stringify_space_expr(expr: &JsExpr) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Number { value },
+        } => {
+            let spaces = value.parse::<usize>().ok()?.min(10);
+            Some(go_string_literal(&" ".repeat(spaces)))
+        }
+        JsExpr::Value {
+            value: JsValue::String { value },
+        } => Some(go_string_literal(value)),
+        _ => None,
+    }
+}
+
 fn render_call_args(
     args: &[JsExpr],
     param_kinds: &[AotSlotKind],
@@ -6342,9 +6394,12 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("[]any{{{}}}", items.join(", ")))
         }
         JsExpr::Object { props } => {
+            if props.iter().any(|prop| prop.spread) {
+                return render_object_map_expr(expr, state);
+            }
             let mut fields = Vec::new();
             for prop in props {
-                if prop.spread || prop.key_expr.is_some() {
+                if prop.key_expr.is_some() {
                     return None;
                 }
                 let value = render_json_value_expr(&prop.value, state)?;
@@ -6365,6 +6420,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr: None,
             optional: false,
         } => render_class_getter_member_expr(object, property, state)
+            .or_else(|| render_dynamic_object_member_expr(object, property, state))
             .or_else(|| render_static_member_expr(object, property, state)),
         _ => None,
     }
