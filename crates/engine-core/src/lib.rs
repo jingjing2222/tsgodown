@@ -7089,6 +7089,83 @@ console.log("array-map", copiedWords.join("|"), indexes.join("|"))
     }
 
     #[test]
+    fn emit_go_runs_aot_array_predicate_callbacks_subset() {
+        let root = temp_project("engine-core-aot-array-predicate-callbacks");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const stdio = ["pipe", "ignore", "pipe"]
+const mixed = [0, "ready", false]
+const hasReady = mixed.some((value, index) => value === "ready" && index === 1)
+const allPipeish = stdio.every((value, index) => value === "pipe" || index === 1)
+const none = [].some(() => true)
+const emptyEvery = [].every(() => false)
+console.log("array-predicate", hasReady, allPipeish, none, emptyEvery)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-array-predicate-callbacks".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArraySome"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArrayEvery"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArrayEvery"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-predicate true true false true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_math_numeric_subset() {
         let root = temp_project("engine-core-aot-math-numeric");
         write(

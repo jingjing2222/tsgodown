@@ -1368,6 +1368,42 @@ func tsgodownStringArrayMap(values []string, mapper func(any, float64) any) []an
 	return mapped
 }
 
+func tsgodownAnyArraySome(values []any, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			return true
+		}
+	}
+	return false
+}
+
+func tsgodownAnyArrayEvery(values []any, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if !predicate(value, float64(index)) {
+			return false
+		}
+	}
+	return true
+}
+
+func tsgodownStringArraySome(values []string, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if predicate(value, float64(index)) {
+			return true
+		}
+	}
+	return false
+}
+
+func tsgodownStringArrayEvery(values []string, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if !predicate(value, float64(index)) {
+			return false
+		}
+	}
+	return true
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -6988,6 +7024,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } => render_bool_call_expr(callee, args, state)
             .or_else(|| render_bool_function_call(callee, args, state))
+            .or_else(|| render_array_predicate_call(callee, args, state))
             .or_else(|| render_string_bool_method_alias_call(callee, args, state))
             .or_else(|| render_string_bool_method_call(callee, args, state))
             .or_else(|| render_array_bool_method_call(callee, args, state)),
@@ -9439,6 +9476,45 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
     ))
 }
 
+fn render_array_predicate_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if params.len() > 2 {
+        return None;
+    }
+    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+        return None;
+    };
+    let mut predicate_state = clone_aot_state(state);
+    if let Some(param) = params.first() {
+        predicate_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    if let Some(param) = params.get(1) {
+        predicate_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
+    }
+    let value = render_bool_test_expr(value, &predicate_state)?;
+    let value_param = params
+        .first()
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    let index_param = params
+        .get(1)
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    Some(format!(
+        "func({value_param} any, {index_param} float64) bool {{ return {value} }}"
+    ))
+}
+
 fn is_array_map_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
@@ -9465,6 +9541,46 @@ fn render_any_array_map_call(callee: &JsExpr, args: &[JsExpr], state: &AotState)
     }
     let values = render_string_array_expr(object, state)?;
     Some(format!("tsgodownStringArrayMap({values}, {mapper})"))
+}
+
+fn is_array_predicate_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if matches!(property.as_str(), "some" | "every")
+        )
+}
+
+fn render_array_predicate_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_predicate_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member {
+        object, property, ..
+    } = callee
+    else {
+        return None;
+    };
+    let predicate = render_array_predicate_expr(args.first()?, state)?;
+    let helper_suffix = if property == "some" { "Some" } else { "Every" };
+    if let Some(values) = render_any_array_expr(object, state) {
+        return Some(format!(
+            "tsgodownAnyArray{helper_suffix}({values}, {predicate})"
+        ));
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!(
+        "tsgodownStringArray{helper_suffix}({values}, {predicate})"
+    ))
 }
 
 fn object_literal_length_expr(expr: &JsExpr) -> Option<&JsExpr> {
