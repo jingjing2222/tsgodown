@@ -797,6 +797,7 @@ fn is_observed_node_builtin_name(name: &str, shadowed: &BTreeSet<String>) -> boo
 fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
     imports.insert("fmt");
+    imports.insert("math");
     imports.insert("strconv");
     imports.insert("strings");
     imports.insert("time");
@@ -1204,6 +1205,36 @@ func tsgodownDateUTCISOString(year float64, month float64, day float64, values .
 
 func tsgodownDateFromUnixMilliISOString(value float64) string {
 	return tsgodownDateFormatISO(time.UnixMilli(int64(value)))
+}
+
+func tsgodownMathMax(values ...float64) float64 {
+	if len(values) == 0 {
+		return math.Inf(-1)
+	}
+	max := values[0]
+	for _, value := range values[1:] {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}
+
+func tsgodownMathMin(values ...float64) float64 {
+	if len(values) == 0 {
+		return math.Inf(1)
+	}
+	min := values[0]
+	for _, value := range values[1:] {
+		if value < min {
+			min = value
+		}
+	}
+	return min
+}
+
+func tsgodownMathRound(value float64) float64 {
+	return math.Floor(value + 0.5)
 }
 
 func tsgodownStringArrayAt(values []string, index float64) string {
@@ -8045,9 +8076,54 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 args.join(", ")
             ))
         }
-        JsExpr::Call { callee, args, .. } => {
-            render_string_numeric_method_alias_call(callee, args, state)
-                .or_else(|| render_string_numeric_method_call(callee, args, state))
+        JsExpr::Call { callee, args, .. } => render_math_numeric_call(callee, args, state)
+            .or_else(|| render_string_numeric_method_alias_call(callee, args, state))
+            .or_else(|| render_string_numeric_method_call(callee, args, state)),
+        _ => None,
+    }
+}
+
+fn render_math_numeric_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if !matches!(object.as_ref(), JsExpr::Ident { name } if name == "Math") {
+        return None;
+    }
+    match property.as_str() {
+        "max" | "min" => {
+            let args = args
+                .iter()
+                .map(|arg| render_numeric_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            let helper = if property == "max" {
+                "tsgodownMathMax"
+            } else {
+                "tsgodownMathMin"
+            };
+            Some(format!("{helper}({})", args.join(", ")))
+        }
+        "floor" | "ceil" | "trunc" | "round" if args.len() == 1 => {
+            let value = render_numeric_expr(args.first()?, state)?;
+            let function = match property.as_str() {
+                "floor" => "math.Floor",
+                "ceil" => "math.Ceil",
+                "trunc" => "math.Trunc",
+                "round" => "tsgodownMathRound",
+                _ => return None,
+            };
+            Some(format!("{function}({value})"))
+        }
+        "pow" if args.len() == 2 => {
+            let base = render_numeric_expr(args.first()?, state)?;
+            let exponent = render_numeric_expr(args.get(1)?, state)?;
+            Some(format!("math.Pow({base}, {exponent})"))
         }
         _ => None,
     }
