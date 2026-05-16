@@ -859,6 +859,12 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
                 collect_stmt_imports(stmt, imports);
             }
         }
+        JsStmt::ForOf { right, body, .. } => {
+            collect_expr_imports(right, imports);
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+        }
         JsStmt::While { test, body } => {
             collect_expr_imports(test, imports);
             for stmt in body {
@@ -870,6 +876,22 @@ fn collect_stmt_imports(stmt: &JsStmt, imports: &mut BTreeSet<&'static str>) {
                 collect_stmt_imports(stmt, imports);
             }
             collect_expr_imports(test, imports);
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            for stmt in body {
+                collect_stmt_imports(stmt, imports);
+            }
+            for stmt in catch_body {
+                collect_stmt_imports(stmt, imports);
+            }
+            for stmt in finally_body {
+                collect_stmt_imports(stmt, imports);
+            }
         }
         _ => {}
     }
@@ -1878,6 +1900,14 @@ func tsgodownStringArrayFromAny(value any) []string {
 		return leftValue < rightValue
 	})
 	return append(integerKeys, stringKeys...)
+}
+
+func tsgodownObjectMapKeys(object map[string]any) []string {
+	keys := make([]string, 0, len(object))
+	for key := range object {
+		keys = append(keys, key)
+	}
+	return tsgodownObjectKeys(keys)
 }
 
 func tsgodownIsArrayIndexKey(key string) bool {
@@ -3023,6 +3053,7 @@ fn collect_module_slots(
         };
         let mut dynamic_object_writes = BTreeSet::new();
         collect_dynamic_object_candidates(&executable.stmts, &mut dynamic_object_writes);
+        mark_number_array_locals(&executable.stmts, &mut state);
         mark_string_array_locals(&executable.stmts, &mut state);
         mark_any_array_locals(&executable.stmts, &mut state);
         for stmt in &executable.stmts {
@@ -3033,7 +3064,11 @@ fn collect_module_slots(
             else {
                 continue;
             };
-            if dynamic_object_writes.contains(name) {
+            if dynamic_object_writes.contains(name)
+                && !state.number_array_bindings.contains(name)
+                && !state.string_array_bindings.contains(name)
+                && !state.any_array_bindings.contains(name)
+            {
                 continue;
             }
             let rendered_any_array = state
@@ -3888,6 +3923,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             update,
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
+        JsStmt::ForOf { left, right, body } => render_for_of_stmt(left, right, body, state),
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
         JsStmt::Try {
             body,
@@ -3954,6 +3990,20 @@ fn render_for_stmt(
         .unwrap_or_else(|| Some(String::new()))?;
     let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
     Some(format!("for {init}; {test}; {update} {{\n{body}\n}}"))
+}
+
+fn render_for_of_stmt(
+    left: &str,
+    right: &JsExpr,
+    body: &[JsStmt],
+    state: &AotState,
+) -> Option<String> {
+    let values = render_string_array_expr(right, state)?;
+    let ident = sanitize_go_identifier(left);
+    let mut loop_state = clone_aot_state(state);
+    loop_state.bind_slot(left, ident.clone(), AotSlotKind::String);
+    let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+    Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"))
 }
 
 fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option<String> {
@@ -4445,6 +4495,10 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
+        JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds);
+        }
         JsExpr::Call { callee, args, .. } if is_map_method_call_shape(callee, args) => {
             if matches!(
                 map_method_name(callee),
@@ -4485,7 +4539,15 @@ fn infer_expr_param_kinds(
                 if indexed_member && !is_length_member_property(property, property_expr.as_deref())
                 {
                     if let Some(index) = param_index.get(name) {
-                        kinds[*index] = AotSlotKind::AnyArray;
+                        if property.parse::<usize>().is_ok()
+                            || property_expr
+                                .as_deref()
+                                .is_some_and(is_numeric_property_key_expr)
+                        {
+                            kinds[*index] = AotSlotKind::AnyArray;
+                        } else {
+                            kinds[*index] = AotSlotKind::Any;
+                        }
                     }
                 }
             }
@@ -4907,6 +4969,9 @@ fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
 }
 
 fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
+    mark_number_array_locals(stmts, state);
+    mark_string_array_locals(stmts, state);
+    mark_any_array_locals(stmts, state);
     let mut write_candidates = BTreeSet::new();
     collect_dynamic_object_candidates(stmts, &mut write_candidates);
     let mut candidates = write_candidates.clone();
@@ -4990,6 +5055,10 @@ fn collect_dynamic_object_candidates(stmts: &[JsStmt], candidates: &mut BTreeSet
                 }
                 collect_dynamic_object_candidates(body, candidates);
             }
+            JsStmt::ForOf { right, body, .. } => {
+                collect_dynamic_object_candidates_expr(right, candidates);
+                collect_dynamic_object_candidates(body, candidates);
+            }
             JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
                 collect_dynamic_object_candidates_expr(test, candidates);
                 collect_dynamic_object_candidates(body, candidates);
@@ -5021,6 +5090,11 @@ fn collect_dynamic_object_candidates_expr(expr: &JsExpr, candidates: &mut BTreeS
             collect_dynamic_object_candidates_expr(right, candidates);
         }
         JsExpr::Call { callee, args, .. } => {
+            if is_object_keys_call(callee, args) {
+                if let Some(JsExpr::Ident { name }) = args.first() {
+                    candidates.insert(name.clone());
+                }
+            }
             collect_dynamic_object_candidates_expr(callee, candidates);
             for arg in args {
                 collect_dynamic_object_candidates_expr(arg, candidates);
@@ -5125,6 +5199,10 @@ fn collect_dynamic_object_member_read_candidates(
                 if let Some(update) = update {
                     collect_dynamic_object_member_read_candidates_expr(update, candidates);
                 }
+                collect_dynamic_object_member_read_candidates(body, candidates);
+            }
+            JsStmt::ForOf { right, body, .. } => {
+                collect_dynamic_object_member_read_candidates_expr(right, candidates);
                 collect_dynamic_object_member_read_candidates(body, candidates);
             }
             JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
@@ -5249,6 +5327,9 @@ fn collect_call_initialized_bindings(stmts: &[JsStmt], candidates: &mut BTreeSet
                 collect_call_initialized_bindings(init, candidates);
                 collect_call_initialized_bindings(body, candidates);
             }
+            JsStmt::ForOf { body, .. } => {
+                collect_call_initialized_bindings(body, candidates);
+            }
             JsStmt::While { body, .. } | JsStmt::DoWhile { body, .. } => {
                 collect_call_initialized_bindings(body, candidates);
             }
@@ -5271,13 +5352,17 @@ fn dynamic_object_assignment_target(expr: &JsExpr) -> Option<&str> {
     let JsExpr::Member {
         object,
         property,
-        property_expr: None,
+        property_expr,
         optional: false,
     } = expr
     else {
         return None;
     };
-    if property.parse::<usize>().is_ok() {
+    if property.parse::<usize>().is_ok()
+        || property_expr
+            .as_deref()
+            .is_some_and(is_numeric_property_key_expr)
+    {
         return None;
     }
     let JsExpr::Ident { name } = object.as_ref() else {
@@ -5387,6 +5472,9 @@ fn collect_string_array_candidates(
             JsStmt::VarDecl {
                 init: Some(expr), ..
             } => collect_string_array_candidates_expr(expr, state, candidates),
+            JsStmt::FunctionDecl { body, .. } => {
+                collect_string_array_candidates(body, state, candidates);
+            }
             JsStmt::If {
                 test,
                 consequent,
@@ -5409,6 +5497,10 @@ fn collect_string_array_candidates(
                 if let Some(update) = update {
                     collect_string_array_candidates_expr(update, state, candidates);
                 }
+                collect_string_array_candidates(body, state, candidates);
+            }
+            JsStmt::ForOf { right, body, .. } => {
+                collect_string_array_candidates_expr(right, state, candidates);
                 collect_string_array_candidates(body, state, candidates);
             }
             JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
@@ -5535,6 +5627,10 @@ fn is_string_array_candidate_value(expr: &JsExpr, state: &AotState) -> bool {
         return true;
     }
     if render_regexp_expr(expr, state).is_some() {
+        return true;
+    }
+    if matches!(expr, JsExpr::New { callee, .. } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "RegExp"))
+    {
         return true;
     }
     match expr {
@@ -5971,6 +6067,7 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             update,
             body,
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
+        JsStmt::ForOf { left, right, body } => render_for_of_stmt(left, right, body, state),
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
         JsStmt::Try {
             body,
@@ -6559,18 +6656,16 @@ fn render_dynamic_object_assignment_stmt(
     let JsExpr::Member {
         object,
         property,
-        property_expr: None,
+        property_expr,
         optional: false,
     } = left
     else {
         return None;
     };
     let object = render_dynamic_object_source_expr(object, state)?;
+    let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
     let value = render_json_value_expr(right, state)?;
-    Some(format!(
-        "tsgodownObjectSetProp({object}, {}, {value})",
-        go_string_literal(property)
-    ))
+    Some(format!("tsgodownObjectSetProp({object}, {key}, {value})"))
 }
 
 fn render_number_array_call_stmt(
@@ -6801,6 +6896,15 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 }
             })
             .or_else(|| render_dynamic_object_member_expr(object, property, state))
+            .or_else(|| render_string_expr(expr, state))
+            .or_else(|| render_numeric_expr(expr, state))
+            .or_else(|| render_bool_expr(expr, state)),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: Some(property_expr),
+            optional: false,
+        } => render_dynamic_object_member_access_expr(object, property, Some(property_expr), state)
             .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state)),
@@ -7654,6 +7758,9 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if let Some(arg) = object_freeze_arg(expr) {
         return render_object_map_expr(arg, state);
     }
+    if is_process_env_ref(expr) {
+        return Some("tsgodownProcessEnv()".to_string());
+    }
     match expr {
         JsExpr::Call { callee, args, .. } if is_object_create_null_call(callee, args) => {
             Some("map[string]any{}".to_string())
@@ -7729,14 +7836,57 @@ fn render_dynamic_object_member_expr(
     property: &str,
     state: &AotState,
 ) -> Option<String> {
+    render_dynamic_object_member_access_expr(object, property, None, state)
+}
+
+fn render_dynamic_object_member_access_expr(
+    object: &JsExpr,
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> Option<String> {
     if render_map_expr(object, state).is_some() {
         return None;
     }
     let object = render_dynamic_object_source_expr(object, state)?;
-    Some(format!(
-        "tsgodownObjectProp({object}, {})",
-        go_string_literal(property)
-    ))
+    let key = render_dynamic_object_property_key_expr(property, property_expr, state)?;
+    Some(format!("tsgodownObjectProp({object}, {key})"))
+}
+
+fn render_dynamic_object_property_key_expr(
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> Option<String> {
+    property_expr
+        .map(|expr| {
+            render_string_expr(expr, state).or_else(|| {
+                let value = render_expr(expr, state)?;
+                Some(format!("tsgodownToString({value})"))
+            })
+        })
+        .unwrap_or_else(|| Some(go_string_literal(property)))
+}
+
+fn is_numeric_property_key_expr(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Number { .. },
+        } => true,
+        JsExpr::Unary { op, arg } if matches!(op.as_str(), "+" | "-") => {
+            is_numeric_property_key_expr(arg)
+        }
+        JsExpr::Binary { op, left, right }
+            if is_numeric_binary_op(op) || is_bitwise_binary_op(op) =>
+        {
+            is_numeric_property_key_operand(left) && is_numeric_property_key_operand(right)
+        }
+        _ => false,
+    }
+}
+
+fn is_numeric_property_key_operand(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Ident { .. }) || is_numeric_property_key_expr(expr)
 }
 
 fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -8748,23 +8898,29 @@ fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
     if !is_object_keys_call(callee, args) {
         return None;
     }
-    let JsExpr::Object { props } = args.first()? else {
-        return None;
-    };
-    if props.iter().any(|prop| prop.spread) {
-        return None;
+    match args.first()? {
+        JsExpr::Object { props } => {
+            if props.iter().any(|prop| prop.spread) {
+                return None;
+            }
+            let keys = props
+                .iter()
+                .map(|prop| match &prop.key_expr {
+                    Some(key_expr) => render_string_expr(key_expr, state),
+                    None => Some(go_string_literal(&prop.key)),
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!(
+                "tsgodownObjectKeys([]string{{{}}})",
+                keys.join(", ")
+            ))
+        }
+        expr => {
+            let object = render_dynamic_object_source_expr(expr, state)
+                .or_else(|| render_object_map_expr(expr, state))?;
+            Some(format!("tsgodownObjectMapKeys({object})"))
+        }
     }
-    let keys = props
-        .iter()
-        .map(|prop| match &prop.key_expr {
-            Some(key_expr) => render_string_expr(key_expr, state),
-            None => Some(go_string_literal(&prop.key)),
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(format!(
-        "tsgodownObjectKeys([]string{{{}}})",
-        keys.join(", ")
-    ))
 }
 
 fn is_length_member_property(property: &str, property_expr: Option<&JsExpr>) -> bool {
@@ -11161,6 +11317,13 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 }
             })
             .or_else(|| render_dynamic_object_member_expr(object, property, state))
+            .or_else(|| render_numeric_expr(expr, state)),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: Some(property_expr),
+            optional: false,
+        } => render_dynamic_object_member_access_expr(object, property, Some(property_expr), state)
             .or_else(|| render_numeric_expr(expr, state)),
         _ => None,
     }
