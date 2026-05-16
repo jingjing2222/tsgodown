@@ -1313,6 +1313,14 @@ func tsgodownAnyArrayWithLength(length float64) []any {
 	return make([]any, size)
 }
 
+func tsgodownAnyArrayFromLengthMap(length float64, mapper func(any, float64) any) []any {
+	values := tsgodownAnyArrayWithLength(length)
+	for index := range values {
+		values[index] = mapper(nil, float64(index))
+	}
+	return values
+}
+
 func tsgodownAnyArrayFill(values []any, value any, indexes ...float64) []any {
 	length := len(values)
 	start := 0
@@ -9184,6 +9192,9 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         {
             render_any_array_prototype_slice_alias_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_array_from_length_map_call(callee, args) => {
+            render_array_from_length_map_call(args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_array_from_length_call(callee, args) => {
             render_array_from_length_call(args, state)
         }
@@ -9267,9 +9278,70 @@ fn is_array_from_length_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         && args.first().and_then(object_literal_length_expr).is_some()
 }
 
+fn is_array_from_length_map_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 2
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "from"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Array")
+        )
+        && args.first().and_then(object_literal_length_expr).is_some()
+}
+
 fn render_array_from_length_call(args: &[JsExpr], state: &AotState) -> Option<String> {
     let length = render_numeric_expr(object_literal_length_expr(args.first()?)?, state)?;
     Some(format!("tsgodownAnyArrayWithLength({length})"))
+}
+
+fn render_array_from_length_map_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    let length = render_numeric_expr(object_literal_length_expr(args.first()?)?, state)?;
+    let mapper = render_array_from_mapper_expr(args.get(1)?, state)?;
+    Some(format!("tsgodownAnyArrayFromLengthMap({length}, {mapper})"))
+}
+
+fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if params.len() > 2 {
+        return None;
+    }
+    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+        return None;
+    };
+    let mut mapper_state = clone_aot_state(state);
+    if let Some(param) = params.first() {
+        mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    if let Some(param) = params.get(1) {
+        mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
+    }
+    let value = render_json_value_expr(value, &mapper_state)
+        .or_else(|| render_expr(value, &mapper_state))?;
+    let value_param = params
+        .first()
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    let index_param = params
+        .get(1)
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    Some(format!(
+        "func({value_param} any, {index_param} float64) any {{ return {value} }}"
+    ))
 }
 
 fn object_literal_length_expr(expr: &JsExpr) -> Option<&JsExpr> {
