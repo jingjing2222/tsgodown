@@ -1848,6 +1848,35 @@ func tsgodownIsNaN(value any) bool {
 	return err != nil
 }
 
+func tsgodownObjectHasOwn(value any, key any) bool {
+	name := tsgodownToString(key)
+	switch object := value.(type) {
+	case map[string]any:
+		_, ok := object[name]
+		return ok
+	case []any:
+		index, err := strconv.Atoi(name)
+		return err == nil && index >= 0 && index < len(object)
+	case []string:
+		index, err := strconv.Atoi(name)
+		return err == nil && index >= 0 && index < len(object)
+	case []float64:
+		index, err := strconv.Atoi(name)
+		return err == nil && index >= 0 && index < len(object)
+	default:
+		return false
+	}
+}
+
+func tsgodownObjectPrototypeHasOwn(key any) bool {
+	switch tsgodownToString(key) {
+	case "constructor", "__defineGetter__", "__defineSetter__", "hasOwnProperty", "__lookupGetter__", "__lookupSetter__", "isPrototypeOf", "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString":
+		return true
+	default:
+		return false
+	}
+}
+
 func tsgodownParseInt(value any, radix float64) float64 {
 	base := int(radix)
 	if base == 0 {
@@ -2072,6 +2101,7 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
         let Some(executable) = &module.executable else {
             continue;
         };
+        let builtin_aliases = collect_builtin_function_aliases(&executable.stmts);
         for stmt in &executable.stmts {
             if let Some(parts) = function_parts(stmt) {
                 let go_name = function_go_name(module, entry, parts.name);
@@ -2079,7 +2109,11 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
                     (module.id.clone(), parts.name.clone()),
                     AotFunction {
                         params: parts.params.clone(),
-                        param_kinds: infer_function_param_kinds(parts.params, parts.body),
+                        param_kinds: infer_function_param_kinds(
+                            parts.params,
+                            parts.body,
+                            &builtin_aliases,
+                        ),
                         rest_param: parts.rest_param.clone(),
                         r#async: *parts.r#async,
                         generator: *parts.generator,
@@ -2094,7 +2128,11 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
                     (module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string()),
                     AotFunction {
                         params: parts.params.clone(),
-                        param_kinds: infer_function_param_kinds(parts.params, parts.body),
+                        param_kinds: infer_function_param_kinds(
+                            parts.params,
+                            parts.body,
+                            &builtin_aliases,
+                        ),
                         rest_param: parts.rest_param.clone(),
                         r#async: *parts.r#async,
                         generator: *parts.generator,
@@ -2107,6 +2145,22 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
     }
     propagate_function_param_kinds(&mut functions);
     functions
+}
+
+fn collect_builtin_function_aliases(stmts: &[JsStmt]) -> BTreeMap<String, AotBuiltinFunctionAlias> {
+    let mut aliases = BTreeMap::new();
+    for stmt in stmts {
+        if let JsStmt::VarDecl {
+            name,
+            init: Some(expr),
+        } = stmt
+        {
+            if let Some(alias) = builtin_function_alias(expr) {
+                aliases.insert(name.clone(), alias);
+            }
+        }
+    }
+    aliases
 }
 
 fn propagate_function_param_kinds(functions: &mut BTreeMap<(String, String), AotFunction>) {
@@ -3222,6 +3276,13 @@ fn module_aot_state(
                     .string_method_aliases
                     .insert(name.clone(), method.to_string());
             }
+            if let Some(alias) = builtin_function_alias(expr) {
+                state.bindings.insert(name.clone());
+                state
+                    .binding_refs
+                    .insert(name.clone(), sanitize_go_identifier(name));
+                state.builtin_function_aliases.insert(name.clone(), alias);
+            }
         }
         if let JsStmt::ClassDecl { name, .. } = stmt {
             let class = context.classes.get(&(module.id.clone(), name.clone()))?;
@@ -3523,7 +3584,9 @@ struct AotState {
     number_closure_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
     string_method_aliases: BTreeMap<String, String>,
+    builtin_function_aliases: BTreeMap<String, AotBuiltinFunctionAlias>,
     dynamic_object_bindings: BTreeSet<String>,
+    ordered_dynamic_object_bindings: BTreeSet<String>,
     object_bindings: BTreeMap<String, AotObject>,
     class_instance_bindings: BTreeMap<String, String>,
     current_receiver: Option<String>,
@@ -3535,6 +3598,12 @@ struct AotState {
     builtin_bindings: BTreeSet<String>,
     dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+enum AotBuiltinFunctionAlias {
+    ArrayIsArray,
+    ObjectHasOwnProperty,
 }
 
 impl AotState {
@@ -3594,7 +3663,9 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         string_method_aliases: state.string_method_aliases.clone(),
+        builtin_function_aliases: state.builtin_function_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
+        ordered_dynamic_object_bindings: state.ordered_dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -3760,6 +3831,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         .insert(name.clone(), method.to_string());
                     return Some(String::new());
                 }
+                if let Some(alias) = builtin_function_alias(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.builtin_function_aliases.insert(name.clone(), alias);
+                    return Some(String::new());
+                }
                 if is_local_function_namespace_object(name, expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -3854,7 +3931,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     if let Some(value) = render_dynamic_object_init_expr(expr, state) {
                         state.bindings.insert(name.clone());
                         state.binding_refs.insert(name.clone(), ident.clone());
-                        return Some(format!("var {ident} map[string]any = {value}"));
+                        state.ordered_dynamic_object_bindings.insert(name.clone());
+                        let keys = render_dynamic_object_order_init_expr(expr, state)?;
+                        let order = dynamic_object_order_go_name(name);
+                        return Some(format!(
+                            "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
+                        ));
                     }
                 }
                 if let Some(value) = render_bytes_expr(expr, state) {
@@ -3994,7 +4076,9 @@ fn render_for_stmt(
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         string_method_aliases: state.string_method_aliases.clone(),
+        builtin_function_aliases: state.builtin_function_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
+        ordered_dynamic_object_bindings: state.ordered_dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -4180,7 +4264,9 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         string_method_aliases: state.string_method_aliases.clone(),
+        builtin_function_aliases: state.builtin_function_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
+        ordered_dynamic_object_bindings: state.ordered_dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -4215,7 +4301,9 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         string_method_aliases: state.string_method_aliases.clone(),
+        builtin_function_aliases: state.builtin_function_aliases.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
+        ordered_dynamic_object_bindings: state.ordered_dynamic_object_bindings.clone(),
         object_bindings: state.object_bindings.clone(),
         class_instance_bindings: state.class_instance_bindings.clone(),
         current_receiver: state.current_receiver.clone(),
@@ -4332,7 +4420,11 @@ fn render_class_method_decl(
     ))
 }
 
-fn infer_function_param_kinds(params: &[String], body: &[JsStmt]) -> Vec<AotSlotKind> {
+fn infer_function_param_kinds(
+    params: &[String],
+    body: &[JsStmt],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> Vec<AotSlotKind> {
     let mut kinds = params
         .iter()
         .map(|_| AotSlotKind::Number)
@@ -4343,7 +4435,7 @@ fn infer_function_param_kinds(params: &[String], body: &[JsStmt]) -> Vec<AotSlot
         .map(|(index, param)| (param.clone(), index))
         .collect::<BTreeMap<_, _>>();
     for stmt in body {
-        infer_stmt_param_kinds(stmt, &param_index, &mut kinds);
+        infer_stmt_param_kinds(stmt, &param_index, &mut kinds, builtin_aliases);
     }
     mark_string_accumulator_params(body, &param_index, &mut kinds, &mut BTreeSet::new());
     kinds
@@ -4405,6 +4497,7 @@ fn infer_stmt_param_kinds(
     stmt: &JsStmt,
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
 ) {
     match stmt {
         JsStmt::VarDecl {
@@ -4415,18 +4508,18 @@ fn infer_stmt_param_kinds(
         | JsStmt::Throw { value: expr }
         | JsStmt::Yield {
             value: Some(expr), ..
-        } => infer_expr_param_kinds(expr, param_index, kinds),
+        } => infer_expr_param_kinds(expr, param_index, kinds, builtin_aliases),
         JsStmt::If {
             test,
             consequent,
             alternate,
         } => {
-            infer_bool_context_param_kinds(test, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
             for stmt in consequent {
-                infer_stmt_param_kinds(stmt, param_index, kinds);
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
             for stmt in alternate {
-                infer_stmt_param_kinds(stmt, param_index, kinds);
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
         }
         JsStmt::For {
@@ -4436,22 +4529,22 @@ fn infer_stmt_param_kinds(
             body,
         } => {
             for stmt in init {
-                infer_stmt_param_kinds(stmt, param_index, kinds);
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
             if let Some(test) = test {
-                infer_bool_context_param_kinds(test, param_index, kinds);
+                infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
             }
             if let Some(update) = update {
-                infer_expr_param_kinds(update, param_index, kinds);
+                infer_expr_param_kinds(update, param_index, kinds, builtin_aliases);
             }
             for stmt in body {
-                infer_stmt_param_kinds(stmt, param_index, kinds);
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
         }
         JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
-            infer_bool_context_param_kinds(test, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
             for stmt in body {
-                infer_stmt_param_kinds(stmt, param_index, kinds);
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
         }
         _ => {}
@@ -4462,6 +4555,7 @@ fn infer_expr_param_kinds(
     expr: &JsExpr,
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
 ) {
     match expr {
         JsExpr::Binary { op, left, right } if op == "+" => {
@@ -4471,8 +4565,8 @@ fn infer_expr_param_kinds(
             if is_string_literal_like(left) {
                 mark_ident_param_kind(right, param_index, kinds, AotSlotKind::String);
             }
-            infer_expr_param_kinds(left, param_index, kinds);
-            infer_expr_param_kinds(right, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
         JsExpr::Binary { op, left, right } if op == "||" => {
             if is_string_literal_like(right) {
@@ -4481,23 +4575,23 @@ fn infer_expr_param_kinds(
             if is_string_literal_like(left) {
                 mark_ident_param_kind(right, param_index, kinds, AotSlotKind::String);
             }
-            infer_expr_param_kinds(left, param_index, kinds);
-            infer_expr_param_kinds(right, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             infer_comparison_param_kind(left, right, param_index, kinds);
             infer_comparison_param_kind(right, left, param_index, kinds);
-            infer_expr_param_kinds(left, param_index, kinds);
-            infer_expr_param_kinds(right, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
         JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
-            infer_expr_param_kinds(left, param_index, kinds);
-            infer_expr_param_kinds(right, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } if string_method_name(callee).is_some() => {
             if let JsExpr::Member { object, .. } = callee.as_ref() {
                 mark_ident_param_kind(object, param_index, kinds, AotSlotKind::String);
-                infer_expr_param_kinds(object, param_index, kinds);
+                infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
             }
             if matches!(
                 string_method_name(callee),
@@ -4513,28 +4607,42 @@ fn infer_expr_param_kinds(
                 }
             }
             for arg in args {
-                infer_expr_param_kinds(arg, param_index, kinds);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Call { callee, args, .. }
             if is_string_cast_call(callee, args) || is_boolean_cast_call(callee, args) =>
         {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
-            infer_expr_param_kinds(&args[0], param_index, kinds);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } if is_array_is_array_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
-            infer_expr_param_kinds(&args[0], param_index, kinds);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_array_is_array_alias_call_in_context(callee, args, builtin_aliases) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_object_has_own_property_call_in_context(callee, args, builtin_aliases) =>
+        {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            mark_ident_param_kind(&args[1], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(&args[1], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
-            infer_expr_param_kinds(&args[0], param_index, kinds);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } if is_string_replace_alias_call_shape(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::String);
-            infer_expr_param_kinds(&args[0], param_index, kinds);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
             for arg in args.iter().skip(1) {
-                infer_expr_param_kinds(arg, param_index, kinds);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Call { callee, args, .. } if is_map_method_call_shape(callee, args) => {
@@ -4551,19 +4659,19 @@ fn infer_expr_param_kinds(
                     mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
                 }
             }
-            infer_expr_param_kinds(callee, param_index, kinds);
+            infer_expr_param_kinds(callee, param_index, kinds, builtin_aliases);
             for arg in args {
-                infer_expr_param_kinds(arg, param_index, kinds);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
-            infer_expr_param_kinds(&args[0], param_index, kinds);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } => {
-            infer_expr_param_kinds(callee, param_index, kinds);
+            infer_expr_param_kinds(callee, param_index, kinds, builtin_aliases);
             for arg in args {
-                infer_expr_param_kinds(arg, param_index, kinds);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Member {
@@ -4589,55 +4697,57 @@ fn infer_expr_param_kinds(
                     }
                 }
             }
-            infer_expr_param_kinds(object, param_index, kinds);
+            infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
             if let Some(property_expr) = property_expr {
-                infer_expr_param_kinds(property_expr, param_index, kinds);
+                infer_expr_param_kinds(property_expr, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Array { items } => {
             for item in items {
-                infer_expr_param_kinds(item, param_index, kinds);
+                infer_expr_param_kinds(item, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::ArraySpread { items } => {
             for item in items {
-                infer_expr_param_kinds(&item.value, param_index, kinds);
+                infer_expr_param_kinds(&item.value, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Object { props } => {
             for prop in props {
                 mark_ident_param_kind(&prop.value, param_index, kinds, AotSlotKind::Any);
-                infer_expr_param_kinds(&prop.value, param_index, kinds);
+                infer_expr_param_kinds(&prop.value, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Unary { arg, .. }
         | JsExpr::Await { arg }
         | JsExpr::Update { arg, .. }
         | JsExpr::Spread { arg }
-        | JsExpr::ObjectRest { object: arg, .. } => infer_expr_param_kinds(arg, param_index, kinds),
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases)
+        }
         JsExpr::Conditional {
             test,
             consequent,
             alternate,
         } => {
-            infer_bool_context_param_kinds(test, param_index, kinds);
-            infer_expr_param_kinds(consequent, param_index, kinds);
-            infer_expr_param_kinds(alternate, param_index, kinds);
+            infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(consequent, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(alternate, param_index, kinds, builtin_aliases);
         }
         JsExpr::New { callee, args } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "RegExp") =>
         {
             if let Some(pattern) = args.first() {
                 mark_ident_param_kind(pattern, param_index, kinds, AotSlotKind::String);
-                infer_expr_param_kinds(pattern, param_index, kinds);
+                infer_expr_param_kinds(pattern, param_index, kinds, builtin_aliases);
             }
             if let Some(flags) = args.get(1) {
-                infer_expr_param_kinds(flags, param_index, kinds);
+                infer_expr_param_kinds(flags, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::New { callee, args } => {
-            infer_expr_param_kinds(callee, param_index, kinds);
+            infer_expr_param_kinds(callee, param_index, kinds, builtin_aliases);
             for arg in args {
-                infer_expr_param_kinds(arg, param_index, kinds);
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
@@ -4647,7 +4757,7 @@ fn infer_expr_param_kinds(
                 }
             }
             for expr in exprs {
-                infer_expr_param_kinds(expr, param_index, kinds);
+                infer_expr_param_kinds(expr, param_index, kinds, builtin_aliases);
             }
         }
         _ => {}
@@ -4691,17 +4801,18 @@ fn infer_bool_context_param_kinds(
     expr: &JsExpr,
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
 ) {
     match expr {
         JsExpr::Ident { .. } => mark_ident_param_kind(expr, param_index, kinds, AotSlotKind::Any),
         JsExpr::Unary { op, arg } if op == "!" => {
-            infer_bool_context_param_kinds(arg, param_index, kinds);
+            infer_bool_context_param_kinds(arg, param_index, kinds, builtin_aliases);
         }
         JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
-            infer_bool_context_param_kinds(left, param_index, kinds);
-            infer_bool_context_param_kinds(right, param_index, kinds);
+            infer_bool_context_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_bool_context_param_kinds(right, param_index, kinds, builtin_aliases);
         }
-        _ => infer_expr_param_kinds(expr, param_index, kinds),
+        _ => infer_expr_param_kinds(expr, param_index, kinds, builtin_aliases),
     }
 }
 
@@ -4901,7 +5012,7 @@ fn aot_function_from_stmt(stmt: &JsStmt, name: &str) -> Option<AotFunction> {
     let parts = function_parts(stmt)?;
     Some(AotFunction {
         params: parts.params.clone(),
-        param_kinds: infer_function_param_kinds(parts.params, parts.body),
+        param_kinds: infer_function_param_kinds(parts.params, parts.body, &BTreeMap::new()),
         rest_param: parts.rest_param.clone(),
         r#async: *parts.r#async,
         generator: *parts.generator,
@@ -6136,10 +6247,15 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_node_path_bool_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_array_is_array_call(callee, args) => {
-            let value = render_expr(args.first()?, state)?;
-            Some(format!(
-                "func() bool {{ switch any({value}).(type) {{ case []string, []any: return true; default: return false }} }}()"
-            ))
+            render_array_is_array_call(args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_array_is_array_alias_call(callee, args, state) => {
+            render_array_is_array_call(args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if is_object_has_own_property_call(callee, args, state) =>
+        {
+            render_object_has_own_property_call(callee, args, state)
         }
         expr if process_env_lookup_name(expr).is_some() => {
             let value = render_process_env_lookup(expr)?;
@@ -6469,7 +6585,14 @@ fn render_cjs_export_alias_var_decl(
         let value = render_dynamic_object_init_expr(init, state)?;
         state.bindings.insert(name.to_string());
         state.binding_refs.insert(name.to_string(), ident.clone());
-        return Some(format!("var {ident} map[string]any = {value}"));
+        state
+            .ordered_dynamic_object_bindings
+            .insert(name.to_string());
+        let keys = render_dynamic_object_order_init_expr(init, state)?;
+        let order = dynamic_object_order_go_name(name);
+        return Some(format!(
+            "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
+        ));
     }
     if matches!(init, JsExpr::Array { items } if items.is_empty()) {
         state.bind_slot(name, ident.clone(), AotSlotKind::AnyArray);
@@ -6700,9 +6823,22 @@ fn render_dynamic_object_assignment_stmt(
     else {
         return None;
     };
+    let order_name = if let JsExpr::Ident { name } = object.as_ref() {
+        state
+            .ordered_dynamic_object_bindings
+            .contains(name)
+            .then(|| dynamic_object_order_go_name(name))
+    } else {
+        None
+    };
     let object = render_dynamic_object_source_expr(object, state)?;
     let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
     let value = render_json_value_expr(right, state)?;
+    if let Some(order) = order_name {
+        return Some(format!(
+            "if _, ok := {object}[{key}]; !ok {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({object}, {key}, {value})"
+        ));
+    }
     Some(format!("tsgodownObjectSetProp({object}, {key}, {value})"))
 }
 
@@ -7973,6 +8109,29 @@ fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<St
     })
 }
 
+fn render_dynamic_object_order_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Object { props } => {
+            if props.iter().any(|prop| prop.spread) {
+                return Some("[]string{}".to_string());
+            }
+            let keys = props
+                .iter()
+                .map(|prop| match &prop.key_expr {
+                    Some(key_expr) => render_string_expr(key_expr, state),
+                    None => Some(go_string_literal(&prop.key)),
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]string{{{}}}", keys.join(", ")))
+        }
+        _ => Some("[]string{}".to_string()),
+    }
+}
+
+fn dynamic_object_order_go_name(name: &str) -> String {
+    format!("{}__tsgodownKeys", sanitize_go_identifier(name))
+}
+
 fn render_object_assign_expr(args: &[JsExpr], state: &AotState) -> Option<String> {
     if args.is_empty() {
         return None;
@@ -8989,6 +9148,12 @@ fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
             ))
         }
         expr => {
+            if let JsExpr::Ident { name } = expr {
+                if state.ordered_dynamic_object_bindings.contains(name) {
+                    let order = dynamic_object_order_go_name(name);
+                    return Some(format!("tsgodownObjectKeys({order})"));
+                }
+            }
             let object = render_dynamic_object_source_expr(expr, state)
                 .or_else(|| render_object_map_expr(expr, state))?;
             Some(format!("tsgodownObjectMapKeys({object})"))
@@ -9198,18 +9363,161 @@ fn is_number_array_pop_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) 
     args.is_empty() && matches!(number_array_method_target(callee, state), Some((_, "pop")))
 }
 
+fn builtin_function_alias(expr: &JsExpr) -> Option<AotBuiltinFunctionAlias> {
+    if is_array_is_array_ref(expr) {
+        return Some(AotBuiltinFunctionAlias::ArrayIsArray);
+    }
+    if is_object_has_own_property_ref(expr) {
+        return Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty);
+    }
+    None
+}
+
+fn is_array_is_array_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Array")
+            && property == "isArray"
+    )
+}
+
+fn is_object_prototype_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+            && property == "prototype"
+    )
+}
+
+fn is_object_has_own_property_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if is_object_prototype_expr(object) && property == "hasOwnProperty"
+    )
+}
+
 fn is_array_is_array_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && is_array_is_array_ref(callee)
+}
+
+fn is_array_is_array_alias_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
     args.len() == 1
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Array")
-                && property == "isArray"
-        )
+        && matches!(callee, JsExpr::Ident { name }
+        if matches!(
+            state.builtin_function_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::ArrayIsArray)
+        ))
+}
+
+fn is_array_is_array_alias_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> bool {
+    args.len() == 1
+        && matches!(callee, JsExpr::Ident { name }
+        if matches!(
+            builtin_aliases.get(name),
+            Some(AotBuiltinFunctionAlias::ArrayIsArray)
+        ))
+}
+
+fn render_array_is_array_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    if args.len() != 1 {
+        return None;
+    }
+    let value = render_expr(args.first()?, state)?;
+    Some(format!(
+        "func() bool {{ switch any({value}).(type) {{ case []string, []any, []float64: return true; default: return false }} }}()"
+    ))
+}
+
+fn is_object_has_own_property_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    if property != "call" {
+        return false;
+    }
+    if is_object_has_own_property_ref(object) {
+        return true;
+    }
+    matches!(object.as_ref(), JsExpr::Ident { name }
+    if matches!(
+        state.builtin_function_aliases.get(name),
+        Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty)
+    ))
+}
+
+fn is_object_has_own_property_call_in_context(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    if property != "call" {
+        return false;
+    }
+    if is_object_has_own_property_ref(object) {
+        return true;
+    }
+    matches!(object.as_ref(), JsExpr::Ident { name }
+    if matches!(
+        builtin_aliases.get(name),
+        Some(AotBuiltinFunctionAlias::ObjectHasOwnProperty)
+    ))
+}
+
+fn render_object_has_own_property_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_object_has_own_property_call(callee, args, state) {
+        return None;
+    }
+    let receiver = args.first()?;
+    let key = render_expr(args.get(1)?, state)?;
+    if is_object_prototype_expr(receiver) {
+        return Some(format!("tsgodownObjectPrototypeHasOwn({key})"));
+    }
+    let object = render_expr(receiver, state)?;
+    Some(format!("tsgodownObjectHasOwn({object}, {key})"))
 }
 
 fn is_array_map_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -11158,6 +11466,12 @@ fn string_literal_value(expr: &JsExpr) -> Option<String> {
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if is_array_is_array_call(callee, args) || is_array_is_array_alias_call(callee, args, state) {
+        return render_array_is_array_call(args, state);
+    }
+    if is_object_has_own_property_call(callee, args, state) {
+        return render_object_has_own_property_call(callee, args, state);
+    }
     if let Some(value) = render_any_array_push_call_expr(callee, args, state) {
         return Some(value);
     }
