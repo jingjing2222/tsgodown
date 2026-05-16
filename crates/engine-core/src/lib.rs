@@ -355,10 +355,14 @@ console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
         assert!(response.files[0]
             .contents
             .starts_with("//go:build tsgodown_vector\n\npackage main"));
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("fmt.Println"));
         assert!(!response.files[0]
@@ -475,10 +479,14 @@ console.log("hello", value)
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("fmt.Println"));
 
@@ -4485,6 +4493,78 @@ console.log("string-methods", normalize(" Go "), inspect("tsgodown"), inspect("r
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "string-methods go 10 -1\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_string_split_join_subset() {
+        let root = temp_project("engine-core-aot-string-split-join");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function replaceToken(value, token, replacement) {
+  return value.split(`${token}*`).join(`${token}{0,${replacement}}`)
+}
+const direct = "alpha,beta,gamma".split(",").join("|")
+console.log("string-split", direct, replaceToken("a\\s*b\\s*", "\\s", "2"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-string-split-join".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("strings.Split"));
+        assert!(response.files[0].contents.contains("strings.Join"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "string-split alpha|beta|gamma a\\s{0,2}b\\s{0,2}\n"
         );
     }
 

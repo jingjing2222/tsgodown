@@ -1046,6 +1046,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
             }
+            if is_string_split_call(callee, args) {
+                imports.insert("strings");
+            }
             if is_string_array_join_call(callee, args) {
                 imports.insert("strings");
                 imports.insert("strconv");
@@ -5126,6 +5129,16 @@ fn infer_expr_param_kinds(
         JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. } if is_string_split_call(callee, args) => {
+            if let JsExpr::Member { object, .. } = callee.as_ref() {
+                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::String);
+                infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
+            }
+            if let Some(separator) = args.first() {
+                mark_ident_param_kind(separator, param_index, kinds, AotSlotKind::String);
+                infer_expr_param_kinds(separator, param_index, kinds, builtin_aliases);
+            }
         }
         JsExpr::Call { callee, args, .. } if string_method_name(callee).is_some() => {
             if let JsExpr::Member { object, .. } = callee.as_ref() {
@@ -10883,6 +10896,9 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_string_match_call(callee, args) => {
             render_string_match_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_string_split_call(callee, args) => {
+            render_string_split_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_string_array_slice_call(callee, args) => {
             render_string_array_slice_call(callee, args, state)
         }
@@ -12106,6 +12122,31 @@ fn render_string_array_join_call(
         .map(|expr| render_string_expr(expr, state))
         .unwrap_or_else(|| Some("\",\"".to_string()))?;
     Some(format!("strings.Join({values}, {separator})"))
+}
+
+fn is_string_split_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "split"
+        )
+}
+
+fn render_string_split_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_string_split_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let value = render_string_expr(object, state)?;
+    let separator = render_string_expr(args.first()?, state)?;
+    Some(format!("strings.Split({value}, {separator})"))
 }
 
 fn render_any_array_join_call(
@@ -14161,6 +14202,12 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return Some(value);
     }
     if let Some(value) = render_array_prototype_join_alias_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_string_array_join_call(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_string_split_call(callee, args, state) {
         return Some(value);
     }
     if let Some(value) = render_any_array_prototype_concat_alias_call(callee, args, state) {
