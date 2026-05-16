@@ -5201,6 +5201,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             render_dynamic_object_assignment_stmt(op, left, right, state)
         }
         JsExpr::Call { callee, args, .. }
+            if render_object_assign_stmt(callee, args, state).is_some() =>
+        {
+            render_object_assign_stmt(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
             if render_any_array_call_stmt(callee, args, state).is_some() =>
         {
             render_any_array_call_stmt(callee, args, state)
@@ -6412,6 +6417,12 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         return render_object_map_expr(arg, state);
     }
     match expr {
+        JsExpr::Call { callee, args, .. } if is_object_create_null_call(callee, args) => {
+            Some("map[string]any{}".to_string())
+        }
+        JsExpr::Call { callee, args, .. } if is_object_assign_call(callee, args) => {
+            render_object_assign_expr(args, state)
+        }
         JsExpr::Object { props } => {
             if props.iter().any(|prop| prop.spread) {
                 let mut statements = vec!["out := map[string]any{}".to_string()];
@@ -6496,6 +6507,40 @@ fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<St
             None
         }
     })
+}
+
+fn render_object_assign_expr(args: &[JsExpr], state: &AotState) -> Option<String> {
+    if args.is_empty() {
+        return None;
+    }
+    let target = render_json_value_expr(args.first()?, state)?;
+    let mut statements = vec![format!("out := tsgodownObjectFromAny({target})")];
+    for arg in args.iter().skip(1) {
+        let source = render_json_value_expr(arg, state)?;
+        statements.push(format!(
+            "for key, value := range tsgodownObjectFromAny({source}) {{ out[key] = value }}"
+        ));
+    }
+    statements.push("return out".to_string());
+    Some(format!(
+        "func() map[string]any {{ {} }}()",
+        statements.join("; ")
+    ))
+}
+
+fn render_object_assign_stmt(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_object_assign_call(callee, args) {
+        return None;
+    }
+    let target = render_dynamic_object_source_expr(args.first()?, state)?;
+    let mut statements = Vec::new();
+    for arg in args.iter().skip(1) {
+        let source = render_json_value_expr(arg, state)?;
+        statements.push(format!(
+            "for key, value := range tsgodownObjectFromAny({source}) {{ {target}[key] = value }}"
+        ));
+    }
+    Some(statements.join("\n"))
 }
 
 fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Option<String> {
@@ -7149,6 +7194,40 @@ fn object_freeze_arg(expr: &JsExpr) -> Option<&JsExpr> {
         return None;
     }
     args.first()
+}
+
+fn is_object_create_null_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+                && property == "create"
+        )
+        && matches!(
+            args.first(),
+            Some(JsExpr::Value {
+                value: JsValue::Null
+            })
+        )
+}
+
+fn is_object_assign_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    !args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+                && property == "assign"
+        )
 }
 
 fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -9346,6 +9425,13 @@ fn is_json_stringify(expr: &JsExpr) -> bool {
 fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if let Some(arg) = object_freeze_arg(expr) {
         return render_json_value_expr(arg, state);
+    }
+    if matches!(
+        expr,
+        JsExpr::Call { callee, args, .. }
+            if is_object_create_null_call(callee, args) || is_object_assign_call(callee, args)
+    ) {
+        return render_object_map_expr(expr, state).map(|value| format!("any({value})"));
     }
     match expr {
         JsExpr::Value { value } => render_value(value),
