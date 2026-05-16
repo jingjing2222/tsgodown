@@ -7134,6 +7134,9 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             }
             Some(format!("fmt.Fprintln(os.Stderr, {})", args.join(", ")))
         }
+        JsExpr::Call { callee, args, .. } if is_array_for_each_call(callee, args) => {
+            render_array_for_each_stmt(callee, args, state)
+        }
         JsExpr::Assign { op, left, .. }
             if op == "="
                 && is_cjs_export_target(left)
@@ -9784,6 +9787,84 @@ fn render_array_reducer_expr(expr: &JsExpr, state: &AotState) -> Option<String> 
         "func({accumulator_param} any, {value_param} any, {index_param} float64) any {{\n{}\n}}",
         indent_lines(&body)
     ))
+}
+
+fn is_array_for_each_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "forEach"
+        )
+}
+
+fn render_array_for_each_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &mut AotState,
+) -> Option<String> {
+    if !is_array_for_each_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let callback = args.first()?;
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = callback
+    else {
+        return None;
+    };
+    if params.len() > 2 {
+        return None;
+    }
+    let values =
+        render_any_array_expr(object, state).or_else(|| render_string_array_expr(object, state))?;
+    let mut callback_state = clone_aot_state(state);
+    let value_param = params
+        .first()
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    let index_param = params
+        .get(1)
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    if let Some(param) = params.first() {
+        callback_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    if let Some(param) = params.get(1) {
+        callback_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
+    }
+    let mut body = render_for_each_callback_body(body, &mut callback_state)?;
+    let header = if params.is_empty() {
+        format!("for range {values}")
+    } else if params.len() == 1 {
+        format!("for _, {value_param} := range {values}")
+    } else {
+        body = format!("{index_param} := float64(__tsgodownIndex)\n{body}");
+        format!("for __tsgodownIndex, {value_param} := range {values}")
+    };
+    Some(format!("{header} {{\n{}\n}}", indent_lines(&body)))
+}
+
+fn render_for_each_callback_body(body: &[JsStmt], state: &mut AotState) -> Option<String> {
+    body.iter()
+        .map(|stmt| match stmt {
+            JsStmt::Return { .. } => Some("continue".to_string()),
+            _ => render_stmt(stmt, state),
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
 }
 
 fn is_array_predicate_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
