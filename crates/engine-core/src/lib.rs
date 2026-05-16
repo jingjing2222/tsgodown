@@ -5201,6 +5201,327 @@ console.log(JSON.stringify(value))
     }
 
     #[test]
+    fn emit_go_runs_aot_map_function_value_cycle_subset() {
+        let root = temp_project("engine-core-aot-map-function-value-cycle");
+        write(
+            &root,
+            "src/index.mjs",
+            r#"
+const value = await (async () => {
+  const registry = new Map()
+  function define(name, factory) {
+    registry.set(name, { factory, exports: {}, initialized: false })
+  }
+  function requireLocal(name) {
+    const record = registry.get(name)
+    if (!record.initialized) {
+      record.initialized = true
+      record.factory(record.exports, requireLocal)
+    }
+    return record.exports
+  }
+  define("a", (exports, require) => {
+    exports.name = "a-1"
+    exports.peer = () => require("b").name
+  })
+  define("b", (exports, require) => {
+    exports.name = "b-1"
+    exports.peer = () => require("a").name
+  })
+  const a = requireLocal("a")
+  const b = requireLocal("b")
+  return {
+    argvShape: process.argv.slice(0, 1).length,
+    cwdType: typeof process.cwd(),
+    cycle: [a.name, a.peer(), b.peer()],
+    objectKeys: Object.keys({ z: 1, a: 2, [String(1)]: 3 })
+  }
+})()
+console.log(JSON.stringify(value))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.mjs".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-map-function-value-cycle".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"argvShape\":1,\"cwdType\":\"string\",\"cycle\":[\"a-1\",\"b-1\",\"a-1\"],\"objectKeys\":[\"1\",\"z\",\"a\"]}\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_map_object_get_set_subset() {
+        let root = temp_project("engine-core-aot-map-object-get-set");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const registry = new Map()
+registry.set("a", { name: "alpha" }).set("b", { name: "beta" })
+const record = registry.get("a")
+record.initialized = true
+registry.delete("b")
+console.log(JSON.stringify({
+  size: registry.size,
+  hasA: registry.has("a"),
+  hasB: registry.has("b"),
+  name: record.name,
+  initialized: record.initialized,
+  missing: registry.get("missing") == null
+}))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-map-object-get-set".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownMapSet"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"hasA\":true,\"hasB\":false,\"initialized\":true,\"missing\":true,\"name\":\"alpha\",\"size\":1}\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_dynamic_object_member_assignment_subset() {
+        let root = temp_project("engine-core-aot-dynamic-object-member-assignment");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const target = {}
+target.value = 4
+target.name = "node"
+const nested = { child: {} }
+nested.child.ready = true
+console.log(JSON.stringify({
+  value: target.value + 1,
+  name: target.name,
+  ready: nested.child.ready
+}))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-dynamic-object-member-assignment".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownObjectSetProp"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"name\":\"node\",\"ready\":true,\"value\":5}\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_object_keys_computed_key_subset() {
+        let root = temp_project("engine-core-aot-object-keys-computed");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const value = 3
+console.log(JSON.stringify({
+  keys: Object.keys({ z: 1, a: 2, [String(value)]: 3, "10": 4 })
+}))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-object-keys-computed".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownObjectKeys"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "{\"keys\":[\"3\",\"10\",\"z\",\"a\"]}\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_tokenize_string_array_subset() {
         let root = temp_project("engine-core-aot-tokenize-string-array");
         write(

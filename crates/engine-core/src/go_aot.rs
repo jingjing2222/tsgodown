@@ -51,6 +51,7 @@ pub(crate) fn render_aot_executable_program(
         },
     )?;
     state.go_imports = collect_aot_imports(&analyzed.ir);
+    mark_dynamic_object_locals(&module.executable.as_ref()?.stmts, &mut state);
     let mut body = Vec::new();
     for stmt in &module.executable.as_ref()?.stmts {
         if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
@@ -146,6 +147,7 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
         }
         if let Some(state) = state.as_ref() {
             let mut render_state = clone_aot_state(state);
+            mark_dynamic_object_locals(&executable.stmts, &mut render_state);
             for stmt in &executable.stmts {
                 if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
                     || is_function_binding_stmt(stmt)
@@ -788,6 +790,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_json_stringify(callee) {
                 imports.insert("encoding/json");
             }
+            if is_object_keys_call(callee, args) {
+                imports.insert("sort");
+                imports.insert("strconv");
+            }
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
@@ -870,6 +876,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         }
         JsExpr::Object { props } => {
             for prop in props {
+                if let Some(key_expr) = &prop.key_expr {
+                    collect_expr_imports(key_expr, imports);
+                }
                 collect_expr_imports(&prop.value, imports);
             }
         }
@@ -1134,8 +1143,106 @@ func tsgodownStrictEqual(left any, right any) bool {
 		rightValue, ok := right.(string)
 		return ok && leftValue == rightValue
 	default:
-		return left == right
+				return left == right
 	}
+}
+
+func tsgodownObjectFromAny(value any) map[string]any {
+	switch value := value.(type) {
+	case nil:
+		return map[string]any{}
+	case map[string]any:
+		return value
+	default:
+		return map[string]any{}
+	}
+}
+
+func tsgodownObjectProp(value any, key string) any {
+	object := tsgodownObjectFromAny(value)
+	return object[key]
+}
+
+func tsgodownObjectSetProp(value any, key string, propertyValue any) {
+	object := tsgodownObjectFromAny(value)
+	object[key] = propertyValue
+}
+
+type tsgodownJSMap struct {
+	order []string
+	items map[string]any
+}
+
+func tsgodownNewMap() *tsgodownJSMap {
+	return &tsgodownJSMap{order: []string{}, items: map[string]any{}}
+}
+
+func tsgodownMapSet(target *tsgodownJSMap, key string, value any) *tsgodownJSMap {
+	if target == nil {
+		target = tsgodownNewMap()
+	}
+	if _, ok := target.items[key]; !ok {
+		target.order = append(target.order, key)
+	}
+	target.items[key] = value
+	return target
+}
+
+func tsgodownMapGet(target *tsgodownJSMap, key string) any {
+	if target == nil {
+		return nil
+	}
+	return target.items[key]
+}
+
+func tsgodownMapHas(target *tsgodownJSMap, key string) bool {
+	if target == nil {
+		return false
+	}
+	_, ok := target.items[key]
+	return ok
+}
+
+func tsgodownMapDelete(target *tsgodownJSMap, key string) bool {
+	if target == nil {
+		return false
+	}
+	if _, ok := target.items[key]; !ok {
+		return false
+	}
+	delete(target.items, key)
+	for index, existing := range target.order {
+		if existing == key {
+			target.order = append(target.order[:index], target.order[index+1:]...)
+			break
+		}
+	}
+	return true
+}
+
+func tsgodownMapSize(target *tsgodownJSMap) float64 {
+	if target == nil {
+		return 0
+	}
+	return float64(len(target.items))
+}
+
+func tsgodownCall(value any, args ...any) any {
+	switch fn := value.(type) {
+	case func() any:
+		if len(args) == 0 {
+			return fn()
+		}
+	case func(any) any:
+		if len(args) == 1 {
+			return fn(args[0])
+		}
+	case func(any, any) any:
+		if len(args) == 2 {
+			return fn(args[0], args[1])
+		}
+	}
+	return nil
 }
 "#
         .to_string(),
@@ -1282,22 +1389,6 @@ func tsgodownParseInt(value any, radix float64) float64 {
 	return float64(parsed)
 }
 
-func tsgodownObjectFromAny(value any) map[string]any {
-	switch value := value.(type) {
-	case nil:
-		return map[string]any{}
-	case map[string]any:
-		return value
-	default:
-		return map[string]any{}
-	}
-}
-
-func tsgodownObjectProp(value any, key string) any {
-	object := tsgodownObjectFromAny(value)
-	return object[key]
-}
-
 func tsgodownStringArrayFromAny(value any) []string {
 	switch value := value.(type) {
 	case []string:
@@ -1313,6 +1404,45 @@ func tsgodownStringArrayFromAny(value any) []string {
 	default:
 		return []string{}
 	}
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("sort") {
+        helpers.push(
+            r#"func tsgodownObjectKeys(keys []string) []string {
+	seen := map[string]bool{}
+	integerKeys := []string{}
+	stringKeys := []string{}
+	for _, key := range keys {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if tsgodownIsArrayIndexKey(key) {
+			integerKeys = append(integerKeys, key)
+			continue
+		}
+		stringKeys = append(stringKeys, key)
+	}
+	sort.Slice(integerKeys, func(left int, right int) bool {
+		leftValue, _ := strconv.ParseUint(integerKeys[left], 10, 32)
+		rightValue, _ := strconv.ParseUint(integerKeys[right], 10, 32)
+		return leftValue < rightValue
+	})
+	return append(integerKeys, stringKeys...)
+}
+
+func tsgodownIsArrayIndexKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	value, err := strconv.ParseUint(key, 10, 32)
+	if err != nil || value == 4294967295 {
+		return false
+	}
+	return strconv.FormatUint(value, 10) == key
 }
 "#
             .to_string(),
@@ -2241,6 +2371,17 @@ fn is_cjs_export_target(expr: &JsExpr) -> bool {
     is_module_exports_member(expr) || cjs_named_export_property(expr).is_some()
 }
 
+fn is_shadowed_cjs_export_target(expr: &JsExpr, state: &AotState) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property_expr: None,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "exports" && state.bindings.contains(name))
+    )
+}
+
 fn cjs_named_export_property(expr: &JsExpr) -> Option<String> {
     let JsExpr::Member {
         object,
@@ -2317,6 +2458,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    map_bindings: BTreeSet<String>,
     number_closure_bindings: BTreeSet<String>,
     string_function_bindings: BTreeSet<String>,
     dynamic_object_bindings: BTreeSet<String>,
@@ -2375,6 +2517,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        map_bindings: state.map_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2556,6 +2699,19 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.any_array_bindings.insert(name.clone());
                     return Some(format!("var {ident} []any = {value}"));
                 }
+                if let Some(value) = render_js_map_expr(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.map_bindings.insert(name.clone());
+                    return Some(format!("var {ident} *tsgodownJSMap = {value}"));
+                }
+                if state.dynamic_object_bindings.contains(name) {
+                    if let Some(value) = render_dynamic_object_init_expr(expr, state) {
+                        state.bindings.insert(name.clone());
+                        state.binding_refs.insert(name.clone(), ident.clone());
+                        return Some(format!("var {ident} map[string]any = {value}"));
+                    }
+                }
                 if let Some(value) = render_bytes_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
                     return Some(format!("var {ident} []byte = {value}"));
@@ -2676,6 +2832,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        map_bindings: state.map_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2814,6 +2971,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        map_bindings: state.map_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -2842,6 +3000,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        map_bindings: state.map_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
         string_function_bindings: state.string_function_bindings.clone(),
         dynamic_object_bindings: state.dynamic_object_bindings.clone(),
@@ -3152,6 +3311,25 @@ fn infer_expr_param_kinds(
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
         }
+        JsExpr::Call { callee, args, .. } if is_map_method_call_shape(callee, args) => {
+            if matches!(
+                map_method_name(callee),
+                Some("set" | "get" | "has" | "delete")
+            ) {
+                if let Some(arg) = args.first() {
+                    mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::String);
+                }
+            }
+            if matches!(map_method_name(callee), Some("set")) {
+                if let Some(arg) = args.get(1) {
+                    mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
+                }
+            }
+            infer_expr_param_kinds(callee, param_index, kinds);
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds);
+            }
+        }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
             infer_expr_param_kinds(&args[0], param_index, kinds);
@@ -3175,6 +3353,7 @@ fn infer_expr_param_kinds(
         }
         JsExpr::Object { props } => {
             for prop in props {
+                mark_ident_param_kind(&prop.value, param_index, kinds, AotSlotKind::Any);
                 infer_expr_param_kinds(&prop.value, param_index, kinds);
             }
         }
@@ -3298,13 +3477,7 @@ fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<Stri
     if let Some(rendered) = render_number_closure_function_decl(function) {
         return Some(rendered);
     }
-    let mut function_state = AotState {
-        functions: state.functions.clone(),
-        classes: state.classes.clone(),
-        namespace_functions: state.namespace_functions.clone(),
-        builtin_bindings: state.builtin_bindings.clone(),
-        ..AotState::default()
-    };
+    let mut function_state = clone_aot_state(state);
     for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
         function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
     }
@@ -3404,13 +3577,7 @@ fn function_returns_number_closure(function: &AotFunction) -> bool {
 }
 
 fn aot_function_state(function: &AotFunction, state: &AotState) -> AotState {
-    let mut function_state = AotState {
-        functions: state.functions.clone(),
-        classes: state.classes.clone(),
-        namespace_functions: state.namespace_functions.clone(),
-        builtin_bindings: state.builtin_bindings.clone(),
-        ..AotState::default()
-    };
+    let mut function_state = clone_aot_state(state);
     for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
         function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
     }
@@ -3480,9 +3647,58 @@ fn aot_function_from_stmt(stmt: &JsStmt, name: &str) -> Option<AotFunction> {
     })
 }
 
-fn render_local_function_decl(function: &AotFunction) -> Option<String> {
-    let value = render_number_closure_function_value(function)?;
-    Some(format!("{} := {value}", function.go_name))
+fn render_local_function_decl(function: &AotFunction, state: &AotState) -> Option<String> {
+    if let Some(value) = render_number_closure_function_value(function) {
+        return Some(format!("{} := {value}", function.go_name));
+    }
+    if function.rest_param.is_some() || function.r#async || function.generator {
+        return None;
+    }
+    let mut function_state = clone_aot_state(state);
+    for (param, kind) in function.params.iter().zip(function.param_kinds.iter()) {
+        function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
+    }
+    let rendered_params = function
+        .params
+        .iter()
+        .zip(function.param_kinds.iter())
+        .map(|(param, kind)| {
+            format!(
+                "{} {}",
+                sanitize_go_identifier(param),
+                go_type_for_slot(*kind)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let function_body = render_function_body(&function.body, &function_state)?;
+    let function_body = if function_body.trim_end().ends_with("return nil") {
+        function_body
+    } else {
+        format!("{function_body}\nreturn nil")
+    };
+    let function_type = format!(
+        "func({}) any",
+        function
+            .params
+            .iter()
+            .zip(function.param_kinds.iter())
+            .map(|(param, kind)| {
+                format!(
+                    "{} {}",
+                    sanitize_go_identifier(param),
+                    go_type_for_slot(*kind)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    Some(format!(
+        "var {} {function_type}\n{} = func({rendered_params}) any {{\n{}\n}}",
+        function.go_name,
+        function.go_name,
+        indent_lines(&function_body)
+    ))
 }
 
 fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>> {
@@ -3519,10 +3735,399 @@ fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut function_state = clone_aot_state(state);
     mark_number_array_locals(body, &mut function_state);
     mark_any_array_locals(body, &mut function_state);
+    mark_dynamic_object_locals(body, &mut function_state);
     body.iter()
         .map(|stmt| render_function_stmt(stmt, &mut function_state))
         .collect::<Option<Vec<_>>>()
         .map(|stmts| stmts.join("\n"))
+}
+
+fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
+    let mut write_candidates = BTreeSet::new();
+    collect_dynamic_object_candidates(stmts, &mut write_candidates);
+    let mut candidates = write_candidates.clone();
+    let mut read_candidates = BTreeSet::new();
+    collect_dynamic_object_member_read_candidates(stmts, &mut read_candidates);
+    let mut call_initialized = BTreeSet::new();
+    collect_call_initialized_bindings(stmts, &mut call_initialized);
+    candidates.extend(
+        read_candidates
+            .into_iter()
+            .filter(|name| call_initialized.contains(name)),
+    );
+    for name in candidates {
+        if state.builtin_bindings.contains(&name)
+            || state.functions.contains_key(&name)
+            || state
+                .namespace_functions
+                .keys()
+                .any(|(namespace, _)| namespace == &name)
+            || state.object_bindings.contains_key(&name) && !write_candidates.contains(&name)
+        {
+            continue;
+        }
+        if state.object_bindings.contains_key(&name) {
+            state.object_bindings.remove(&name);
+        }
+        state.bindings.insert(name.clone());
+        state
+            .binding_refs
+            .insert(name.clone(), sanitize_go_identifier(&name));
+        state.dynamic_object_bindings.insert(name);
+    }
+}
+
+fn collect_dynamic_object_candidates(stmts: &[JsStmt], candidates: &mut BTreeSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Expr { expr } | JsStmt::Return { value: Some(expr) } => {
+                collect_dynamic_object_candidates_expr(expr, candidates);
+            }
+            JsStmt::VarDecl {
+                init: Some(expr), ..
+            } => collect_dynamic_object_candidates_expr(expr, candidates),
+            JsStmt::FunctionDecl { body, .. } => {
+                collect_dynamic_object_candidates(body, candidates);
+            }
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                collect_dynamic_object_candidates_expr(test, candidates);
+                collect_dynamic_object_candidates(consequent, candidates);
+                collect_dynamic_object_candidates(alternate, candidates);
+            }
+            JsStmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                collect_dynamic_object_candidates(init, candidates);
+                if let Some(test) = test {
+                    collect_dynamic_object_candidates_expr(test, candidates);
+                }
+                if let Some(update) = update {
+                    collect_dynamic_object_candidates_expr(update, candidates);
+                }
+                collect_dynamic_object_candidates(body, candidates);
+            }
+            JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+                collect_dynamic_object_candidates_expr(test, candidates);
+                collect_dynamic_object_candidates(body, candidates);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_dynamic_object_candidates(body, candidates);
+                collect_dynamic_object_candidates(catch_body, candidates);
+                collect_dynamic_object_candidates(finally_body, candidates);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_dynamic_object_candidates_expr(expr: &JsExpr, candidates: &mut BTreeSet<String>) {
+    match expr {
+        JsExpr::Assign { op, left, right } => {
+            if op == "=" {
+                if let Some(name) = dynamic_object_assignment_target(left) {
+                    candidates.insert(name.to_string());
+                }
+            }
+            collect_dynamic_object_candidates_expr(left, candidates);
+            collect_dynamic_object_candidates_expr(right, candidates);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            collect_dynamic_object_candidates_expr(callee, candidates);
+            for arg in args {
+                collect_dynamic_object_candidates_expr(arg, candidates);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_dynamic_object_candidates_expr(item, candidates);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_dynamic_object_candidates_expr(&item.value, candidates);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                if let Some(key_expr) = &prop.key_expr {
+                    collect_dynamic_object_candidates_expr(key_expr, candidates);
+                }
+                collect_dynamic_object_candidates_expr(&prop.value, candidates);
+            }
+        }
+        JsExpr::Function { body, .. } => {
+            collect_dynamic_object_candidates(body, candidates);
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            ..
+        } => {
+            let _ = property;
+            collect_dynamic_object_candidates_expr(object, candidates);
+            if let Some(property_expr) = property_expr {
+                collect_dynamic_object_candidates_expr(property_expr, candidates);
+            }
+        }
+        JsExpr::Binary { left, right, .. } => {
+            collect_dynamic_object_candidates_expr(left, candidates);
+            collect_dynamic_object_candidates_expr(right, candidates);
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            collect_dynamic_object_candidates_expr(arg, candidates);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_dynamic_object_candidates_expr(test, candidates);
+            collect_dynamic_object_candidates_expr(consequent, candidates);
+            collect_dynamic_object_candidates_expr(alternate, candidates);
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_dynamic_object_candidates_expr(expr, candidates);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_dynamic_object_member_read_candidates(
+    stmts: &[JsStmt],
+    candidates: &mut BTreeSet<String>,
+) {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Expr { expr } | JsStmt::Return { value: Some(expr) } => {
+                collect_dynamic_object_member_read_candidates_expr(expr, candidates);
+            }
+            JsStmt::VarDecl {
+                init: Some(expr), ..
+            } => collect_dynamic_object_member_read_candidates_expr(expr, candidates),
+            JsStmt::FunctionDecl { body, .. } => {
+                collect_dynamic_object_member_read_candidates(body, candidates);
+            }
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                collect_dynamic_object_member_read_candidates_expr(test, candidates);
+                collect_dynamic_object_member_read_candidates(consequent, candidates);
+                collect_dynamic_object_member_read_candidates(alternate, candidates);
+            }
+            JsStmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                collect_dynamic_object_member_read_candidates(init, candidates);
+                if let Some(test) = test {
+                    collect_dynamic_object_member_read_candidates_expr(test, candidates);
+                }
+                if let Some(update) = update {
+                    collect_dynamic_object_member_read_candidates_expr(update, candidates);
+                }
+                collect_dynamic_object_member_read_candidates(body, candidates);
+            }
+            JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+                collect_dynamic_object_member_read_candidates_expr(test, candidates);
+                collect_dynamic_object_member_read_candidates(body, candidates);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_dynamic_object_member_read_candidates(body, candidates);
+                collect_dynamic_object_member_read_candidates(catch_body, candidates);
+                collect_dynamic_object_member_read_candidates(finally_body, candidates);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_dynamic_object_member_read_candidates_expr(
+    expr: &JsExpr,
+    candidates: &mut BTreeSet<String>,
+) {
+    match expr {
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            ..
+        } => {
+            if property_expr.is_none() && !is_collection_member_property(property) {
+                if let JsExpr::Ident { name } = object.as_ref() {
+                    if !is_builtin_object_name(name) {
+                        candidates.insert(name.clone());
+                    }
+                }
+            }
+            collect_dynamic_object_member_read_candidates_expr(object, candidates);
+            if let Some(property_expr) = property_expr {
+                collect_dynamic_object_member_read_candidates_expr(property_expr, candidates);
+            }
+        }
+        JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
+            collect_dynamic_object_member_read_candidates_expr(left, candidates);
+            collect_dynamic_object_member_read_candidates_expr(right, candidates);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            collect_dynamic_object_member_read_candidates_expr(callee, candidates);
+            for arg in args {
+                collect_dynamic_object_member_read_candidates_expr(arg, candidates);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_dynamic_object_member_read_candidates_expr(item, candidates);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_dynamic_object_member_read_candidates_expr(&item.value, candidates);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                if let Some(key_expr) = &prop.key_expr {
+                    collect_dynamic_object_member_read_candidates_expr(key_expr, candidates);
+                }
+                collect_dynamic_object_member_read_candidates_expr(&prop.value, candidates);
+            }
+        }
+        JsExpr::Function { body, .. } => {
+            collect_dynamic_object_member_read_candidates(body, candidates);
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            collect_dynamic_object_member_read_candidates_expr(arg, candidates);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_dynamic_object_member_read_candidates_expr(test, candidates);
+            collect_dynamic_object_member_read_candidates_expr(consequent, candidates);
+            collect_dynamic_object_member_read_candidates_expr(alternate, candidates);
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_dynamic_object_member_read_candidates_expr(expr, candidates);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_call_initialized_bindings(stmts: &[JsStmt], candidates: &mut BTreeSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::VarDecl {
+                name,
+                init: Some(expr @ JsExpr::Call { .. }),
+            } if !is_require_call(expr) => {
+                candidates.insert(name.clone());
+            }
+            JsStmt::FunctionDecl { body, .. } => {
+                collect_call_initialized_bindings(body, candidates)
+            }
+            JsStmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                collect_call_initialized_bindings(consequent, candidates);
+                collect_call_initialized_bindings(alternate, candidates);
+            }
+            JsStmt::For { init, body, .. } => {
+                collect_call_initialized_bindings(init, candidates);
+                collect_call_initialized_bindings(body, candidates);
+            }
+            JsStmt::While { body, .. } | JsStmt::DoWhile { body, .. } => {
+                collect_call_initialized_bindings(body, candidates);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_call_initialized_bindings(body, candidates);
+                collect_call_initialized_bindings(catch_body, candidates);
+                collect_call_initialized_bindings(finally_body, candidates);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn dynamic_object_assignment_target(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property_expr: None,
+        optional: false,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    Some(name)
+}
+
+fn is_collection_member_property(property: &str) -> bool {
+    matches!(
+        property,
+        "set" | "get" | "has" | "delete" | "size" | "length"
+    )
+}
+
+fn is_builtin_object_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Array"
+            | "Boolean"
+            | "JSON"
+            | "Map"
+            | "Math"
+            | "Number"
+            | "Object"
+            | "Promise"
+            | "String"
+            | "console"
+            | "process"
+    )
 }
 
 fn mark_number_array_locals(stmts: &[JsStmt], state: &mut AotState) {
@@ -4077,6 +4682,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let value = render_expr(args.first()?, state)?;
             Some(format!("tsgodownIsNaN({value})"))
         }
+        JsExpr::Call { callee, args, .. } if is_map_has_call(callee, args, state) => {
+            render_map_bool_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_regexp_test_call(callee, args) => {
             render_regexp_test_call(callee, args, state)
         }
@@ -4108,7 +4716,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             }
             Some(format!("fmt.Fprintln(os.Stderr, {})", args.join(", ")))
         }
-        JsExpr::Assign { op, left, .. } if op == "=" && is_cjs_export_target(left) => {
+        JsExpr::Assign { op, left, .. }
+            if op == "="
+                && is_cjs_export_target(left)
+                && !is_shadowed_cjs_export_target(left, state) =>
+        {
             Some(String::new())
         }
         JsExpr::Assign { op, left, right }
@@ -4120,6 +4732,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_number_array_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_number_array_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Assign { op, left, right }
+            if render_dynamic_object_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_dynamic_object_assignment_stmt(op, left, right, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_any_array_call_stmt(callee, args, state).is_some() =>
@@ -4320,6 +4937,32 @@ fn render_number_array_assignment_stmt(
     }
 }
 
+fn render_dynamic_object_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = left
+    else {
+        return None;
+    };
+    let object = render_dynamic_object_source_expr(object, state)?;
+    let value = render_json_value_expr(right, state)?;
+    Some(format!(
+        "tsgodownObjectSetProp({object}, {}, {value})",
+        go_string_literal(property)
+    ))
+}
+
 fn render_number_array_call_stmt(
     callee: &JsExpr,
     args: &[JsExpr],
@@ -4449,6 +5092,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
         JsExpr::Ident { name } if name == "undefined" => Some("nil".to_string()),
+        JsExpr::Ident { name } if state.functions.contains_key(name) => {
+            render_function_reference_expr(name, state)
+        }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -4501,6 +5147,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_bool_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
+            .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_call_expr(callee, args, state)),
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
@@ -4520,9 +5167,16 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_dynamic_object_member_expr(object, property, state)
-            .or_else(|| render_class_getter_member_expr(object, property, state))
+        } => render_class_getter_member_expr(object, property, state)
             .or_else(|| render_static_member_expr(object, property, state))
+            .or_else(|| {
+                if property == "length" || property.parse::<usize>().is_ok() {
+                    render_numeric_expr(expr, state).or_else(|| render_string_expr(expr, state))
+                } else {
+                    None
+                }
+            })
+            .or_else(|| render_dynamic_object_member_expr(object, property, state))
             .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state)),
@@ -4559,13 +5213,15 @@ fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut block_state = clone_aot_state(state);
     mark_number_array_locals(body, &mut block_state);
     mark_any_array_locals(body, &mut block_state);
+    mark_dynamic_object_locals(body, &mut block_state);
     let mut rendered = Vec::new();
     for stmt in body {
         match stmt {
             JsStmt::FunctionDecl { name, .. } => {
                 let function = aot_function_from_stmt(stmt, name)?;
-                let rendered_function = render_local_function_decl(&function)?;
                 block_state.functions.insert(name.clone(), function);
+                let function = block_state.functions.get(name)?;
+                let rendered_function = render_local_function_decl(function, &block_state)?;
                 rendered.push(rendered_function);
             }
             JsStmt::Break { .. } | JsStmt::Continue { .. } => {
@@ -4608,6 +5264,18 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if is_any_binding(name, state) => {
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownToFloat64({value})"))
+        }
+        expr if render_number_array_index_expr(expr, state).is_some() => {
+            render_number_array_index_expr(expr, state)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            optional: false,
+        } if is_map_size_member(object, property, property_expr.as_deref(), state) => {
+            let object = render_map_expr(object, state)?;
+            Some(format!("tsgodownMapSize({object})"))
         }
         JsExpr::Member {
             object,
@@ -4660,15 +5328,6 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Member {
             object,
             property,
-            property_expr: None,
-            optional: false,
-        } if render_dynamic_object_member_expr(object, property, state).is_some() => {
-            let value = render_dynamic_object_member_expr(object, property, state)?;
-            Some(format!("tsgodownToFloat64({value})"))
-        }
-        JsExpr::Member {
-            object,
-            property,
             property_expr,
             optional: false,
         } if is_length_member_property(property, property_expr.as_deref())
@@ -4696,8 +5355,14 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let index = property.parse::<usize>().ok()?;
             Some(format!("float64({object}[{index}])"))
         }
-        expr if render_number_array_index_expr(expr, state).is_some() => {
-            render_number_array_index_expr(expr, state)
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if render_dynamic_object_member_expr(object, property, state).is_some() => {
+            let value = render_dynamic_object_member_expr(object, property, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
         }
         JsExpr::Unary { op, arg } if op == "-" => {
             let arg = render_numeric_expr(arg, state)?;
@@ -5026,6 +5691,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::String { .. },
         } => Some("\"string\"".to_string()),
+        expr if is_process_cwd_call_expr(expr) => Some("\"string\"".to_string()),
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some("\"string\"".to_string())
         }
@@ -5236,11 +5902,12 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             }
             let mut fields = Vec::new();
             for prop in props {
-                if prop.key_expr.is_some() {
-                    return None;
-                }
+                let key = match &prop.key_expr {
+                    Some(key_expr) => render_string_expr(key_expr, state)?,
+                    None => go_string_literal(&prop.key),
+                };
                 let value = render_json_value_expr(&prop.value, state)?;
-                fields.push(format!("{}: {value}", go_string_literal(&prop.key)));
+                fields.push(format!("{key}: {value}"));
             }
             Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
@@ -5249,6 +5916,12 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             let value = go_binding_ref(name, state);
+            Some(format!("tsgodownObjectFromAny({value})"))
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_map_call_expr(callee, args, state).is_some() =>
+        {
+            let value = render_map_call_expr(callee, args, state)?;
             Some(format!("tsgodownObjectFromAny({value})"))
         }
         JsExpr::Conditional {
@@ -5279,6 +5952,17 @@ fn render_dynamic_object_member_expr(
     ))
 }
 
+fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_object_map_expr(expr, state).or_else(|| {
+        if let JsExpr::Call { callee, args, .. } = expr {
+            let value = render_call_expr(callee, args, state)?;
+            Some(format!("tsgodownObjectFromAny({value})"))
+        } else {
+            None
+        }
+    })
+}
+
 fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Option<String> {
     match object {
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
@@ -5290,6 +5974,10 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
             property_expr: None,
             optional: false,
         } => render_dynamic_object_member_expr(object, property, state),
+        JsExpr::Call { callee, args, .. } => {
+            let value = render_call_expr(callee, args, state)?;
+            Some(format!("tsgodownObjectFromAny({value})"))
+        }
         _ => None,
     }
 }
@@ -5466,6 +6154,131 @@ fn render_number_closure_expr(expr: &JsExpr, state: &AotState) -> Option<String>
     }
 }
 
+fn render_js_map_expr(expr: &JsExpr) -> Option<String> {
+    matches!(
+        expr,
+        JsExpr::New { callee, args }
+            if args.is_empty()
+                && matches!(callee.as_ref(), JsExpr::Ident { name } if name == "Map")
+    )
+    .then(|| "tsgodownNewMap()".to_string())
+}
+
+fn render_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.map_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Call { callee, args, .. } if is_map_set_call(callee, args, state) => {
+            render_map_call_expr(callee, args, state)
+        }
+        _ => None,
+    }
+}
+
+fn is_map_size_member(
+    object: &JsExpr,
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> bool {
+    property_expr.is_none() && property == "size" && render_map_expr(object, state).is_some()
+}
+
+fn render_map_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let target = render_map_expr(object, state)?;
+    match property.as_str() {
+        "set" if args.len() == 2 => {
+            let key = render_string_expr(args.first()?, state)?;
+            let value = render_json_value_expr(args.get(1)?, state)?;
+            Some(format!("tsgodownMapSet({target}, {key}, {value})"))
+        }
+        "get" if args.len() == 1 => {
+            let key = render_string_expr(args.first()?, state)?;
+            Some(format!("tsgodownMapGet({target}, {key})"))
+        }
+        "has" if args.len() == 1 => {
+            let key = render_string_expr(args.first()?, state)?;
+            Some(format!("tsgodownMapHas({target}, {key})"))
+        }
+        "delete" if args.len() == 1 => {
+            let key = render_string_expr(args.first()?, state)?;
+            Some(format!("tsgodownMapDelete({target}, {key})"))
+        }
+        _ => None,
+    }
+}
+
+fn map_method_name(callee: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        property,
+        property_expr: None,
+        optional: false,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    match property.as_str() {
+        "set" | "get" | "has" | "delete" => Some(property.as_str()),
+        _ => None,
+    }
+}
+
+fn is_map_method_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(
+        (map_method_name(callee), args.len()),
+        (Some("set"), 2) | (Some("get" | "has" | "delete"), 1)
+    )
+}
+
+fn is_map_set_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    args.len() == 2 && property == "set" && render_map_expr(object, state).is_some()
+}
+
+fn is_map_has_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    args.len() == 1 && property == "has" && render_map_expr(object, state).is_some()
+}
+
+fn render_map_bool_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_map_has_call(callee, args, state) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let target = render_map_expr(object, state)?;
+    let key = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownMapHas({target}, {key})"))
+}
+
 fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
@@ -5478,6 +6291,9 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .map(|item| render_string_expr(item, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]string{{{}}}", items.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
+            render_object_keys_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_array_map_to_string_call(callee, args) => {
             render_array_map_to_string_call(callee, args, state)
@@ -5545,6 +6361,9 @@ fn render_number_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<Str
         return None;
     };
     let values = render_number_array_expr(object, state)?;
+    if is_length_member_property(property, property_expr.as_deref()) {
+        return None;
+    }
     let index = if let Some(property_expr) = property_expr {
         render_numeric_expr(property_expr, state)?
     } else {
@@ -5590,6 +6409,43 @@ fn render_string_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<St
     }
     let values = render_string_array_expr(object, state)?;
     Some(format!("float64(len({values}))"))
+}
+
+fn is_object_keys_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+                && property == "keys"
+        )
+}
+
+fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_object_keys_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Object { props } = args.first()? else {
+        return None;
+    };
+    if props.iter().any(|prop| prop.spread) {
+        return None;
+    }
+    let keys = props
+        .iter()
+        .map(|prop| match &prop.key_expr {
+            Some(key_expr) => render_string_expr(key_expr, state),
+            None => Some(go_string_literal(&prop.key)),
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(format!(
+        "tsgodownObjectKeys([]string{{{}}})",
+        keys.join(", ")
+    ))
 }
 
 fn is_length_member_property(property: &str, property_expr: Option<&JsExpr>) -> bool {
@@ -7118,6 +7974,12 @@ fn string_literal_value(expr: &JsExpr) -> Option<String> {
 }
 
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if let Some(value) = render_map_call_expr(callee, args, state) {
+        return Some(value);
+    }
+    if let Some(value) = render_array_at_call(callee, args, state) {
+        return Some(value);
+    }
     if is_json_stringify(callee) {
         let value = render_json_value_expr(args.first()?, state)?;
         if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
@@ -7125,8 +7987,8 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         }
         return Some(format!("tsgodownJSONStringify({value})"));
     }
-    if let Some(value) = render_array_at_call(callee, args, state) {
-        return Some(value);
+    if is_object_keys_call(callee, args) {
+        return render_object_keys_call(callee, args, state);
     }
     if is_process_noop_call(callee, args) {
         return Some("func() any { return nil }()".to_string());
@@ -7180,9 +8042,23 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
             return Some(format!("{function}()"));
         }
     }
+    if let Some(value) = render_dynamic_function_call(callee, args, state) {
+        return Some(value);
+    }
     let JsExpr::Ident { name } = callee else {
         return None;
     };
+    if is_any_binding(name, state) {
+        let function = go_binding_ref(name, state);
+        let args = args
+            .iter()
+            .map(|arg| render_expr(arg, state))
+            .collect::<Option<Vec<_>>>()?;
+        if args.is_empty() {
+            return Some(format!("tsgodownCall({function})"));
+        }
+        return Some(format!("tsgodownCall({function}, {})", args.join(", ")));
+    }
     if args.len() == 1 && state.number_closure_bindings.contains(name) {
         let arg = render_numeric_expr(args.first()?, state)?;
         return Some(format!("{}({arg})", go_binding_ref(name, state)));
@@ -7197,6 +8073,31 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         function.go_name,
         rendered_args.join(", ")
     ))
+}
+
+fn render_dynamic_function_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let function = render_dynamic_object_member_expr(object, property, state)?;
+    let args = args
+        .iter()
+        .map(|arg| render_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    if args.is_empty() {
+        return Some(format!("tsgodownCall({function})"));
+    }
+    Some(format!("tsgodownCall({function}, {})", args.join(", ")))
 }
 
 fn render_array_at_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -7258,7 +8159,9 @@ fn render_call_args(
 
 fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Option<String> {
     match kind {
-        AotSlotKind::Any => render_expr(expr, state),
+        AotSlotKind::Any => {
+            render_json_value_expr(expr, state).or_else(|| render_expr(expr, state))
+        }
         AotSlotKind::Bool => render_bool_expr(expr, state),
         AotSlotKind::Bytes => render_bytes_expr(expr, state),
         AotSlotKind::Number => render_numeric_expr(expr, state),
@@ -7285,6 +8188,7 @@ fn is_json_stringify(expr: &JsExpr) -> bool {
 fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
+        JsExpr::Function { .. } => render_inline_function_value_expr(expr, state),
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -7310,11 +8214,12 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             }
             let mut fields = Vec::new();
             for prop in props {
-                if prop.key_expr.is_some() {
-                    return None;
-                }
+                let key = match &prop.key_expr {
+                    Some(key_expr) => render_string_expr(key_expr, state)?,
+                    None => go_string_literal(&prop.key),
+                };
                 let value = render_json_value_expr(&prop.value, state)?;
-                fields.push(format!("{:?}: {value}", prop.key));
+                fields.push(format!("{key}: {value}"));
             }
             Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
@@ -7322,6 +8227,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
         }
+        JsExpr::Unary { .. } => render_expr(expr, state),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
@@ -7335,9 +8241,85 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr: None,
             optional: false,
         } => render_class_getter_member_expr(object, property, state)
+            .or_else(|| render_static_member_expr(object, property, state))
+            .or_else(|| {
+                if property == "length" || property.parse::<usize>().is_ok() {
+                    render_numeric_expr(expr, state).or_else(|| render_string_expr(expr, state))
+                } else {
+                    None
+                }
+            })
             .or_else(|| render_dynamic_object_member_expr(object, property, state))
-            .or_else(|| render_static_member_expr(object, property, state)),
+            .or_else(|| render_numeric_expr(expr, state)),
         _ => None,
+    }
+}
+
+fn render_inline_function_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let mut function_state = clone_aot_state(state);
+    for param in params {
+        function_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    mark_dynamic_object_locals(body, &mut function_state);
+    let rendered_body = render_function_body(body, &function_state)?;
+    let rendered_body = if rendered_body.trim_end().ends_with("return nil") {
+        rendered_body
+    } else {
+        format!("{rendered_body}\nreturn nil")
+    };
+    let rendered_params = params
+        .iter()
+        .map(|param| format!("{} any", sanitize_go_identifier(param)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "func({rendered_params}) any {{\n{}\n}}",
+        indent_lines(&rendered_body)
+    ))
+}
+
+fn render_function_reference_expr(name: &str, state: &AotState) -> Option<String> {
+    let function = state.functions.get(name)?;
+    let go_name = &function.go_name;
+    match function.param_kinds.as_slice() {
+        [] => Some(format!("func() any {{ return {go_name}() }}")),
+        [kind] => {
+            let arg = render_any_arg_to_kind("arg0", *kind);
+            Some(format!("func(arg0 any) any {{ return {go_name}({arg}) }}"))
+        }
+        [first, second] => {
+            let first = render_any_arg_to_kind("arg0", *first);
+            let second = render_any_arg_to_kind("arg1", *second);
+            Some(format!(
+                "func(arg0 any, arg1 any) any {{ return {go_name}({first}, {second}) }}"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn render_any_arg_to_kind(name: &str, kind: AotSlotKind) -> String {
+    match kind {
+        AotSlotKind::Any => name.to_string(),
+        AotSlotKind::Bool => format!("tsgodownToBool({name})"),
+        AotSlotKind::Bytes => format!("{name}.([]byte)"),
+        AotSlotKind::Number => format!("tsgodownToFloat64({name})"),
+        AotSlotKind::NumberArray => format!("{name}.([]float64)"),
+        AotSlotKind::String => format!("tsgodownToString({name})"),
+        AotSlotKind::StringArray => format!("{name}.([]string)"),
+        AotSlotKind::BoolFunction => format!("{name}.(func() bool)"),
+        AotSlotKind::StringFunction => format!("{name}.(func() string)"),
     }
 }
 
@@ -7359,9 +8341,13 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.bytes_bindings.contains(name)
         && !state.number_array_bindings.contains(name)
         && !state.string_array_bindings.contains(name)
+        && !state.map_bindings.contains(name)
+        && !state.number_closure_bindings.contains(name)
         && !state.string_function_bindings.contains(name)
         && !state.object_bindings.contains_key(name)
         && !state.class_instance_bindings.contains_key(name)
+        && !state.functions.contains_key(name)
+        && !state.builtin_bindings.contains(name)
 }
 
 fn go_binding_ref(name: &str, state: &AotState) -> String {
