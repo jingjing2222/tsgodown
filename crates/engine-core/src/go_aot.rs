@@ -913,6 +913,8 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         JsExpr::Call { callee, args, .. } => {
             if is_json_parse_call(callee, args) {
                 imports.insert("encoding/json");
+                imports.insert("sort");
+                imports.insert("strconv");
             }
             if is_process_cwd_call(callee, args) {
                 imports.insert("os");
@@ -929,6 +931,8 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             }
             if is_json_stringify(callee) {
                 imports.insert("encoding/json");
+                imports.insert("sort");
+                imports.insert("strconv");
             }
             if is_object_keys_call(callee, args) {
                 imports.insert("sort");
@@ -1889,6 +1893,36 @@ func tsgodownCall(value any, args ...any) any {
 		return ""
 	}
 	return string(bytes)
+}
+
+func tsgodownJSONStringifyOrdered(object map[string]any, keys []string) string {
+	out := "{"
+	first := true
+	seen := map[string]bool{}
+	write := func(key string) {
+		value, ok := object[key]
+		if !ok || seen[key] {
+			return
+		}
+		seen[key] = true
+		if !first {
+			out += ","
+		}
+		first = false
+		keyBytes, keyErr := json.Marshal(key)
+		valueBytes, valueErr := json.Marshal(value)
+		if keyErr != nil || valueErr != nil {
+			return
+		}
+		out += string(keyBytes) + ":" + string(valueBytes)
+	}
+	for _, key := range keys {
+		write(key)
+	}
+	for _, key := range tsgodownObjectMapKeys(object) {
+		write(key)
+	}
+	return out + "}"
 }
 
 func tsgodownJSONStringifyIndent(value any, indent string) string {
@@ -4304,6 +4338,15 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if state.number_array_bindings.contains(name) && is_nullish_expr(expr) {
                     return Some(format!("var {ident} []float64 = nil"));
                 }
+                if state.dynamic_object_bindings.contains(name) && is_nullish_expr(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.ordered_dynamic_object_bindings.insert(name.clone());
+                    let order = dynamic_object_order_go_name(name);
+                    return Some(format!(
+                        "var {ident} map[string]any = map[string]any{{}}\nvar {order} []string = []string{{}}\n_ = {order}"
+                    ));
+                }
                 if is_require_call(expr)
                     && (state.functions.contains_key(name)
                         || state.bindings.contains(name)
@@ -4487,6 +4530,13 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             }
             state.bindings.insert(name.clone());
             state.binding_refs.insert(name.clone(), ident.clone());
+            if state.dynamic_object_bindings.contains(name) {
+                state.ordered_dynamic_object_bindings.insert(name.clone());
+                let order = dynamic_object_order_go_name(name);
+                return Some(format!(
+                    "var {ident} map[string]any = map[string]any{{}}\nvar {order} []string = []string{{}}\n_ = {order}"
+                ));
+            }
             if state.number_array_bindings.contains(name) {
                 return Some(format!("var {ident} []float64 = nil"));
             }
@@ -5956,6 +6006,9 @@ fn collect_dynamic_object_candidates_expr(expr: &JsExpr, candidates: &mut BTreeS
             collect_dynamic_object_candidates_expr(right, candidates);
         }
         JsExpr::Call { callee, args, .. } => {
+            if let Some(name) = ts_enum_iife_target(callee, args) {
+                candidates.insert(name.to_string());
+            }
             if is_object_keys_call(callee, args) {
                 if let Some(JsExpr::Ident { name }) = args.first() {
                     candidates.insert(name.clone());
@@ -7240,6 +7293,9 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_array_for_each_call(callee, args) => {
             render_array_for_each_stmt(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if ts_enum_iife_target(callee, args).is_some() => {
+            render_ts_enum_iife_stmt(callee, args, state)
+        }
         JsExpr::Assign { op, left, .. }
             if op == "="
                 && is_cjs_export_target(left)
@@ -8456,11 +8512,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_number_to_string_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_json_stringify(callee) => {
-            let value = render_json_value_expr(args.first()?, state)?;
-            if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
-                return Some(format!("tsgodownJSONStringifyIndent({value}, {space})"));
-            }
-            Some(format!("tsgodownJSONStringify({value})"))
+            render_json_stringify_call(args, state)
         }
         JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
             render_object_prototype_to_string_call(args.first()?, state)
@@ -10009,6 +10061,165 @@ fn render_array_for_each_stmt(
         }
     };
     Some(format!("{header} {{\n{}\n}}", indent_lines(&body)))
+}
+
+fn render_ts_enum_iife_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &mut AotState,
+) -> Option<String> {
+    let target = ts_enum_iife_target(callee, args)?.to_string();
+    let JsExpr::Function {
+        params,
+        body,
+        r#async: false,
+        generator: false,
+        rest_param: None,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    let param = params.first()?;
+    let was_dynamic = state.dynamic_object_bindings.contains(&target);
+    let had_order = state.ordered_dynamic_object_bindings.contains(&target);
+    let target_ident = go_binding_ref(&target, state);
+    state.bindings.insert(target.clone());
+    state
+        .binding_refs
+        .insert(target.clone(), target_ident.clone());
+    state.dynamic_object_bindings.insert(target.clone());
+    state.ordered_dynamic_object_bindings.insert(target.clone());
+    let order = dynamic_object_order_go_name(&target);
+    let target_object = if was_dynamic {
+        target_ident.clone()
+    } else {
+        format!("tsgodownObjectFromAny({target_ident})")
+    };
+    let mut rendered = Vec::new();
+    if !was_dynamic {
+        rendered.push(format!(
+            "if _, ok := {target_ident}.(map[string]any); !ok {{ {target_ident} = map[string]any{{}} }}"
+        ));
+    }
+    if !had_order {
+        rendered.push(format!("var {order} []string = []string{{}}"));
+    }
+    for stmt in body {
+        rendered.push(render_ts_enum_member_assignment_stmt(
+            stmt,
+            param,
+            &target_object,
+            &order,
+            state,
+        )?);
+    }
+    Some(rendered.join("\n"))
+}
+
+fn render_ts_enum_member_assignment_stmt(
+    stmt: &JsStmt,
+    param: &str,
+    target: &str,
+    order: &str,
+    state: &AotState,
+) -> Option<String> {
+    let JsStmt::Expr {
+        expr: JsExpr::Assign { op, left, right },
+    } = stmt
+    else {
+        return None;
+    };
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = left.as_ref()
+    else {
+        return None;
+    };
+    if !matches!(object.as_ref(), JsExpr::Ident { name } if name == param) {
+        return None;
+    }
+    let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
+    let value = render_json_value_expr(right, state)?;
+    Some(format!(
+        "if _, ok := {target}[{key}]; !ok {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({target}, {key}, {value})"
+    ))
+}
+
+fn ts_enum_iife_target<'a>(callee: &'a JsExpr, args: &'a [JsExpr]) -> Option<&'a str> {
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Function {
+        params,
+        body,
+        r#async: false,
+        generator: false,
+        rest_param: None,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    if params.len() != 1 || body.is_empty() {
+        return None;
+    }
+    let target = ts_enum_iife_argument_target(args.first()?)?;
+    let param = params.first()?;
+    body.iter()
+        .all(|stmt| is_ts_enum_member_assignment_stmt(stmt, param))
+        .then_some(target)
+}
+
+fn ts_enum_iife_argument_target(expr: &JsExpr) -> Option<&str> {
+    match expr {
+        JsExpr::Ident { name } => Some(name.as_str()),
+        JsExpr::Binary { op, left, right } if op == "||" => {
+            let JsExpr::Ident { name } = left.as_ref() else {
+                return None;
+            };
+            if !is_empty_object_assignment_to(right, name) {
+                return None;
+            }
+            Some(name.as_str())
+        }
+        _ => None,
+    }
+}
+
+fn is_empty_object_assignment_to(expr: &JsExpr, target: &str) -> bool {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return false;
+    };
+    op == "="
+        && matches!(left.as_ref(), JsExpr::Ident { name } if name == target)
+        && matches!(right.as_ref(), JsExpr::Object { props } if props.is_empty())
+}
+
+fn is_ts_enum_member_assignment_stmt(stmt: &JsStmt, param: &str) -> bool {
+    let JsStmt::Expr {
+        expr: JsExpr::Assign { op, left, right },
+    } = stmt
+    else {
+        return false;
+    };
+    if op != "=" || render_json_value_expr(right, &AotState::default()).is_none() {
+        return false;
+    }
+    matches!(
+        left.as_ref(),
+        JsExpr::Member {
+            object,
+            optional: false,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == param)
+    )
 }
 
 fn render_for_each_callback_body(body: &[JsStmt], state: &mut AotState) -> Option<String> {
@@ -13980,11 +14191,7 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         return Some(value);
     }
     if is_json_stringify(callee) {
-        let value = render_json_value_expr(args.first()?, state)?;
-        if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
-            return Some(format!("tsgodownJSONStringifyIndent({value}, {space})"));
-        }
-        return Some(format!("tsgodownJSONStringify({value})"));
+        return render_json_stringify_call(args, state);
     }
     if is_object_keys_call(callee, args) {
         return render_object_keys_call(callee, args, state);
@@ -14127,6 +14334,23 @@ fn render_array_at_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> O
     let value = render_json_value_expr(object, state)?;
     let index = render_numeric_expr(args.first()?, state)?;
     Some(format!("tsgodownArrayAt({value}, {index})"))
+}
+
+fn render_json_stringify_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    let value_expr = args.first()?;
+    let value = render_json_value_expr(value_expr, state)?;
+    if let Some(space) = args.get(2).and_then(render_json_stringify_space_expr) {
+        return Some(format!("tsgodownJSONStringifyIndent({value}, {space})"));
+    }
+    if let JsExpr::Ident { name } = value_expr {
+        if state.ordered_dynamic_object_bindings.contains(name) {
+            let object = render_dynamic_object_source_expr(value_expr, state)
+                .or_else(|| render_object_map_expr(value_expr, state))?;
+            let order = dynamic_object_order_go_name(name);
+            return Some(format!("tsgodownJSONStringifyOrdered({object}, {order})"));
+        }
+    }
+    Some(format!("tsgodownJSONStringify({value})"))
 }
 
 fn render_json_stringify_space_expr(expr: &JsExpr) -> Option<String> {
