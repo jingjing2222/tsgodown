@@ -2039,7 +2039,222 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
             }
         }
     }
+    propagate_function_param_kinds(&mut functions);
     functions
+}
+
+fn propagate_function_param_kinds(functions: &mut BTreeMap<(String, String), AotFunction>) {
+    for _ in 0..functions.len().max(1) {
+        let snapshot = functions.clone();
+        let mut changed = false;
+        for ((module_id, _name), function) in functions.iter_mut() {
+            let param_index = function
+                .params
+                .iter()
+                .enumerate()
+                .map(|(index, param)| (param.clone(), index))
+                .collect::<BTreeMap<_, _>>();
+            let mut propagated = function.param_kinds.clone();
+            for stmt in &function.body {
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    &snapshot,
+                    &param_index,
+                    &mut propagated,
+                );
+            }
+            if propagated != function.param_kinds {
+                function.param_kinds = propagated;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn propagate_stmt_param_kinds(
+    stmt: &JsStmt,
+    module_id: &str,
+    functions: &BTreeMap<(String, String), AotFunction>,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match stmt {
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        }
+        | JsStmt::Expr { expr }
+        | JsStmt::Return { value: Some(expr) }
+        | JsStmt::Throw { value: expr }
+        | JsStmt::Yield {
+            value: Some(expr), ..
+        } => propagate_expr_param_kinds(expr, module_id, functions, param_index, kinds),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            for stmt in consequent {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+            for stmt in alternate {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            for stmt in init {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+            if let Some(test) = test {
+                propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            }
+            if let Some(update) = update {
+                propagate_expr_param_kinds(update, module_id, functions, param_index, kinds);
+            }
+            for stmt in body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            for stmt in body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            for stmt in body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+            for stmt in catch_body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+            for stmt in finally_body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn propagate_expr_param_kinds(
+    expr: &JsExpr,
+    module_id: &str,
+    functions: &BTreeMap<(String, String), AotFunction>,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    match expr {
+        JsExpr::Call { callee, args, .. } => {
+            if let JsExpr::Ident { name } = callee.as_ref() {
+                if let Some(callee_function) = functions.get(&(module_id.to_string(), name.clone()))
+                {
+                    for (arg, required) in args.iter().zip(callee_function.param_kinds.iter()) {
+                        mark_forwarded_param_kind(arg, *required, param_index, kinds);
+                    }
+                }
+            }
+            propagate_expr_param_kinds(callee, module_id, functions, param_index, kinds);
+            for arg in args {
+                propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
+            propagate_expr_param_kinds(left, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(right, module_id, functions, param_index, kinds);
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            propagate_expr_param_kinds(object, module_id, functions, param_index, kinds);
+            if let Some(property_expr) = property_expr {
+                propagate_expr_param_kinds(property_expr, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                propagate_expr_param_kinds(item, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                propagate_expr_param_kinds(&item.value, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                propagate_expr_param_kinds(&prop.value, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(consequent, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(alternate, module_id, functions, param_index, kinds);
+        }
+        JsExpr::New { callee, args } => {
+            propagate_expr_param_kinds(callee, module_id, functions, param_index, kinds);
+            for arg in args {
+                propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                propagate_expr_param_kinds(expr, module_id, functions, param_index, kinds);
+            }
+        }
+        JsExpr::Function { body, .. } => {
+            for stmt in body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mark_forwarded_param_kind(
+    expr: &JsExpr,
+    required: AotSlotKind,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    if required == AotSlotKind::Any {
+        return;
+    }
+    let JsExpr::Ident { name } = expr else {
+        return;
+    };
+    let Some(index) = param_index.get(name) else {
+        return;
+    };
+    if kinds[*index] == AotSlotKind::Number || kinds[*index] == required {
+        kinds[*index] = required;
+    }
 }
 
 fn collect_module_classes(ir: &IrDocument) -> BTreeMap<(String, String), AotClass> {
@@ -3951,7 +4166,26 @@ fn infer_expr_param_kinds(
                 infer_expr_param_kinds(arg, param_index, kinds);
             }
         }
-        JsExpr::Member { object, .. } => infer_expr_param_kinds(object, param_index, kinds),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            ..
+        } => {
+            if let JsExpr::Ident { name } = object.as_ref() {
+                let indexed_member = property_expr.is_some() || property.parse::<usize>().is_ok();
+                if indexed_member && !is_length_member_property(property, property_expr.as_deref())
+                {
+                    if let Some(index) = param_index.get(name) {
+                        kinds[*index] = AotSlotKind::AnyArray;
+                    }
+                }
+            }
+            infer_expr_param_kinds(object, param_index, kinds);
+            if let Some(property_expr) = property_expr {
+                infer_expr_param_kinds(property_expr, param_index, kinds);
+            }
+        }
         JsExpr::Array { items } => {
             for item in items {
                 infer_expr_param_kinds(item, param_index, kinds);
@@ -6014,6 +6248,10 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if render_number_array_index_expr(expr, state).is_some() => {
             render_number_array_index_expr(expr, state)
+        }
+        expr if render_any_array_index_expr(expr, state).is_some() => {
+            let value = render_any_array_index_expr(expr, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
         }
         JsExpr::Member {
             object,
