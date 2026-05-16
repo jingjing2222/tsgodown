@@ -521,7 +521,8 @@ console.log(JSON.stringify({
   entry: process.argv[1],
   first: process.argv[2],
   second: process.argv[3],
-  argc: process.argv.length
+  argc: process.argv.length,
+  tail: process.argv.slice(2)
 }))
 "#,
         );
@@ -545,6 +546,8 @@ console.log(JSON.stringify({
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownProcessArgv"));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -580,6 +583,7 @@ console.log(JSON.stringify({
         assert_eq!(observed["first"], "alpha");
         assert_eq!(observed["second"], "beta");
         assert_eq!(observed["argc"], 4);
+        assert_eq!(observed["tail"], serde_json::json!(["alpha", "beta"]));
     }
 
     #[test]

@@ -898,6 +898,7 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         }
         expr if is_process_stdout_is_tty(expr)
             || process_env_lookup_name(expr).is_some()
+            || is_process_argv_ref(expr)
             || is_process_env_ref(expr)
             || is_process_exec_path_expr(expr)
             || is_process_stdio_ref(expr).is_some()
@@ -961,6 +962,39 @@ func tsgodownStringArraySet(values []string, index float64, value string) []stri
 func tsgodownStringArrayAdd(values []string, index float64, value string) []string {
 	current := tsgodownStringArrayAt(values, index)
 	return tsgodownStringArraySet(values, index, current+value)
+}
+
+func tsgodownStringArraySlice(values []string, start float64, endValues ...float64) []string {
+	length := len(values)
+	from := int(start)
+	if from < 0 {
+		from = length + from
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > length {
+		from = length
+	}
+	to := length
+	if len(endValues) > 0 {
+		to = int(endValues[0])
+		if to < 0 {
+			to = length + to
+		}
+		if to < 0 {
+			to = 0
+		}
+		if to > length {
+			to = length
+		}
+	}
+	if to < from {
+		to = from
+	}
+	out := make([]string, to-from)
+	copy(out, values[from:to])
+	return out
 }
 
 func tsgodownNumberArrayAt(values []float64, index float64) float64 {
@@ -1351,6 +1385,14 @@ func tsgodownProcessEnv() map[string]any {
 		}
 	}
 	return env
+}
+
+func tsgodownProcessArgv(entry string) []string {
+	argv := []string{tsgodownProcessExecPath(), entry}
+	if len(os.Args) > 1 {
+		argv = append(argv, os.Args[1:]...)
+	}
+	return argv
 }
 
 func tsgodownOsHomedir() string {
@@ -2093,7 +2135,10 @@ fn module_aot_state(
     ir: &IrDocument,
     context: &AotModuleContext<'_>,
 ) -> Option<AotState> {
-    let mut state = AotState::default();
+    let mut state = AotState {
+        entry_source_path: entry_module(ir).map(|module| module.source_path.clone()),
+        ..AotState::default()
+    };
     for stmt in &module.executable.as_ref()?.stmts {
         if let Some(parts) = function_parts(stmt) {
             let function = context
@@ -2282,6 +2327,7 @@ struct AotState {
     classes: BTreeMap<String, AotClass>,
     namespace_functions: BTreeMap<(String, String), AotFunction>,
     builtin_bindings: BTreeSet<String>,
+    entry_source_path: Option<String>,
 }
 
 impl AotState {
@@ -2338,6 +2384,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        entry_source_path: state.entry_source_path.clone(),
     }
 }
 
@@ -2625,6 +2672,7 @@ fn render_for_stmt(
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        entry_source_path: state.entry_source_path.clone(),
     };
     let init = init
         .first()
@@ -2734,6 +2782,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        entry_source_path: state.entry_source_path.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
 }
@@ -2760,6 +2809,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        entry_source_path: state.entry_source_path.clone(),
     };
     mark_number_array_locals(stmts, &mut block_state);
     mark_any_array_locals(stmts, &mut block_state);
@@ -3797,6 +3847,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("({value} != \"\")"))
         }
         JsExpr::Ident { name } if name == "process" => Some("true".to_string()),
+        expr if is_process_argv_ref(expr) => Some("true".to_string()),
         expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
             Some("true".to_string())
         }
@@ -4337,10 +4388,23 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Member {
             object,
             property,
-            property_expr: None,
+            property_expr,
             optional: false,
-        } if property == "length" && render_number_array_expr(object, state).is_some() => {
+        } if is_length_member_property(property, property_expr.as_deref())
+            && render_number_array_expr(object, state).is_some() =>
+        {
             let object = render_number_array_expr(object, state)?;
+            Some(format!("float64(len({object}))"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            optional: false,
+        } if is_length_member_property(property, property_expr.as_deref())
+            && render_string_array_expr(object, state).is_some() =>
+        {
+            let object = render_string_array_expr(object, state)?;
             Some(format!("float64(len({object}))"))
         }
         JsExpr::Member {
@@ -4381,18 +4445,20 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Member {
             object,
             property,
-            property_expr: None,
+            property_expr,
             optional: false,
-        } if property == "length" && render_bytes_expr(object, state).is_some() => {
+        } if is_length_member_property(property, property_expr.as_deref())
+            && render_bytes_expr(object, state).is_some() =>
+        {
             let object = render_bytes_expr(object, state)?;
             Some(format!("float64(len({object}))"))
         }
         JsExpr::Member {
             object,
             property,
-            property_expr: None,
+            property_expr,
             optional: false,
-        } if property == "length" => {
+        } if is_length_member_property(property, property_expr.as_deref()) => {
             let object = render_string_expr(object, state)?;
             Some(format!("float64(len({object}))"))
         }
@@ -4640,6 +4706,7 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::String { value },
         } => Some((!value.is_empty()).to_string()),
         JsExpr::Ident { name } if name == "process" => Some("true".to_string()),
+        expr if is_process_argv_ref(expr) => Some("true".to_string()),
         expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
             Some("true".to_string())
         }
@@ -4993,6 +5060,9 @@ fn render_typed_slot_expr(
     if let Some(value) = render_number_array_expr(expr, state) {
         return Some((AotSlotKind::NumberArray, value, "[]float64"));
     }
+    if let Some(value) = render_string_array_expr(expr, state) {
+        return Some((AotSlotKind::StringArray, value, "[]string"));
+    }
     if let Some(value) = render_bytes_expr(expr, state) {
         return Some((AotSlotKind::Bytes, value, "[]byte"));
     }
@@ -5128,6 +5198,7 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 
 fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
+        expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
         JsExpr::Ident { name } if state.string_array_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -5143,6 +5214,9 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_string_match_call(callee, args) => {
             render_string_match_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_string_array_slice_call(callee, args) => {
+            render_string_array_slice_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => {
             let JsExpr::Ident { name } = callee.as_ref() else {
@@ -5219,6 +5293,9 @@ fn render_string_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<Str
     else {
         return None;
     };
+    if is_length_member_property(property, property_expr.as_deref()) {
+        return None;
+    }
     let values = render_string_array_expr(object, state)?;
     let index = if let Some(property_expr) = property_expr {
         render_numeric_expr(property_expr, state)?
@@ -5226,6 +5303,28 @@ fn render_string_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<Str
         number_literal(property)?
     };
     Some(format!("tsgodownStringArrayAt({values}, {index})"))
+}
+
+fn render_string_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if !is_length_member_property(property, property_expr.as_deref()) {
+        return None;
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!("float64(len({values}))"))
+}
+
+fn is_length_member_property(property: &str, property_expr: Option<&JsExpr>) -> bool {
+    property == "length"
+        || matches!(property_expr, Some(JsExpr::Ident { name }) if name == "length")
 }
 
 fn render_string_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -5541,6 +5640,44 @@ fn render_string_array_join_call(
         .map(|expr| render_string_expr(expr, state))
         .unwrap_or_else(|| Some("\",\"".to_string()))?;
     Some(format!("strings.Join({values}, {separator})"))
+}
+
+fn is_string_array_slice_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "slice"
+        )
+}
+
+fn render_string_array_slice_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_string_array_slice_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let values = render_string_array_expr(object, state)?;
+    let start = render_numeric_expr(args.first()?, state)?;
+    let end = match args.get(1) {
+        Some(expr) => Some(render_numeric_expr(expr, state)?),
+        None => None,
+    };
+    match end {
+        Some(end) => Some(format!(
+            "tsgodownStringArraySlice({values}, {start}, {end})"
+        )),
+        None => Some(format!("tsgodownStringArraySlice({values}, {start})")),
+    }
 }
 
 fn is_string_match_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -6225,6 +6362,7 @@ fn is_parse_int_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
     is_process_stdout_is_tty(expr)
         || process_env_lookup_name(expr).is_some()
+        || is_process_argv_ref(expr)
         || is_process_env_ref(expr)
         || is_process_versions_ref(expr)
         || is_process_platform_expr(expr)
@@ -6288,6 +6426,24 @@ fn is_process_env_ref(expr: &JsExpr) -> bool {
         return false;
     };
     property == "env" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn is_process_argv_ref(expr: &JsExpr) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: _,
+    } = expr
+    else {
+        return false;
+    };
+    property == "argv" && matches!(object.as_ref(), JsExpr::Ident { name } if name == "process")
+}
+
+fn render_process_argv_expr(state: &AotState) -> Option<String> {
+    let entry = state.entry_source_path.as_deref()?;
+    Some(format!("tsgodownProcessArgv({})", go_string_literal(entry)))
 }
 
 fn is_process_versions_ref(expr: &JsExpr) -> bool {
@@ -6858,6 +7014,15 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if render_string_array_index_expr(expr, state).is_some() => {
+            render_string_array_index_expr(expr, state)
+        }
+        expr if render_string_array_length_expr(expr, state).is_some() => {
+            render_string_array_length_expr(expr, state)
+        }
+        expr if render_string_array_expr(expr, state).is_some() => {
+            render_string_array_expr(expr, state)
+        }
         JsExpr::Array { items } => {
             let items = items
                 .iter()
@@ -6882,6 +7047,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
+        expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
         expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
         expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr),
