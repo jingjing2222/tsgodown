@@ -5157,6 +5157,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 
 fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
     match expr {
+        JsExpr::Value {
+            value: JsValue::String { .. },
+        } => Some(String::new()),
         JsExpr::Await { arg } => render_await_promise_then_stmt(arg, state),
         JsExpr::Call { callee, args, .. } if is_console_log(callee) => {
             let args = args
