@@ -2815,6 +2815,7 @@ fn collect_module_slots(
         };
         let mut dynamic_object_writes = BTreeSet::new();
         collect_dynamic_object_candidates(&executable.stmts, &mut dynamic_object_writes);
+        mark_string_array_locals(&executable.stmts, &mut state);
         mark_any_array_locals(&executable.stmts, &mut state);
         for stmt in &executable.stmts {
             let JsStmt::VarDecl {
@@ -3841,6 +3842,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         entry_source_path: state.entry_source_path.clone(),
     };
     mark_number_array_locals(stmts, &mut block_state);
+    mark_string_array_locals(stmts, &mut block_state);
     mark_any_array_locals(stmts, &mut block_state);
     stmts
         .iter()
@@ -4579,6 +4581,7 @@ fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>
 fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut function_state = clone_aot_state(state);
     mark_number_array_locals(body, &mut function_state);
+    mark_string_array_locals(body, &mut function_state);
     mark_any_array_locals(body, &mut function_state);
     mark_dynamic_object_locals(body, &mut function_state);
     body.iter()
@@ -5005,6 +5008,28 @@ fn mark_number_array_locals(stmts: &[JsStmt], state: &mut AotState) {
     }
 }
 
+fn mark_string_array_locals(stmts: &[JsStmt], state: &mut AotState) {
+    let mut candidates = BTreeSet::new();
+    collect_string_array_candidates(stmts, state, &mut candidates);
+    for name in candidates {
+        if state.bindings.contains(&name)
+            || state.number_array_bindings.contains(&name)
+            || state.any_array_bindings.contains(&name)
+            || state.bytes_bindings.contains(&name)
+            || state.map_bindings.contains(&name)
+            || state.object_bindings.contains_key(&name)
+            || state.class_instance_bindings.contains_key(&name)
+        {
+            continue;
+        }
+        state.bind_slot(
+            &name,
+            sanitize_go_identifier(&name),
+            AotSlotKind::StringArray,
+        );
+    }
+}
+
 fn mark_any_array_locals(stmts: &[JsStmt], state: &mut AotState) {
     let mut candidates = BTreeSet::new();
     collect_any_array_candidates(stmts, &mut candidates);
@@ -5027,6 +5052,190 @@ fn mark_any_array_locals(stmts: &[JsStmt], state: &mut AotState) {
             .binding_refs
             .insert(name.clone(), sanitize_go_identifier(&name));
         state.any_array_bindings.insert(name);
+    }
+}
+
+fn collect_string_array_candidates(
+    stmts: &[JsStmt],
+    state: &AotState,
+    candidates: &mut BTreeSet<String>,
+) {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Expr { expr } | JsStmt::Return { value: Some(expr) } => {
+                collect_string_array_candidates_expr(expr, state, candidates);
+            }
+            JsStmt::VarDecl {
+                init: Some(expr), ..
+            } => collect_string_array_candidates_expr(expr, state, candidates),
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                collect_string_array_candidates_expr(test, state, candidates);
+                collect_string_array_candidates(consequent, state, candidates);
+                collect_string_array_candidates(alternate, state, candidates);
+            }
+            JsStmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                collect_string_array_candidates(init, state, candidates);
+                if let Some(test) = test {
+                    collect_string_array_candidates_expr(test, state, candidates);
+                }
+                if let Some(update) = update {
+                    collect_string_array_candidates_expr(update, state, candidates);
+                }
+                collect_string_array_candidates(body, state, candidates);
+            }
+            JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+                collect_string_array_candidates_expr(test, state, candidates);
+                collect_string_array_candidates(body, state, candidates);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_string_array_candidates(body, state, candidates);
+                collect_string_array_candidates(catch_body, state, candidates);
+                collect_string_array_candidates(finally_body, state, candidates);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_string_array_candidates_expr(
+    expr: &JsExpr,
+    state: &AotState,
+    candidates: &mut BTreeSet<String>,
+) {
+    match expr {
+        JsExpr::Assign { op, left, right } => {
+            if op == "=" {
+                if let Some(name) = string_array_candidate_assignment_target(left, right, state) {
+                    candidates.insert(name);
+                }
+            }
+            collect_string_array_candidates_expr(left, state, candidates);
+            collect_string_array_candidates_expr(right, state, candidates);
+        }
+        JsExpr::Binary { left, right, .. } => {
+            collect_string_array_candidates_expr(left, state, candidates);
+            collect_string_array_candidates_expr(right, state, candidates);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            collect_string_array_candidates_expr(callee, state, candidates);
+            for arg in args {
+                collect_string_array_candidates_expr(arg, state, candidates);
+            }
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            collect_string_array_candidates_expr(object, state, candidates);
+            if let Some(property_expr) = property_expr {
+                collect_string_array_candidates_expr(property_expr, state, candidates);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_string_array_candidates_expr(item, state, candidates);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_string_array_candidates_expr(&item.value, state, candidates);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                collect_string_array_candidates_expr(&prop.value, state, candidates);
+            }
+        }
+        JsExpr::Function { body, .. } => collect_string_array_candidates(body, state, candidates),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_string_array_candidates_expr(test, state, candidates);
+            collect_string_array_candidates_expr(consequent, state, candidates);
+            collect_string_array_candidates_expr(alternate, state, candidates);
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            collect_string_array_candidates_expr(arg, state, candidates);
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_string_array_candidates_expr(expr, state, candidates);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn string_array_candidate_assignment_target(
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = left
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    let indexed_member = property_expr.is_some() || property.parse::<usize>().is_ok();
+    if !indexed_member || !is_string_array_candidate_value(right, state) {
+        return None;
+    }
+    Some(name.clone())
+}
+
+fn is_string_array_candidate_value(expr: &JsExpr, state: &AotState) -> bool {
+    if render_string_expr(expr, state).is_some() {
+        return true;
+    }
+    match expr {
+        JsExpr::Binary { op, left, right } if op == "+" => {
+            is_string_array_candidate_value(left, state)
+                || is_string_array_candidate_value(right, state)
+                || is_string_literal_like(left)
+                || is_string_literal_like(right)
+        }
+        JsExpr::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            is_string_array_candidate_value(consequent, state)
+                && is_string_array_candidate_value(alternate, state)
+        }
+        JsExpr::Call { callee, args, .. } => {
+            string_method_name(callee).is_some()
+                || is_string_cast_call(callee, args)
+                || is_string_from_char_code_call(callee, args)
+        }
+        _ => is_string_literal_like(expr),
     }
 }
 
@@ -6190,6 +6399,7 @@ fn render_async_iife_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut block_state = clone_aot_state(state);
     mark_number_array_locals(body, &mut block_state);
+    mark_string_array_locals(body, &mut block_state);
     mark_any_array_locals(body, &mut block_state);
     mark_dynamic_object_locals(body, &mut block_state);
     let mut rendered = Vec::new();
@@ -7749,6 +7959,9 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]string{{{}}}", items.join(", ")))
         }
+        JsExpr::Call { callee, args, .. } if args.is_empty() => {
+            render_string_array_iife_expr(callee, state)
+        }
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             render_object_keys_call(callee, args, state)
         }
@@ -7774,6 +7987,47 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_string_array_iife_expr(callee: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    if !params.is_empty() {
+        return None;
+    }
+    let mut block_state = clone_aot_state(state);
+    mark_number_array_locals(body, &mut block_state);
+    mark_string_array_locals(body, &mut block_state);
+    mark_any_array_locals(body, &mut block_state);
+    mark_dynamic_object_locals(body, &mut block_state);
+    let mut rendered = Vec::new();
+    for stmt in body {
+        match stmt {
+            JsStmt::Break { .. } | JsStmt::Continue { .. } => return None,
+            JsStmt::Return { value: Some(value) } => {
+                let value = render_string_array_expr(value, &block_state)?;
+                rendered.push(format!("return {value}"));
+            }
+            JsStmt::Return { value: None } => rendered.push("return []string{}".to_string()),
+            other => rendered.push(render_stmt(other, &mut block_state)?),
+        }
+    }
+    if !matches!(body.last(), Some(JsStmt::Return { .. })) {
+        rendered.push("return []string{}".to_string());
+    }
+    Some(format!(
+        "func() []string {{\n{}\n}}()",
+        indent_lines(&rendered.join("\n"))
+    ))
 }
 
 fn render_any_array_call_stmt(
