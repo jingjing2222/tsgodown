@@ -4961,6 +4961,78 @@ console.log("bytes", take(), take(), Uint8Array.of(1, 2, 255)[2])
     }
 
     #[test]
+    fn emit_go_runs_aot_any_array_index_number_to_string_subset() {
+        let root = temp_project("engine-core-aot-any-array-index-number-to-string");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const values = []
+for (let i = 0; i < 4; ++i) {
+  values.push((i + 0x100).toString(16).slice(1))
+}
+console.log("hex", values[0], values[3], [values[1]][0])
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-any-array-index-number-to-string".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("var src_index_js_values []any"));
+        assert!(response.files[0].contents.contains("strconv.FormatInt"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArrayAt"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "hex 00 03 01\n");
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(
