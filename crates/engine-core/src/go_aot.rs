@@ -1131,6 +1131,19 @@ func tsgodownStringArrayAdd(values []string, index float64, value string) []stri
 	return tsgodownStringArraySet(values, index, current+value)
 }
 
+func tsgodownRegexpPattern(pattern string, flags string) string {
+	ignoreCase := false
+	for _, flag := range flags {
+		if flag == 'i' {
+			ignoreCase = true
+		}
+	}
+	if ignoreCase {
+		return "(?i)" + pattern
+	}
+	return pattern
+}
+
 func tsgodownStringArraySlice(values []string, start float64, endValues ...float64) []string {
 	length := len(values)
 	from := int(start)
@@ -4492,6 +4505,16 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(consequent, param_index, kinds);
             infer_expr_param_kinds(alternate, param_index, kinds);
         }
+        JsExpr::New { callee, args } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "RegExp") =>
+        {
+            if let Some(pattern) = args.first() {
+                mark_ident_param_kind(pattern, param_index, kinds, AotSlotKind::String);
+                infer_expr_param_kinds(pattern, param_index, kinds);
+            }
+            if let Some(flags) = args.get(1) {
+                infer_expr_param_kinds(flags, param_index, kinds);
+            }
+        }
         JsExpr::New { callee, args } => {
             infer_expr_param_kinds(callee, param_index, kinds);
             for arg in args {
@@ -5492,6 +5515,9 @@ fn is_string_array_candidate_value(expr: &JsExpr, state: &AotState) -> bool {
     if render_string_expr(expr, state).is_some() {
         return true;
     }
+    if render_regexp_expr(expr, state).is_some() {
+        return true;
+    }
     match expr {
         JsExpr::Binary { op, left, right } if op == "+" => {
             is_string_array_candidate_value(left, state)
@@ -6353,7 +6379,7 @@ fn render_string_array_assignment_stmt(
     } else {
         number_literal(property)?
     };
-    let value = render_string_expr(right, state)?;
+    let value = render_string_expr(right, state).or_else(|| render_regexp_expr(right, state))?;
     match op {
         "=" => Some(format!(
             "{target} = tsgodownStringArraySet({target}, {index}, {value})"
@@ -8064,10 +8090,48 @@ fn render_regexp_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         return Some(go_string_literal(&pattern));
     }
     match expr {
+        JsExpr::New { callee, args } => render_regexp_new_expr(callee, args, state),
         JsExpr::Ident { name } if state.regexp_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
         _ => None,
+    }
+}
+
+fn render_regexp_new_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !matches!(args.len(), 1 | 2) {
+        return None;
+    }
+    if !matches!(callee, JsExpr::Ident { name } if name == "RegExp") {
+        return None;
+    }
+    let pattern = render_string_expr(args.first()?, state)?;
+    let flags = args
+        .get(1)
+        .map(|expr| render_regexp_flags_expr(expr, state))
+        .unwrap_or_else(|| Some("\"\"".to_string()))?;
+    Some(format!("tsgodownRegexpPattern({pattern}, {flags})"))
+}
+
+fn render_regexp_flags_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some("\"\"".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("\"\"".to_string()),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => render_conditional_expr(
+            test,
+            consequent,
+            alternate,
+            state,
+            render_regexp_flags_expr,
+            "string",
+        ),
+        _ => render_string_expr(expr, state),
     }
 }
 
@@ -9085,7 +9149,10 @@ fn is_regexp_test_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         JsExpr::Value {
             value: JsValue::RegExp { flags, .. },
         } if flags.chars().all(|flag| flag == 'i')
-    ) || matches!(object.as_ref(), JsExpr::Ident { .. })
+    ) || matches!(
+        object.as_ref(),
+        JsExpr::Ident { .. } | JsExpr::Member { .. }
+    )
 }
 
 fn render_regexp_pattern_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -9095,6 +9162,9 @@ fn render_regexp_pattern_expr(expr: &JsExpr, state: &AotState) -> Option<String>
     match expr {
         JsExpr::Ident { name } if state.regexp_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
+        }
+        expr if render_string_array_index_expr(expr, state).is_some() => {
+            render_string_array_index_expr(expr, state)
         }
         _ => None,
     }
