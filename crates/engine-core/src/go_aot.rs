@@ -934,6 +934,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("sort");
                 imports.insert("strconv");
             }
+            if is_object_entries_call(callee, args) {
+                imports.insert("sort");
+                imports.insert("strconv");
+            }
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
@@ -2362,6 +2366,15 @@ func tsgodownObjectMapKeys(object map[string]any) []string {
 		keys = append(keys, key)
 	}
 	return tsgodownObjectKeys(keys)
+}
+
+func tsgodownObjectEntries(object map[string]any) []any {
+	keys := tsgodownObjectMapKeys(object)
+	entries := make([]any, 0, len(keys))
+	for _, key := range keys {
+		entries = append(entries, []any{key, object[key]})
+	}
+	return entries
 }
 
 func tsgodownIsArrayIndexKey(key string) bool {
@@ -4312,6 +4325,16 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     return Some(format!("var {ident} []any = []any{{}}"));
+                }
+                if let Some(value) = render_any_array_index_expr(expr, state) {
+                    state.bind_slot(name, ident.clone(), AotSlotKind::Any);
+                    return Some(format!("var {ident} any = {value}"));
+                }
+                if matches!(expr, JsExpr::Ident { name } if state.any_array_bindings.contains(name))
+                {
+                    let value = render_any_array_expr(expr, state)?;
+                    state.bind_slot(name, ident.clone(), AotSlotKind::AnyArray);
+                    return Some(format!("var {ident} []any = {value}"));
                 }
                 if let Some(value) = render_numeric_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Number);
@@ -9512,6 +9535,9 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_array_filter_call(callee, args) => {
             render_any_array_filter_call(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_object_entries_call(callee, args) => {
+            render_object_entries_call(args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_array_from_length_map_call(callee, args) => {
             render_array_from_length_map_call(args, state)
         }
@@ -9939,6 +9965,15 @@ fn render_array_for_each_stmt(
     }
     let values =
         render_any_array_expr(object, state).or_else(|| render_string_array_expr(object, state))?;
+    let entry_value = matches!(
+        object.as_ref(),
+        JsExpr::Call { callee, args, .. } if is_object_entries_call(callee, args)
+    );
+    let value_kind = if entry_value {
+        AotSlotKind::AnyArray
+    } else {
+        AotSlotKind::Any
+    };
     let mut callback_state = clone_aot_state(state);
     let value_param = params
         .first()
@@ -9949,7 +9984,7 @@ fn render_array_for_each_stmt(
         .map(|param| sanitize_go_identifier(param))
         .unwrap_or_else(|| "_".to_string());
     if let Some(param) = params.first() {
-        callback_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+        callback_state.bind_slot(param, sanitize_go_identifier(param), value_kind);
     }
     if let Some(param) = params.get(1) {
         callback_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
@@ -9958,10 +9993,20 @@ fn render_array_for_each_stmt(
     let header = if params.is_empty() {
         format!("for range {values}")
     } else if params.len() == 1 {
-        format!("for _, {value_param} := range {values}")
+        if entry_value {
+            body = format!("{value_param} := tsgodownAnyArrayFromAny(__tsgodownEntry)\n{body}");
+            format!("for _, __tsgodownEntry := range {values}")
+        } else {
+            format!("for _, {value_param} := range {values}")
+        }
     } else {
         body = format!("{index_param} := float64(__tsgodownIndex)\n{body}");
-        format!("for __tsgodownIndex, {value_param} := range {values}")
+        if entry_value {
+            body = format!("{value_param} := tsgodownAnyArrayFromAny(__tsgodownEntry)\n{body}");
+            format!("for __tsgodownIndex, __tsgodownEntry := range {values}")
+        } else {
+            format!("for __tsgodownIndex, {value_param} := range {values}")
+        }
     };
     Some(format!("{header} {{\n{}\n}}", indent_lines(&body)))
 }
@@ -10881,6 +10926,20 @@ fn is_object_keys_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         )
 }
 
+fn is_object_entries_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+                && property == "entries"
+        )
+}
+
 fn object_freeze_arg(expr: &JsExpr) -> Option<&JsExpr> {
     let JsExpr::Call { callee, args, .. } = expr else {
         return None;
@@ -10972,6 +11031,30 @@ fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
             Some(format!("tsgodownObjectMapKeys({object})"))
         }
     }
+}
+
+fn render_object_entries_call(args: &[JsExpr], state: &AotState) -> Option<String> {
+    let object = args.first()?;
+    if let JsExpr::Object { props } = object {
+        if props.iter().any(|prop| prop.spread) {
+            return None;
+        }
+        let entries = props
+            .iter()
+            .map(|prop| {
+                let key = match &prop.key_expr {
+                    Some(key_expr) => render_string_expr(key_expr, state)?,
+                    None => go_string_literal(&prop.key),
+                };
+                let value = render_json_value_expr(&prop.value, state)?;
+                Some(format!("[]any{{{key}, {value}}}"))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        return Some(format!("[]any{{{}}}", entries.join(", ")));
+    }
+    let value = render_dynamic_object_source_expr(object, state)
+        .or_else(|| render_object_map_expr(object, state))?;
+    Some(format!("tsgodownObjectEntries({value})"))
 }
 
 fn is_length_member_property(property: &str, property_expr: Option<&JsExpr>) -> bool {
@@ -14315,6 +14398,7 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.bool_bindings.contains(name)
         && !state.bytes_bindings.contains(name)
         && !state.date_bindings.contains(name)
+        && !state.any_array_bindings.contains(name)
         && !state.number_array_bindings.contains(name)
         && !state.string_array_bindings.contains(name)
         && !state.map_bindings.contains(name)
