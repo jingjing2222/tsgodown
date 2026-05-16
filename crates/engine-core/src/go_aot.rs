@@ -65,6 +65,13 @@ pub(crate) fn render_aot_executable_program(
         {
             continue;
         }
+        if matches!(
+            stmt,
+            JsStmt::VarDecl { name, .. }
+                if module_slots.contains_key(&(module.id.clone(), name.clone()))
+        ) {
+            continue;
+        }
         body.push(render_stmt(stmt, &mut state)?);
     }
     Some(format!(
@@ -977,6 +984,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_buffer_to_string_call(callee, args) {
                 imports.insert("encoding/base64");
                 imports.insert("encoding/hex");
+            }
+            if is_crypto_random_fill_sync_call_shape(callee, args) {
+                imports.insert("crypto/rand");
             }
             if call_uses_strings_import(callee) {
                 imports.insert("strings");
@@ -2518,7 +2528,7 @@ fn collect_module_slots(
         let Some(executable) = &module.executable else {
             continue;
         };
-        let Some(state) = module_aot_state(
+        let Some(mut state) = module_aot_state(
             module,
             ir,
             &AotModuleContext {
@@ -2544,15 +2554,17 @@ fn collect_module_slots(
             let Some((kind, rendered, go_type)) = render_typed_slot_expr(init, &state) else {
                 continue;
             };
+            let go_name = module_member_go_name(module, name);
             slots.insert(
                 (module.id.clone(), name.clone()),
                 AotModuleSlot {
                     kind,
-                    go_name: module_member_go_name(module, name),
+                    go_name: go_name.clone(),
                     go_type,
                     rendered,
                 },
             );
+            state.bind_slot(name, go_name, kind);
         }
     }
     slots
@@ -2606,9 +2618,6 @@ fn render_module_decls(
         for stmt in &module.executable.as_ref()?.stmts {
             if let JsStmt::VarDecl { name, .. } = stmt {
                 if module_functions.contains_key(&(module.id.clone(), name.clone())) {
-                    continue;
-                }
-                if !is_exported_name(module, name) {
                     continue;
                 }
                 let Some(slot) = module_slots.get(&(module.id.clone(), name.clone())) else {
@@ -3387,7 +3396,7 @@ fn render_for_update(expr: &JsExpr, state: &AotState) -> Option<String> {
             if !state.numeric_bindings.contains(name) {
                 return None;
             }
-            Some(format!("{}{}", sanitize_go_identifier(name), op))
+            Some(format!("{}{}", go_binding_ref(name, state), op))
         }
         JsExpr::Assign { op, left, right } if matches!(op.as_str(), "+=" | "-=") => {
             let JsExpr::Ident { name } = left.as_ref() else {
@@ -4220,6 +4229,19 @@ fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
                 .namespace_functions
                 .keys()
                 .any(|(namespace, _)| namespace == &name)
+            || state.numeric_bindings.contains(&name)
+            || state.string_bindings.contains(&name)
+            || state.bool_bindings.contains(&name)
+            || state.bytes_bindings.contains(&name)
+            || state.number_array_bindings.contains(&name)
+            || state.string_array_bindings.contains(&name)
+            || state.any_array_bindings.contains(&name)
+            || state.map_bindings.contains(&name)
+            || state.url_bindings.contains(&name)
+            || state.event_emitter_bindings.contains(&name)
+            || state.number_closure_bindings.contains(&name)
+            || state.string_function_bindings.contains(&name)
+            || state.class_instance_bindings.contains_key(&name)
             || state.object_bindings.contains_key(&name) && !write_candidates.contains(&name)
         {
             continue;
@@ -5196,6 +5218,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             render_number_array_assignment_stmt(op, left, right, state)
         }
         JsExpr::Assign { op, left, right }
+            if render_bytes_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_bytes_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Assign { op, left, right }
             if render_dynamic_object_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_dynamic_object_assignment_stmt(op, left, right, state)
@@ -5204,6 +5231,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_object_assign_stmt(callee, args, state).is_some() =>
         {
             render_object_assign_stmt(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_crypto_random_fill_sync_stmt(callee, args, state).is_some() =>
+        {
+            render_crypto_random_fill_sync_stmt(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_any_array_call_stmt(callee, args, state).is_some() =>
@@ -5333,8 +5365,33 @@ fn render_assignment_stmt(
     let right = render_numeric_expr(right, state)?;
     match op {
         "=" | "+=" | "-=" | "*=" | "/=" | "%=" => {
-            Some(format!("{} {op} {right}", sanitize_go_identifier(name)))
+            Some(format!("{} {op} {right}", go_binding_ref(name, state)))
         }
+        _ => None,
+    }
+}
+
+fn render_numeric_assignment_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Ident { name } = left else {
+        return None;
+    };
+    if !state.numeric_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    let right = render_numeric_expr(right, state)?;
+    match op {
+        "=" => Some(format!(
+            "func() float64 {{ {target} = {right}; return {target} }}()"
+        )),
+        "+=" | "-=" => Some(format!(
+            "func() float64 {{ {target} {op} {right}; return {target} }}()"
+        )),
         _ => None,
     }
 }
@@ -5414,6 +5471,41 @@ fn render_number_array_assignment_stmt(
     }
 }
 
+fn render_bytes_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = left
+    else {
+        return None;
+    };
+    let object = render_bytes_expr(object, state)?;
+    let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
+    let value = render_numeric_expr(right, state)?;
+    Some(format!("{object}[int({index})] = byte({value})"))
+}
+
+fn render_member_index_expr(
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> Option<String> {
+    if let Some(property_expr) = property_expr {
+        return render_numeric_expr(property_expr, state);
+    }
+    number_literal(property)
+}
+
 fn render_dynamic_object_assignment_stmt(
     op: &str,
     left: &JsExpr,
@@ -5461,7 +5553,7 @@ fn render_update_stmt(op: &str, arg: &JsExpr, state: &AotState) -> Option<String
     if !state.numeric_bindings.contains(name) || !matches!(op, "++" | "--") {
         return None;
     }
-    Some(format!("{}{}", sanitize_go_identifier(name), op))
+    Some(format!("{}{}", go_binding_ref(name, state), op))
 }
 
 fn render_new_class_expr(expr: &JsExpr, state: &AotState) -> Option<(String, String)> {
@@ -5745,6 +5837,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownToFloat64({value})"))
         }
+        JsExpr::Assign { op, left, right } if matches!(op.as_str(), "=" | "+=" | "-=") => {
+            render_numeric_assignment_expr(op, left, right, state)
+        }
         expr if render_number_array_index_expr(expr, state).is_some() => {
             render_number_array_index_expr(expr, state)
         }
@@ -5836,12 +5931,14 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Member {
             object,
             property,
-            property_expr: None,
+            property_expr,
             optional: false,
-        } if property.parse::<usize>().is_ok() && render_bytes_expr(object, state).is_some() => {
+        } if render_member_index_expr(property, property_expr.as_deref(), state).is_some()
+            && render_bytes_expr(object, state).is_some() =>
+        {
             let object = render_bytes_expr(object, state)?;
-            let index = property.parse::<usize>().ok()?;
-            Some(format!("float64({object}[{index}])"))
+            let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
+            Some(format!("float64({object}[int({index})])"))
         }
         JsExpr::Member {
             object,
@@ -6546,6 +6643,46 @@ fn render_object_assign_stmt(callee: &JsExpr, args: &[JsExpr], state: &AotState)
     Some(statements.join("\n"))
 }
 
+fn is_crypto_random_fill_sync_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && (matches!(callee, JsExpr::Ident { name } if name == "randomFillSync")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if property == "randomFillSync"
+                    && matches!(object.as_ref(), JsExpr::Ident { name } if name == "crypto")
+            ))
+}
+
+fn is_crypto_random_fill_sync_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    if !is_crypto_random_fill_sync_call_shape(callee, args) {
+        return false;
+    }
+    match callee {
+        JsExpr::Ident { name } => state.builtin_bindings.contains(name),
+        JsExpr::Member { object, .. } => {
+            matches!(object.as_ref(), JsExpr::Ident { name } if state.builtin_bindings.contains(name))
+        }
+        _ => false,
+    }
+}
+
+fn render_crypto_random_fill_sync_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_crypto_random_fill_sync_call(callee, args, state) {
+        return None;
+    }
+    let target = render_bytes_expr(args.first()?, state)?;
+    Some(format!("_, _ = rand.Read({target})"))
+}
+
 fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Option<String> {
     match object {
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
@@ -6665,6 +6802,20 @@ fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]byte{{{}}}", bytes.join(", ")))
         }
+        JsExpr::New { callee, args } if is_new_uint8_array_expr(callee, args) => {
+            let size = render_numeric_expr(args.first()?, state)?;
+            Some(format!("make([]byte, int({size}))"))
+        }
+        JsExpr::Call { callee, args, .. } if is_uint8_array_of_call(callee, args) => {
+            let bytes = args
+                .iter()
+                .map(|arg| render_numeric_expr(arg, state).map(|value| format!("byte({value})")))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]byte{{{}}}", bytes.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_bytes_slice_call(callee, args, state) => {
+            render_bytes_slice_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. } if is_node_buffer_from_call(callee, args) => {
             render_node_buffer_from_call(callee, args, state)
         }
@@ -6673,6 +6824,55 @@ fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn is_new_uint8_array_expr(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Uint8Array")
+}
+
+fn is_uint8_array_of_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    !args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Uint8Array")
+                && property == "of"
+        )
+}
+
+fn is_bytes_slice_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    matches!(args.len(), 1 | 2)
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "slice" && render_bytes_expr(object, state).is_some()
+        )
+}
+
+fn render_bytes_slice_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_bytes_slice_call(callee, args, state) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let object = render_bytes_expr(object, state)?;
+    let start = render_numeric_expr(args.first()?, state)?;
+    let end = args
+        .get(1)
+        .map(|arg| render_numeric_expr(arg, state))
+        .unwrap_or_else(|| Some(format!("float64(len({object}))")))?;
+    Some(format!(
+        "append([]byte(nil), {object}[int({start}):int({end})]...)"
+    ))
 }
 
 fn render_number_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
