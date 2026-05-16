@@ -5308,7 +5308,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("({left} {op} {right})"))
         }
         JsExpr::Unary { op, arg } if op == "!" => {
-            let arg = render_bool_expr(arg, state)?;
+            let arg = render_bool_test_expr(arg, state)?;
             Some(format!("(!{arg})"))
         }
         JsExpr::Conditional {

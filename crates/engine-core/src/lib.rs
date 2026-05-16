@@ -5282,18 +5282,41 @@ console.log("native-object", ok, typeof native.randomUUID)
         let root = temp_project("engine-core-aot-error-guarded-bool-function");
         write(
             &root,
-            "src/index.js",
+            "src/regex.js",
             r#"
-const REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export default /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+"#,
+        );
+        write(
+            &root,
+            "src/validate.js",
+            r#"
+import REGEX from "./regex.js"
 function validate(value) {
   return typeof value === "string" && REGEX.test(value)
 }
+export default validate
+"#,
+        );
+        write(
+            &root,
+            "src/version.js",
+            r#"
+import validate from "./validate.js"
 function version(uuid) {
   if (!validate(uuid)) {
     throw TypeError("Invalid UUID")
   }
   return parseInt(uuid.slice(14, 15), 16)
 }
+export default version
+"#,
+        );
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import version from "./version.js"
 console.log("guarded-version", version("6fa459ea-ee8a-3ca4-894e-db77e160355e"))
 "#,
         );
