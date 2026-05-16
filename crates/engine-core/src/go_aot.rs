@@ -2372,6 +2372,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         .insert(name.clone(), class_name);
                     return Some(format!("var {ident} = {value}"));
                 }
+                if let Some(value) = render_async_iife_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    return Some(format!("var {ident} any = {value}"));
+                }
                 if let Some(value) = render_json_value_expr(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -3927,6 +3932,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_call_expr(callee, args, state)),
+        JsExpr::Await { arg } => {
+            render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
+        }
         JsExpr::New { .. } => render_new_class_expr(expr, state).map(|(_, value)| value),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
@@ -3951,6 +3959,64 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         _ => None,
     }
+}
+
+fn render_async_iife_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Await { arg } => render_async_iife_expr(arg, state),
+        JsExpr::Call { callee, args, .. } if args.is_empty() => {
+            let JsExpr::Function {
+                params,
+                body,
+                r#async: true,
+                generator: false,
+                rest_param: None,
+                ..
+            } = callee.as_ref()
+            else {
+                return None;
+            };
+            if !params.is_empty() {
+                return None;
+            }
+            render_iife_block_expr(body, state)
+        }
+        _ => None,
+    }
+}
+
+fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
+    let mut block_state = clone_aot_state(state);
+    mark_number_array_locals(body, &mut block_state);
+    let mut rendered = Vec::new();
+    for stmt in body {
+        match stmt {
+            JsStmt::FunctionDecl { .. }
+            | JsStmt::ClassDecl { .. }
+            | JsStmt::Break { .. }
+            | JsStmt::Continue { .. } => {
+                return None;
+            }
+            JsStmt::Return { value: Some(value) } => {
+                let value = render_json_value_expr(value, &block_state)
+                    .or_else(|| render_expr(value, &block_state))?;
+                rendered.push(format!("return {value}"));
+            }
+            JsStmt::Return { value: None } => {
+                rendered.push("return nil".to_string());
+            }
+            other => {
+                rendered.push(render_stmt(other, &mut block_state)?);
+            }
+        }
+    }
+    if !matches!(body.last(), Some(JsStmt::Return { .. })) {
+        rendered.push("return nil".to_string());
+    }
+    Some(format!(
+        "func() any {{\n{}\n}}()",
+        indent_lines(&rendered.join("\n"))
+    ))
 }
 
 fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
