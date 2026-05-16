@@ -1663,6 +1663,40 @@ func tsgodownNumberArrayPop(values *[]float64) float64 {
 	return value
 }
 
+func tsgodownAnyArrayPop(values *[]any) any {
+	if values == nil || len(*values) == 0 {
+		return nil
+	}
+	offset := len(*values) - 1
+	value := (*values)[offset]
+	*values = (*values)[:offset]
+	return value
+}
+
+func tsgodownAnyArrayPopValue(values []any) any {
+	if len(values) == 0 {
+		return nil
+	}
+	return values[len(values)-1]
+}
+
+func tsgodownStringArrayPop(values *[]string) string {
+	if values == nil || len(*values) == 0 {
+		return ""
+	}
+	offset := len(*values) - 1
+	value := (*values)[offset]
+	*values = (*values)[:offset]
+	return value
+}
+
+func tsgodownStringArrayPopValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
+}
+
 func tsgodownStringCharAt(value string, index float64) string {
 	chars := []rune(value)
 	offset := int(index)
@@ -6225,14 +6259,17 @@ fn mark_string_array_locals(stmts: &[JsStmt], state: &mut AotState) {
     let mut candidates = BTreeSet::new();
     collect_string_array_candidates(stmts, state, &mut candidates);
     for name in candidates {
-        if state.bindings.contains(&name)
-            || state.number_array_bindings.contains(&name)
+        if state.number_array_bindings.contains(&name)
             || state.any_array_bindings.contains(&name)
             || state.bytes_bindings.contains(&name)
             || state.map_bindings.contains(&name)
             || state.object_bindings.contains_key(&name)
             || state.class_instance_bindings.contains_key(&name)
         {
+            continue;
+        }
+        if state.bindings.contains(&name) {
+            state.string_array_bindings.insert(name);
             continue;
         }
         state.bind_slot(
@@ -6279,8 +6316,14 @@ fn collect_string_array_candidates(
                 collect_string_array_candidates_expr(expr, state, candidates);
             }
             JsStmt::VarDecl {
-                init: Some(expr), ..
-            } => collect_string_array_candidates_expr(expr, state, candidates),
+                name,
+                init: Some(expr),
+            } => {
+                if is_string_array_candidate_expr(expr, state) {
+                    candidates.insert(name.clone());
+                }
+                collect_string_array_candidates_expr(expr, state, candidates);
+            }
             JsStmt::FunctionDecl { body, .. } => {
                 collect_string_array_candidates(body, state, candidates);
             }
@@ -6466,6 +6509,37 @@ fn is_string_array_candidate_value(expr: &JsExpr, state: &AotState) -> bool {
     }
 }
 
+fn is_string_array_candidate_expr(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Array { items } => {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| is_string_array_candidate_value(item, state))
+        }
+        JsExpr::Call { callee, args, .. } if is_array_filter_call(callee, args) => {
+            render_string_array_expr(expr, state).is_some()
+        }
+        _ => render_string_array_expr(expr, state).is_some(),
+    }
+}
+
+fn is_any_array_candidate_expr(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Array { items } => {
+            !items.is_empty()
+                && !items.iter().all(is_numeric_array_candidate_item)
+                && !items
+                    .iter()
+                    .all(|item| is_string_array_candidate_value(item, state))
+                && items
+                    .iter()
+                    .all(|item| render_json_value_expr(item, state).is_some())
+        }
+        _ => false,
+    }
+}
+
 fn collect_any_array_candidates(
     stmts: &[JsStmt],
     state: &AotState,
@@ -6477,8 +6551,14 @@ fn collect_any_array_candidates(
                 collect_any_array_candidates_expr(expr, state, candidates);
             }
             JsStmt::VarDecl {
-                init: Some(expr), ..
-            } => collect_any_array_candidates_expr(expr, state, candidates),
+                name,
+                init: Some(expr),
+            } => {
+                if is_any_array_candidate_expr(expr, state) {
+                    candidates.insert(name.clone());
+                }
+                collect_any_array_candidates_expr(expr, state, candidates);
+            }
             JsStmt::If {
                 test,
                 consequent,
@@ -7198,6 +7278,18 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             render_any_array_call_stmt(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
+            if render_any_array_pop_call(callee, args, state).is_some() =>
+        {
+            let value = render_any_array_pop_call(callee, args, state)?;
+            Some(format!("_ = {value}"))
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_array_pop_call(callee, args, state).is_some() =>
+        {
+            let value = render_string_array_pop_call(callee, args, state)?;
+            Some(format!("_ = {value}"))
+        }
+        JsExpr::Call { callee, args, .. }
             if render_mutating_any_array_function_call_stmt(callee, args, state).is_some() =>
         {
             render_mutating_any_array_function_call_stmt(callee, args, state)
@@ -7871,6 +7963,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_string_array_expr(expr, state))
+            .or_else(|| render_any_array_pop_call(callee, args, state))
             .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
             .or_else(|| render_array_find_call(callee, args, state))
@@ -8045,6 +8138,17 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             && render_string_array_expr(object, state).is_some() =>
         {
             let object = render_string_array_expr(object, state)?;
+            Some(format!("float64(len({object}))"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            optional: false,
+        } if is_length_member_property(property, property_expr.as_deref())
+            && render_any_array_expr(object, state).is_some() =>
+        {
+            let object = render_any_array_expr(object, state)?;
             Some(format!("float64(len({object}))"))
         }
         JsExpr::Member {
@@ -8357,6 +8461,11 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             if render_string_array_join_call(callee, args, state).is_some() =>
         {
             render_string_array_join_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_array_pop_call(callee, args, state).is_some() =>
+        {
+            render_string_array_pop_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_any_array_join_call(callee, args, state).is_some() =>
@@ -10536,6 +10645,36 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     }
 }
 
+fn render_string_array_pop_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "pop" {
+        return None;
+    }
+    if let JsExpr::Ident { name } = object.as_ref() {
+        if state.string_array_bindings.contains(name) && !state.any_array_bindings.contains(name) {
+            let target = go_binding_ref(name, state);
+            return Some(format!("tsgodownStringArrayPop(&{target})"));
+        }
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!("tsgodownStringArrayPopValue({values})"))
+}
+
 fn render_string_array_iife_expr(callee: &JsExpr, state: &AotState) -> Option<String> {
     let JsExpr::Function {
         params,
@@ -10606,6 +10745,32 @@ fn render_any_array_call_stmt(
     let target = go_binding_ref(name, state);
     let value = render_json_value_expr(args.first()?, state)?;
     Some(format!("{target} = append({target}, {value})"))
+}
+
+fn render_any_array_pop_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "pop" {
+        return None;
+    }
+    if let JsExpr::Ident { name } = object.as_ref() {
+        if state.any_array_bindings.contains(name) {
+            let target = go_binding_ref(name, state);
+            return Some(format!("tsgodownAnyArrayPop(&{target})"));
+        }
+    }
+    let values = render_any_array_expr(object, state)?;
+    Some(format!("tsgodownAnyArrayPopValue({values})"))
 }
 
 fn render_any_array_push_call_expr(
@@ -14014,11 +14179,13 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_call_expr(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
-            if render_string_expr(expr, state)
+            if render_numeric_expr(expr, state)
+                .or_else(|| render_string_expr(expr, state))
                 .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
                 .is_some() =>
         {
-            render_string_expr(expr, state)
+            render_numeric_expr(expr, state)
+                .or_else(|| render_string_expr(expr, state))
                 .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
         }
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),

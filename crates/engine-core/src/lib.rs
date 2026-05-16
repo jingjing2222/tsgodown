@@ -7844,6 +7844,85 @@ console.log("num-array", values[0], values[1], values[2])
     }
 
     #[test]
+    fn emit_go_runs_aot_array_pop_generic_subset() {
+        let root = temp_project("engine-core-aot-array-pop-generic");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const names = ["alpha", "beta", ""]
+const fromFilter = names.filter(Boolean).pop()
+const fromNames = names.pop()
+const mixed = [{ name: "first" }, { name: "second" }]
+const fromMixed = mixed.pop()
+mixed.pop()
+console.log("array-pop", fromFilter, fromNames, names.join("|"), fromMixed.name, mixed.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-array-pop-generic".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArrayPopValue"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArrayPop"));
+        assert!(response.files[0].contents.contains("tsgodownAnyArrayPop"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "array-pop beta  alpha|beta second 0\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_var_retyped_for_loop_subset() {
         let root = temp_project("engine-core-aot-var-retyped-for-loop");
         write(
