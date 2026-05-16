@@ -1072,6 +1072,14 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 collect_expr_imports(arg, imports);
             }
         }
+        JsExpr::Template { exprs, .. } => {
+            if exprs.iter().any(template_part_needs_to_string_helper) {
+                imports.insert("strconv");
+            }
+            for expr in exprs {
+                collect_expr_imports(expr, imports);
+            }
+        }
         JsExpr::Array { items } => {
             for item in items {
                 collect_expr_imports(item, imports);
@@ -5401,7 +5409,7 @@ fn infer_expr_param_kinds(
         JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
             if let JsExpr::Template { exprs, .. } = expr {
                 for item in exprs {
-                    mark_ident_param_kind(item, param_index, kinds, AotSlotKind::String);
+                    mark_ident_param_kind_if_default(item, param_index, kinds, AotSlotKind::Any);
                 }
             }
             for expr in exprs {
@@ -5474,6 +5482,16 @@ fn is_string_literal_like(expr: &JsExpr) -> bool {
     }
 }
 
+fn template_part_needs_to_string_helper(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Value {
+            value: JsValue::String { .. } | JsValue::Undefined | JsValue::Null,
+        } => false,
+        JsExpr::Ident { name } if name == "undefined" => false,
+        _ => true,
+    }
+}
+
 fn mark_ident_param_kind(
     expr: &JsExpr,
     param_index: &BTreeMap<String, usize>,
@@ -5490,6 +5508,23 @@ fn mark_ident_param_kind(
         return;
     }
     kinds[*index] = kind;
+}
+
+fn mark_ident_param_kind_if_default(
+    expr: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+    kind: AotSlotKind,
+) {
+    let JsExpr::Ident { name } = expr else {
+        return;
+    };
+    let Some(index) = param_index.get(name) else {
+        return;
+    };
+    if kinds[*index] == AotSlotKind::Number {
+        kinds[*index] = kind;
+    }
 }
 
 fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<String> {
@@ -8647,6 +8682,13 @@ fn render_template_string_expr(
 fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value {
+            value: JsValue::Undefined,
+        } => Some("\"undefined\"".to_string()),
+        JsExpr::Ident { name } if name == "undefined" => Some("\"undefined\"".to_string()),
+        JsExpr::Value {
+            value: JsValue::Null,
+        } => Some("\"null\"".to_string()),
+        JsExpr::Value {
             value: JsValue::String { value },
         } => Some(go_string_literal(value)),
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
@@ -8670,7 +8712,10 @@ fn render_template_part_string_expr(expr: &JsExpr, state: &AotState) -> Option<S
             render_url_string_member_expr(object, property, state)
         }
         JsExpr::Call { callee, args, .. } => render_string_string_method_call(callee, args, state),
-        _ => None,
+        _ => {
+            let value = render_expr(expr, state)?;
+            Some(format!("tsgodownToString({value})"))
+        }
     }
 }
 

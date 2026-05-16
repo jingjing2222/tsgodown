@@ -4507,7 +4507,7 @@ function replaceToken(value, token, replacement) {
   return value.split(`${token}*`).join(`${token}{0,${replacement}}`)
 }
 const direct = "alpha,beta,gamma".split(",").join("|")
-console.log("string-split", direct, replaceToken("a\\s*b\\s*", "\\s", "2"))
+console.log("string-split", direct, replaceToken("a\\s*b\\s*", "\\s", 2))
 "#,
         );
 
@@ -4537,6 +4537,7 @@ console.log("string-split", direct, replaceToken("a\\s*b\\s*", "\\s", "2"))
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("strings.Split"));
         assert!(response.files[0].contents.contains("strings.Join"));
+        assert!(response.files[0].contents.contains("tsgodownToString"));
 
         if std::process::Command::new("go")
             .arg("version")
