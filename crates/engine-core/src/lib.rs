@@ -2778,7 +2778,7 @@ console.log("item", item.label, item.count + 2, item.ready)
             r#"
 const base = { value: 7, nested: { flag: true } }
 const clone = { ...base, value: 9, extra: ["a", "b"] }
-console.log("object-spread", clone.value, clone.nested.flag, JSON.stringify(clone.extra))
+console.log("object-spread", clone.value, clone.nested.flag, clone.extra.at(-1), JSON.stringify(clone.extra))
 "#,
         );
 
@@ -2832,7 +2832,7 @@ console.log("object-spread", clone.value, clone.nested.flag, JSON.stringify(clon
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "object-spread 9 true [\"a\",\"b\"]\n"
+            "object-spread 9 true b [\"a\",\"b\"]\n"
         );
     }
 

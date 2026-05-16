@@ -971,6 +971,38 @@ func tsgodownNumberArrayAt(values []float64, index float64) float64 {
 	return values[offset]
 }
 
+func tsgodownArrayAt(value any, index float64) any {
+	offset := int(index)
+	switch values := value.(type) {
+	case []any:
+		if offset < 0 {
+			offset = len(values) + offset
+		}
+		if offset < 0 || offset >= len(values) {
+			return nil
+		}
+		return values[offset]
+	case []string:
+		if offset < 0 {
+			offset = len(values) + offset
+		}
+		if offset < 0 || offset >= len(values) {
+			return nil
+		}
+		return values[offset]
+	case []float64:
+		if offset < 0 {
+			offset = len(values) + offset
+		}
+		if offset < 0 || offset >= len(values) {
+			return nil
+		}
+		return values[offset]
+	default:
+		return nil
+	}
+}
+
 func tsgodownNumberArraySet(values []float64, index float64, value float64) []float64 {
 	offset := int(index)
 	if offset < 0 {
@@ -6251,6 +6283,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         }
         return Some(format!("tsgodownJSONStringify({value})"));
     }
+    if let Some(value) = render_array_at_call(callee, args, state) {
+        return Some(value);
+    }
     if is_process_noop_call(callee, args) {
         return Some("func() any { return nil }()".to_string());
     }
@@ -6316,6 +6351,27 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
         function.go_name,
         rendered_args.join(", ")
     ))
+}
+
+fn render_array_at_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "at" {
+        return None;
+    }
+    let value = render_json_value_expr(object, state)?;
+    let index = render_numeric_expr(args.first()?, state)?;
+    Some(format!("tsgodownArrayAt({value}, {index})"))
 }
 
 fn render_json_stringify_space_expr(expr: &JsExpr) -> Option<String> {
