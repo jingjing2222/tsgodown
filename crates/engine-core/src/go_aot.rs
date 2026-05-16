@@ -200,7 +200,7 @@ fn collect_aot_render_unsupported_stmt_features(
                 collect_aot_render_unsupported_expr_features(super_class, source_path, features);
             }
             for method in methods {
-                if method.kind != "constructor" && method.kind != "method" {
+                if !matches!(method.kind.as_str(), "constructor" | "method" | "getter") {
                     features.insert(format!(
                         "aot.class_method.unsupported:{source_path}:{}",
                         method.kind
@@ -367,7 +367,7 @@ fn collect_aot_render_unsupported_expr_features(
                 collect_aot_render_unsupported_expr_features(super_class, source_path, features);
             }
             for method in methods {
-                if method.kind != "constructor" && method.kind != "method" {
+                if !matches!(method.kind.as_str(), "constructor" | "method" | "getter") {
                     features.insert(format!(
                         "aot.class_method.unsupported:{source_path}:{}",
                         method.kind
@@ -1461,6 +1461,7 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
     let mut constructor_params = Vec::new();
     let mut constructor_values = Vec::new();
     let mut class_methods = BTreeMap::new();
+    let mut class_getters = BTreeMap::new();
     for method in methods {
         if method.r#async || method.generator || method.rest_param.is_some() || method.is_static {
             return None;
@@ -1498,6 +1499,22 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
             }
             continue;
         }
+        if method.kind == "getter" {
+            if !method.params.is_empty() || method.body.len() != 1 {
+                return None;
+            }
+            let JsStmt::Return { value: Some(value) } = &method.body[0] else {
+                return None;
+            };
+            class_getters.insert(
+                method.name.clone(),
+                AotMethod {
+                    params: Vec::new(),
+                    return_expr: value.clone(),
+                },
+            );
+            continue;
+        }
         if method.kind != "method" || method.body.len() != 1 {
             return None;
         }
@@ -1519,6 +1536,7 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
         constructor_params,
         constructor_values,
         methods: class_methods,
+        getters: class_getters,
     })
 }
 
@@ -2177,6 +2195,7 @@ struct AotClass {
     constructor_params: Vec<String>,
     constructor_values: Vec<(String, JsExpr)>,
     methods: BTreeMap<String, AotMethod>,
+    getters: BTreeMap<String, AotMethod>,
 }
 
 #[derive(Clone)]
@@ -2590,6 +2609,9 @@ fn render_class_decl(class: &AotClass) -> Option<String> {
     )];
     for (method_name, method) in &class.methods {
         out.push(render_class_method_decl(class, method_name, method)?);
+    }
+    for (getter_name, getter) in &class.getters {
+        out.push(render_class_method_decl(class, getter_name, getter)?);
     }
     Some(out.join("\n\n"))
 }
@@ -3886,10 +3908,11 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr: None,
             optional: false,
         } => render_dynamic_object_member_expr(object, property, state)
+            .or_else(|| render_class_getter_member_expr(object, property, state))
+            .or_else(|| render_static_member_expr(object, property, state))
             .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
-            .or_else(|| render_bool_expr(expr, state))
-            .or_else(|| render_static_member_expr(object, property, state)),
+            .or_else(|| render_bool_expr(expr, state)),
         JsExpr::Template { quasis, exprs } => render_template_string_expr(quasis, exprs, state),
         _ => None,
     }
@@ -3932,6 +3955,15 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } if static_member_kind(object, property, state) == Some(AotSlotKind::Number) => {
             render_static_member_expr(object, property, state)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::Any) => {
+            let value = render_static_member_expr(object, property, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
         }
         JsExpr::Member {
             object,
@@ -4552,6 +4584,32 @@ fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) 
         sanitize_go_identifier(name),
         sanitize_go_identifier(property)
     ))
+}
+
+fn render_class_getter_member_expr(
+    object: &JsExpr,
+    property: &str,
+    state: &AotState,
+) -> Option<String> {
+    match object {
+        JsExpr::Ident { name } => {
+            let class_name = state.class_instance_bindings.get(name)?;
+            let class = state.classes.get(class_name)?;
+            class.getters.get(property)?;
+            Some(format!(
+                "{}.{}()",
+                go_binding_ref(name, state),
+                sanitize_go_identifier(property)
+            ))
+        }
+        JsExpr::New { .. } => {
+            let (class_name, value) = render_new_class_expr(object, state)?;
+            let class = state.classes.get(&class_name)?;
+            class.getters.get(property)?;
+            Some(format!("{}.{}()", value, sanitize_go_identifier(property)))
+        }
+        _ => None,
+    }
 }
 
 fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Option<AotSlotKind> {
@@ -6306,7 +6364,8 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_static_member_expr(object, property, state),
+        } => render_class_getter_member_expr(object, property, state)
+            .or_else(|| render_static_member_expr(object, property, state)),
         _ => None,
     }
 }
