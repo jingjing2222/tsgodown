@@ -61,7 +61,11 @@ pub(crate) fn render_aot_executable_program(
     mark_dynamic_object_locals(&module.executable.as_ref()?.stmts, &mut state);
     mark_string_array_locals(&module.executable.as_ref()?.stmts, &mut state);
     mark_any_array_locals(&module.executable.as_ref()?.stmts, &mut state);
-    let mut body = Vec::new();
+    let mut body = module_init_order(&analyzed.ir, module)
+        .into_iter()
+        .filter(|candidate| candidate.id != module.id)
+        .map(|candidate| format!("{}()", module_init_go_name(candidate)))
+        .collect::<Vec<_>>();
     for stmt in &module.executable.as_ref()?.stmts {
         if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
             || is_function_binding_stmt(stmt)
@@ -72,7 +76,9 @@ pub(crate) fn render_aot_executable_program(
             stmt,
             JsStmt::VarDecl { name, .. }
                 if module_slots.contains_key(&(module.id.clone(), name.clone()))
-        ) {
+        ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+            || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
+        {
             continue;
         }
         body.push(render_stmt(stmt, &mut state)?);
@@ -175,6 +181,15 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
             for stmt in &executable.stmts {
                 if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
                     || is_function_binding_stmt(stmt)
+                {
+                    continue;
+                }
+                if matches!(
+                    stmt,
+                    JsStmt::VarDecl { name, .. }
+                        if module_slots.contains_key(&(module.id.clone(), name.clone()))
+                ) || is_resolved_cjs_export_metadata_stmt(stmt, &render_state)
+                    || is_resolved_default_export_metadata_decl_stmt(stmt, &render_state)
                 {
                     continue;
                 }
@@ -3759,6 +3774,7 @@ fn render_module_decls(
     module_slots: &BTreeMap<(String, String), AotModuleSlot>,
 ) -> Option<Vec<String>> {
     let mut declarations = Vec::new();
+    let entry_id = entry_module(ir)?.id.clone();
     let module_default_exports = collect_module_default_exports(ir, module_functions);
     let module_default_class_exports = collect_module_default_class_exports(ir, module_classes);
     let module_export_aliases = collect_module_export_aliases(ir);
@@ -3833,8 +3849,46 @@ fn render_module_decls(
                 declarations.push(render_function_decl(function, &state)?);
             }
         }
+        if module.id != entry_id {
+            declarations.push(format!(
+                "func {}() {{\n{}\n}}",
+                module_init_go_name(module),
+                indent_lines(&render_module_init_body(module, &state, module_slots)?)
+            ));
+        }
     }
     Some(declarations)
+}
+
+fn render_module_init_body(
+    module: &Module,
+    state: &AotState,
+    module_slots: &BTreeMap<(String, String), AotModuleSlot>,
+) -> Option<String> {
+    let executable = module.executable.as_ref()?;
+    let mut state = clone_aot_state(state);
+    mark_dynamic_object_locals(&executable.stmts, &mut state);
+    mark_string_array_locals(&executable.stmts, &mut state);
+    mark_any_array_locals(&executable.stmts, &mut state);
+    let mut body = Vec::new();
+    for stmt in &executable.stmts {
+        if matches!(stmt, JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. })
+            || is_function_binding_stmt(stmt)
+        {
+            continue;
+        }
+        if matches!(
+            stmt,
+            JsStmt::VarDecl { name, .. }
+                if module_slots.contains_key(&(module.id.clone(), name.clone()))
+        ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+            || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
+        {
+            continue;
+        }
+        body.push(render_stmt(stmt, &mut state)?);
+    }
+    Some(body.join("\n"))
 }
 
 fn module_aot_state(
@@ -4107,6 +4161,54 @@ fn is_cjs_export_target(expr: &JsExpr) -> bool {
     is_module_exports_member(expr) || cjs_named_export_property(expr).is_some()
 }
 
+fn is_resolved_cjs_export_metadata_stmt(stmt: &JsStmt, state: &AotState) -> bool {
+    let JsStmt::Expr {
+        expr: JsExpr::Assign { op, left, right },
+    } = stmt
+    else {
+        return false;
+    };
+    if op != "=" || cjs_named_export_property(left).is_none() {
+        return false;
+    }
+    is_resolved_export_metadata_expr(right, state)
+}
+
+fn is_resolved_default_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState) -> bool {
+    let JsStmt::VarDecl {
+        name,
+        init: Some(expr),
+    } = stmt
+    else {
+        return false;
+    };
+    name == "default" && is_resolved_export_metadata_expr(expr, state)
+}
+
+fn is_resolved_export_metadata_expr(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Ident { name } => {
+            state.functions.contains_key(name)
+                || state.classes.contains_key(name)
+                || state.bindings.contains(name)
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } => {
+            let JsExpr::Ident { name } = object.as_ref() else {
+                return false;
+            };
+            state
+                .namespace_functions
+                .contains_key(&(name.clone(), property.clone()))
+        }
+        _ => false,
+    }
+}
+
 fn is_shadowed_cjs_export_target(expr: &JsExpr, state: &AotState) -> bool {
     matches!(
         expr,
@@ -4229,6 +4331,41 @@ fn module_member_go_name(module: &Module, name: &str) -> String {
         module_go_prefix(module),
         sanitize_go_identifier(name)
     )
+}
+
+fn module_init_go_name(module: &Module) -> String {
+    module_member_go_name(module, "__init")
+}
+
+fn module_init_order<'a>(ir: &'a IrDocument, entry: &'a Module) -> Vec<&'a Module> {
+    let mut visited = BTreeSet::new();
+    let mut ordered = Vec::new();
+    visit_module_init_order(ir, &entry.id, &mut visited, &mut ordered);
+    ordered
+}
+
+fn visit_module_init_order<'a>(
+    ir: &'a IrDocument,
+    module_id: &str,
+    visited: &mut BTreeSet<String>,
+    ordered: &mut Vec<&'a Module>,
+) {
+    if !visited.insert(module_id.to_string()) {
+        return;
+    }
+    let Some(module) = ir
+        .modules
+        .iter()
+        .find(|candidate| candidate.id == module_id)
+    else {
+        return;
+    };
+    for import in &module.imports {
+        if let Some(resolved) = import.resolved.as_deref() {
+            visit_module_init_order(ir, resolved, visited, ordered);
+        }
+    }
+    ordered.push(module);
 }
 
 #[derive(Default)]

@@ -2647,8 +2647,13 @@ console.log("aot-cjs-named-values", values[0], table.alpha)
             "src/tokens.js",
             r#"
 exports = module.exports = {}
-const values = exports.values = ["alpha"]
-const table = exports.table = { alpha: 2 }
+const values = exports.values = []
+const table = exports.table = {}
+function fill(name, value) {
+  values[0] = name
+  table[name] = value
+}
+fill("alpha", 2)
 "#,
         );
 
@@ -2679,6 +2684,9 @@ const table = exports.table = { alpha: 2 }
         assert!(response.files[0]
             .contents
             .contains("src_tokens_js_values []string"));
+        assert!(response.files[0]
+            .contents
+            .contains("src_tokens_js___init()"));
 
         if std::process::Command::new("go")
             .arg("version")
