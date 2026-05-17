@@ -756,7 +756,6 @@ console.log(JSON.stringify({
         {
             return;
         }
-
         let out_dir = root.join("dist-go");
         for file in &response.files {
             write(&out_dir, &file.path, &file.contents);
@@ -13442,6 +13441,111 @@ console.log("path", basename("/tmp/app.txt", ".txt"), dirname("/tmp/app.txt"), j
     }
 
     #[test]
+    fn emit_go_runs_dotenv_style_regexp_and_named_node_imports() {
+        let root = temp_project("engine-core-dotenv-style-regexp-node-imports");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join, basename } from "node:path"
+
+const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
+
+function parse(src) {
+  const obj = {}
+  let lines = src.toString()
+  lines = lines.replace(/\r\n?/mg, '\n')
+  let match
+  while ((match = LINE.exec(lines)) != null) {
+    const key = match[1]
+    let value = match[2] || ''
+    value = value.trim()
+    const maybeQuote = value[0]
+    value = value.replace(/^(['"`])([\s\S]*)\1$/mg, '$2')
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, '\n')
+      value = value.replace(/\\r/g, '\r')
+    }
+    obj[key] = value
+  }
+  return obj
+}
+
+function truthy(options = {}) {
+  return Boolean(options && options.debug)
+}
+
+const dir = mkdtempSync(join(tmpdir(), "tsgodown-"))
+const file = join(dir, "sample.env")
+writeFileSync(file, 'A=1\r\nB="x\\ny"\n')
+const fileText = readFileSync(file, "utf8")
+const flag = truthy({ debug: "yes" })
+rmSync(dir, { recursive: true, force: true })
+console.log("dotenv", basename(file), fileText.trim(), flag)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: legacy_ir_interpreter_config(),
+            },
+            package_name: None,
+            module_path: Some("example.com/dotenv-style-regexp-node-imports".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownRegexpReplaceBackref"));
+        assert!(response.files[0].contents.contains("tsgodownRegExpExec"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        if !regexp2_module_cached() {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "dotenv sample.env A=1\nB=\"x\\ny\" true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_builtin_assert_import_subset() {
         let root = temp_project("engine-core-assert-import");
         write(
@@ -14204,6 +14308,17 @@ main()
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("create temp project");
         root
+    }
+
+    fn regexp2_module_cached() -> bool {
+        let cache = std::env::var("GOMODCACHE").map(PathBuf::from).or_else(|_| {
+            std::env::var("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join("go/pkg/mod"))
+        });
+        cache
+            .map(|path| path.join("github.com/dlclark/regexp2@v1.12.0").exists())
+            .unwrap_or(false)
     }
 
     fn legacy_ir_interpreter_config() -> AnalyzeConfig {

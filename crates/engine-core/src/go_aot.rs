@@ -978,6 +978,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_match_call(callee, args) {
                 imports.insert("regexp");
             }
+            if is_regexp_exec_call(callee, args) {
+                imports.insert("regexp");
+            }
             if is_string_replace_call(callee, args) {
                 match args.first() {
                     Some(JsExpr::Value {
@@ -2797,6 +2800,38 @@ func tsgodownIsArrayIndexKey(key string) bool {
 	return matches
 }
 
+func tsgodownRegExpExec(pattern string, value string, cursor *int) any {
+	re := regexp.MustCompile(pattern)
+	if *cursor < 0 {
+		*cursor = 0
+	}
+	if *cursor > len(value) {
+		return nil
+	}
+	offset := *cursor
+	indexes := re.FindStringSubmatchIndex(value[offset:])
+	if indexes == nil {
+		*cursor = 0
+		return nil
+	}
+	matchStart := offset + indexes[0]
+	matchEnd := offset + indexes[1]
+	if matchEnd == matchStart {
+		*cursor = matchEnd + 1
+	} else {
+		*cursor = matchEnd
+	}
+	out := make([]any, len(indexes)/2)
+	for i := 0; i < len(indexes); i += 2 {
+		if indexes[i] < 0 || indexes[i+1] < 0 {
+			out[i/2] = nil
+			continue
+		}
+		out[i/2] = value[offset+indexes[i]:offset+indexes[i+1]]
+	}
+	return out
+}
+
 func tsgodownRegexpReplace(value string, pattern string, replacement string, global bool) string {
 	re := regexp.MustCompile(pattern)
 	replacement = strings.ReplaceAll(replacement, "$&", "$0")
@@ -2810,6 +2845,83 @@ func tsgodownRegexpReplace(value string, pattern string, replacement string, glo
 	var expanded []byte
 	expanded = re.ExpandString(expanded, replacement, value, match)
 	return value[:match[0]] + string(expanded) + value[match[1]:]
+}
+
+func tsgodownRegexpReplaceBackref(value string, pattern string, replacement string, global bool) string {
+	captures, ok := tsgodownAnchoredDelimiterBackrefCaptures(value, pattern)
+	if !ok {
+		return value
+	}
+	return tsgodownExpandRegexpReplacement(replacement, captures)
+}
+
+func tsgodownAnchoredDelimiterBackrefCaptures(value string, pattern string) ([]string, bool) {
+	if strings.HasPrefix(pattern, "(?") {
+		end := strings.Index(pattern, ")")
+		if end < 0 {
+			return nil, false
+		}
+		pattern = pattern[end+1:]
+	}
+	const prefix = "^(["
+	const suffix = "])([\\s\\S]*)\\1$"
+	if !strings.HasPrefix(pattern, prefix) || !strings.HasSuffix(pattern, suffix) {
+		return nil, false
+	}
+	class := pattern[len(prefix) : len(pattern)-len(suffix)]
+	runes := []rune(value)
+	if len(runes) < 2 {
+		return nil, false
+	}
+	first := runes[0]
+	last := runes[len(runes)-1]
+	if first != last || !strings.ContainsRune(class, first) {
+		return nil, false
+	}
+	inner := string(runes[1 : len(runes)-1])
+	return []string{value, string(first), inner}, true
+}
+
+func tsgodownExpandRegexpReplacement(replacement string, captures []string) string {
+	var out strings.Builder
+	for index := 0; index < len(replacement); index++ {
+		ch := replacement[index]
+		if ch != '$' || index+1 >= len(replacement) {
+			out.WriteByte(ch)
+			continue
+		}
+		next := replacement[index+1]
+		if next == '$' {
+			out.WriteByte('$')
+			index++
+			continue
+		}
+		if next == '&' {
+			out.WriteString(captures[0])
+			index++
+			continue
+		}
+		if next < '0' || next > '9' {
+			out.WriteByte(ch)
+			continue
+		}
+		captureIndex := int(next - '0')
+		index++
+		if index+1 < len(replacement) {
+			following := replacement[index+1]
+			if following >= '0' && following <= '9' {
+				twoDigit := captureIndex*10 + int(following-'0')
+				if twoDigit < len(captures) {
+					captureIndex = twoDigit
+					index++
+				}
+			}
+		}
+		if captureIndex < len(captures) {
+			out.WriteString(captures[captureIndex])
+		}
+	}
+	return out.String()
 }
 "#
             .to_string(),
@@ -5770,10 +5882,74 @@ fn render_for_of_stmt(
 }
 
 fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option<String> {
+    if let Some(rendered) = render_regexp_exec_while_stmt(test, body, state) {
+        return Some(rendered);
+    }
     let loop_state = clone_aot_state(state);
     let test = render_bool_test_expr(test, &loop_state)?;
     let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
     Some(format!("for {test} {{\n{body}\n}}"))
+}
+
+fn render_regexp_exec_while_stmt(
+    test: &JsExpr,
+    body: &[JsStmt],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Binary { op, left, right } = test else {
+        return None;
+    };
+    if !matches!(op.as_str(), "!=" | "!==") || !is_nullish_expr(right) {
+        return None;
+    }
+    let JsExpr::Assign {
+        op: assign_op,
+        left: assign_left,
+        right: assign_right,
+    } = left.as_ref()
+    else {
+        return None;
+    };
+    if assign_op != "=" {
+        return None;
+    }
+    let JsExpr::Ident { name: match_name } = assign_left.as_ref() else {
+        return None;
+    };
+    let (pattern, input) = render_regexp_exec_call_expr(assign_right, state)?;
+    let match_target = go_binding_ref(match_name, state);
+    let mut loop_state = clone_aot_state(state);
+    loop_state.bind_slot(
+        match_name,
+        sanitize_go_identifier(match_name),
+        AotSlotKind::Any,
+    );
+    loop_state
+        .narrowed_any_array_bindings
+        .insert(match_name.clone());
+    let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+    let cursor = format!(
+        "__tsgodownRegexpCursor_{}",
+        sanitize_go_identifier(match_name)
+    );
+    Some(format!(
+        "{cursor} := 0\nfor {{\n\t{match_target} = tsgodownRegExpExec({pattern}, {input}, &{cursor})\n\tif {match_target} == nil {{\n\t\tbreak\n\t}}\n{body}\n}}"
+    ))
+}
+
+fn render_regexp_exec_call_expr(expr: &JsExpr, state: &AotState) -> Option<(String, String)> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !is_regexp_exec_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee.as_ref() else {
+        return None;
+    };
+    let pattern = render_regexp_pattern_expr(object, state)?;
+    let input = render_string_expr(args.first()?, state)?;
+    Some((pattern, input))
 }
 
 fn render_try_finally_stmt(
@@ -10455,6 +10631,14 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_object_prototype_to_string_call(callee, args) => {
             render_object_prototype_to_string_call(args.first()?, state)
         }
+        JsExpr::Call { callee, args, .. } if is_value_to_string_call(callee, args) => {
+            let JsExpr::Member { object, .. } = callee.as_ref() else {
+                return None;
+            };
+            let value =
+                render_json_value_expr(object, state).or_else(|| render_expr(object, state))?;
+            Some(format!("tsgodownToString({value})"))
+        }
         JsExpr::Call { callee, args, .. }
             if is_object_to_string_alias_call(callee, args, state) =>
         {
@@ -10635,6 +10819,10 @@ fn render_js_to_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::String { value },
         } => Some((!value.is_empty()).to_string()),
+        JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
+            let value = render_logical_value_expr(expr, state)?;
+            Some(format!("tsgodownToBool({value})"))
+        }
         JsExpr::Ident { name } if name == "process" => Some("true".to_string()),
         expr if is_process_argv_ref(expr) => Some("true".to_string()),
         expr if is_process_env_ref(expr) || is_process_versions_ref(expr) => {
@@ -11695,6 +11883,10 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             } else {
                 Some(value)
             }
+        }
+        JsExpr::Ident { name } if state.narrowed_any_array_bindings.contains(name) => {
+            let value = go_binding_ref(name, state);
+            Some(format!("tsgodownAnyArrayFromAny({value})"))
         }
         JsExpr::Array { items } => {
             let items = items
@@ -13596,6 +13788,14 @@ fn render_string_string_method_call(
             JsExpr::Value {
                 value: JsValue::RegExp { .. },
             } => {
+                if let Some((pattern, global)) =
+                    render_supported_regexp_backref_replace_pattern(args.first()?)
+                {
+                    return Some(format!(
+                        "tsgodownRegexpReplaceBackref({object}, {}, {replacement}, {global})",
+                        go_string_literal(&pattern)
+                    ));
+                }
                 let (pattern, global) = render_supported_regexp_replace_pattern(args.first()?)?;
                 return Some(format!(
                     "tsgodownRegexpReplace({object}, {}, {replacement}, {global})",
@@ -14600,6 +14800,39 @@ fn is_string_match_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         )
 }
 
+fn is_regexp_exec_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "exec"
+                && matches!(
+                    object.as_ref(),
+                    JsExpr::Ident { .. }
+                        | JsExpr::Value {
+                            value: JsValue::RegExp { .. },
+                        }
+                )
+        )
+}
+
+fn is_value_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "toString"
+        )
+}
+
 fn render_string_match_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
     let JsExpr::Member { object, .. } = callee else {
         return None;
@@ -14773,13 +15006,20 @@ fn render_supported_regexp_pattern(expr: &JsExpr) -> Option<String> {
     else {
         return None;
     };
-    if !flags.chars().all(|flag| flag == 'i') {
+    if !flags.chars().all(|flag| matches!(flag, 'g' | 'i' | 'm')) {
         return None;
     }
-    Some(if flags.contains('i') {
-        format!("(?i){pattern}")
-    } else {
+    let mut prefix = String::new();
+    if flags.contains('i') {
+        prefix.push('i');
+    }
+    if flags.contains('m') {
+        prefix.push('m');
+    }
+    Some(if prefix.is_empty() {
         pattern.clone()
+    } else {
+        format!("(?{prefix}){pattern}")
     })
 }
 
@@ -14809,6 +15049,42 @@ fn render_supported_regexp_replace_pattern(expr: &JsExpr) -> Option<(String, boo
         format!("(?{prefix}){pattern}")
     };
     Some((pattern, flags.contains('g')))
+}
+
+fn render_supported_regexp_backref_replace_pattern(expr: &JsExpr) -> Option<(String, bool)> {
+    let JsExpr::Value {
+        value: JsValue::RegExp { pattern, flags },
+    } = expr
+    else {
+        return None;
+    };
+    if !pattern.contains("\\1") || !is_supported_anchored_delimiter_backref_pattern(pattern) {
+        return None;
+    }
+    if !flags.chars().all(|flag| matches!(flag, 'g' | 'i' | 'm')) {
+        return None;
+    }
+    let mut prefix = String::new();
+    if flags.contains('i') {
+        prefix.push('i');
+    }
+    if flags.contains('m') {
+        prefix.push('m');
+    }
+    let pattern = if prefix.is_empty() {
+        pattern.clone()
+    } else {
+        format!("(?{prefix}){pattern}")
+    };
+    Some((pattern, flags.contains('g')))
+}
+
+fn is_supported_anchored_delimiter_backref_pattern(pattern: &str) -> bool {
+    const PREFIX: &str = "^([";
+    const SUFFIX: &str = "])([\\s\\S]*)\\1$";
+    pattern.starts_with(PREFIX)
+        && pattern.ends_with(SUFFIX)
+        && pattern.len() > PREFIX.len() + SUFFIX.len()
 }
 
 fn regexp_test_needs_to_string_helper(args: &[JsExpr]) -> bool {
@@ -14856,7 +15132,10 @@ fn is_node_path_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     if args.is_empty() {
         return false;
     }
-    matches!(
+    matches!(callee, JsExpr::Ident { name } if matches!(
+        name.as_str(),
+        "basename" | "dirname" | "join" | "normalize" | "relative" | "resolve"
+    )) || matches!(
         callee,
         JsExpr::Member {
             object,
@@ -14925,24 +15204,35 @@ fn render_node_path_string_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
-    let JsExpr::Member {
+    let direct_property = if let JsExpr::Ident { name } = callee {
+        if !state.builtin_bindings.contains(name) {
+            return None;
+        }
+        Some(name.as_str())
+    } else {
+        None
+    };
+    let member_property = if let JsExpr::Member {
         object,
         property,
         property_expr: None,
         optional: false,
     } = callee
-    else {
-        return None;
+    {
+        if !state.builtin_bindings.contains("path") || !is_node_path_call_receiver(object) {
+            return None;
+        }
+        Some(property.as_str())
+    } else {
+        None
     };
-    if !state.builtin_bindings.contains("path") || !is_node_path_call_receiver(object) {
-        return None;
-    }
+    let property = direct_property.or(member_property)?;
     let rendered_args = args
         .iter()
         .map(|arg| render_string_expr(arg, state))
         .collect::<Option<Vec<_>>>()?;
-    if is_node_path_posix_call(callee) {
-        return match property.as_str() {
+    if direct_property.is_none() && is_node_path_posix_call(callee) {
+        return match property {
             "join" => Some(format!("path.Join({})", rendered_args.join(", "))),
             "normalize" if rendered_args.len() == 1 => {
                 Some(format!("path.Clean({})", rendered_args[0]))
@@ -14956,7 +15246,7 @@ fn render_node_path_string_call(
             _ => None,
         };
     }
-    match property.as_str() {
+    match property {
         "basename" if rendered_args.len() == 1 => Some(format!("filepath.Base({})", rendered_args[0])),
         "basename" if rendered_args.len() == 2 => Some(format!(
             "func() string {{ base := filepath.Base({}); ext := {}; if strings.HasSuffix(base, ext) {{ return strings.TrimSuffix(base, ext) }}; return base }}()",
@@ -15121,16 +15411,17 @@ fn is_node_path_delimiter_expr(expr: &JsExpr) -> bool {
 
 fn is_node_os_homedir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.is_empty()
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
-                && property == "homedir"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "homedir")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
+                    && property == "homedir"
+            ))
 }
 
 fn render_node_os_homedir_call(
@@ -15138,13 +15429,15 @@ fn render_node_os_homedir_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
-    let JsExpr::Member { object, .. } = callee else {
-        return None;
+    let binding = match callee {
+        JsExpr::Ident { name } => name.as_str(),
+        JsExpr::Member { object, .. } => match object.as_ref() {
+            JsExpr::Ident { name } => name.as_str(),
+            _ => return None,
+        },
+        _ => return None,
     };
-    let JsExpr::Ident { name } = object.as_ref() else {
-        return None;
-    };
-    if state.builtin_bindings.contains(name) && is_node_os_homedir_call(callee, args) {
+    if state.builtin_bindings.contains(binding) && is_node_os_homedir_call(callee, args) {
         return Some("tsgodownOsHomedir()".to_string());
     }
     None
@@ -15152,16 +15445,17 @@ fn render_node_os_homedir_call(
 
 fn is_node_os_tmpdir_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.is_empty()
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
-                && property == "tmpdir"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "tmpdir")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "os")
+                    && property == "tmpdir"
+            ))
 }
 
 fn render_node_os_tmpdir_call(
@@ -15169,13 +15463,15 @@ fn render_node_os_tmpdir_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
-    let JsExpr::Member { object, .. } = callee else {
-        return None;
+    let binding = match callee {
+        JsExpr::Ident { name } => name.as_str(),
+        JsExpr::Member { object, .. } => match object.as_ref() {
+            JsExpr::Ident { name } => name.as_str(),
+            _ => return None,
+        },
+        _ => return None,
     };
-    let JsExpr::Ident { name } = object.as_ref() else {
-        return None;
-    };
-    if state.builtin_bindings.contains(name) && is_node_os_tmpdir_call(callee, args) {
+    if state.builtin_bindings.contains(binding) && is_node_os_tmpdir_call(callee, args) {
         return Some("tsgodownOsTmpdir()".to_string());
     }
     None
@@ -15215,68 +15511,74 @@ fn render_node_fs_exists_sync_call(
 
 fn is_node_fs_mkdtemp_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
-                && property == "mkdtempSync"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "mkdtempSync")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                    && property == "mkdtempSync"
+            ))
 }
 
 fn is_node_fs_write_file_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 2 | 3)
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
-                && property == "writeFileSync"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "writeFileSync")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                    && property == "writeFileSync"
+            ))
 }
 
 fn is_node_fs_read_file_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 1 | 2)
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
-                && property == "readFileSync"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "readFileSync")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                    && property == "readFileSync"
+            ))
 }
 
 fn is_node_fs_rm_sync_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 1 | 2)
-        && matches!(
-            callee,
-            JsExpr::Member {
-                object,
-                property,
-                property_expr: None,
-                optional: false,
-            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
-                && property == "rmSync"
-        )
+        && (matches!(callee, JsExpr::Ident { name } if name == "rmSync")
+            || matches!(
+                callee,
+                JsExpr::Member {
+                    object,
+                    property,
+                    property_expr: None,
+                    optional: false,
+                } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "fs")
+                    && property == "rmSync"
+            ))
 }
 
 fn node_fs_builtin_receiver(callee: &JsExpr, state: &AotState) -> Option<()> {
-    let JsExpr::Member { object, .. } = callee else {
-        return None;
+    let binding = match callee {
+        JsExpr::Ident { name } => name.as_str(),
+        JsExpr::Member { object, .. } => match object.as_ref() {
+            JsExpr::Ident { name } => name.as_str(),
+            _ => return None,
+        },
+        _ => return None,
     };
-    let JsExpr::Ident { name } = object.as_ref() else {
-        return None;
-    };
-    state.builtin_bindings.contains(name).then_some(())
+    state.builtin_bindings.contains(binding).then_some(())
 }
 
 fn render_node_fs_mkdtemp_sync_call(
@@ -16791,9 +17093,6 @@ fn render_call_args(
     param_kinds: &[AotSlotKind],
     state: &AotState,
 ) -> Option<Vec<String>> {
-    if args.len() > param_kinds.len() {
-        return None;
-    }
     let mut rendered = Vec::new();
     for (index, kind) in param_kinds.iter().enumerate() {
         if let Some(arg) = args.get(index) {
