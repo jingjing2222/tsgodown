@@ -7276,8 +7276,52 @@ fn infer_function_param_kinds(
     for stmt in body {
         infer_stmt_param_kinds(stmt, &param_index, &mut kinds, builtin_aliases);
     }
+    let local_functions = collect_direct_local_function_map(body, builtin_aliases);
+    let imported_function_aliases = BTreeMap::new();
+    for stmt in body {
+        propagate_stmt_param_kinds(
+            stmt,
+            "",
+            &local_functions,
+            &imported_function_aliases,
+            &param_index,
+            &mut kinds,
+        );
+    }
     mark_string_accumulator_params(body, &param_index, &mut kinds, &mut BTreeSet::new());
     kinds
+}
+
+fn collect_direct_local_function_map(
+    body: &[JsStmt],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+) -> BTreeMap<(String, String), AotFunction> {
+    let mut functions = BTreeMap::new();
+    for stmt in body {
+        if let JsStmt::FunctionDecl {
+            name,
+            params,
+            rest_param,
+            r#async,
+            generator,
+            body,
+        } = stmt
+        {
+            functions.insert(
+                ("".to_string(), name.clone()),
+                AotFunction {
+                    params: params.clone(),
+                    param_kinds: infer_function_param_kinds(params, body, builtin_aliases),
+                    rest_param: rest_param.clone(),
+                    r#async: *r#async,
+                    generator: *generator,
+                    body: body.clone(),
+                    go_name: sanitize_go_identifier(name),
+                },
+            );
+        }
+    }
+    functions
 }
 
 fn mark_string_accumulator_params(
@@ -8514,10 +8558,26 @@ fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
     mark_logical_assignment_any_locals(body, &mut function_state);
     mark_any_array_locals(body, &mut function_state);
     mark_dynamic_object_locals(body, &mut function_state);
-    body.iter()
-        .map(|stmt| render_function_stmt(stmt, &mut function_state))
-        .collect::<Option<Vec<_>>>()
-        .map(|stmts| stmts.join("\n"))
+    let mut local_functions = Vec::new();
+    for stmt in body {
+        if let JsStmt::FunctionDecl { name, .. } = stmt {
+            let function = aot_function_from_stmt(stmt, name)?;
+            function_state.functions.insert(name.clone(), function);
+            local_functions.push(name.clone());
+        }
+    }
+    let mut rendered = Vec::new();
+    for name in local_functions {
+        let function = function_state.functions.get(&name)?;
+        rendered.push(render_local_function_decl(function, &function_state)?);
+    }
+    for stmt in body {
+        if matches!(stmt, JsStmt::FunctionDecl { .. }) {
+            continue;
+        }
+        rendered.push(render_function_stmt(stmt, &mut function_state)?);
+    }
+    Some(rendered.join("\n"))
 }
 
 fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {

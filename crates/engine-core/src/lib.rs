@@ -12958,7 +12958,6 @@ console.log("intrinsics", json)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_function_declaration_hoisting_subset() {
         let root = temp_project("engine-core-function-hoisting");
         write(
