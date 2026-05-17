@@ -6463,6 +6463,77 @@ console.log("uri-bytes", bytes.length, bytes[0], bytes[3], bytes[4], bytes[5], e
     }
 
     #[test]
+    fn emit_go_runs_aot_decode_uri_component_subset() {
+        let root = temp_project("engine-core-aot-decode-uri-component");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const encoded = encodeURIComponent("a b/[]✓")
+const decoded = decodeURIComponent(encoded)
+console.log("uri-decode", encoded, decoded, decodeURIComponent("a%2Bb%20c"))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-decode-uri-component".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownDecodeURIComponent"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uri-decode a%20b%2F%5B%5D%E2%9C%93 a b/[]✓ a+b c\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_bytes_callback_optional_length_subset() {
         let root = temp_project("engine-core-aot-bytes-callback-optional-length");
         write(

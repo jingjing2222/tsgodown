@@ -2288,6 +2288,25 @@ func tsgodownEncodeURIComponent(value string) string {
 	return out.String()
 }
 
+func tsgodownDecodeURIComponent(value string) string {
+	var out strings.Builder
+	for index := 0; index < len(value); index++ {
+		if value[index] != '%' || index+2 >= len(value) {
+			out.WriteByte(value[index])
+			continue
+		}
+		a, okA := tsgodownURIHexNibble(value[index+1])
+		b, okB := tsgodownURIHexNibble(value[index+2])
+		if !okA || !okB {
+			out.WriteByte(value[index])
+			continue
+		}
+		out.WriteByte(a<<4 | b)
+		index += 2
+	}
+	return out.String()
+}
+
 func tsgodownUnescape(value string) string {
 	var out strings.Builder
 	for index := 0; index < len(value); index++ {
@@ -3698,6 +3717,7 @@ func tsgodownObjectMapKeys(value any) []string {
 	for key := range object {
 	keys = append(keys, key)
 	}
+	sort.Strings(keys)
 	return tsgodownObjectKeys(keys)
 }
 
@@ -21929,7 +21949,7 @@ fn is_uri_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
             callee,
-            JsExpr::Ident { name } if matches!(name.as_str(), "encodeURIComponent" | "unescape")
+            JsExpr::Ident { name } if matches!(name.as_str(), "encodeURIComponent" | "decodeURIComponent" | "unescape")
         )
 }
 
@@ -21943,6 +21963,7 @@ fn render_uri_string_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) ->
     let value = render_string_expr(args.first()?, state)?;
     match name.as_str() {
         "encodeURIComponent" => Some(format!("tsgodownEncodeURIComponent({value})")),
+        "decodeURIComponent" => Some(format!("tsgodownDecodeURIComponent({value})")),
         "unescape" => Some(format!("tsgodownUnescape({value})")),
         _ => None,
     }
