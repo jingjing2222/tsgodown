@@ -6783,6 +6783,114 @@ console.log("uuid-v4", v4(), out[7], out[9], out.length)
     }
 
     #[test]
+    fn emit_go_runs_aot_uuid_v7_nullish_postinc_bytes_subset() {
+        let root = temp_project("engine-core-aot-uuid-v7-nullish-postinc-bytes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function v7Bytes(rnds, msecs, seq, buf, offset = 0) {
+  if (rnds.length < 16) {
+    throw new Error("Random bytes length must be >= 16")
+  }
+  if (!buf) {
+    buf = new Uint8Array(16)
+    offset = 0
+  } else {
+    if (offset < 0 || offset + 16 > buf.length) {
+      throw new RangeError(`UUID byte range ${offset}:${offset + 15} is out of buffer bounds`)
+    }
+  }
+  msecs ??= Date.now()
+  seq ??= ((rnds[6] * 0x7f) << 24) | (rnds[7] << 16) | (rnds[8] << 8) | rnds[9]
+  buf[offset++] = (msecs / 0x10000000000) & 0xff
+  buf[offset++] = (msecs / 0x100000000) & 0xff
+  buf[offset++] = (msecs / 0x1000000) & 0xff
+  buf[offset++] = (msecs / 0x10000) & 0xff
+  buf[offset++] = (msecs / 0x100) & 0xff
+  buf[offset++] = msecs & 0xff
+  buf[offset++] = 0x70 | ((seq >>> 28) & 0x0f)
+  buf[offset++] = (seq >>> 20) & 0xff
+  buf[offset++] = 0x80 | ((seq >>> 14) & 0x3f)
+  buf[offset++] = (seq >>> 6) & 0xff
+  buf[offset++] = ((seq << 2) & 0xff) | (rnds[10] & 0x03)
+  buf[offset++] = rnds[11]
+  buf[offset++] = rnds[12]
+  buf[offset++] = rnds[13]
+  buf[offset++] = rnds[14]
+  buf[offset++] = rnds[15]
+  return buf
+}
+const rnds = Uint8Array.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+const out = new Uint8Array(20)
+v7Bytes(rnds, 0x123456789abc, undefined, out, 1)
+console.log("uuid-v7", out[1], out[6], out[7], out[8], out[9], out[10], out[11], out[16], out[17], out.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-uuid-v7-nullish-postinc-bytes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}\nmain.go={}",
+            response.diagnostics,
+            response
+                .files
+                .first()
+                .map(|file| file.contents.as_str())
+                .unwrap_or("")
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownNullish"));
+        assert!(response.files[0].contents.contains("tsgodownPostIncFloat"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uuid-v7 18 188 127 160 156 32 38 15 0 20\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(
