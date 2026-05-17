@@ -4509,10 +4509,11 @@ fn bind_forwarded_function_static_slots(
         let JsExpr::Ident { name: slot_name } = right.as_ref() else {
             continue;
         };
-        let Some(slot) = context
+        let slot = context
             .slots
             .get(&(target_module_id.to_string(), slot_name.clone()))
-        else {
+            .or_else(|| forwarded_slot(target_module, slot_name, context));
+        let Some(slot) = slot else {
             continue;
         };
         state.function_static_members.insert(
@@ -4520,6 +4521,24 @@ fn bind_forwarded_function_static_slots(
             (slot.kind, slot.go_name.clone()),
         );
     }
+}
+
+fn forwarded_slot<'a>(
+    module: &Module,
+    local: &str,
+    context: &'a AotModuleContext<'_>,
+) -> Option<&'a AotModuleSlot> {
+    for import in &module.imports {
+        let resolved = import.resolved.as_ref()?;
+        for binding in &import.bindings {
+            if binding.local != local {
+                continue;
+            }
+            let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+            return context.slots.get(&(resolved.clone(), imported.to_string()));
+        }
+    }
+    None
 }
 
 fn forwarded_import_binding<'a>(module: &'a Module, exported: &str) -> Option<(&'a str, &'a str)> {
