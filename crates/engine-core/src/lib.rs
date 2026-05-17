@@ -5755,6 +5755,96 @@ console.log("buffer", utf8.length, hex[0], base64[0], array.length, array[1], em
     }
 
     #[test]
+    fn emit_go_runs_aot_crypto_hash_digest_bytes_subset() {
+        let root = temp_project("engine-core-aot-crypto-hash-digest-bytes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+import { createHash } from "node:crypto"
+import crypto from "node:crypto"
+function md5(bytes) {
+  if (Array.isArray(bytes)) {
+    bytes = Buffer.from(bytes)
+  } else if (typeof bytes === "string") {
+    bytes = Buffer.from(bytes, "utf8")
+  }
+  return createHash("md5").update(bytes).digest()
+}
+function sha1(bytes) {
+  if (Array.isArray(bytes)) {
+    bytes = Buffer.from(bytes)
+  } else if (typeof bytes === "string") {
+    bytes = Buffer.from(bytes, "utf8")
+  }
+  return createHash("sha1").update(bytes).digest()
+}
+const md5Digest = createHash("md5").update(Buffer.from("abc", "utf8")).digest()
+const sha1Digest = crypto.createHash("sha1").update("abc").digest()
+const viaArray = md5([97, 98, 99])
+const viaString = sha1("abc")
+console.log("hash-bytes", md5Digest.length, md5Digest[0], md5Digest[15], sha1Digest.length, sha1Digest[0], sha1Digest[19], viaArray[0], viaString[19])
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-crypto-hash-digest-bytes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("\"crypto/md5\""));
+        assert!(response.files[0].contents.contains("\"crypto/sha1\""));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "hash-bytes 16 144 114 20 169 157 144 157\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_uint8array_random_fill_slice_subset() {
         let root = temp_project("engine-core-aot-uint8array-random-fill-slice");
         write(

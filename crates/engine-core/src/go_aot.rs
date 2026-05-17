@@ -1018,6 +1018,17 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_crypto_sha256_hex_slice_call(callee) || is_crypto_sha256_hex_digest_call(callee) {
                 imports.insert("encoding/hex");
             }
+            if let Some(algorithm) = crypto_hash_bytes_digest_algorithm(callee, args) {
+                match algorithm {
+                    "md5" => {
+                        imports.insert("crypto/md5");
+                    }
+                    "sha1" => {
+                        imports.insert("crypto/sha1");
+                    }
+                    _ => {}
+                }
+            }
             if is_url_search_params_get_call(callee, args) {
                 imports.insert("net/url");
             }
@@ -1174,16 +1185,27 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
 
 fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
     if imports.len() == 1 {
-        return format!("import {:?}", imports.iter().next().expect("single import"));
+        return format!(
+            "import {}",
+            render_go_import_spec(imports.iter().next().expect("single import"))
+        );
     }
     format!(
         "import (\n{}\n)",
         imports
             .iter()
-            .map(|import| format!("\t{import:?}"))
+            .map(|import| format!("\t{}", render_go_import_spec(import)))
             .collect::<Vec<_>>()
             .join("\n")
     )
+}
+
+fn render_go_import_spec(import: &str) -> String {
+    match import {
+        "crypto/md5" => "tsgodownmd5 \"crypto/md5\"".to_string(),
+        "crypto/sha1" => "tsgodownsha1 \"crypto/sha1\"".to_string(),
+        _ => format!("{import:?}"),
+    }
 }
 
 fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
@@ -1996,6 +2018,35 @@ func tsgodownJSONParseObject(value string) map[string]any {
 		return decoded
 	default:
 		return []byte(value)
+	}
+}
+
+func tsgodownBufferFromAny(value any, encoding string) []byte {
+	switch typed := value.(type) {
+	case []byte:
+		return append([]byte(nil), typed...)
+	case []any:
+		out := make([]byte, len(typed))
+		for index, item := range typed {
+			out[index] = byte(tsgodownToFloat64(item))
+		}
+		return out
+	case []float64:
+		out := make([]byte, len(typed))
+		for index, item := range typed {
+			out[index] = byte(item)
+		}
+		return out
+	case []string:
+		out := make([]byte, len(typed))
+		for index, item := range typed {
+			out[index] = byte(tsgodownToFloat64(item))
+		}
+		return out
+	case string:
+		return tsgodownBufferFromString(typed, encoding)
+	default:
+		return tsgodownBufferFromString(tsgodownToString(value), encoding)
 	}
 }
 
@@ -7542,6 +7593,13 @@ fn function_returns_number_array(function: &AotFunction, state: &AotState) -> bo
         && saw_return
 }
 
+fn function_returns_bytes(function: &AotFunction, state: &AotState) -> bool {
+    let mut function_state = aot_function_state(function, state);
+    let mut saw_return = false;
+    collect_bytes_returns(&function.body, &mut function_state, &mut saw_return).unwrap_or(false)
+        && saw_return
+}
+
 fn function_returns_any_array(function: &AotFunction, state: &AotState) -> bool {
     if function.body.iter().any(|stmt| {
         matches!(
@@ -7627,6 +7685,46 @@ fn collect_number_array_returns(
                 let mut alternate_state = clone_aot_state(state);
                 mark_number_array_locals(alternate, &mut alternate_state);
                 if !collect_number_array_returns(alternate, &mut alternate_state, saw_return)? {
+                    return Some(false);
+                }
+                render_function_stmt(stmt, state)?;
+            }
+            JsStmt::For { .. } | JsStmt::While { .. } => {
+                render_function_stmt(stmt, state)?;
+            }
+            _ => {
+                render_function_stmt(stmt, state)?;
+            }
+        }
+    }
+    Some(true)
+}
+
+fn collect_bytes_returns(
+    body: &[JsStmt],
+    state: &mut AotState,
+    saw_return: &mut bool,
+) -> Option<bool> {
+    for stmt in body {
+        match stmt {
+            JsStmt::Return { value: Some(value) } => {
+                *saw_return = true;
+                if render_bytes_expr(value, state).is_none() {
+                    return Some(false);
+                }
+            }
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                let consequent_state = narrowed_typeof_state(test, state);
+                let mut consequent_state = clone_aot_state(&consequent_state);
+                if !collect_bytes_returns(consequent, &mut consequent_state, saw_return)? {
+                    return Some(false);
+                }
+                let mut alternate_state = clone_aot_state(state);
+                if !collect_bytes_returns(alternate, &mut alternate_state, saw_return)? {
                     return Some(false);
                 }
                 render_function_stmt(stmt, state)?;
@@ -8132,6 +8230,11 @@ fn render_assignment_stmt(
             return Some(format!("{} = {right}", go_binding_ref(name, state)));
         }
         if state.string_bindings.contains(name) && matches!(op, "=" | "+=") {
+            if op == "=" {
+                if let Some(right) = render_bytes_expr(right, state) {
+                    return Some(format!("{} = {right}", sanitize_go_identifier(name)));
+                }
+            }
             let right = render_string_expr(right, state)?;
             return Some(format!("{} {op} {right}", sanitize_go_identifier(name)));
         }
@@ -10177,6 +10280,20 @@ fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_node_buffer_alloc_call(callee, args) => {
             render_node_buffer_alloc_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_crypto_hash_bytes_digest_call(callee, args) => {
+            render_crypto_hash_bytes_digest_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_local_function_call(callee, state) => {
+            let JsExpr::Ident { name } = callee.as_ref() else {
+                return None;
+            };
+            let function = state.functions.get(name)?;
+            if !function_returns_bytes(function, state) {
+                return None;
+            }
+            let call = render_call_expr(callee, args, state)?;
+            Some(format!("({call}).([]byte)"))
         }
         _ => None,
     }
@@ -14044,6 +14161,17 @@ fn render_node_buffer_from_call(
             let value = render_bytes_expr(expr, state)?;
             Some(format!("append([]byte(nil), {value}...)"))
         }
+        JsExpr::Ident { name } if is_any_binding(name, state) => {
+            let value = go_binding_ref(name, state);
+            let encoding = args
+                .get(1)
+                .and_then(string_literal_value)
+                .unwrap_or_else(|| "utf8".to_string());
+            Some(format!(
+                "tsgodownBufferFromAny({value}, {})",
+                go_string_literal(&encoding)
+            ))
+        }
         expr => {
             let value = render_string_expr(expr, state)?;
             let encoding = args
@@ -14223,6 +14351,125 @@ fn crypto_sha256_digest_source_expr(expr: &JsExpr) -> Option<&JsExpr> {
         return None;
     }
     update_args.first()
+}
+
+fn crypto_hash_bytes_digest_source_expr<'a>(
+    callee: &'a JsExpr,
+    args: &[JsExpr],
+) -> Option<(&'static str, &'a JsExpr, &'a JsExpr)> {
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object: update_call,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "digest" {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: update_callee,
+        args: update_args,
+        optional: false,
+    } = update_call.as_ref()
+    else {
+        return None;
+    };
+    let JsExpr::Member {
+        object: create_hash_call,
+        property,
+        property_expr: None,
+        optional: false,
+    } = update_callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "update" || update_args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: create_hash_callee,
+        args: create_hash_args,
+        optional: false,
+    } = create_hash_call.as_ref()
+    else {
+        return None;
+    };
+    if create_hash_args.len() != 1 {
+        return None;
+    }
+    let algorithm = match create_hash_args
+        .first()
+        .and_then(string_literal_value)?
+        .as_str()
+    {
+        "md5" => "md5",
+        "sha1" => "sha1",
+        _ => return None,
+    };
+    Some((algorithm, create_hash_callee, update_args.first()?))
+}
+
+fn crypto_hash_bytes_digest_algorithm(callee: &JsExpr, args: &[JsExpr]) -> Option<&'static str> {
+    let (algorithm, _, _) = crypto_hash_bytes_digest_source_expr(callee, args)?;
+    Some(algorithm)
+}
+
+fn is_crypto_hash_bytes_digest_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    crypto_hash_bytes_digest_source_expr(callee, args).is_some()
+}
+
+fn render_crypto_hash_bytes_digest_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let (algorithm, create_hash_callee, source) =
+        crypto_hash_bytes_digest_source_expr(callee, args)?;
+    if !is_crypto_create_hash_ref(create_hash_callee, state) {
+        return None;
+    }
+    let source = render_bytes_expr(source, state)
+        .or_else(|| {
+            if let JsExpr::Ident { name } = source {
+                if is_any_binding(name, state) {
+                    return Some(format!(
+                        "tsgodownBufferFromAny({}, \"utf8\")",
+                        go_binding_ref(name, state)
+                    ));
+                }
+            }
+            None
+        })
+        .or_else(|| render_string_expr(source, state).map(|value| format!("[]byte({value})")))?;
+    let package = match algorithm {
+        "md5" => "tsgodownmd5",
+        "sha1" => "tsgodownsha1",
+        _ => return None,
+    };
+    Some(format!(
+        "func() []byte {{ sum := {package}.Sum({source}); return sum[:] }}()"
+    ))
+}
+
+fn is_crypto_create_hash_ref(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Ident { name } => name == "createHash" && state.builtin_bindings.contains(name),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "createHash" => {
+            matches!(object.as_ref(), JsExpr::Ident { name } if name == "crypto" && state.builtin_bindings.contains(name))
+        }
+        _ => false,
+    }
 }
 
 fn is_crypto_sha256_hex_digest_call(callee: &JsExpr) -> bool {
