@@ -6871,7 +6871,9 @@ fn infer_expr_param_kinds(
                                 .as_deref()
                                 .is_some_and(is_numeric_property_key_expr)
                         {
-                            if kinds[*index] != AotSlotKind::Any {
+                            if kinds[*index] != AotSlotKind::Any
+                                && kinds[*index] != AotSlotKind::String
+                            {
                                 kinds[*index] = AotSlotKind::AnyArray;
                             }
                         } else if kinds[*index] != AotSlotKind::Any {
@@ -6967,6 +6969,22 @@ fn infer_comparison_param_kind(
             if let JsExpr::Unary { op, arg } = candidate {
                 if op == "typeof" {
                     mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::Any);
+                    return;
+                }
+            }
+            if let JsExpr::Member {
+                object,
+                property,
+                property_expr,
+                optional: false,
+            } = candidate
+            {
+                if property.parse::<usize>().is_ok()
+                    || property_expr
+                        .as_deref()
+                        .is_some_and(is_numeric_property_key_expr)
+                {
+                    mark_ident_param_kind(object, param_index, kinds, AotSlotKind::String);
                     return;
                 }
             }
@@ -9362,6 +9380,10 @@ fn render_assignment_stmt(
             }
             let right = render_string_expr(right, state)?;
             return Some(format!("{} {op} {right}", sanitize_go_identifier(name)));
+        }
+        if state.string_array_bindings.contains(name) && op == "=" {
+            let right = render_string_array_expr(right, state)?;
+            return Some(format!("{} = {right}", go_binding_ref(name, state)));
         }
         if state.bool_bindings.contains(name) && op == "=" {
             let right = render_bool_expr(right, state)?;
@@ -17244,6 +17266,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     }
     match expr {
         JsExpr::Value { value } => render_value(value),
+        JsExpr::Ident { name } if name == "undefined" => Some("nil".to_string()),
         JsExpr::Function { .. } => render_inline_function_value_expr(expr, state),
         JsExpr::Ident { name } if state.functions.contains_key(name) => {
             render_function_reference_expr(name, state)
@@ -17288,6 +17311,12 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             }
             Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
+        JsExpr::Binary { op, left, right } if op == "??" => {
+            let left = render_json_value_expr(left, state).or_else(|| render_expr(left, state))?;
+            let right =
+                render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
+            Some(format!("tsgodownNullish({left}, {right})"))
+        }
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
@@ -17323,6 +17352,17 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr, state),
         JsExpr::Call { callee, args, .. } => {
             render_bool_expr(expr, state).or_else(|| render_call_expr(callee, args, state))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            optional: true,
+        } => {
+            let object = render_expr(object, state)?;
+            let key =
+                render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
+            Some(format!("tsgodownObjectProp({object}, {key})"))
         }
         JsExpr::Member {
             object,

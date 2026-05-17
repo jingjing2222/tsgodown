@@ -13498,8 +13498,11 @@ const defaultValue = api.parseDefault("ok")
 process.env.TSGODOWN_TMP_ENV = "set"
 const envValue = process.env.TSGODOWN_TMP_ENV
 Reflect.deleteProperty(process.env, "TSGODOWN_TMP_ENV")
+const configNoOverride = { error: undefined }
+const observedError = configNoOverride.error?.name ?? null
+const observedReport = JSON.stringify({ observedError })
 rmSync(dir, { recursive: true, force: true })
-console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envValue)
+console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envValue, observedReport)
 "#,
         );
 
@@ -13557,7 +13560,7 @@ console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envVa
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "dotenv sample.env A=1\nB=\"x\\ny\" true OK set\n"
+            "dotenv sample.env A=1\nB=\"x\\ny\" true OK set {\"observedError\":null}\n"
         );
     }
 
