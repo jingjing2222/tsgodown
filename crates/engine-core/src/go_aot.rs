@@ -13449,6 +13449,13 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::String { .. },
         } => Some("\"string\"".to_string()),
         expr if is_process_cwd_call_expr(expr) => Some("\"string\"".to_string()),
+        JsExpr::Call { callee, args, .. }
+            if render_node_path_string_call(callee, args, state).is_some()
+                || render_node_os_homedir_call(callee, args, state).is_some()
+                || render_node_os_tmpdir_call(callee, args, state).is_some() =>
+        {
+            Some("\"string\"".to_string())
+        }
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some("\"string\"".to_string())
         }

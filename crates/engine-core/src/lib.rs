@@ -13410,7 +13410,6 @@ console.log("util", format("name:%s count:%d", "items", 3), util.inspect("quoted
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_builtin_path_os_import_subset() {
         let root = temp_project("engine-core-path-os-import");
         write(
