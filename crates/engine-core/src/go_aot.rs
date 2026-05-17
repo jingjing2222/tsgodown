@@ -4130,6 +4130,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    narrowed_any_array_bindings: BTreeSet<String>,
     date_bindings: BTreeSet<String>,
     regexp_bindings: BTreeSet<String>,
     regexp_replace_bindings: BTreeMap<String, (String, bool)>,
@@ -4221,6 +4222,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
@@ -4692,6 +4694,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
@@ -4941,6 +4944,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
@@ -4980,6 +4984,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
@@ -8113,6 +8118,9 @@ fn render_member_index_expr(
     state: &AotState,
 ) -> Option<String> {
     if let Some(property_expr) = property_expr {
+        if !property.is_empty() {
+            return None;
+        }
         return render_numeric_expr(property_expr, state);
     }
     number_literal(property)
@@ -8379,7 +8387,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_bool_expr(expr, state)
         }
         JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
-            render_bool_expr(expr, state)
+            render_bool_expr(expr, state).or_else(|| render_logical_value_expr(expr, state))
         }
         JsExpr::Unary { .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
@@ -9512,6 +9520,13 @@ fn render_dynamic_object_property_key_expr(
     property_expr: Option<&JsExpr>,
     state: &AotState,
 ) -> Option<String> {
+    if property.is_empty() {
+        if let Some(JsExpr::Ident { name }) = property_expr {
+            if !state.bindings.contains(name) {
+                return Some(go_string_literal(name));
+            }
+        }
+    }
     property_expr
         .map(|expr| {
             render_string_expr(expr, state).or_else(|| {
@@ -9935,7 +9950,12 @@ fn render_number_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Ident { name } if state.any_array_bindings.contains(name) => {
-            Some(go_binding_ref(name, state))
+            let value = go_binding_ref(name, state);
+            if state.narrowed_any_array_bindings.contains(name) {
+                Some(format!("tsgodownAnyArrayFromAny({value})"))
+            } else {
+                Some(value)
+            }
         }
         JsExpr::Array { items } => {
             let items = items
@@ -14921,6 +14941,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
         }
+        JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
+            render_bool_expr(expr, state).or_else(|| render_logical_value_expr(expr, state))
+        }
         JsExpr::Unary { .. } => render_expr(expr, state),
         JsExpr::Call { callee, args, .. } if is_json_parse_call(callee, args) => {
             render_json_parse_call(callee, args, state)
@@ -14972,6 +14995,33 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } => render_dynamic_object_member_access_expr(object, property, Some(property_expr), state)
             .or_else(|| render_numeric_expr(expr, state)),
+        _ => None,
+    }
+}
+
+fn render_logical_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Binary { op, left, right } = expr else {
+        return None;
+    };
+    let left_value = render_json_value_expr(left, state).or_else(|| render_expr(left, state))?;
+    let mut right_state = clone_aot_state(state);
+    if op == "&&" {
+        if let JsExpr::Ident { name } = left.as_ref() {
+            if is_any_binding(name, state) {
+                right_state.any_array_bindings.insert(name.clone());
+                right_state.narrowed_any_array_bindings.insert(name.clone());
+            }
+        }
+    }
+    let right =
+        render_json_value_expr(right, &right_state).or_else(|| render_expr(right, &right_state))?;
+    match op.as_str() {
+        "&&" => Some(format!(
+            "func() any {{ left := any({left_value}); if !tsgodownToBool(left) {{ return left }}; return any({right}) }}()"
+        )),
+        "||" => Some(format!(
+            "func() any {{ left := any({left_value}); if tsgodownToBool(left) {{ return left }}; return any({right}) }}()"
+        )),
         _ => None,
     }
 }
@@ -15095,7 +15145,26 @@ fn number_literal(value: &str) -> Option<String> {
     if lower.contains("nan") || lower.contains("infinity") {
         return None;
     }
-    Some(value.to_string())
+    let normalized = value.replace('_', "");
+    if normalized.parse::<f64>().is_ok() {
+        return Some(value.to_string());
+    }
+    let digits = normalized
+        .strip_prefix(['+', '-'])
+        .unwrap_or(normalized.as_str());
+    let valid_radix = digits
+        .strip_prefix("0x")
+        .or_else(|| digits.strip_prefix("0X"))
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_hexdigit()))
+        || digits
+            .strip_prefix("0o")
+            .or_else(|| digits.strip_prefix("0O"))
+            .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|ch| matches!(ch, '0'..='7')))
+        || digits
+            .strip_prefix("0b")
+            .or_else(|| digits.strip_prefix("0B"))
+            .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|ch| matches!(ch, '0' | '1')));
+    valid_radix.then(|| value.to_string())
 }
 
 fn is_numeric_binary_op(op: &str) -> bool {
