@@ -12302,7 +12302,6 @@ console.log("args", corpus, vectorPath, mapped[0], mapped[1], flag)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_for_of_await_and_array_push_subset() {
         let root = temp_project("engine-core-for-of-await");
         write(

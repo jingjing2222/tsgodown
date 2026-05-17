@@ -9541,6 +9541,10 @@ fn collect_any_array_candidates(
                 }
                 collect_any_array_candidates(body, state, candidates);
             }
+            JsStmt::ForOf { right, body, .. } => {
+                collect_any_array_candidates_expr(right, state, candidates);
+                collect_any_array_candidates(body, state, candidates);
+            }
             JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
                 collect_any_array_candidates_expr(test, state, candidates);
                 collect_any_array_candidates(body, state, candidates);
@@ -15457,7 +15461,8 @@ fn render_any_array_call_stmt(
         return None;
     }
     let target = go_binding_ref(name, state);
-    let value = render_json_value_expr(args.first()?, state)?;
+    let value = render_json_value_expr(args.first()?, state)
+        .or_else(|| render_expr(args.first()?, state))?;
     Some(format!("{target} = append({target}, {value})"))
 }
 
@@ -15567,7 +15572,8 @@ fn render_any_array_push_call_expr(
         return None;
     }
     let target = go_binding_ref(name, state);
-    let value = render_json_value_expr(args.first()?, state)?;
+    let value = render_json_value_expr(args.first()?, state)
+        .or_else(|| render_expr(args.first()?, state))?;
     Some(format!(
         "func() any {{ {target} = append({target}, {value}); return float64(len({target})) }}()"
     ))
