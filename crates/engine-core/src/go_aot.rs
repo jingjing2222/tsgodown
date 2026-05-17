@@ -3252,17 +3252,26 @@ fn collect_module_export_aliases(ir: &IrDocument) -> BTreeMap<(String, String), 
             continue;
         };
         for stmt in &executable.stmts {
-            let JsStmt::VarDecl {
+            if let JsStmt::VarDecl {
                 name,
                 init: Some(JsExpr::Ident { name: local }),
             } = stmt
-            else {
-                continue;
-            };
-            if !is_exported_name(module, name) || name == local {
+            {
+                if is_exported_name(module, name) && name != local {
+                    aliases.insert((module.id.clone(), name.clone()), local.clone());
+                }
                 continue;
             }
-            aliases.insert((module.id.clone(), name.clone()), local.clone());
+            if let JsStmt::VarDecl {
+                name,
+                init: Some(init),
+            } = stmt
+            {
+                if let Some(exported) = cjs_export_alias_assignment_name(init) {
+                    aliases.insert((module.id.clone(), exported), name.clone());
+                }
+                continue;
+            }
         }
     }
     aliases
@@ -3666,25 +3675,57 @@ fn collect_module_slots(
             else {
                 continue;
             };
+            let slot_init = cjs_export_alias_assignment_value(init).unwrap_or(init);
             if dynamic_object_writes.contains(name)
                 && !state.number_array_bindings.contains(name)
                 && !state.string_array_bindings.contains(name)
                 && !state.any_array_bindings.contains(name)
+                && render_dynamic_object_init_expr(slot_init, &state).is_none()
             {
                 continue;
             }
+            let rendered_dynamic_object = dynamic_object_writes
+                .contains(name)
+                .then(|| render_dynamic_object_init_expr(slot_init, &state))
+                .flatten()
+                .map(|rendered| {
+                    (
+                        AotSlotKind::Any,
+                        rendered,
+                        Some("map[string]any"),
+                        None,
+                        true,
+                        render_dynamic_object_order_init_expr(slot_init, &state),
+                    )
+                });
             let rendered_any_array = state
                 .any_array_bindings
                 .contains(name)
-                .then(|| render_any_array_expr(init, &state))
+                .then(|| render_any_array_expr(slot_init, &state))
                 .flatten()
-                .map(|rendered| (AotSlotKind::AnyArray, rendered, Some("[]any"), None));
-            let rendered_typed = render_typed_slot_expr(init, &state)
-                .map(|(kind, rendered, go_type)| (kind, rendered, Some(go_type), None));
-            let rendered_object = render_object_literal(init, &state)
-                .map(|(rendered, object)| (AotSlotKind::Any, rendered, None, Some(object)));
-            let Some((kind, rendered, go_type, object)) =
-                rendered_any_array.or(rendered_typed).or(rendered_object)
+                .map(|rendered| {
+                    (
+                        AotSlotKind::AnyArray,
+                        rendered,
+                        Some("[]any"),
+                        None,
+                        false,
+                        None,
+                    )
+                });
+            let rendered_typed =
+                render_typed_slot_expr(slot_init, &state).map(|(kind, rendered, go_type)| {
+                    (kind, rendered, Some(go_type), None, false, None)
+                });
+            let rendered_object =
+                render_object_literal(slot_init, &state).map(|(rendered, object)| {
+                    (AotSlotKind::Any, rendered, None, Some(object), false, None)
+                });
+            let Some((kind, rendered, go_type, object, dynamic_object, dynamic_object_order)) =
+                rendered_dynamic_object
+                    .or(rendered_any_array)
+                    .or(rendered_typed)
+                    .or(rendered_object)
             else {
                 continue;
             };
@@ -3697,9 +3738,15 @@ fn collect_module_slots(
                     go_type,
                     rendered,
                     object,
+                    dynamic_object,
+                    dynamic_object_order,
                 },
             );
             state.bind_slot(name, go_name, kind);
+            if dynamic_object {
+                state.dynamic_object_bindings.insert(name.clone());
+                state.ordered_dynamic_object_bindings.insert(name.clone());
+            }
         }
     }
     slots
@@ -3766,6 +3813,13 @@ fn render_module_decls(
                     None => format!("var {} = {}", slot.go_name, slot.rendered),
                 };
                 declarations.push(declaration);
+                if slot.dynamic_object {
+                    declarations.push(format!(
+                        "var {} []string = {}",
+                        dynamic_object_order_go_name(&slot.go_name),
+                        slot.dynamic_object_order.as_deref().unwrap_or("[]string{}")
+                    ));
+                }
             }
         }
         for stmt in &module.executable.as_ref()?.stmts {
@@ -3804,6 +3858,10 @@ fn module_aot_state(
                 state.bind_slot(name, slot.go_name.clone(), slot.kind);
                 if let Some(object) = &slot.object {
                     state.object_bindings.insert(name.clone(), object.clone());
+                }
+                if slot.dynamic_object {
+                    state.dynamic_object_bindings.insert(name.clone());
+                    state.ordered_dynamic_object_bindings.insert(name.clone());
                 }
             }
         }
@@ -3880,6 +3938,35 @@ fn module_aot_state(
                     state.classes.insert(binding.local.clone(), class.clone());
                     continue;
                 }
+                let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+                if let Some(local) = context
+                    .export_aliases
+                    .get(&(imported_module.id.clone(), imported.to_string()))
+                {
+                    if let Some(function) = context
+                        .functions
+                        .get(&(imported_module.id.clone(), local.clone()))
+                    {
+                        state
+                            .functions
+                            .insert(binding.local.clone(), function.clone());
+                        continue;
+                    }
+                    if let Some(class) = context
+                        .classes
+                        .get(&(imported_module.id.clone(), local.clone()))
+                    {
+                        state.classes.insert(binding.local.clone(), class.clone());
+                        continue;
+                    }
+                    if let Some(slot) = context
+                        .slots
+                        .get(&(imported_module.id.clone(), local.clone()))
+                    {
+                        bind_imported_slot(&mut state, &binding.local, slot);
+                        continue;
+                    }
+                }
                 let Some(named) = context.named_exports.get(&imported_module.id) else {
                     continue;
                 };
@@ -3915,12 +4002,7 @@ fn module_aot_state(
                     .slots
                     .get(&(imported_module.id.clone(), local.clone()))
                 {
-                    state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
-                    if let Some(object) = &slot.object {
-                        state
-                            .object_bindings
-                            .insert(binding.local.clone(), object.clone());
-                    }
+                    bind_imported_slot(&mut state, &binding.local, slot);
                     continue;
                 }
             }
@@ -3943,12 +4025,7 @@ fn module_aot_state(
             let slot = context
                 .slots
                 .get(&(imported_module.id.clone(), imported.to_string()))?;
-            state.bind_slot(&binding.local, slot.go_name.clone(), slot.kind);
-            if let Some(object) = &slot.object {
-                state
-                    .object_bindings
-                    .insert(binding.local.clone(), object.clone());
-            }
+            bind_imported_slot(&mut state, &binding.local, slot);
         }
     }
     for stmt in &module.executable.as_ref()?.stmts {
@@ -3961,6 +4038,21 @@ fn module_aot_state(
         }
     }
     Some(state)
+}
+
+fn bind_imported_slot(state: &mut AotState, local: &str, slot: &AotModuleSlot) {
+    state.bind_slot(local, slot.go_name.clone(), slot.kind);
+    if let Some(object) = &slot.object {
+        state
+            .object_bindings
+            .insert(local.to_string(), object.clone());
+    }
+    if slot.dynamic_object {
+        state.dynamic_object_bindings.insert(local.to_string());
+        state
+            .ordered_dynamic_object_bindings
+            .insert(local.to_string());
+    }
 }
 
 fn function_static_member_assignment(
@@ -4061,6 +4153,17 @@ fn is_exports_module_exports_alias_assignment(expr: &JsExpr) -> bool {
     right_op == "=" && is_module_exports_member(right_left)
 }
 
+fn is_cjs_destructure_member_init(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property_expr: None,
+            ..
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name.starts_with("__tsgodown_destructure_"))
+    )
+}
+
 fn cjs_export_alias_assignment_value(expr: &JsExpr) -> Option<&JsExpr> {
     let JsExpr::Assign { op, left, right } = expr else {
         return None;
@@ -4069,6 +4172,16 @@ fn cjs_export_alias_assignment_value(expr: &JsExpr) -> Option<&JsExpr> {
         return None;
     }
     Some(right)
+}
+
+fn cjs_export_alias_assignment_name(expr: &JsExpr) -> Option<String> {
+    let JsExpr::Assign { op, left, .. } = expr else {
+        return None;
+    };
+    if op != "=" {
+        return None;
+    }
+    cjs_named_export_property(left)
 }
 
 fn this_member_property(expr: &JsExpr) -> Option<String> {
@@ -4312,6 +4425,8 @@ struct AotModuleSlot {
     go_type: Option<&'static str>,
     rendered: String,
     object: Option<AotObject>,
+    dynamic_object: bool,
+    dynamic_object_order: Option<String>,
 }
 
 #[derive(Clone)]
@@ -4420,7 +4535,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.ordered_dynamic_object_bindings.insert(name.clone());
-                    let order = dynamic_object_order_go_name(name);
+                    let order = dynamic_object_order_ref(name, state);
                     return Some(format!(
                         "var {ident} map[string]any = map[string]any{{}}\nvar {order} []string = []string{{}}\n_ = {order}"
                     ));
@@ -4438,6 +4553,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     return Some(String::new());
                 }
                 if is_require_call(expr) {
+                    return Some(String::new());
+                }
+                if state.bindings.contains(name) && is_cjs_destructure_member_init(expr) {
                     return Some(String::new());
                 }
                 if state.any_array_bindings.contains(name)
@@ -4544,7 +4662,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         state.binding_refs.insert(name.clone(), ident.clone());
                         state.ordered_dynamic_object_bindings.insert(name.clone());
                         let keys = render_dynamic_object_order_init_expr(expr, state)?;
-                        let order = dynamic_object_order_go_name(name);
+                        let order = dynamic_object_order_ref(name, state);
                         return Some(format!(
                             "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
                         ));
@@ -4617,7 +4735,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             state.binding_refs.insert(name.clone(), ident.clone());
             if state.dynamic_object_bindings.contains(name) {
                 state.ordered_dynamic_object_bindings.insert(name.clone());
-                let order = dynamic_object_order_go_name(name);
+                let order = dynamic_object_order_ref(name, state);
                 return Some(format!(
                     "var {ident} map[string]any = map[string]any{{}}\nvar {order} []string = []string{{}}\n_ = {order}"
                 ));
@@ -5598,6 +5716,12 @@ fn infer_expr_param_kinds(
                     }
                 }
             }
+            if let Some(property_expr) = property_expr {
+                if !matches!(object.as_ref(), JsExpr::Ident { name } if param_index.contains_key(name))
+                {
+                    mark_ident_param_kind(property_expr, param_index, kinds, AotSlotKind::String);
+                }
+            }
             infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
             if let Some(property_expr) = property_expr {
                 infer_expr_param_kinds(property_expr, param_index, kinds, builtin_aliases);
@@ -6273,7 +6397,8 @@ fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
         state.bindings.insert(name.clone());
         state
             .binding_refs
-            .insert(name.clone(), sanitize_go_identifier(&name));
+            .entry(name.clone())
+            .or_insert_with(|| sanitize_go_identifier(&name));
         state.dynamic_object_bindings.insert(name);
     }
 }
@@ -7907,7 +8032,7 @@ fn render_cjs_export_alias_var_decl(
             .ordered_dynamic_object_bindings
             .insert(name.to_string());
         let keys = render_dynamic_object_order_init_expr(init, state)?;
-        let order = dynamic_object_order_go_name(name);
+        let order = dynamic_object_order_ref(name, state);
         return Some(format!(
             "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
         ));
@@ -8148,7 +8273,7 @@ fn render_dynamic_object_assignment_stmt(
         state
             .ordered_dynamic_object_bindings
             .contains(name)
-            .then(|| dynamic_object_order_go_name(name))
+            .then(|| dynamic_object_order_ref(name, state))
     } else {
         None
     };
@@ -9594,6 +9719,10 @@ fn dynamic_object_order_go_name(name: &str) -> String {
     format!("{}__tsgodownKeys", sanitize_go_identifier(name))
 }
 
+fn dynamic_object_order_ref(name: &str, state: &AotState) -> String {
+    dynamic_object_order_go_name(&go_binding_ref(name, state))
+}
+
 fn render_object_assign_expr(args: &[JsExpr], state: &AotState) -> Option<String> {
     if args.is_empty() {
         return None;
@@ -10502,7 +10631,7 @@ fn render_ts_enum_iife_stmt(
         .insert(target.clone(), target_ident.clone());
     state.dynamic_object_bindings.insert(target.clone());
     state.ordered_dynamic_object_bindings.insert(target.clone());
-    let order = dynamic_object_order_go_name(&target);
+    let order = dynamic_object_order_go_name(&target_ident);
     let target_object = if was_dynamic {
         target_ident.clone()
     } else {
@@ -11665,7 +11794,7 @@ fn render_object_keys_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -
         expr => {
             if let JsExpr::Ident { name } = expr {
                 if state.ordered_dynamic_object_bindings.contains(name) {
-                    let order = dynamic_object_order_go_name(name);
+                    let order = dynamic_object_order_ref(name, state);
                     return Some(format!("tsgodownObjectKeys({order})"));
                 }
             }
@@ -14809,7 +14938,7 @@ fn render_json_stringify_call(args: &[JsExpr], state: &AotState) -> Option<Strin
         if state.ordered_dynamic_object_bindings.contains(name) {
             let object = render_dynamic_object_source_expr(value_expr, state)
                 .or_else(|| render_object_map_expr(value_expr, state))?;
-            let order = dynamic_object_order_go_name(name);
+            let order = dynamic_object_order_ref(name, state);
             return Some(format!("tsgodownJSONStringifyOrdered({object}, {order})"));
         }
     }
