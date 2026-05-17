@@ -960,6 +960,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
+            if is_uri_string_call(callee, args) {
+                imports.insert("strings");
+            }
             if is_number_to_string_call(callee, args) && !is_buffer_to_string_call(callee, args) {
                 imports.insert("strconv");
             }
@@ -1775,6 +1778,67 @@ func tsgodownStringCharCodeAt(value string, index float64) float64 {
 		return 0
 	}
 	return float64(chars[offset])
+}
+
+func tsgodownURIHexNibble(value byte) (byte, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return value - '0', true
+	case value >= 'A' && value <= 'F':
+		return value - 'A' + 10, true
+	case value >= 'a' && value <= 'f':
+		return value - 'a' + 10, true
+	default:
+		return 0, false
+	}
+}
+
+func tsgodownEncodeURIComponent(value string) string {
+	const hex = "0123456789ABCDEF"
+	var out strings.Builder
+	for _, item := range []byte(value) {
+		if item >= 'A' && item <= 'Z' || item >= 'a' && item <= 'z' || item >= '0' && item <= '9' ||
+			item == '-' || item == '_' || item == '.' || item == '!' || item == '~' || item == '*' || item == '\'' || item == '(' || item == ')' {
+			out.WriteByte(item)
+			continue
+		}
+		out.WriteByte('%')
+		out.WriteByte(hex[item>>4])
+		out.WriteByte(hex[item&0x0f])
+	}
+	return out.String()
+}
+
+func tsgodownUnescape(value string) string {
+	var out strings.Builder
+	for index := 0; index < len(value); index++ {
+		if value[index] != '%' {
+			out.WriteByte(value[index])
+			continue
+		}
+		if index+5 < len(value) && value[index+1] == 'u' {
+			a, okA := tsgodownURIHexNibble(value[index+2])
+			b, okB := tsgodownURIHexNibble(value[index+3])
+			c, okC := tsgodownURIHexNibble(value[index+4])
+			d, okD := tsgodownURIHexNibble(value[index+5])
+			if okA && okB && okC && okD {
+				out.WriteRune(rune(a)<<12 | rune(b)<<8 | rune(c)<<4 | rune(d))
+				index += 5
+				continue
+			}
+		}
+		if index+2 < len(value) {
+			a, okA := tsgodownURIHexNibble(value[index+1])
+			b, okB := tsgodownURIHexNibble(value[index+2])
+			if okA && okB {
+				out.WriteRune(rune(a<<4 | b))
+				index += 2
+				continue
+			}
+		}
+		out.WriteByte(value[index])
+	}
+	return out.String()
 }
 
 func tsgodownStringFromCharCode(values ...float64) string {
@@ -3787,11 +3851,24 @@ fn collect_module_slots(
                 render_object_literal(slot_init, &state).map(|(rendered, object)| {
                     (AotSlotKind::Any, rendered, None, Some(object), false, None)
                 });
-            let Some((kind, rendered, go_type, object, dynamic_object, dynamic_object_order)) =
-                rendered_dynamic_object
+            let selected_slot = match rendered_typed {
+                Some((AotSlotKind::Bytes, rendered, go_type, object, dynamic_object, order)) => {
+                    Some((
+                        AotSlotKind::Bytes,
+                        rendered,
+                        go_type,
+                        object,
+                        dynamic_object,
+                        order,
+                    ))
+                }
+                other => rendered_dynamic_object
                     .or(rendered_any_array)
-                    .or(rendered_typed)
-                    .or(rendered_object)
+                    .or(other)
+                    .or(rendered_object),
+            };
+            let Some((kind, rendered, go_type, object, dynamic_object, dynamic_object_order)) =
+                selected_slot
             else {
                 continue;
             };
@@ -5725,6 +5802,10 @@ fn infer_expr_param_kinds(
             if is_string_cast_call(callee, args) || is_boolean_cast_call(callee, args) =>
         {
             mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::Any);
+            infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Call { callee, args, .. } if is_uri_string_call(callee, args) => {
+            mark_ident_param_kind(&args[0], param_index, kinds, AotSlotKind::String);
             infer_expr_param_kinds(&args[0], param_index, kinds, builtin_aliases);
         }
         JsExpr::Call { callee, args, .. } if is_array_is_array_call(callee, args) => {
@@ -7749,6 +7830,9 @@ fn collect_string_array_returns(
         match stmt {
             JsStmt::Return { value: Some(value) } => {
                 *saw_return = true;
+                if render_bytes_expr(value, state).is_some() {
+                    return Some(false);
+                }
                 if render_string_array_expr(value, state).is_none() {
                     return Some(false);
                 }
@@ -9066,7 +9150,7 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             optional: false,
         } if is_length_member_property(property, property_expr.as_deref()) => {
             let object = render_string_expr(object, state)?;
-            Some(format!("float64(len({object}))"))
+            Some(format!("float64(len([]rune({object})))"))
         }
         JsExpr::Member {
             object,
@@ -9280,6 +9364,9 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Unary { op, arg } if op == "typeof" => render_typeof_expr(arg, state),
         JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => {
             render_js_to_string_expr(args.first()?, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_uri_string_call(callee, args) => {
+            render_uri_string_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_string_from_char_code_call(callee, args) => {
             let args = args
@@ -14556,6 +14643,29 @@ fn render_string_numeric_method_call(
 
 fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "String")
+}
+
+fn is_uri_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Ident { name } if matches!(name.as_str(), "encodeURIComponent" | "unescape")
+        )
+}
+
+fn render_uri_string_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if !is_uri_string_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Ident { name } = callee else {
+        return None;
+    };
+    let value = render_string_expr(args.first()?, state)?;
+    match name.as_str() {
+        "encodeURIComponent" => Some(format!("tsgodownEncodeURIComponent({value})")),
+        "unescape" => Some(format!("tsgodownUnescape({value})")),
+        _ => None,
+    }
 }
 
 fn is_string_from_char_code_call(callee: &JsExpr, args: &[JsExpr]) -> bool {

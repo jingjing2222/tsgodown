@@ -4555,7 +4555,9 @@ console.log("string-methods", normalize(" Go "), inspect("tsgodown"), inspect("r
         assert!(response.files[0].contents.contains("strings.ToLower"));
         assert!(response.files[0].contents.contains("strings.Contains"));
         assert!(response.files[0].contents.contains("strings.Index"));
-        assert!(response.files[0].contents.contains("float64(len(value))"));
+        assert!(response.files[0]
+            .contents
+            .contains("float64(len([]rune(value)))"));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -6300,6 +6302,86 @@ console.log("string-array-set", encode("\u0000\u0001AZ"))
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "string-array-set %00%01AZ\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_uri_unescape_string_to_bytes_subset() {
+        let root = temp_project("engine-core-aot-uri-unescape-string-to-bytes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function stringToBytes(str) {
+  str = unescape(encodeURIComponent(str))
+  const bytes = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; ++i) {
+    bytes[i] = str.charCodeAt(i)
+  }
+  return bytes
+}
+const bytes = stringToBytes("abc-\u00e9")
+const escaped = unescape("%u00E9")
+console.log("uri-bytes", bytes.length, bytes[0], bytes[3], bytes[4], bytes[5], escaped.charCodeAt(0))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-uri-unescape-string-to-bytes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownEncodeURIComponent"));
+        assert!(response.files[0].contents.contains("tsgodownUnescape"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uri-bytes 6 97 45 195 169 233\n"
         );
     }
 
