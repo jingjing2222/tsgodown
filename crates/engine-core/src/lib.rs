@@ -11428,7 +11428,6 @@ console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Mat
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_symbol_math_and_number_methods_subset() {
         let root = temp_project("engine-core-symbol-math-number");
         write(

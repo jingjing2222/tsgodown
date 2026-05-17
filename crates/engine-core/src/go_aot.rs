@@ -1284,12 +1284,38 @@ fn go_import_usage_token(import: &str) -> &'static str {
 fn render_aot_helpers(imports: &BTreeSet<&'static str>) -> String {
     let mut helpers = vec![r#"type tsgodownRegExp string
 
+type tsgodownSymbol struct {
+	description string
+}
+
+func tsgodownNewSymbol(description string) tsgodownSymbol {
+	return tsgodownSymbol{description: description}
+}
+
+func tsgodownWellKnownSymbol(name string) tsgodownSymbol {
+	return tsgodownSymbol{description: name}
+}
+
+func tsgodownSymbolToString(value any) string {
+	switch value := value.(type) {
+	case tsgodownSymbol:
+		if value.description == "" {
+			return "Symbol()"
+		}
+		return "Symbol(" + value.description + ")"
+	default:
+		return tsgodownToString(value)
+	}
+}
+
 func tsgodownObjectToStringTag(value any) string {
 	switch value.(type) {
 	case nil:
 		return "[object Undefined]"
 	case tsgodownRegExp:
 		return "[object RegExp]"
+	case tsgodownSymbol:
+		return "[object Symbol]"
 	case bool:
 		return "[object Boolean]"
 	case float64, int, int64:
@@ -1437,6 +1463,56 @@ func tsgodownMathRound(value float64) float64 {
 
 func tsgodownMathRandom() float64 {
 	return float64(time.Now().UnixNano()&0x1fffffffffffff) / float64(0x20000000000000)
+}
+
+func tsgodownNumberToString(value float64, radix float64) string {
+	base := int(radix)
+	if base < 2 || base > 36 {
+		base = 10
+	}
+	if math.IsNaN(value) {
+		return "NaN"
+	}
+	if math.IsInf(value, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(value, -1) {
+		return "-Infinity"
+	}
+	if value == 0 {
+		return "0"
+	}
+	sign := ""
+	if value < 0 {
+		sign = "-"
+		value = -value
+	}
+	if math.Trunc(value) == value {
+		return sign + strconv.FormatInt(int64(value), base)
+	}
+	if base == 10 {
+		return sign + strconv.FormatFloat(value, 'f', -1, 64)
+	}
+	digits := "0123456789abcdefghijklmnopqrstuvwxyz"
+	integer := math.Floor(value)
+	output := strconv.FormatInt(int64(integer), base) + "."
+	fraction := value - integer
+	for index := 0; index < 32 && fraction > 0; index++ {
+		fraction *= float64(base)
+		digit := int(math.Floor(fraction))
+		if digit < 0 {
+			digit = 0
+		}
+		if digit >= base {
+			digit = base - 1
+		}
+		output += digits[digit : digit+1]
+		fraction -= float64(digit)
+	}
+	if strings.HasSuffix(output, ".") {
+		output += "0"
+	}
+	return sign + output
 }
 
 func tsgodownStringArrayAt(values []string, index float64) string {
@@ -2715,6 +2791,8 @@ func tsgodownEventEmitterEmit(target *tsgodownEventEmitter, name string, payload
 		return strconv.FormatInt(value, 10)
 	case string:
 		return value
+	case tsgodownSymbol:
+		return tsgodownSymbolToString(value)
 	default:
 		return "[object Object]"
 	}
@@ -10966,6 +11044,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_call_expr(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => render_error_object_expr(expr, state)
+            .or_else(|| render_symbol_expr(expr, state))
             .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
@@ -11012,7 +11091,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property,
             property_expr: None,
             optional: false,
-        } => render_class_getter_member_expr(object, property, state)
+        } => render_symbol_expr(expr, state)
+            .or_else(|| render_class_getter_member_expr(object, property, state))
             .or_else(|| render_static_member_expr(object, property, state))
             .or_else(|| {
                 if property == "length" || property.parse::<usize>().is_ok() {
@@ -11424,6 +11504,10 @@ fn render_math_numeric_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) 
             };
             Some(format!("{function}({value})"))
         }
+        "abs" if args.len() == 1 => {
+            let value = render_numeric_expr(args.first()?, state)?;
+            Some(format!("math.Abs({value})"))
+        }
         "pow" if args.len() == 2 => {
             let base = render_numeric_expr(args.first()?, state)?;
             let exponent = render_numeric_expr(args.get(1)?, state)?;
@@ -11551,6 +11635,11 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             if render_number_to_string_call(callee, args, state).is_some() =>
         {
             render_number_to_string_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_symbol_to_string_call(callee, args, state).is_some() =>
+        {
+            render_symbol_to_string_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_json_stringify(callee) => {
             render_json_stringify_call(args, state)
@@ -11909,12 +11998,119 @@ fn render_number_to_string_call(
     let JsExpr::Member { object, .. } = callee else {
         return None;
     };
+    if matches!(object.as_ref(), JsExpr::Ident { name } if is_any_binding(name, state)) {
+        return None;
+    }
     let value = render_numeric_expr(object, state)?;
     let radix = args
         .first()
         .map(|arg| render_numeric_expr(arg, state))
         .unwrap_or_else(|| Some("10".to_string()))?;
-    Some(format!("strconv.FormatInt(int64({value}), int({radix}))"))
+    Some(format!("tsgodownNumberToString({value}, {radix})"))
+}
+
+fn render_symbol_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Call { callee, args, .. } if is_symbol_constructor_call(callee, args) => {
+            let description = args
+                .first()
+                .map(|arg| render_symbol_description_expr(arg, state))
+                .unwrap_or_else(|| Some("\"\"".to_string()))?;
+            Some(format!("tsgodownNewSymbol({description})"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Symbol") => {
+            match property.as_str() {
+                "iterator" | "asyncIterator" | "hasInstance" | "isConcatSpreadable" | "match"
+                | "matchAll" | "replace" | "search" | "species" | "split" | "toPrimitive"
+                | "toStringTag" | "unscopables" => Some(format!(
+                    "tsgodownWellKnownSymbol({})",
+                    go_string_literal(&format!("Symbol.{property}"))
+                )),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn render_symbol_description_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if is_nullish_expr(expr) {
+        return Some("\"\"".to_string());
+    }
+    render_js_to_string_expr(expr, state)
+}
+
+fn is_symbol_constructor_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() <= 1 && matches!(callee, JsExpr::Ident { name } if name == "Symbol")
+}
+
+fn render_symbol_to_string_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if args.is_empty() {
+        let JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } = callee
+        else {
+            return None;
+        };
+        if property == "toString" {
+            let value = render_expr(object, state)?;
+            return Some(format!("tsgodownSymbolToString({value})"));
+        }
+    }
+    if is_symbol_prototype_to_string_call(callee, args) {
+        let value = render_expr(args.first()?, state)?;
+        return Some(format!("tsgodownSymbolToString({value})"));
+    }
+    None
+}
+
+fn is_symbol_prototype_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    property == "call" && is_symbol_prototype_to_string_ref(object)
+}
+
+fn is_symbol_prototype_to_string_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "toString" && matches!(
+            object.as_ref(),
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "prototype"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Symbol")
+        )
+    )
 }
 
 fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -11927,6 +12123,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Null,
         } => Some("\"object\"".to_string()),
         JsExpr::Ident { name } if name == "process" => Some("\"object\"".to_string()),
+        JsExpr::Ident { name } if name == "Symbol" => Some("\"function\"".to_string()),
         JsExpr::Value {
             value: JsValue::Bool { .. },
         } => Some("\"boolean\"".to_string()),
@@ -11961,7 +12158,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             let value = go_binding_ref(name, state);
             Some(format!(
-                "func() string {{ switch any({value}).(type) {{ case nil: return \"undefined\"; case bool: return \"boolean\"; case float64, int, int64: return \"number\"; case string: return \"string\"; default: return \"object\" }} }}()"
+                "func() string {{ switch any({value}).(type) {{ case nil: return \"undefined\"; case bool: return \"boolean\"; case float64, int, int64: return \"number\"; case string: return \"string\"; case tsgodownSymbol: return \"symbol\"; default: return \"object\" }} }}()"
             ))
         }
         expr if is_process_function_ref(expr).is_some() => Some("\"function\"".to_string()),
