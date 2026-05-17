@@ -1983,6 +1983,21 @@ func tsgodownObjectProp(value any, key string) any {
 	return object[key]
 }
 
+func tsgodownNullish(value any, fallback any) any {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
+func tsgodownOptionalCallMember(value any, key string, args ...any) any {
+	member := tsgodownObjectProp(value, key)
+	if member == nil {
+		return nil
+	}
+	return tsgodownCall(member, args...)
+}
+
 func tsgodownObjectSetProp(value any, key string, propertyValue any) {
 	object := tsgodownObjectFromAny(value)
 	object[key] = propertyValue
@@ -5873,6 +5888,12 @@ fn infer_expr_param_kinds(
             if is_number_literal_like(left) {
                 mark_ident_param_kind(right, param_index, kinds, AotSlotKind::Any);
             }
+            if matches!(right.as_ref(), JsExpr::Object { .. }) {
+                mark_ident_param_kind(left, param_index, kinds, AotSlotKind::Any);
+            }
+            if matches!(left.as_ref(), JsExpr::Object { .. }) {
+                mark_ident_param_kind(right, param_index, kinds, AotSlotKind::Any);
+            }
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
@@ -9052,6 +9073,11 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_string_array_expr(expr, state).or_else(|| render_json_value_expr(expr, state))
         }
         JsExpr::Object { .. } => render_object_map_expr(expr, state),
+        JsExpr::Binary { op, left, right } if op == "??" => {
+            let left = render_expr(left, state)?;
+            let right = render_expr(right, state)?;
+            Some(format!("tsgodownNullish({left}, {right})"))
+        }
         JsExpr::Binary { op, .. } if op == "+" => render_string_expr(expr, state).or_else(|| {
             let JsExpr::Binary { left, right, .. } = expr else {
                 return None;
@@ -9083,6 +9109,11 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             consequent,
             alternate,
         } => render_conditional_expr(test, consequent, alternate, state, render_expr, "any"),
+        JsExpr::Call {
+            callee,
+            args,
+            optional: true,
+        } => render_optional_call_expr(callee, args, state),
         JsExpr::Call { callee, args, .. } if is_local_function_call(callee, state) => {
             render_call_expr(callee, args, state)
         }
@@ -10681,6 +10712,13 @@ fn render_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_crypto_hash_bytes_digest_call(callee, args) => {
             render_crypto_hash_bytes_digest_call(callee, args, state)
+        }
+        JsExpr::Binary { op, left, right } if op == "??" => {
+            let left = render_expr(left, state)?;
+            let right = render_bytes_expr_with_any_cast(right, state)?;
+            Some(format!(
+                "func() []byte {{ value := {left}; if value != nil {{ return value.([]byte) }}; return {right} }}()"
+            ))
         }
         JsExpr::Call { callee, args, .. } if matches!(callee.as_ref(), JsExpr::Ident { name } if is_any_binding(name, state)) =>
         {
@@ -15643,6 +15681,31 @@ fn string_literal_value(expr: &JsExpr) -> Option<String> {
     }
 }
 
+fn render_optional_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let object = render_expr(object, state)?;
+    let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
+    let args = args
+        .iter()
+        .map(|arg| render_expr(arg, state))
+        .collect::<Option<Vec<_>>>()?;
+    if args.is_empty() {
+        return Some(format!("tsgodownOptionalCallMember({object}, {key})"));
+    }
+    Some(format!(
+        "tsgodownOptionalCallMember({object}, {key}, {})",
+        args.join(", ")
+    ))
+}
+
 fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
     if is_array_is_array_call(callee, args) || is_array_is_array_alias_call(callee, args, state) {
         return render_array_is_array_call(args, state);
@@ -15947,6 +16010,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
         JsExpr::Function { .. } => render_inline_function_value_expr(expr, state),
+        JsExpr::Ident { name } if state.functions.contains_key(name) => {
+            render_function_reference_expr(name, state)
+        }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }

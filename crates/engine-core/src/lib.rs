@@ -6654,6 +6654,135 @@ console.log("uuid-v35", v35(0x30, hash, "AZ", namespace), out[1], out[7], out[9]
     }
 
     #[test]
+    fn emit_go_runs_aot_uuid_v4_nullish_optional_rng_subset() {
+        let root = temp_project("engine-core-aot-uuid-v4-nullish-optional-rng");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const byteToHex = []
+for (let i = 0; i < 256; ++i) {
+  byteToHex.push((i + 0x100).toString(16).slice(1))
+}
+function unsafeStringify(arr, offset = 0) {
+  return (byteToHex[arr[offset + 0]] +
+    byteToHex[arr[offset + 1]] +
+    byteToHex[arr[offset + 2]] +
+    byteToHex[arr[offset + 3]] +
+    "-" +
+    byteToHex[arr[offset + 4]] +
+    byteToHex[arr[offset + 5]] +
+    "-" +
+    byteToHex[arr[offset + 6]] +
+    byteToHex[arr[offset + 7]] +
+    "-" +
+    byteToHex[arr[offset + 8]] +
+    byteToHex[arr[offset + 9]] +
+    "-" +
+    byteToHex[arr[offset + 10]] +
+    byteToHex[arr[offset + 11]] +
+    byteToHex[arr[offset + 12]] +
+    byteToHex[arr[offset + 13]] +
+    byteToHex[arr[offset + 14]] +
+    byteToHex[arr[offset + 15]]).toLowerCase()
+}
+function rng() {
+  return Uint8Array.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+}
+function optionRng() {
+  return Uint8Array.of(32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47)
+}
+function v4(options, buf, offset) {
+  options = options || {}
+  const rnds = options.random ?? options.rng?.() ?? rng()
+  if (rnds.length < 16) {
+    throw new Error("bad random")
+  }
+  rnds[6] = (rnds[6] & 0x0f) | 0x40
+  rnds[8] = (rnds[8] & 0x3f) | 0x80
+  if (buf) {
+    offset = offset || 0
+    if (offset < 0 || offset + 16 > buf.length) {
+      throw new RangeError(`range ${offset}:${offset + 15}`)
+    }
+    for (let i = 0; i < 16; ++i) {
+      buf[offset + i] = rnds[i]
+    }
+    return buf
+  }
+  return unsafeStringify(rnds)
+}
+const out = new Uint8Array(18)
+v4(null, out, 1)
+console.log("uuid-v4", v4(), out[7], out[9], out.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-uuid-v4-nullish-optional-rng".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}\nmain.go={}",
+            response.diagnostics,
+            response
+                .files
+                .first()
+                .map(|file| file.contents.as_str())
+                .unwrap_or("")
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownNullish"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownOptionalCallMember"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uuid-v4 00010203-0405-4607-8809-0a0b0c0d0e0f 70 136 18\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(
