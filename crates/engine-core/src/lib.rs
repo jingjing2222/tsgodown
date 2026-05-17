@@ -13019,7 +13019,6 @@ function later() {
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_delete_and_subtract_assign_subset() {
         let root = temp_project("engine-core-delete-subassign");
         write(

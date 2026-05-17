@@ -2097,6 +2097,12 @@ func tsgodownObjectSetProp(value any, key string, propertyValue any) {
 	object[key] = propertyValue
 }
 
+func tsgodownObjectDelete(value any, key string) bool {
+	object := tsgodownObjectFromAny(value)
+	delete(object, key)
+	return true
+}
+
 func tsgodownPostIncFloat(target *float64) float64 {
 	old := *target
 	*target = old + 1
@@ -7872,12 +7878,26 @@ fn collect_dynamic_object_candidates_expr(expr: &JsExpr, candidates: &mut BTreeS
                 collect_dynamic_object_candidates_expr(property_expr, candidates);
             }
         }
-        JsExpr::Binary { left, right, .. } => {
+        JsExpr::Binary { op, left, right } => {
+            if op == "in" {
+                if let JsExpr::Ident { name } = right.as_ref() {
+                    candidates.insert(name.clone());
+                }
+            }
             collect_dynamic_object_candidates_expr(left, candidates);
             collect_dynamic_object_candidates_expr(right, candidates);
         }
-        JsExpr::Unary { arg, .. }
-        | JsExpr::Await { arg }
+        JsExpr::Unary { op, arg } => {
+            if op == "delete" {
+                if let JsExpr::Member { object, .. } = arg.as_ref() {
+                    if let JsExpr::Ident { name } = object.as_ref() {
+                        candidates.insert(name.clone());
+                    }
+                }
+            }
+            collect_dynamic_object_candidates_expr(arg, candidates);
+        }
+        JsExpr::Await { arg }
         | JsExpr::Update { arg, .. }
         | JsExpr::Spread { arg }
         | JsExpr::ObjectRest { object: arg, .. } => {
@@ -9324,6 +9344,11 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             render_comparison_expr(op, left, right, state)
         }
+        JsExpr::Binary { op, left, right } if op == "in" => {
+            let key = render_expr(left, state)?;
+            let object = render_expr(right, state)?;
+            Some(format!("tsgodownObjectHasOwn({object}, {key})"))
+        }
         JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
             let left = render_bool_expr(left, state)?;
             let right = render_bool_expr(right, state)?;
@@ -9347,6 +9372,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Unary { op, arg } if op == "!" => {
             let arg = render_bool_test_expr(arg, state)?;
             Some(format!("(!{arg})"))
+        }
+        JsExpr::Unary { op, arg } if op == "delete" => {
+            render_delete_object_property_expr(arg, state)
         }
         JsExpr::Conditional {
             test,
@@ -9488,6 +9516,10 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_url_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_url_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Unary { op, arg } if op == "delete" => {
+            let deleted = render_delete_object_property_expr(arg, state)?;
+            Some(format!("_ = {deleted}"))
         }
         JsExpr::Call { callee, args, .. }
             if render_object_assign_stmt(callee, args, state).is_some() =>
@@ -10298,6 +10330,21 @@ fn render_reflect_delete_property_stmt(
     Some(format!("_ = os.Unsetenv({key})"))
 }
 
+fn render_delete_object_property_expr(arg: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = arg
+    else {
+        return None;
+    };
+    let object = render_dynamic_object_source_expr(object, state)?;
+    let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
+    Some(format!("tsgodownObjectDelete({object}, {key})"))
+}
+
 fn is_reflect_delete_property_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 2
         && matches!(
@@ -10545,6 +10592,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("({left} {op} {right})"))
         }
         JsExpr::Binary { op, .. } if op == "instanceof" => render_bool_expr(expr, state),
+        JsExpr::Binary { op, .. } if op == "in" => render_bool_expr(expr, state),
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
         }
