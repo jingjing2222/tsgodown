@@ -167,6 +167,9 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                 }
             }
             if let Some(parts) = function_parts(stmt) {
+                if module_classes.contains_key(&(module.id.clone(), parts.name.clone())) {
+                    continue;
+                }
                 if let (Some(function), Some(state)) = (
                     module_functions.get(&(module.id.clone(), parts.name.clone())),
                     state.as_ref(),
@@ -4016,6 +4019,9 @@ fn collect_classes_from_stmts(
         if let Some(class) = collect_class(module, entry, stmt) {
             classes.insert((module.id.clone(), class.name.clone()), class);
         }
+        if let Some(class) = collect_function_constructor_class(module, entry, stmt) {
+            classes.insert((module.id.clone(), class.name.clone()), class);
+        }
         match stmt {
             JsStmt::FunctionDecl { body, .. } => {
                 collect_classes_from_stmts(module, entry, body, classes);
@@ -4281,6 +4287,72 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
         methods: class_methods,
         getters: class_getters,
         super_error_name,
+    })
+}
+
+fn collect_function_constructor_class(
+    module: &Module,
+    entry: &Module,
+    stmt: &JsStmt,
+) -> Option<AotClass> {
+    let JsStmt::FunctionDecl {
+        name,
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+    } = stmt
+    else {
+        return None;
+    };
+    if body.is_empty() {
+        return None;
+    }
+    let go_name = if module.id == entry.id {
+        sanitize_go_identifier(name)
+    } else {
+        module_member_go_name(module, name)
+    };
+    let mut fields = BTreeMap::new();
+    let mut constructor_values = Vec::new();
+    for stmt in body {
+        let JsStmt::Expr { expr } = stmt else {
+            return None;
+        };
+        let JsExpr::Assign { op, left, right } = expr else {
+            return None;
+        };
+        if op != "=" {
+            return None;
+        }
+        let property = this_member_property(left)?;
+        let kind = match right.as_ref() {
+            JsExpr::Value {
+                value: JsValue::String { .. },
+            } => AotSlotKind::String,
+            JsExpr::Value {
+                value: JsValue::Number { .. },
+            } => AotSlotKind::Number,
+            JsExpr::Value {
+                value: JsValue::Bool { .. },
+            } => AotSlotKind::Bool,
+            JsExpr::Ident { name } if params.contains(name) => AotSlotKind::Any,
+            _ => return None,
+        };
+        fields.insert(property.clone(), kind);
+        constructor_values.push((property, right.as_ref().clone()));
+    }
+    Some(AotClass {
+        name: name.clone(),
+        go_name,
+        fields,
+        constructor_params: params.clone(),
+        constructor_values,
+        constructor_body: Vec::new(),
+        methods: BTreeMap::new(),
+        getters: BTreeMap::new(),
+        super_error_name: None,
     })
 }
 
@@ -4946,12 +5018,15 @@ fn render_module_decls(
         }
         if module_uses_runtime_cjs_exports(module, &state) {
             declarations.push(format!(
-                "var {} map[string]any = map[string]any{{}}",
+                "var {} any = map[string]any{{}}",
                 module_exports_go_name(module)
             ));
         }
         for stmt in &module.executable.as_ref()?.stmts {
             if let Some(parts) = function_parts(stmt) {
+                if module_classes.contains_key(&(module.id.clone(), parts.name.clone())) {
+                    continue;
+                }
                 let function = module_functions.get(&(module.id.clone(), parts.name.clone()))?;
                 declarations.push(render_function_decl(function, &state)?);
             }
@@ -5108,6 +5183,10 @@ fn module_aot_state(
             .find(|candidate| &candidate.id == resolved)?;
         for binding in &import.bindings {
             if import.kind == "cjs" {
+                if let Some(class) = context.default_class_exports.get(&imported_module.id) {
+                    state.classes.insert(binding.local.clone(), class.clone());
+                    continue;
+                }
                 if let Some(function) = context.default_exports.get(&imported_module.id) {
                     state
                         .functions
@@ -5119,10 +5198,6 @@ fn module_aot_state(
                         ir,
                         context,
                     );
-                    continue;
-                }
-                if let Some(class) = context.default_class_exports.get(&imported_module.id) {
-                    state.classes.insert(binding.local.clone(), class.clone());
                     continue;
                 }
                 let imported = binding.imported.as_deref().unwrap_or(&binding.local);
@@ -5185,14 +5260,14 @@ fn module_aot_state(
             }
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
             if imported == "default" {
+                if let Some(class) = context.default_class_exports.get(&imported_module.id) {
+                    state.classes.insert(binding.local.clone(), class.clone());
+                    continue;
+                }
                 if let Some(function) = context.default_exports.get(&imported_module.id) {
                     state
                         .functions
                         .insert(binding.local.clone(), function.clone());
-                    continue;
-                }
-                if let Some(class) = context.default_class_exports.get(&imported_module.id) {
-                    state.classes.insert(binding.local.clone(), class.clone());
                     continue;
                 }
                 if let Some(named) = context
@@ -5323,12 +5398,12 @@ fn bind_forwarded_import(
         return false;
     };
     if target_imported == "default" {
-        if let Some(function) = context.default_exports.get(target_module_id) {
-            state.functions.insert(local.to_string(), function.clone());
-            return true;
-        }
         if let Some(class) = context.default_class_exports.get(target_module_id) {
             state.classes.insert(local.to_string(), class.clone());
+            return true;
+        }
+        if let Some(function) = context.default_exports.get(target_module_id) {
+            state.functions.insert(local.to_string(), function.clone());
             return true;
         }
         if let Some(target_local) = context
@@ -10625,6 +10700,9 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_require_call(expr) => {
             let spec = render_require_spec_arg(callee, args)?;
+            if spec.starts_with("\"./") || spec.starts_with("\"../") {
+                return Some(String::new());
+            }
             Some(format!("_ = tsgodownRequire({spec})"))
         }
         JsExpr::Call { callee, args, .. } if is_array_for_each_call(callee, args) => {
@@ -11515,7 +11593,8 @@ fn render_dynamic_object_assignment_stmt(
 
 fn render_module_exports_assignment_stmt(right: &JsExpr, state: &AotState) -> Option<String> {
     let target = state.module_exports_ref.as_ref()?;
-    let value = render_dynamic_object_init_expr(right, state)?;
+    let value =
+        render_dynamic_object_init_expr(right, state).or_else(|| render_expr(right, state))?;
     Some(format!("{target} = {value}"))
 }
 
@@ -12084,6 +12163,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } => render_symbol_expr(expr, state)
             .or_else(|| render_iterator_value_member_expr(object, property, state))
             .or_else(|| render_class_getter_member_expr(object, property, state))
+            .or_else(|| render_class_field_member_expr(object, property, state))
             .or_else(|| render_static_member_expr(object, property, state))
             .or_else(|| {
                 if property == "length" || property.parse::<usize>().is_ok() {
@@ -13835,6 +13915,32 @@ fn render_class_getter_member_expr(
             let class = state.classes.get(&class_name)?;
             class.getters.get(property)?;
             Some(format!("{}.{}()", value, sanitize_go_identifier(property)))
+        }
+        _ => None,
+    }
+}
+
+fn render_class_field_member_expr(
+    object: &JsExpr,
+    property: &str,
+    state: &AotState,
+) -> Option<String> {
+    match object {
+        JsExpr::Ident { name } => {
+            let class_name = state.class_instance_bindings.get(name)?;
+            let class = state.classes.get(class_name)?;
+            class.fields.get(property)?;
+            Some(format!(
+                "{}.{}",
+                go_binding_ref(name, state),
+                sanitize_go_identifier(property)
+            ))
+        }
+        JsExpr::New { .. } => {
+            let (class_name, value) = render_new_class_expr(object, state)?;
+            let class = state.classes.get(&class_name)?;
+            class.fields.get(property)?;
+            Some(format!("{}.{}", value, sanitize_go_identifier(property)))
         }
         _ => None,
     }

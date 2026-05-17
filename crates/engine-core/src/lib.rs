@@ -12008,7 +12008,6 @@ exports.extra = add.extra
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_commonjs_circular_mid_export_subset() {
         let root = temp_project("engine-core-cjs-circular-mid-export");
         write(
