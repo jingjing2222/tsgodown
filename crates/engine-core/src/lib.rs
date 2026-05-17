@@ -10737,7 +10737,6 @@ console.log("numbers", fromLiteral, fromNumber, empty)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_bitwise_and_compound_assignment_subset() {
         let root = temp_project("engine-core-bitwise-compound-assignment");
         write(

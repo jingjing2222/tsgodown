@@ -59,6 +59,7 @@ pub(crate) fn render_aot_executable_program(
     )?;
     state.go_imports = collect_aot_imports(&analyzed.ir);
     mark_dynamic_object_locals(&module.executable.as_ref()?.stmts, &mut state);
+    mark_logical_assignment_any_locals(&module.executable.as_ref()?.stmts, &mut state);
     mark_string_array_locals(&module.executable.as_ref()?.stmts, &mut state);
     mark_any_array_locals(&module.executable.as_ref()?.stmts, &mut state);
     let mut body = module_init_order(&analyzed.ir, module)
@@ -178,6 +179,7 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
         if let Some(state) = state.as_ref() {
             let mut render_state = clone_aot_state(state);
             mark_dynamic_object_locals(&executable.stmts, &mut render_state);
+            mark_logical_assignment_any_locals(&executable.stmts, &mut render_state);
             mark_string_array_locals(&executable.stmts, &mut render_state);
             mark_any_array_locals(&executable.stmts, &mut render_state);
             for stmt in &executable.stmts {
@@ -1136,7 +1138,14 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 collect_stmt_imports(stmt, imports);
             }
         }
-        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
+        JsExpr::Assign { op, left, right } => {
+            if matches!(op.as_str(), "%=" | "**=") {
+                imports.insert("math");
+            }
+            collect_expr_imports(left, imports);
+            collect_expr_imports(right, imports);
+        }
+        JsExpr::Binary { left, right, .. } => {
             collect_expr_imports(left, imports);
             collect_expr_imports(right, imports);
         }
@@ -4430,7 +4439,10 @@ fn collect_module_slots(
         collect_dynamic_object_candidates(&executable.stmts, &mut dynamic_object_writes);
         mark_number_array_locals(&executable.stmts, &mut state);
         mark_string_array_locals(&executable.stmts, &mut state);
+        mark_logical_assignment_any_locals(&executable.stmts, &mut state);
         mark_any_array_locals(&executable.stmts, &mut state);
+        let mut logical_assignment_targets = BTreeSet::new();
+        collect_logical_assignment_targets(&executable.stmts, &mut logical_assignment_targets);
         for stmt in &executable.stmts {
             let JsStmt::VarDecl {
                 name,
@@ -4477,6 +4489,14 @@ fn collect_module_slots(
                         None,
                     )
                 });
+            let rendered_logical_any = logical_assignment_targets
+                .contains(name)
+                .then(|| {
+                    render_json_value_expr(slot_init, &state)
+                        .or_else(|| render_expr(slot_init, &state))
+                })
+                .flatten()
+                .map(|rendered| (AotSlotKind::Any, rendered, Some("any"), None, false, None));
             let rendered_typed =
                 render_typed_slot_expr(slot_init, &state).map(|(kind, rendered, go_type)| {
                     (kind, rendered, Some(go_type), None, false, None)
@@ -4498,6 +4518,7 @@ fn collect_module_slots(
                 }
                 other => rendered_dynamic_object
                     .or(rendered_any_array)
+                    .or(rendered_logical_any)
                     .or(other)
                     .or(rendered_object),
             };
@@ -4630,6 +4651,7 @@ fn render_module_init_body(
     let executable = module.executable.as_ref()?;
     let mut state = clone_aot_state(state);
     mark_dynamic_object_locals(&executable.stmts, &mut state);
+    mark_logical_assignment_any_locals(&executable.stmts, &mut state);
     mark_string_array_locals(&executable.stmts, &mut state);
     mark_any_array_locals(&executable.stmts, &mut state);
     let mut body = Vec::new();
@@ -5336,6 +5358,7 @@ struct AotState {
     number_array_bindings: BTreeSet<String>,
     string_array_bindings: BTreeSet<String>,
     any_array_bindings: BTreeSet<String>,
+    logical_assignment_bindings: BTreeSet<String>,
     narrowed_any_array_bindings: BTreeSet<String>,
     date_bindings: BTreeSet<String>,
     regexp_bindings: BTreeSet<String>,
@@ -5446,6 +5469,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        logical_assignment_bindings: state.logical_assignment_bindings.clone(),
         narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
@@ -5669,6 +5693,11 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 if state.bindings.contains(name) && is_cjs_destructure_member_init(expr) {
                     return Some(String::new());
                 }
+                if state.logical_assignment_bindings.contains(name) && is_any_binding(name, state) {
+                    let value =
+                        render_json_value_expr(expr, state).or_else(|| render_expr(expr, state))?;
+                    return Some(format!("var {ident} any = {value}"));
+                }
                 if state.any_array_bindings.contains(name)
                     && matches!(expr, JsExpr::Array { items } if items.is_empty())
                 {
@@ -5777,6 +5806,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         return Some(format!(
                             "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
                         ));
+                    }
+                }
+                if state.bytes_bindings.contains(name) {
+                    if let Some(value) = render_bytes_expr_with_any_cast(expr, state) {
+                        state.bind_slot(name, ident.clone(), AotSlotKind::Bytes);
+                        return Some(format!("var {ident} []byte = {value}"));
                     }
                 }
                 if let Some(value) = render_bytes_expr(expr, state) {
@@ -5923,6 +5958,7 @@ fn render_for_stmt(
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        logical_assignment_bindings: state.logical_assignment_bindings.clone(),
         narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
@@ -6245,6 +6281,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        logical_assignment_bindings: state.logical_assignment_bindings.clone(),
         narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
@@ -6285,6 +6322,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         number_array_bindings: state.number_array_bindings.clone(),
         string_array_bindings: state.string_array_bindings.clone(),
         any_array_bindings: state.any_array_bindings.clone(),
+        logical_assignment_bindings: state.logical_assignment_bindings.clone(),
         narrowed_any_array_bindings: state.narrowed_any_array_bindings.clone(),
         date_bindings: state.date_bindings.clone(),
         regexp_bindings: state.regexp_bindings.clone(),
@@ -7656,6 +7694,7 @@ fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
     let mut function_state = clone_aot_state(state);
     mark_number_array_locals(body, &mut function_state);
     mark_string_array_locals(body, &mut function_state);
+    mark_logical_assignment_any_locals(body, &mut function_state);
     mark_any_array_locals(body, &mut function_state);
     mark_dynamic_object_locals(body, &mut function_state);
     body.iter()
@@ -8137,6 +8176,152 @@ fn mark_string_array_locals(stmts: &[JsStmt], state: &mut AotState) {
             sanitize_go_identifier(&name),
             AotSlotKind::StringArray,
         );
+    }
+}
+
+fn mark_logical_assignment_any_locals(stmts: &[JsStmt], state: &mut AotState) {
+    let mut candidates = BTreeSet::new();
+    collect_logical_assignment_targets(stmts, &mut candidates);
+    for name in candidates {
+        let go_ref = state
+            .binding_refs
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| sanitize_go_identifier(&name));
+        state.bind_slot(&name, go_ref, AotSlotKind::Any);
+        state.logical_assignment_bindings.insert(name);
+    }
+}
+
+fn collect_logical_assignment_targets(stmts: &[JsStmt], candidates: &mut BTreeSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Expr { expr } | JsStmt::Return { value: Some(expr) } => {
+                collect_logical_assignment_targets_expr(expr, candidates);
+            }
+            JsStmt::VarDecl {
+                init: Some(expr), ..
+            } => collect_logical_assignment_targets_expr(expr, candidates),
+            JsStmt::FunctionDecl { .. } => {}
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                collect_logical_assignment_targets_expr(test, candidates);
+                collect_logical_assignment_targets(consequent, candidates);
+                collect_logical_assignment_targets(alternate, candidates);
+            }
+            JsStmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                collect_logical_assignment_targets(init, candidates);
+                if let Some(test) = test {
+                    collect_logical_assignment_targets_expr(test, candidates);
+                }
+                if let Some(update) = update {
+                    collect_logical_assignment_targets_expr(update, candidates);
+                }
+                collect_logical_assignment_targets(body, candidates);
+            }
+            JsStmt::ForOf { right, body, .. } => {
+                collect_logical_assignment_targets_expr(right, candidates);
+                collect_logical_assignment_targets(body, candidates);
+            }
+            JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+                collect_logical_assignment_targets_expr(test, candidates);
+                collect_logical_assignment_targets(body, candidates);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                collect_logical_assignment_targets(body, candidates);
+                collect_logical_assignment_targets(catch_body, candidates);
+                collect_logical_assignment_targets(finally_body, candidates);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_logical_assignment_targets_expr(expr: &JsExpr, candidates: &mut BTreeSet<String>) {
+    match expr {
+        JsExpr::Assign { op, left, right } => {
+            if matches!(op.as_str(), "&&=" | "||=" | "??=") {
+                if let JsExpr::Ident { name } = left.as_ref() {
+                    candidates.insert(name.clone());
+                }
+            }
+            collect_logical_assignment_targets_expr(left, candidates);
+            collect_logical_assignment_targets_expr(right, candidates);
+        }
+        JsExpr::Binary { left, right, .. } => {
+            collect_logical_assignment_targets_expr(left, candidates);
+            collect_logical_assignment_targets_expr(right, candidates);
+        }
+        JsExpr::Call { callee, args, .. } => {
+            collect_logical_assignment_targets_expr(callee, candidates);
+            for arg in args {
+                collect_logical_assignment_targets_expr(arg, candidates);
+            }
+        }
+        JsExpr::Array { items } => {
+            for item in items {
+                collect_logical_assignment_targets_expr(item, candidates);
+            }
+        }
+        JsExpr::ArraySpread { items } => {
+            for item in items {
+                collect_logical_assignment_targets_expr(&item.value, candidates);
+            }
+        }
+        JsExpr::Object { props } => {
+            for prop in props {
+                if let Some(key_expr) = &prop.key_expr {
+                    collect_logical_assignment_targets_expr(key_expr, candidates);
+                }
+                collect_logical_assignment_targets_expr(&prop.value, candidates);
+            }
+        }
+        JsExpr::Function { .. } => {}
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            collect_logical_assignment_targets_expr(object, candidates);
+            if let Some(property_expr) = property_expr {
+                collect_logical_assignment_targets_expr(property_expr, candidates);
+            }
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => {
+            collect_logical_assignment_targets_expr(arg, candidates);
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            collect_logical_assignment_targets_expr(test, candidates);
+            collect_logical_assignment_targets_expr(consequent, candidates);
+            collect_logical_assignment_targets_expr(alternate, candidates);
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            for expr in exprs {
+                collect_logical_assignment_targets_expr(expr, candidates);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -9469,16 +9654,26 @@ fn render_assignment_stmt(
     let JsExpr::Ident { name } = left else {
         return None;
     };
-    if op == "??=" && state.bindings.contains(name) {
+    if matches!(op, "&&=" | "||=" | "??=") && state.bindings.contains(name) {
         let target = go_binding_ref(name, state);
         if is_any_binding(name, state) {
-            let right = render_bytes_expr(right, state)
-                .or_else(|| render_json_value_expr(right, state))
-                .or_else(|| render_expr(right, state))?;
-            return Some(format!("if {target} == nil {{ {target} = {right} }}"));
+            let right = render_logical_assignment_any_rhs(right, state)?;
+            return match op {
+                "&&=" => Some(format!(
+                    "if tsgodownToBool({target}) {{ {target} = {right} }}"
+                )),
+                "||=" => Some(format!(
+                    "if !tsgodownToBool({target}) {{ {target} = {right} }}"
+                )),
+                "??=" => Some(format!("if {target} == nil {{ {target} = {right} }}")),
+                _ => None,
+            };
         }
-        let _right = render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
-        return Some(String::new());
+        if op == "??=" {
+            let _right =
+                render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
+            return Some(String::new());
+        }
     }
     if !state.numeric_bindings.contains(name) {
         if state.number_array_bindings.contains(name) && op == "=" {
@@ -9518,6 +9713,11 @@ fn render_assignment_stmt(
             let target = go_binding_ref(name, state);
             let right = render_numeric_expr(right, state)?;
             let numeric_op = op.trim_end_matches('=');
+            if op == "%=" {
+                return Some(format!(
+                    "{target} = math.Mod(tsgodownToFloat64({target}), {right})"
+                ));
+            }
             return Some(format!(
                 "{target} = tsgodownToFloat64({target}) {numeric_op} {right}"
             ));
@@ -9533,10 +9733,79 @@ fn render_assignment_stmt(
     }
     let right = render_numeric_expr(right, state)?;
     match op {
-        "=" | "+=" | "-=" | "*=" | "/=" | "%=" => {
+        "=" | "+=" | "-=" | "*=" | "/=" => {
             Some(format!("{} {op} {right}", go_binding_ref(name, state)))
         }
+        "%=" => {
+            let target = go_binding_ref(name, state);
+            Some(format!("{target} = math.Mod({target}, {right})"))
+        }
+        "**=" => Some(format!(
+            "{target} = math.Pow({target}, {right})",
+            target = go_binding_ref(name, state)
+        )),
+        "&=" | "|=" | "^=" | "<<=" | ">>=" | ">>>=" => {
+            let target = go_binding_ref(name, state);
+            let value = render_bitwise_compound_expr(op, &target, &right)?;
+            Some(format!("{target} = {value}"))
+        }
         _ => None,
+    }
+}
+
+fn render_logical_assignment_any_rhs(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_logical_assignment_bytes_slice_rhs(expr, state)
+        .or_else(|| render_direct_bytes_expr(expr, state))
+        .or_else(|| render_json_value_expr(expr, state))
+        .or_else(|| render_expr(expr, state))
+}
+
+fn render_logical_assignment_bytes_slice_rhs(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !is_member_slice_call_shape(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee.as_ref() else {
+        return None;
+    };
+    let object = render_bytes_expr_with_any_cast(object, state)?;
+    let start = render_numeric_expr(args.first()?, state)?;
+    let end = args
+        .get(1)
+        .map(|arg| render_numeric_expr(arg, state))
+        .unwrap_or_else(|| Some(format!("float64(len({object}))")))?;
+    Some(format!(
+        "append([]byte(nil), {object}[int({start}):int({end})]...)"
+    ))
+}
+
+fn render_direct_bytes_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Array { .. } | JsExpr::New { .. } | JsExpr::Call { .. }
+            if is_direct_bytes_expr(expr, state) =>
+        {
+            render_bytes_expr(expr, state)
+        }
+        _ => None,
+    }
+}
+
+fn is_direct_bytes_expr(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Array { items } => items
+            .iter()
+            .all(|item| render_numeric_expr(item, state).is_some()),
+        JsExpr::New { callee, args } => is_new_uint8_array_expr(callee, args),
+        JsExpr::Call { callee, args, .. } => {
+            is_uint8_array_of_call(callee, args)
+                || is_bytes_slice_call(callee, args, state)
+                || is_node_buffer_from_call(callee, args)
+                || is_node_buffer_alloc_call(callee, args)
+                || is_crypto_hash_bytes_digest_call(callee, args)
+        }
+        _ => false,
     }
 }
 
@@ -9598,9 +9867,21 @@ fn render_numeric_assignment_expr(
         "=" => Some(format!(
             "func() float64 {{ {target} = {right}; return {target} }}()"
         )),
-        "+=" | "-=" => Some(format!(
+        "+=" | "-=" | "*=" | "/=" => Some(format!(
             "func() float64 {{ {target} {op} {right}; return {target} }}()"
         )),
+        "%=" => Some(format!(
+            "func() float64 {{ {target} = math.Mod({target}, {right}); return {target} }}()"
+        )),
+        "**=" => Some(format!(
+            "func() float64 {{ {target} = math.Pow({target}, {right}); return {target} }}()"
+        )),
+        "&=" | "|=" | "^=" | "<<=" | ">>=" | ">>>=" => {
+            let value = render_bitwise_compound_expr(op, &target, &right)?;
+            Some(format!(
+                "func() float64 {{ {target} = {value}; return {target} }}()"
+            ))
+        }
         _ => None,
     }
 }
@@ -9645,6 +9926,19 @@ fn render_bitwise_numeric_expr(
         "&" => format!("(int({left}) & int({right}))"),
         "|" => format!("(int({left}) | int({right}))"),
         "^" => format!("(int({left}) ^ int({right}))"),
+        _ => return None,
+    };
+    Some(format!("float64({expr})"))
+}
+
+fn render_bitwise_compound_expr(op: &str, target: &str, right: &str) -> Option<String> {
+    let expr = match op {
+        ">>>=" => format!("(uint32(int64({target})) >> uint(int({right}) & 31))"),
+        ">>=" => format!("(int({target}) >> uint(int({right}) & 31))"),
+        "<<=" => format!("(int({target}) << uint(int({right}) & 31))"),
+        "&=" => format!("(int({target}) & int({right}))"),
+        "|=" => format!("(int({target}) | int({right}))"),
+        "^=" => format!("(int({target}) ^ int({right}))"),
         _ => return None,
     };
     Some(format!("float64({expr})"))
