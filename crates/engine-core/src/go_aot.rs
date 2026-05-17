@@ -7953,6 +7953,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             render_bytes_assignment_stmt(op, left, right, state)
         }
+        JsExpr::Call { callee, args, .. }
+            if render_bytes_set_stmt(callee, args, state).is_some() =>
+        {
+            render_bytes_set_stmt(callee, args, state)
+        }
         JsExpr::Assign { op, left, right }
             if render_dynamic_object_assignment_stmt(op, left, right, state).is_some() =>
         {
@@ -8399,6 +8404,28 @@ fn render_bytes_assignment_stmt(
     Some(format!("{object}[int({index})] = byte({value})"))
 }
 
+fn render_bytes_set_stmt(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "set" || args.is_empty() || args.len() > 2 {
+        return None;
+    }
+    let target = render_bytes_expr(object, state)?;
+    let source = render_bytes_expr(args.first()?, state)?;
+    let offset = args
+        .get(1)
+        .map(|expr| render_numeric_expr(expr, state))
+        .unwrap_or_else(|| Some("0".to_string()))?;
+    Some(format!("copy({target}[int({offset}):], {source})"))
+}
+
 fn render_member_index_expr(
     property: &str,
     property_expr: Option<&JsExpr>,
@@ -8834,6 +8861,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if render_any_array_length_expr(expr, state).is_some() => {
             render_any_array_length_expr(expr, state)
+        }
+        expr if render_bytes_length_expr(expr, state).is_some() => {
+            render_bytes_length_expr(expr, state)
         }
         expr if render_any_array_index_expr(expr, state).is_some() => {
             let value = render_any_array_index_expr(expr, state)?;
@@ -11836,6 +11866,23 @@ fn render_any_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<Strin
         return None;
     }
     let values = render_any_array_expr(object, state)?;
+    Some(format!("float64(len({values}))"))
+}
+
+fn render_bytes_length_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if !is_length_member_property(property, property_expr.as_deref()) {
+        return None;
+    }
+    let values = render_bytes_expr(object, state)?;
     Some(format!("float64(len({values}))"))
 }
 
