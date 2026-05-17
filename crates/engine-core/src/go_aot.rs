@@ -8716,6 +8716,7 @@ fn render_string_return_expr(expr: &JsExpr, state: &AotState) -> Option<String> 
             render_string_expr(expr, state)
         }
         JsExpr::Conditional { .. } => render_string_expr(expr, state),
+        JsExpr::Member { .. } => render_string_expr(expr, state),
         _ => None,
     }
 }

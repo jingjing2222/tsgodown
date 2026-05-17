@@ -13489,12 +13489,20 @@ function truthy(options = {}) {
   return Boolean(options && options.debug)
 }
 
+function pickKey(options = {}) {
+  if (options && options.key && options.key.length > 0) {
+    return options.key
+  }
+  return ''
+}
+
 const dir = mkdtempSync(join(tmpdir(), "tsgodown-"))
 const file = join(dir, "sample.env")
 writeFileSync(file, 'A=1\r\nB="x\\ny"\n')
 const fileText = readFileSync(file, { encoding: "utf8" })
 const flag = truthy({ debug: "yes" })
 const defaultValue = api.parseDefault("ok")
+const keyParts = pickKey({ key: "left,right" }).split(",")
 process.env.TSGODOWN_TMP_ENV = "set"
 const envValue = process.env.TSGODOWN_TMP_ENV
 Reflect.deleteProperty(process.env, "TSGODOWN_TMP_ENV")
@@ -13502,7 +13510,7 @@ const configNoOverride = { error: undefined }
 const observedError = configNoOverride.error?.name ?? null
 const observedReport = JSON.stringify({ observedError })
 rmSync(dir, { recursive: true, force: true })
-console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envValue, observedReport)
+console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envValue, observedReport, keyParts[1])
 "#,
         );
 
@@ -13560,7 +13568,7 @@ console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envVa
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "dotenv sample.env A=1\nB=\"x\\ny\" true OK set {\"observedError\":null}\n"
+            "dotenv sample.env A=1\nB=\"x\\ny\" true OK set {\"observedError\":null} right\n"
         );
     }
 
