@@ -4711,6 +4711,26 @@ fn module_aot_state(
                 continue;
             }
             let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+            if imported == "default" {
+                if let Some(function) = context.default_exports.get(&imported_module.id) {
+                    state
+                        .functions
+                        .insert(binding.local.clone(), function.clone());
+                    continue;
+                }
+                if let Some(class) = context.default_class_exports.get(&imported_module.id) {
+                    state.classes.insert(binding.local.clone(), class.clone());
+                    continue;
+                }
+                if let Some(named) = context.named_exports.get(&imported_module.id) {
+                    for (property, function) in named {
+                        state
+                            .namespace_functions
+                            .insert((binding.local.clone(), property.clone()), function.clone());
+                    }
+                    continue;
+                }
+            }
             if let Some(local) = context
                 .export_aliases
                 .get(&(imported_module.id.clone(), imported.to_string()))
@@ -15606,9 +15626,22 @@ fn render_node_fs_read_file_sync_call(
     let path = render_string_expr(args.first()?, state)?;
     let encoding = args
         .get(1)
-        .and_then(|expr| render_string_expr(expr, state))
+        .and_then(|expr| render_node_fs_encoding_arg(expr, state))
         .unwrap_or_else(|| "\"utf8\"".to_string());
     Some(format!("tsgodownFsReadFileSync({path}, {encoding})"))
+}
+
+fn render_node_fs_encoding_arg(expr: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some(encoding) = render_string_expr(expr, state) {
+        return Some(encoding);
+    }
+    let JsExpr::Object { props } = expr else {
+        return None;
+    };
+    props
+        .iter()
+        .find(|prop| !prop.spread && prop.key_expr.is_none() && prop.key == "encoding")
+        .and_then(|prop| render_string_expr(&prop.value, state))
 }
 
 fn render_node_fs_write_file_sync_stmt(

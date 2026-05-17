@@ -13445,11 +13445,23 @@ console.log("path", basename("/tmp/app.txt", ".txt"), dirname("/tmp/app.txt"), j
         let root = temp_project("engine-core-dotenv-style-regexp-node-imports");
         write(
             &root,
+            "src/api.js",
+            r#"
+function parseDefault(value) {
+  return value.toUpperCase()
+}
+const api = { parseDefault }
+module.exports = api
+"#,
+        );
+        write(
+            &root,
             "src/index.js",
             r#"
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, basename } from "node:path"
+import api from "./api.js"
 
 const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
 
@@ -13480,10 +13492,11 @@ function truthy(options = {}) {
 const dir = mkdtempSync(join(tmpdir(), "tsgodown-"))
 const file = join(dir, "sample.env")
 writeFileSync(file, 'A=1\r\nB="x\\ny"\n')
-const fileText = readFileSync(file, "utf8")
+const fileText = readFileSync(file, { encoding: "utf8" })
 const flag = truthy({ debug: "yes" })
+const defaultValue = api.parseDefault("ok")
 rmSync(dir, { recursive: true, force: true })
-console.log("dotenv", basename(file), fileText.trim(), flag)
+console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue)
 "#,
         );
 
@@ -13541,7 +13554,7 @@ console.log("dotenv", basename(file), fileText.trim(), flag)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "dotenv sample.env A=1\nB=\"x\\ny\" true\n"
+            "dotenv sample.env A=1\nB=\"x\\ny\" true OK\n"
         );
     }
 
