@@ -11170,7 +11170,6 @@ console.log("array-assign", values.length, values.join(","), nested.items[0], pr
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_recursive_array_push_apply_subset() {
         let root = temp_project("engine-core-recursive-array-push-apply");
         write(

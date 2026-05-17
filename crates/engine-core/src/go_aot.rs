@@ -2552,6 +2552,46 @@ func tsgodownObjectAssignKeys(groups ...[]string) []string {
 }
 
 func tsgodownObjectProp(value any, key string) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed[key]
+	case []any:
+		if key == "length" {
+			return float64(len(typed))
+		}
+		index, err := strconv.Atoi(key)
+		if err == nil && index >= 0 && index < len(typed) {
+			return typed[index]
+		}
+		return nil
+	case []string:
+		if key == "length" {
+			return float64(len(typed))
+		}
+		index, err := strconv.Atoi(key)
+		if err == nil && index >= 0 && index < len(typed) {
+			return typed[index]
+		}
+		return nil
+	case []float64:
+		if key == "length" {
+			return float64(len(typed))
+		}
+		index, err := strconv.Atoi(key)
+		if err == nil && index >= 0 && index < len(typed) {
+			return typed[index]
+		}
+		return nil
+	case []byte:
+		if key == "length" {
+			return float64(len(typed))
+		}
+		index, err := strconv.Atoi(key)
+		if err == nil && index >= 0 && index < len(typed) {
+			return float64(typed[index])
+		}
+		return nil
+	}
 	object := tsgodownObjectFromAny(value)
 	return object[key]
 }
@@ -3521,6 +3561,32 @@ func tsgodownStringArraySort(values []string) []string {
 }
 
 func tsgodownObjectMapKeys(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		keys := make([]string, 0, len(typed))
+		for index := range typed {
+			keys = append(keys, strconv.Itoa(index))
+		}
+		return tsgodownObjectKeys(keys)
+	case []string:
+		keys := make([]string, 0, len(typed))
+		for index := range typed {
+			keys = append(keys, strconv.Itoa(index))
+		}
+		return tsgodownObjectKeys(keys)
+	case []float64:
+		keys := make([]string, 0, len(typed))
+		for index := range typed {
+			keys = append(keys, strconv.Itoa(index))
+		}
+		return tsgodownObjectKeys(keys)
+	case []byte:
+		keys := make([]string, 0, len(typed))
+		for index := range typed {
+			keys = append(keys, strconv.Itoa(index))
+		}
+		return tsgodownObjectKeys(keys)
+	}
 	object := tsgodownObjectFromAny(value)
 	keys := make([]string, 0, len(object))
 	for key := range object {
@@ -8557,7 +8623,7 @@ fn infer_expr_param_kinds(
         }
         JsExpr::Call { callee, args, .. } if is_member_slice_call_shape(callee, args) => {
             if let JsExpr::Member { object, .. } = callee.as_ref() {
-                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::Any);
+                mark_ident_param_kind_if_default(object, param_index, kinds, AotSlotKind::Any);
                 infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
             }
             for arg in args {
@@ -11369,6 +11435,10 @@ fn is_numeric_array_spread_candidate_items(items: &[crate::contract::JsArrayElem
 
 fn function_returns_string_array(function: &AotFunction, state: &AotState) -> bool {
     let mut function_state = aot_function_state(function, state);
+    mark_string_array_locals(&function.body, &mut function_state);
+    mark_any_array_locals(&function.body, &mut function_state);
+    mark_array_property_locals(&function.body, &mut function_state);
+    mark_dynamic_object_locals(&function.body, &mut function_state);
     let mut saw_return = false;
     collect_string_array_returns(&function.body, &mut function_state, &mut saw_return)
         .unwrap_or(false)
@@ -12932,6 +13002,20 @@ fn is_numeric_member_index_shape(property: &str, property_expr: Option<&JsExpr>)
     }
 }
 
+fn is_known_numeric_member_index(
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> bool {
+    if is_numeric_member_index_shape(property, property_expr) {
+        return true;
+    }
+    matches!(
+        property_expr,
+        Some(JsExpr::Ident { name }) if property.is_empty() && state.numeric_bindings.contains(name)
+    )
+}
+
 fn render_dynamic_object_assignment_stmt(
     op: &str,
     left: &JsExpr,
@@ -13913,7 +13997,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr,
             optional: false,
         } if render_member_index_expr(property, property_expr.as_deref(), state).is_some()
-            && matches!(object.as_ref(), JsExpr::Ident { name } if is_any_binding(name, state)) =>
+            && matches!(object.as_ref(), JsExpr::Ident { name } if is_any_binding(name, state))
+            && (render_any_array_expr(object, state).is_some()
+                || is_known_numeric_member_index(property, property_expr.as_deref(), state)) =>
         {
             let object = render_expr(object, state)?;
             let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
@@ -15142,7 +15228,9 @@ fn is_numeric_property_key_expr(expr: &JsExpr) -> bool {
 }
 
 fn is_numeric_property_key_operand(expr: &JsExpr) -> bool {
-    matches!(expr, JsExpr::Ident { .. }) || is_numeric_property_key_expr(expr)
+    matches!(expr, JsExpr::Ident { .. })
+        || is_length_member_expr(expr)
+        || is_numeric_property_key_expr(expr)
 }
 
 fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -16738,6 +16826,15 @@ fn render_any_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<String
     if is_length_member_property(property, property_expr.as_deref()) {
         return None;
     }
+    let receiver_is_known_array = render_any_array_expr(object, state).is_some()
+        || render_string_array_expr(object, state).is_some()
+        || render_number_array_expr(object, state).is_some()
+        || render_bytes_expr(object, state).is_some();
+    if !receiver_is_known_array
+        && !is_numeric_member_index_shape(property, property_expr.as_deref())
+    {
+        return None;
+    }
     let values = render_any_array_from_any_expr(object, state)?;
     let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
     Some(format!("tsgodownAnyArrayAt({values}, {index})"))
@@ -18025,6 +18122,11 @@ fn render_string_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         return None;
     };
     if !property.is_empty() {
+        return None;
+    }
+    if matches!(object.as_ref(), JsExpr::Ident { name } if is_any_binding(name, state))
+        && !is_known_numeric_member_index(property, Some(property_expr), state)
+    {
         return None;
     }
     let value = render_string_expr(object, state)?;
