@@ -11087,7 +11087,6 @@ console.log("array-more", seen.join(","), result)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_array_member_assignment_subset() {
         let root = temp_project("engine-core-array-member-assignment");
         write(
@@ -11131,10 +11130,14 @@ console.log("array-assign", values.length, values.join(","), nested.items[0], pr
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics: {:?}",
+            response.diagnostics
+        );
 
         if std::process::Command::new("go")
             .arg("version")
