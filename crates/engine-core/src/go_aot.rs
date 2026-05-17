@@ -125,7 +125,10 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
     let mut features = BTreeSet::new();
     for module in &ir.modules {
         for import in &module.imports {
-            if import.resolved.is_none() && !is_node_builtin_spec(&import.spec) {
+            if import.resolved.is_none()
+                && !is_node_builtin_spec(&import.spec)
+                && !module_has_caught_require_spec(module, &import.spec)
+            {
                 features.insert(format!("aot.module.unresolved_import:{}", import.spec));
             }
         }
@@ -2220,6 +2223,8 @@ func tsgodownObjectFromAny(value any) map[string]any {
 		return map[string]any{}
 	case map[string]any:
 		return value
+	case tsgodownError:
+		return map[string]any{"name": value.Name, "message": value.Message, "code": value.Code}
 	default:
 		return map[string]any{}
 	}
@@ -2608,6 +2613,15 @@ func tsgodownCaughtError(value any) map[string]any {
 	return object
 }
 
+func tsgodownCaughtValue(value any) any {
+	switch value.(type) {
+	case nil, bool, float64, int, int64, string:
+		return value
+	default:
+		return tsgodownCaughtError(value)
+	}
+}
+
 func tsgodownThrow(value any) {
 	panic(value)
 }
@@ -2618,6 +2632,10 @@ func tsgodownErrorInstanceOf(value any, constructor string) bool {
 		return err.Name == "Error" || err.Name == "TypeError" || err.Name == "RangeError"
 	}
 	return err.Name == constructor
+}
+
+func tsgodownRequire(spec string) any {
+	panic(tsgodownError{Name: "Error", Message: "Cannot find module '" + spec + "'"})
 }
 "#
         .to_string(),
@@ -3315,8 +3333,9 @@ fn can_aot_module_graph(ir: &IrDocument) -> bool {
     ir.modules.iter().all(|module| {
         module.executable.is_some()
             && module.imports.iter().all(|import| {
-                matches!(import.kind.as_str(), "esm" | "cjs")
-                    && (import.resolved.is_some() || is_node_builtin_spec(&import.spec))
+                module_has_caught_require_spec(module, &import.spec)
+                    || matches!(import.kind.as_str(), "esm" | "cjs")
+                        && (import.resolved.is_some() || is_node_builtin_spec(&import.spec))
             })
     })
 }
@@ -4986,6 +5005,9 @@ fn module_aot_state(
         }
     }
     for import in &module.imports {
+        if import.resolved.is_none() && module_has_caught_require_spec(module, &import.spec) {
+            continue;
+        }
         if import.resolved.is_none() && is_node_builtin_spec(&import.spec) {
             for binding in &import.bindings {
                 state.builtin_bindings.insert(binding.local.clone());
@@ -6587,8 +6609,172 @@ fn render_try_catch_stmt(
         format!("defer func() {{\n{}\n}}()\n", indent_lines(&finally_body))
     };
     Some(format!(
-        "func() {{\n{finally}var __tsgodownCaught any\nfunc() {{\n\tdefer func() {{\n\t\tif __tsgodownRecovered := recover(); __tsgodownRecovered != nil {{\n\t\t\t__tsgodownCaught = __tsgodownRecovered\n\t\t}}\n\t}}()\n{body}\n}}()\nif __tsgodownCaught != nil {{\n\t{catch_ident} := tsgodownCaughtError(__tsgodownCaught)\n{catch_body}\n}}\n}}()"
+        "func() {{\n{finally}var __tsgodownCaught any\nfunc() {{\n\tdefer func() {{\n\t\tif __tsgodownRecovered := recover(); __tsgodownRecovered != nil {{\n\t\t\t__tsgodownCaught = __tsgodownRecovered\n\t\t}}\n\t}}()\n{body}\n}}()\nif __tsgodownCaught != nil {{\n\t{catch_ident} := tsgodownCaughtValue(__tsgodownCaught)\n{catch_body}\n}}\n}}()"
     ))
+}
+
+fn render_try_catch_return_expr(
+    body: &[JsStmt],
+    catch_param: Option<&str>,
+    catch_body: &[JsStmt],
+    finally_body: &[JsStmt],
+    state: &AotState,
+) -> Option<String> {
+    if catch_body.is_empty()
+        || !stmt_list_has_return(body)
+            && !stmt_list_has_return(catch_body)
+            && !stmt_list_has_throw(body)
+    {
+        return None;
+    }
+    let mut body_state = clone_aot_state(state);
+    let rendered_body =
+        render_try_result_stmt_sequence(body, &mut body_state, "__tsgodownResult", true)?;
+    let body = indent_lines(&rendered_body);
+    let catch_binding = catch_param.unwrap_or("__tsgodownCaughtError");
+    let catch_ident = sanitize_go_identifier(catch_binding);
+    let mut catch_state = clone_aot_state(state);
+    catch_state.bindings.insert(catch_binding.to_string());
+    catch_state
+        .binding_refs
+        .insert(catch_binding.to_string(), catch_ident.clone());
+    catch_state
+        .dynamic_object_bindings
+        .insert(catch_binding.to_string());
+    let rendered_catch_body =
+        render_try_result_stmt_sequence(catch_body, &mut catch_state, "__tsgodownResult", true)?;
+    let catch_body = indent_lines(&rendered_catch_body);
+    let finally = if finally_body.is_empty() {
+        String::new()
+    } else {
+        let mut finally_state = clone_aot_state(state);
+        let rendered_finally_body = render_stmt_sequence(finally_body, &mut finally_state)?;
+        let finally_body = indent_lines(&rendered_finally_body);
+        format!("\n{}", finally_body)
+    };
+    Some(format!(
+        "func() any {{\n\tvar __tsgodownResult any\n\tvar __tsgodownCaught any\n\tfunc() {{\n\t\tdefer func() {{\n\t\t\tif __tsgodownRecovered := recover(); __tsgodownRecovered != nil {{\n\t\t\t\t__tsgodownCaught = __tsgodownRecovered\n\t\t\t}}\n\t\t}}()\n{body}\n\t}}()\n\tif __tsgodownCaught != nil {{\n\t\t{catch_ident} := tsgodownCaughtValue(__tsgodownCaught)\n\t\tfunc() {{\n{catch_body}\n\t\t}}()\n\t}}\n{finally}\n\treturn __tsgodownResult\n}}()"
+    ))
+}
+
+fn render_try_result_stmt_sequence(
+    stmts: &[JsStmt],
+    state: &mut AotState,
+    result_name: &str,
+    terminate_on_return: bool,
+) -> Option<String> {
+    stmts
+        .iter()
+        .map(|stmt| render_try_result_stmt(stmt, state, result_name, terminate_on_return))
+        .collect::<Option<Vec<_>>>()
+        .map(|stmts| stmts.join("\n"))
+}
+
+fn render_try_result_stmt(
+    stmt: &JsStmt,
+    state: &mut AotState,
+    result_name: &str,
+    terminate_on_return: bool,
+) -> Option<String> {
+    match stmt {
+        JsStmt::Return { value: Some(value) } => {
+            let value = render_expr(value, state)?;
+            if terminate_on_return {
+                Some(format!("{result_name} = {value}\nreturn"))
+            } else {
+                Some(format!("{result_name} = {value}"))
+            }
+        }
+        JsStmt::Return { value: None } => {
+            if terminate_on_return {
+                Some(format!("{result_name} = nil\nreturn"))
+            } else {
+                Some(format!("{result_name} = nil"))
+            }
+        }
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            let test_expr = test;
+            let test = render_bool_test_expr(test_expr, state)?;
+            let mut consequent_state = narrowed_typeof_state(test_expr, state);
+            let consequent = indent_lines(&render_try_result_stmt_sequence(
+                consequent,
+                &mut consequent_state,
+                result_name,
+                terminate_on_return,
+            )?);
+            if alternate.is_empty() {
+                return Some(format!("if {test} {{\n{consequent}\n}}"));
+            }
+            let mut alternate_state = clone_aot_state(state);
+            let alternate = indent_lines(&render_try_result_stmt_sequence(
+                alternate,
+                &mut alternate_state,
+                result_name,
+                terminate_on_return,
+            )?);
+            Some(format!(
+                "if {test} {{\n{consequent}\n}} else {{\n{alternate}\n}}"
+            ))
+        }
+        JsStmt::Throw { value } => render_throw_stmt(value, state),
+        other => render_function_stmt(other, state),
+    }
+}
+
+fn stmt_list_has_return(stmts: &[JsStmt]) -> bool {
+    stmts.iter().any(stmt_has_return)
+}
+
+fn stmt_has_return(stmt: &JsStmt) -> bool {
+    match stmt {
+        JsStmt::Return { .. } => true,
+        JsStmt::If {
+            consequent,
+            alternate,
+            ..
+        } => stmt_list_has_return(consequent) || stmt_list_has_return(alternate),
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            stmt_list_has_return(body)
+                || stmt_list_has_return(catch_body)
+                || stmt_list_has_return(finally_body)
+        }
+        _ => false,
+    }
+}
+
+fn stmt_list_has_throw(stmts: &[JsStmt]) -> bool {
+    stmts.iter().any(stmt_has_throw)
+}
+
+fn stmt_has_throw(stmt: &JsStmt) -> bool {
+    match stmt {
+        JsStmt::Throw { .. } => true,
+        JsStmt::If {
+            consequent,
+            alternate,
+            ..
+        } => stmt_list_has_throw(consequent) || stmt_list_has_throw(alternate),
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            stmt_list_has_throw(body)
+                || stmt_list_has_throw(catch_body)
+                || stmt_list_has_throw(finally_body)
+        }
+        _ => false,
+    }
 }
 
 fn render_throw_stmt(value: &JsExpr, state: &AotState) -> Option<String> {
@@ -9780,13 +9966,24 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
             catch_body,
             finally_body,
             ..
-        } => render_try_finally_stmt(
-            body,
-            catch_param.as_deref(),
-            catch_body,
-            finally_body,
-            state,
-        ),
+        } => {
+            if let Some(value) = render_try_catch_return_expr(
+                body,
+                catch_param.as_deref(),
+                catch_body,
+                finally_body,
+                state,
+            ) {
+                return Some(format!("return {value}"));
+            }
+            render_try_finally_stmt(
+                body,
+                catch_param.as_deref(),
+                catch_body,
+                finally_body,
+                state,
+            )
+        }
         JsStmt::Throw { value } => render_throw_stmt(value, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
@@ -9977,6 +10174,10 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
                 return Some("fmt.Fprintln(os.Stderr)".to_string());
             }
             Some(format!("fmt.Fprintln(os.Stderr, {})", args.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_require_call(expr) => {
+            let spec = render_require_spec_arg(callee, args)?;
+            Some(format!("_ = tsgodownRequire({spec})"))
         }
         JsExpr::Call { callee, args, .. } if is_array_for_each_call(callee, args) => {
             render_array_for_each_stmt(callee, args, state)
@@ -10261,18 +10462,19 @@ fn render_assignment_stmt(
             return Some(format!("{} = {right}", go_binding_ref(name, state)));
         }
         if state.string_bindings.contains(name) && matches!(op, "=" | "+=") {
+            let target = go_binding_ref(name, state);
             if op == "=" {
-                if go_binding_ref(name, state).contains(".(") {
+                if target.contains(".(") {
                     if let Some(right) = render_bytes_expr_with_any_cast(right, state) {
                         return Some(format!("{} = any({right})", sanitize_go_identifier(name)));
                     }
                 }
                 if let Some(right) = render_bytes_expr(right, state) {
-                    return Some(format!("{} = {right}", sanitize_go_identifier(name)));
+                    return Some(format!("{target} = {right}"));
                 }
             }
             let right = render_string_expr(right, state)?;
-            return Some(format!("{} {op} {right}", sanitize_go_identifier(name)));
+            return Some(format!("{target} {op} {right}"));
         }
         if state.string_array_bindings.contains(name) && op == "=" {
             let right = render_string_array_expr(right, state)?;
@@ -11023,6 +11225,191 @@ fn is_require_call(expr: &JsExpr) -> bool {
         expr,
         JsExpr::Call { callee, .. } if matches!(callee.as_ref(), JsExpr::Ident { name } if name == "require")
     )
+}
+
+fn module_has_caught_require_spec(module: &Module, spec: &str) -> bool {
+    module
+        .executable
+        .as_ref()
+        .map(|executable| stmt_list_has_caught_require_spec(&executable.stmts, spec, false))
+        .unwrap_or(false)
+}
+
+fn stmt_list_has_caught_require_spec(stmts: &[JsStmt], spec: &str, caught: bool) -> bool {
+    stmts
+        .iter()
+        .any(|stmt| stmt_has_caught_require_spec(stmt, spec, caught))
+}
+
+fn stmt_has_caught_require_spec(stmt: &JsStmt, spec: &str, caught: bool) -> bool {
+    match stmt {
+        JsStmt::Expr { expr }
+        | JsStmt::Throw { value: expr }
+        | JsStmt::Return { value: Some(expr) }
+        | JsStmt::Yield {
+            value: Some(expr), ..
+        }
+        | JsStmt::VarDecl {
+            init: Some(expr), ..
+        } => expr_has_caught_require_spec(expr, spec, caught),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_has_caught_require_spec(test, spec, caught)
+                || stmt_list_has_caught_require_spec(consequent, spec, caught)
+                || stmt_list_has_caught_require_spec(alternate, spec, caught)
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            stmt_list_has_caught_require_spec(init, spec, caught)
+                || test
+                    .as_ref()
+                    .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+                || update
+                    .as_ref()
+                    .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+                || stmt_list_has_caught_require_spec(body, spec, caught)
+        }
+        JsStmt::ForOf { right, body, .. } => {
+            expr_has_caught_require_spec(right, spec, caught)
+                || stmt_list_has_caught_require_spec(body, spec, caught)
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            expr_has_caught_require_spec(test, spec, caught)
+                || stmt_list_has_caught_require_spec(body, spec, caught)
+        }
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            expr_has_caught_require_spec(discriminant, spec, caught)
+                || cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+                        || stmt_list_has_caught_require_spec(&case.consequent, spec, caught)
+                })
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            let catches = !catch_body.is_empty();
+            stmt_list_has_caught_require_spec(body, spec, caught || catches)
+                || stmt_list_has_caught_require_spec(catch_body, spec, caught)
+                || stmt_list_has_caught_require_spec(finally_body, spec, caught)
+        }
+        JsStmt::FunctionDecl { body, .. } => stmt_list_has_caught_require_spec(body, spec, caught),
+        JsStmt::ClassDecl { methods, .. } => methods
+            .iter()
+            .any(|method| stmt_list_has_caught_require_spec(&method.body, spec, caught)),
+        JsStmt::Label { body, .. } => stmt_list_has_caught_require_spec(body, spec, caught),
+        JsStmt::Return { value: None }
+        | JsStmt::Yield { value: None, .. }
+        | JsStmt::VarDecl { init: None, .. }
+        | JsStmt::Break { .. }
+        | JsStmt::Continue { .. } => false,
+    }
+}
+
+fn expr_has_caught_require_spec(expr: &JsExpr, spec: &str, caught: bool) -> bool {
+    match expr {
+        JsExpr::Call { callee, args, .. } if caught => {
+            matches!(
+                render_require_spec_arg(callee, args).as_deref(),
+                Some(candidate) if candidate == go_string_literal(spec)
+            ) || expr_children_have_caught_require_spec(expr, spec, caught)
+        }
+        _ => expr_children_have_caught_require_spec(expr, spec, caught),
+    }
+}
+
+fn expr_children_have_caught_require_spec(expr: &JsExpr, spec: &str, caught: bool) -> bool {
+    match expr {
+        JsExpr::Array { items } => items
+            .iter()
+            .any(|item| expr_has_caught_require_spec(item, spec, caught)),
+        JsExpr::ArraySpread { items } => items
+            .iter()
+            .any(|item| expr_has_caught_require_spec(&item.value, spec, caught)),
+        JsExpr::Object { props } => props.iter().any(|prop| {
+            prop.key_expr
+                .as_ref()
+                .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+                || expr_has_caught_require_spec(&prop.value, spec, caught)
+        }),
+        JsExpr::ObjectRest { object, .. }
+        | JsExpr::Unary { arg: object, .. }
+        | JsExpr::Await { arg: object }
+        | JsExpr::Update { arg: object, .. }
+        | JsExpr::Spread { arg: object } => expr_has_caught_require_spec(object, spec, caught),
+        JsExpr::Function { body, .. } => stmt_list_has_caught_require_spec(body, spec, caught),
+        JsExpr::Class {
+            super_class,
+            methods,
+        } => {
+            super_class
+                .as_ref()
+                .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+                || methods
+                    .iter()
+                    .any(|method| stmt_list_has_caught_require_spec(&method.body, spec, caught))
+        }
+        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
+            expr_has_caught_require_spec(left, spec, caught)
+                || expr_has_caught_require_spec(right, spec, caught)
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_has_caught_require_spec(test, spec, caught)
+                || expr_has_caught_require_spec(consequent, spec, caught)
+                || expr_has_caught_require_spec(alternate, spec, caught)
+        }
+        JsExpr::Call { callee, args, .. } | JsExpr::New { callee, args } => {
+            expr_has_caught_require_spec(callee, spec, caught)
+                || args
+                    .iter()
+                    .any(|arg| expr_has_caught_require_spec(arg, spec, caught))
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            expr_has_caught_require_spec(object, spec, caught)
+                || property_expr
+                    .as_ref()
+                    .is_some_and(|expr| expr_has_caught_require_spec(expr, spec, caught))
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => exprs
+            .iter()
+            .any(|expr| expr_has_caught_require_spec(expr, spec, caught)),
+        JsExpr::Value { .. } | JsExpr::Ident { .. } | JsExpr::This | JsExpr::Super => false,
+    }
+}
+
+fn render_require_spec_arg(callee: &JsExpr, args: &[JsExpr]) -> Option<String> {
+    if !matches!(callee, JsExpr::Ident { name } if name == "require") {
+        return None;
+    }
+    let JsExpr::Value {
+        value: JsValue::String { value },
+    } = args.first()?
+    else {
+        return None;
+    };
+    Some(go_string_literal(value))
 }
 
 fn is_local_function_namespace_object(name: &str, expr: &JsExpr, state: &AotState) -> bool {

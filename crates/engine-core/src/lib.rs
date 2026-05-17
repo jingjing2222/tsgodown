@@ -13099,7 +13099,6 @@ console.log("delete", value, deleted, "drop" in target, "keep" in target, "alias
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_try_catch_finally_and_throw_subset() {
         let root = temp_project("engine-core-try-throw");
         write(
