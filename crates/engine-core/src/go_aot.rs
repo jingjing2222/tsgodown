@@ -9211,6 +9211,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             render_reflect_delete_property_stmt(callee, args, state)
         }
+        JsExpr::Assign { op, left, right }
+            if render_url_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_url_assignment_stmt(op, left, right, state)
+        }
         JsExpr::Call { callee, args, .. }
             if render_object_assign_stmt(callee, args, state).is_some() =>
         {
@@ -13086,18 +13091,26 @@ fn render_js_map_expr(expr: &JsExpr) -> Option<String> {
 }
 
 fn is_new_url_expr(callee: &JsExpr, args: &[JsExpr]) -> bool {
-    args.len() == 2 && matches!(callee, JsExpr::Ident { name } if name == "URL")
+    matches!(args.len(), 1 | 2) && matches!(callee, JsExpr::Ident { name } if name == "URL")
 }
 
 fn render_url_new_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     let JsExpr::New { callee, args } = expr else {
         return None;
     };
-    if !is_new_url_expr(callee, args) || !state.builtin_bindings.contains("URL") {
+    if !is_new_url_expr(callee, args) {
+        return None;
+    }
+    if !state.builtin_bindings.contains("URL")
+        && (state.functions.contains_key("URL") || state.bindings.contains("URL"))
+    {
         return None;
     }
     let input = render_string_expr(args.first()?, state)?;
-    let base = render_string_expr(args.get(1)?, state)?;
+    let base = args
+        .get(1)
+        .map(|arg| render_string_expr(arg, state))
+        .unwrap_or_else(|| Some("\"\"".to_string()))?;
     Some(format!("tsgodownNewURL({input}, {base})"))
 }
 
@@ -13517,6 +13530,28 @@ fn render_string_array_push_call_stmt(
     let target = go_binding_ref(name, state);
     let value = render_string_expr(args.first()?, state)?;
     Some(format!("{target} = append({target}, {value})"))
+}
+
+fn render_url_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &mut AotState,
+) -> Option<String> {
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Ident { name } = left else {
+        return None;
+    };
+    let value = render_url_new_expr(right, state)?;
+    let ident = sanitize_go_identifier(name);
+    state.bindings.insert(name.clone());
+    state
+        .binding_refs
+        .insert(name.clone(), format!("{ident}.(*tsgodownURL)"));
+    state.url_bindings.insert(name.clone());
+    Some(format!("{ident} = {value}"))
 }
 
 fn render_any_array_pop_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
