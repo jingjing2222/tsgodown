@@ -4364,6 +4364,16 @@ fn module_aot_state(
                 state.classes.insert(binding.local.clone(), class.clone());
                 continue;
             }
+            if bind_forwarded_import(
+                &mut state,
+                &binding.local,
+                imported_module,
+                imported,
+                ir,
+                context,
+            ) {
+                continue;
+            }
             let slot = context
                 .slots
                 .get(&(imported_module.id.clone(), imported.to_string()))?;
@@ -4380,6 +4390,151 @@ fn module_aot_state(
         }
     }
     Some(state)
+}
+
+fn bind_forwarded_import(
+    state: &mut AotState,
+    local: &str,
+    imported_module: &Module,
+    imported: &str,
+    ir: &IrDocument,
+    context: &AotModuleContext<'_>,
+) -> bool {
+    let Some((target_module_id, target_imported)) =
+        forwarded_import_binding(imported_module, imported)
+    else {
+        return false;
+    };
+    if target_imported == "default" {
+        if let Some(function) = context.default_exports.get(target_module_id) {
+            state.functions.insert(local.to_string(), function.clone());
+            return true;
+        }
+        if let Some(class) = context.default_class_exports.get(target_module_id) {
+            state.classes.insert(local.to_string(), class.clone());
+            return true;
+        }
+        if let Some(target_local) = context
+            .export_aliases
+            .get(&(target_module_id.to_string(), "default".to_string()))
+        {
+            if let Some(function) = context
+                .functions
+                .get(&(target_module_id.to_string(), target_local.clone()))
+            {
+                state.functions.insert(local.to_string(), function.clone());
+                bind_forwarded_function_static_slots(
+                    state,
+                    local,
+                    target_module_id,
+                    target_local,
+                    ir,
+                    context,
+                );
+                return true;
+            }
+            if let Some(class) = context
+                .classes
+                .get(&(target_module_id.to_string(), target_local.clone()))
+            {
+                state.classes.insert(local.to_string(), class.clone());
+                return true;
+            }
+            if let Some(slot) = context
+                .slots
+                .get(&(target_module_id.to_string(), target_local.clone()))
+            {
+                bind_imported_slot(state, local, slot);
+                return true;
+            }
+        }
+    }
+    if let Some(function) = context
+        .functions
+        .get(&(target_module_id.to_string(), target_imported.to_string()))
+    {
+        state.functions.insert(local.to_string(), function.clone());
+        return true;
+    }
+    if let Some(slot) = context
+        .slots
+        .get(&(target_module_id.to_string(), target_imported.to_string()))
+    {
+        bind_imported_slot(state, local, slot);
+        return true;
+    }
+    false
+}
+
+fn bind_forwarded_function_static_slots(
+    state: &mut AotState,
+    local: &str,
+    target_module_id: &str,
+    target_local: &str,
+    ir: &IrDocument,
+    context: &AotModuleContext<'_>,
+) {
+    let Some(target_module) = ir
+        .modules
+        .iter()
+        .find(|module| module.id == target_module_id)
+    else {
+        return;
+    };
+    let Some(executable) = &target_module.executable else {
+        return;
+    };
+    for stmt in &executable.stmts {
+        let JsStmt::Expr {
+            expr: JsExpr::Assign { op, left, right },
+        } = stmt
+        else {
+            continue;
+        };
+        if op != "=" {
+            continue;
+        }
+        let JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } = left.as_ref()
+        else {
+            continue;
+        };
+        if !matches!(object.as_ref(), JsExpr::Ident { name } if name == target_local) {
+            continue;
+        }
+        let JsExpr::Ident { name: slot_name } = right.as_ref() else {
+            continue;
+        };
+        let Some(slot) = context
+            .slots
+            .get(&(target_module_id.to_string(), slot_name.clone()))
+        else {
+            continue;
+        };
+        state.function_static_members.insert(
+            (local.to_string(), property.clone()),
+            (slot.kind, slot.go_name.clone()),
+        );
+    }
+}
+
+fn forwarded_import_binding<'a>(module: &'a Module, exported: &str) -> Option<(&'a str, &'a str)> {
+    for import in &module.imports {
+        let resolved = import.resolved.as_deref()?;
+        for binding in &import.bindings {
+            if binding.local == exported {
+                return Some((
+                    resolved,
+                    binding.imported.as_deref().unwrap_or(&binding.local),
+                ));
+            }
+        }
+    }
+    None
 }
 
 fn bind_imported_slot(state: &mut AotState, local: &str, slot: &AotModuleSlot) {
@@ -16470,7 +16625,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if is_process_env_ref(expr) => Some("tsgodownProcessEnv()".to_string()),
         expr if is_process_versions_ref(expr) => Some(render_process_versions_expr()),
         expr if is_process_cwd_ref(expr) => render_string_function_expr(expr, state),
-        JsExpr::Call { callee, args, .. } => render_call_expr(callee, args, state),
+        JsExpr::Call { callee, args, .. } => {
+            render_bool_expr(expr, state).or_else(|| render_call_expr(callee, args, state))
+        }
         JsExpr::Member {
             object,
             property,
