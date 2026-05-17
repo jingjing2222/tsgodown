@@ -2736,12 +2736,27 @@ func tsgodownObjectHasOwn(value any, key any) bool {
 		_, ok := object[name]
 		return ok
 	case []any:
+		if name == "length" {
+			return true
+		}
 		index, err := strconv.Atoi(name)
 		return err == nil && index >= 0 && index < len(object)
 	case []string:
+		if name == "length" {
+			return true
+		}
 		index, err := strconv.Atoi(name)
 		return err == nil && index >= 0 && index < len(object)
 	case []float64:
+		if name == "length" {
+			return true
+		}
+		index, err := strconv.Atoi(name)
+		return err == nil && index >= 0 && index < len(object)
+	case []byte:
+		if name == "length" {
+			return true
+		}
 		index, err := strconv.Atoi(name)
 		return err == nil && index >= 0 && index < len(object)
 	default:
@@ -5923,6 +5938,10 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         } => render_for_stmt(init, test.as_ref(), update.as_ref(), body, state),
         JsStmt::ForOf { left, right, body } => render_for_of_stmt(left, right, body, state),
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => render_switch_stmt(discriminant, cases, state),
         JsStmt::Try {
             body,
             catch_param,
@@ -5941,6 +5960,28 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::Continue { label: None } => Some("continue".to_string()),
         _ => None,
     }
+}
+
+fn render_switch_stmt(
+    discriminant: &JsExpr,
+    cases: &[crate::contract::JsSwitchCase],
+    state: &AotState,
+) -> Option<String> {
+    let discriminant = render_expr(discriminant, state)?;
+    let mut rendered_cases = Vec::new();
+    for case in cases {
+        let body = indent_lines(&render_stmt_block_with_state(&case.consequent, state)?);
+        if let Some(test) = &case.test {
+            let test = render_expr(test, state)?;
+            rendered_cases.push(format!("case {test}:\n{body}"));
+        } else {
+            rendered_cases.push(format!("default:\n{body}"));
+        }
+    }
+    Some(format!(
+        "switch {discriminant} {{\n{}\n}}",
+        rendered_cases.join("\n")
+    ))
 }
 
 fn render_for_stmt(
@@ -7804,6 +7845,18 @@ fn collect_dynamic_object_candidates(stmts: &[JsStmt], candidates: &mut BTreeSet
             JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
                 collect_dynamic_object_candidates_expr(test, candidates);
                 collect_dynamic_object_candidates(body, candidates);
+            }
+            JsStmt::Switch {
+                discriminant,
+                cases,
+            } => {
+                collect_dynamic_object_candidates_expr(discriminant, candidates);
+                for case in cases {
+                    if let Some(test) = &case.test {
+                        collect_dynamic_object_candidates_expr(test, candidates);
+                    }
+                    collect_dynamic_object_candidates(&case.consequent, candidates);
+                }
             }
             JsStmt::Try {
                 body,

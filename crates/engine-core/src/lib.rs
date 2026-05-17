@@ -12558,7 +12558,6 @@ console.log("for", total)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_switch_and_in_operator_subset() {
         let root = temp_project("engine-core-switch-in");
         write(
