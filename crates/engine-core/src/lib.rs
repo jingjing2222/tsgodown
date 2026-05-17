@@ -13954,7 +13954,6 @@ export const value = "ok"
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_fs_module_process_subset() {
         let root = temp_project("engine-core-fs-module-process");
         write(&root, "src/data.txt", "alpha");
@@ -13994,10 +13993,23 @@ main()
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "{:#?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("func main__tsgodown("));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownFsReadFileSync"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownFsWriteFileSync"));
+        assert!(response.files[0].contents.contains("tsgodownFsReaddirSync"));
 
         if std::process::Command::new("go")
             .arg("version")

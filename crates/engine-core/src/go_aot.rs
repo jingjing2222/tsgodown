@@ -831,6 +831,15 @@ fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     imports.insert("strings");
     imports.insert("time");
     for module in &ir.modules {
+        if module
+            .imports
+            .iter()
+            .any(|import| import.resolved.is_none() && is_node_fs_promises_spec(&import.spec))
+        {
+            imports.insert("os");
+            imports.insert("path/filepath");
+            imports.insert("sort");
+        }
         if let Some(executable) = &module.executable {
             for stmt in &executable.stmts {
                 collect_stmt_imports(stmt, &mut imports);
@@ -1544,6 +1553,15 @@ func tsgodownStringArrayAt(values []string, index float64) string {
 		return ""
 	}
 	return values[offset]
+}
+
+func tsgodownStringArrayIncludes(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func tsgodownStringArraySet(values []string, index float64, value string) []string {
@@ -2956,6 +2974,24 @@ func tsgodownFsRmSync(path string) {
 
 func tsgodownOsTmpdir() string {
 	return os.TempDir()
+}
+"#
+            .to_string(),
+        );
+    }
+    if imports.contains("os") && imports.contains("path/filepath") && imports.contains("sort") {
+        helpers.push(
+            r#"func tsgodownFsReaddirSync(path string) []string {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return []string{}
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	return names
 }
 "#
             .to_string(),
@@ -5292,6 +5328,14 @@ fn module_aot_state(
                 if is_node_assert_spec(&import.spec) {
                     state.assert_builtin_bindings.insert(binding.local.clone());
                 }
+                if is_node_fs_promises_spec(&import.spec) {
+                    let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+                    if matches!(imported, "readFile" | "writeFile" | "readdir") {
+                        state
+                            .fs_promises_bindings
+                            .insert(binding.local.clone(), imported.to_string());
+                    }
+                }
             }
             continue;
         }
@@ -6259,7 +6303,12 @@ fn module_go_prefix(module: &Module) -> String {
 
 fn function_go_name(module: &Module, entry: &Module, name: &str) -> String {
     if module.id == entry.id {
-        sanitize_go_identifier(name)
+        let sanitized = sanitize_go_identifier(name);
+        if sanitized == "main" {
+            "main__tsgodown".to_string()
+        } else {
+            sanitized
+        }
     } else {
         module_member_go_name(module, name)
     }
@@ -6349,6 +6398,7 @@ struct AotState {
     namespace_functions: BTreeMap<(String, String), AotFunction>,
     builtin_bindings: BTreeSet<String>,
     assert_builtin_bindings: BTreeSet<String>,
+    fs_promises_bindings: BTreeMap<String, String>,
     dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
     module_exports_ref: Option<String>,
@@ -6464,6 +6514,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
+        fs_promises_bindings: state.fs_promises_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7000,6 +7051,7 @@ fn render_for_stmt(
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
+        fs_promises_bindings: state.fs_promises_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7498,6 +7550,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
+        fs_promises_bindings: state.fs_promises_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7542,6 +7595,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
+        fs_promises_bindings: state.fs_promises_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -8629,9 +8683,10 @@ fn mark_ident_param_kind_if_default(
 }
 
 fn render_function_decl(function: &AotFunction, state: &AotState) -> Option<String> {
-    if function.rest_param.is_some() || function.r#async || function.generator {
+    if function.rest_param.is_some() || function.generator {
         return None;
     }
+    let _async_lowered_synchronously = function.r#async;
     if let Some(rendered) = render_number_closure_function_decl(function) {
         return Some(rendered);
     }
@@ -8819,9 +8874,10 @@ fn render_local_function_decl(function: &AotFunction, state: &AotState) -> Optio
     if let Some(value) = render_number_closure_function_value(function) {
         return Some(format!("{} := {value}", function.go_name));
     }
-    if function.rest_param.is_some() || function.r#async || function.generator {
+    if function.rest_param.is_some() || function.generator {
         return None;
     }
+    let _async_lowered_synchronously = function.r#async;
     let mutated_any_array_param = function_mutated_any_array_param(function, state);
     let returns_any_array = function_returns_any_array(function, state);
     let mut function_state = clone_aot_state(state);
@@ -10828,6 +10884,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_array_predicate_call(callee, args, state))
             .or_else(|| render_string_bool_method_alias_call(callee, args, state))
             .or_else(|| render_string_bool_method_call(callee, args, state))
+            .or_else(|| render_string_array_includes_call(callee, args, state))
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
     }
@@ -10845,7 +10902,8 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::String { .. },
         } => Some(String::new()),
-        JsExpr::Await { arg } => render_await_promise_then_stmt(arg, state),
+        JsExpr::Await { arg } => render_await_promise_then_stmt(arg, state)
+            .or_else(|| render_await_node_fs_promises_stmt(arg, state)),
         expr if is_resolved_default_cjs_export_assignment_expr(expr, state) => Some(String::new()),
         expr if cjs_default_function_static_member_assignment_expr(expr, state).is_some() => {
             Some(String::new())
@@ -11025,6 +11083,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             render_node_fs_write_file_sync_stmt(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
+            if render_node_fs_promises_write_file_stmt(callee, args, state).is_some() =>
+        {
+            render_node_fs_promises_write_file_stmt(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
             if render_node_fs_rm_sync_stmt(callee, args, state).is_some() =>
         {
             render_node_fs_rm_sync_stmt(callee, args, state)
@@ -11135,6 +11198,13 @@ fn render_await_promise_then_stmt(expr: &JsExpr, state: &mut AotState) -> Option
         return None;
     }
     render_promise_then_body(body, state)
+}
+
+fn render_await_node_fs_promises_stmt(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    render_node_fs_promises_write_file_stmt(callee, args, state)
 }
 
 fn is_promise_resolve_call(expr: &JsExpr) -> bool {
@@ -12258,6 +12328,10 @@ fn is_node_assert_spec(spec: &str) -> bool {
     )
 }
 
+fn is_node_fs_promises_spec(spec: &str) -> bool {
+    matches!(spec.strip_prefix("node:").unwrap_or(spec), "fs/promises")
+}
+
 fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
         JsExpr::Value { value } => render_value(value),
@@ -12901,6 +12975,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Value {
             value: JsValue::String { value },
         } => Some(go_string_literal(value)),
+        JsExpr::Await { arg } => render_string_expr(arg, state),
         JsExpr::Ident { name } if state.string_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
@@ -13038,6 +13113,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_node_os_tmpdir_call(callee, args, state))
             .or_else(|| render_node_fs_mkdtemp_sync_call(callee, args, state))
             .or_else(|| render_node_fs_read_file_sync_call(callee, args, state))
+            .or_else(|| render_node_fs_promises_read_file_call(callee, args, state))
             .or_else(|| render_buffer_to_string_call(callee, args, state))
             .or_else(|| render_url_search_params_get_call(callee, args, state))
             .or_else(|| render_crypto_hash_hex_digest_call(callee, args, state))
@@ -15925,6 +16001,7 @@ fn render_map_bool_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> O
 
 fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
+        JsExpr::Await { arg } => render_string_array_expr(arg, state),
         expr if is_process_argv_ref(expr) => render_process_argv_expr(state),
         JsExpr::Ident { name }
             if state.string_array_bindings.contains(name)
@@ -15959,6 +16036,11 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Call { callee, args, .. } if is_string_array_slice_call(callee, args) => {
             render_string_array_slice_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_node_fs_promises_readdir_call(callee, args, state).is_some() =>
+        {
+            render_node_fs_promises_readdir_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } => {
             let JsExpr::Ident { name } = callee.as_ref() else {
@@ -16691,6 +16773,28 @@ fn render_array_bool_method_call(
         return Some("false".to_string());
     }
     Some(format!("({})", comparisons.join(" || ")))
+}
+
+fn render_string_array_includes_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "includes" || args.len() != 1 {
+        return None;
+    }
+    let values = render_string_array_expr(object, state)?;
+    let needle = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownStringArrayIncludes({values}, {needle})"))
 }
 
 fn number_array_method_target<'a>(
@@ -18539,6 +18643,13 @@ fn node_fs_builtin_receiver(callee: &JsExpr, state: &AotState) -> Option<()> {
     state.builtin_bindings.contains(binding).then_some(())
 }
 
+fn node_fs_promises_method<'a>(callee: &JsExpr, state: &'a AotState) -> Option<&'a str> {
+    let JsExpr::Ident { name } = callee else {
+        return None;
+    };
+    state.fs_promises_bindings.get(name).map(String::as_str)
+}
+
 fn render_node_fs_mkdtemp_sync_call(
     callee: &JsExpr,
     args: &[JsExpr],
@@ -18569,6 +18680,34 @@ fn render_node_fs_read_file_sync_call(
     Some(format!("tsgodownFsReadFileSync({path}, {encoding})"))
 }
 
+fn render_node_fs_promises_read_file_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if node_fs_promises_method(callee, state)? != "readFile" || !matches!(args.len(), 1 | 2) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    let encoding = args
+        .get(1)
+        .and_then(|expr| render_node_fs_encoding_arg(expr, state))
+        .unwrap_or_else(|| "\"utf8\"".to_string());
+    Some(format!("tsgodownFsReadFileSync({path}, {encoding})"))
+}
+
+fn render_node_fs_promises_readdir_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if node_fs_promises_method(callee, state)? != "readdir" || args.len() != 1 {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    Some(format!("tsgodownFsReaddirSync({path})"))
+}
+
 fn render_node_fs_encoding_arg(expr: &JsExpr, state: &AotState) -> Option<String> {
     if let Some(encoding) = render_string_expr(expr, state) {
         return Some(encoding);
@@ -18589,6 +18728,19 @@ fn render_node_fs_write_file_sync_stmt(
 ) -> Option<String> {
     node_fs_builtin_receiver(callee, state)?;
     if !is_node_fs_write_file_sync_call(callee, args) {
+        return None;
+    }
+    let path = render_string_expr(args.first()?, state)?;
+    let data = render_string_expr(args.get(1)?, state)?;
+    Some(format!("tsgodownFsWriteFileSync({path}, {data})"))
+}
+
+fn render_node_fs_promises_write_file_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if node_fs_promises_method(callee, state)? != "writeFile" || !matches!(args.len(), 2 | 3) {
         return None;
     }
     let path = render_string_expr(args.first()?, state)?;
