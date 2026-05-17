@@ -4652,6 +4652,81 @@ console.log("pairs", makeSafeRegex("\\d+\\s*[a-zA-Z0-9-]*"))
     }
 
     #[test]
+    fn emit_go_runs_aot_math_random_array_length_subset() {
+        let root = temp_project("engine-core-aot-math-random-array-length");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const TIPS = ["alpha", "beta", "gamma"]
+function pickTip() {
+  return TIPS[Math.floor(Math.random() * TIPS.length)]
+}
+console.log("random-tip", pickTip())
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-math-random-array-length".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownMathRandom"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            matches!(
+                stdout.as_ref(),
+                "random-tip alpha\n" | "random-tip beta\n" | "random-tip gamma\n"
+            ),
+            "stdout={stdout}"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_typeof_comparison_subset() {
         let root = temp_project("engine-core-aot-typeof-comparison");
         write(

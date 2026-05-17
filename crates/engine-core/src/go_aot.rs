@@ -1150,7 +1150,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
         {
             imports.insert("regexp");
         }
-        JsExpr::Member { object, .. } => collect_expr_imports(object, imports),
+        JsExpr::Member { object, .. } => {
+            collect_expr_imports(object, imports);
+        }
         _ => {}
     }
 }
@@ -1254,6 +1256,10 @@ func tsgodownMathMin(values ...float64) float64 {
 
 func tsgodownMathRound(value float64) float64 {
 	return math.Floor(value + 0.5)
+}
+
+func tsgodownMathRandom() float64 {
+	return float64(time.Now().UnixNano()&0x1fffffffffffff) / float64(0x20000000000000)
 }
 
 func tsgodownStringArrayAt(values []string, index float64) string {
@@ -8314,6 +8320,12 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         expr if render_number_array_index_expr(expr, state).is_some() => {
             render_number_array_index_expr(expr, state)
         }
+        expr if render_string_array_length_expr(expr, state).is_some() => {
+            render_string_array_length_expr(expr, state)
+        }
+        expr if render_any_array_length_expr(expr, state).is_some() => {
+            render_any_array_length_expr(expr, state)
+        }
         expr if render_any_array_index_expr(expr, state).is_some() => {
             let value = render_any_array_index_expr(expr, state)?;
             Some(format!("tsgodownToFloat64({value})"))
@@ -8523,6 +8535,7 @@ fn render_math_numeric_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) 
         return None;
     }
     match property.as_str() {
+        "random" if args.is_empty() => Some("tsgodownMathRandom()".to_string()),
         "max" | "min" => {
             let args = args
                 .iter()
@@ -11263,6 +11276,23 @@ fn render_string_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<St
         return None;
     }
     let values = render_string_array_expr(object, state)?;
+    Some(format!("float64(len({values}))"))
+}
+
+fn render_any_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if !is_length_member_property(property, property_expr.as_deref()) {
+        return None;
+    }
+    let values = render_any_array_expr(object, state)?;
     Some(format!("float64(len({values}))"))
 }
 
