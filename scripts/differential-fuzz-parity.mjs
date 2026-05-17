@@ -13,6 +13,7 @@ const generatedRoot =
   path.join(repoRoot, "test-corpus", "differential-fuzz", "generated-go");
 
 const buildRoot = path.join(repoRoot, ".tmp", "differential-fuzz-parity");
+const goCacheRoot = process.env.GOCACHE ?? path.join(repoRoot, ".tmp", "go-cache");
 const cases = differentialFuzzCases();
 let generated = false;
 
@@ -114,6 +115,7 @@ function runGo(testCase) {
   const binaryPath = path.join(outDir, "probe");
   const build = spawnSync("go", ["build", "-o", binaryPath, "."], {
     cwd: goDir,
+    env: { ...process.env, GOCACHE: goCacheRoot },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 16 * 1024 * 1024,

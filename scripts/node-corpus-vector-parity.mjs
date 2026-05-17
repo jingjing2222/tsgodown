@@ -15,18 +15,23 @@ const generatedRoot =
   process.env.TSGODOWN_NODE_CORPUS_GO_ROOT ??
   path.join(corpusRoot, "generated-go");
 const buildRoot = path.join(repoRoot, ".tmp", "node-corpus-vector-parity");
+const goCacheRoot = process.env.GOCACHE ?? path.join(repoRoot, ".tmp", "go-cache");
 
 function hasFlag(flag) {
   return process.argv.includes(flag);
 }
 
 function run(cmd, args, options = {}) {
+  const { env, ...rest } = options;
+  const commandEnv =
+    cmd === "go" ? { ...process.env, GOCACHE: goCacheRoot, ...env } : env;
   return spawnSync(cmd, args, {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 128 * 1024 * 1024,
-    ...options,
+    ...rest,
+    ...(commandEnv ? { env: commandEnv } : {}),
   });
 }
 
