@@ -13823,7 +13823,6 @@ console.log("crypto", md5, sha1, Buffer.from("ff", "hex")[0], randomBytesOk, uui
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_dynamic_import_thenable_subset() {
         let root = temp_project("engine-core-dynamic-import");
         write(
@@ -13861,6 +13860,8 @@ console.log("dynamic-import", value)
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("value = \"loaded\""));
 
         if std::process::Command::new("go")
             .arg("version")

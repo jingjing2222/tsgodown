@@ -12221,6 +12221,9 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             }
             Some(format!("fmt.Fprintln(os.Stderr, {})", args.join(", ")))
         }
+        expr if is_dynamic_import_thenable_expr(expr) => {
+            render_dynamic_import_thenable_stmt(expr, state)
+        }
         JsExpr::Call { callee, args, .. } if is_require_call(expr) => {
             let spec = render_require_spec_arg(callee, args)?;
             if spec.starts_with("\"./") || spec.starts_with("\"../") {
@@ -12503,6 +12506,98 @@ fn render_await_promise_then_stmt(expr: &JsExpr, state: &mut AotState) -> Option
     render_promise_then_body(body, state)
 }
 
+fn render_dynamic_import_thenable_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
+    let (spec, params, body) = dynamic_import_thenable_parts(expr)?;
+    if !is_node_builtin_spec(spec)
+        && !state
+            .dynamic_import_spec_member_slots
+            .keys()
+            .any(|(slot_spec, _)| slot_spec == spec)
+    {
+        return None;
+    }
+    let mut then_state = clone_aot_state(state);
+    let mut prefix = Vec::new();
+    if let Some(param) = params.first() {
+        then_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+        bind_dynamic_import_local_from_spec(&mut then_state, param, spec);
+        if stmt_list_uses_ident(body, param)
+            && !then_state
+                .dynamic_import_member_slots
+                .keys()
+                .any(|(local, _)| local == param)
+        {
+            prefix.push(format!(
+                "{} := map[string]any{{}}",
+                sanitize_go_identifier(param)
+            ));
+        }
+    }
+    let mut rendered = prefix;
+    let body = render_promise_then_body(body, &mut then_state)?;
+    if !body.is_empty() {
+        rendered.push(body);
+    }
+    Some(rendered.join("\n"))
+}
+
+fn is_dynamic_import_thenable_expr(expr: &JsExpr) -> bool {
+    dynamic_import_thenable_parts(expr).is_some()
+}
+
+fn dynamic_import_thenable_parts(expr: &JsExpr) -> Option<(&str, &[String], &[JsStmt])> {
+    let then_call = match expr {
+        JsExpr::Call { callee, .. } => {
+            let JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } = callee.as_ref()
+            else {
+                return None;
+            };
+            if property == "catch" {
+                object.as_ref()
+            } else {
+                expr
+            }
+        }
+        _ => return None,
+    };
+    let JsExpr::Call { callee, args, .. } = then_call else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "then" {
+        return None;
+    }
+    let spec = dynamic_import_call_spec(object)?;
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = args.first()?
+    else {
+        return None;
+    };
+    Some((spec, params, body))
+}
+
 fn render_await_node_fs_promises_stmt(expr: &JsExpr, state: &AotState) -> Option<String> {
     let JsExpr::Call { callee, args, .. } = expr else {
         return None;
@@ -12536,6 +12631,158 @@ fn render_promise_then_body(body: &[JsStmt], state: &mut AotState) -> Option<Str
         })
         .collect::<Option<Vec<_>>>()
         .map(|stmts| stmts.join("\n"))
+}
+
+fn stmt_list_uses_ident(stmts: &[JsStmt], ident: &str) -> bool {
+    stmts.iter().any(|stmt| stmt_uses_ident(stmt, ident))
+}
+
+fn stmt_uses_ident(stmt: &JsStmt, ident: &str) -> bool {
+    match stmt {
+        JsStmt::Expr { expr }
+        | JsStmt::Return { value: Some(expr) }
+        | JsStmt::Throw { value: expr } => expr_uses_ident(expr, ident),
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        } => expr_uses_ident(expr, ident),
+        JsStmt::FunctionDecl { body, .. } => stmt_list_uses_ident(body, ident),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_uses_ident(test, ident)
+                || stmt_list_uses_ident(consequent, ident)
+                || stmt_list_uses_ident(alternate, ident)
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            stmt_list_uses_ident(init, ident)
+                || test
+                    .as_ref()
+                    .is_some_and(|expr| expr_uses_ident(expr, ident))
+                || update
+                    .as_ref()
+                    .is_some_and(|expr| expr_uses_ident(expr, ident))
+                || stmt_list_uses_ident(body, ident)
+        }
+        JsStmt::ForOf { right, body, .. } => {
+            expr_uses_ident(right, ident) || stmt_list_uses_ident(body, ident)
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            expr_uses_ident(test, ident) || stmt_list_uses_ident(body, ident)
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            stmt_list_uses_ident(body, ident)
+                || stmt_list_uses_ident(catch_body, ident)
+                || stmt_list_uses_ident(finally_body, ident)
+        }
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            expr_uses_ident(discriminant, ident)
+                || cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(|expr| expr_uses_ident(expr, ident))
+                        || stmt_list_uses_ident(&case.consequent, ident)
+                })
+        }
+        JsStmt::Label { body, .. } => stmt_list_uses_ident(body, ident),
+        JsStmt::Return { value: None }
+        | JsStmt::VarDecl { init: None, .. }
+        | JsStmt::Break { .. }
+        | JsStmt::Continue { .. }
+        | JsStmt::Yield { value: None, .. } => false,
+        JsStmt::Yield {
+            value: Some(expr), ..
+        } => expr_uses_ident(expr, ident),
+        JsStmt::ClassDecl {
+            super_class,
+            methods,
+            ..
+        } => {
+            super_class
+                .as_ref()
+                .is_some_and(|expr| expr_uses_ident(expr, ident))
+                || methods
+                    .iter()
+                    .any(|method| stmt_list_uses_ident(&method.body, ident))
+        }
+    }
+}
+
+fn expr_uses_ident(expr: &JsExpr, ident: &str) -> bool {
+    match expr {
+        JsExpr::Ident { name } => name == ident,
+        JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
+            expr_uses_ident(left, ident) || expr_uses_ident(right, ident)
+        }
+        JsExpr::Unary { arg, .. }
+        | JsExpr::Await { arg }
+        | JsExpr::Update { arg, .. }
+        | JsExpr::Spread { arg }
+        | JsExpr::ObjectRest { object: arg, .. } => expr_uses_ident(arg, ident),
+        JsExpr::Call { callee, args, .. } | JsExpr::New { callee, args } => {
+            expr_uses_ident(callee, ident) || args.iter().any(|arg| expr_uses_ident(arg, ident))
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            expr_uses_ident(object, ident)
+                || property_expr
+                    .as_ref()
+                    .is_some_and(|expr| expr_uses_ident(expr, ident))
+        }
+        JsExpr::Array { items } => items.iter().any(|item| expr_uses_ident(item, ident)),
+        JsExpr::ArraySpread { items } => {
+            items.iter().any(|item| expr_uses_ident(&item.value, ident))
+        }
+        JsExpr::Object { props } => props.iter().any(|prop| {
+            prop.key_expr
+                .as_ref()
+                .is_some_and(|expr| expr_uses_ident(expr, ident))
+                || expr_uses_ident(&prop.value, ident)
+        }),
+        JsExpr::Function { body, .. } => stmt_list_uses_ident(body, ident),
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_uses_ident(test, ident)
+                || expr_uses_ident(consequent, ident)
+                || expr_uses_ident(alternate, ident)
+        }
+        JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
+            exprs.iter().any(|expr| expr_uses_ident(expr, ident))
+        }
+        JsExpr::Class {
+            super_class,
+            methods,
+            ..
+        } => {
+            super_class
+                .as_ref()
+                .is_some_and(|expr| expr_uses_ident(expr, ident))
+                || methods
+                    .iter()
+                    .any(|method| stmt_list_uses_ident(&method.body, ident))
+        }
+        JsExpr::Value { .. } | JsExpr::This | JsExpr::Super => false,
+    }
 }
 
 fn render_assignment_stmt(
