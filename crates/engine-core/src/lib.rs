@@ -355,14 +355,10 @@ console.log("{\"version\":\"vector\",\"total\":0,\"results\":[]}")
         assert!(response.files[0]
             .contents
             .starts_with("//go:build tsgodown_vector\n\npackage main"));
-        assert!(
-            !response
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
-            "diagnostics={:?}",
-            response.diagnostics
-        );
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("fmt.Println"));
         assert!(!response.files[0]
@@ -479,14 +475,10 @@ console.log("hello", value)
             ir_snapshot: None,
         });
 
-        assert!(
-            !response
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
-            "diagnostics={:?}",
-            response.diagnostics
-        );
+        assert!(!response
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("fmt.Println"));
 
@@ -965,10 +957,14 @@ export function score(left, right) {
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("src_score_js_score"));
 
@@ -1028,10 +1024,14 @@ console.log("aot-fn-expr", score(2, 3))
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
         assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
         assert!(response.files[0].contents.contains("func score"));
 
@@ -11419,7 +11419,6 @@ console.log("string-more", result)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_global_object_array_math_builtins_subset() {
         let root = temp_project("engine-core-global-builtins");
         write(
@@ -11458,10 +11457,21 @@ console.log("builtins", String(12), keys, entries, order, has, tag, isArray, Mat
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownStringArraySort"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownObjectAssignKeys"));
 
         if std::process::Command::new("go")
             .arg("version")

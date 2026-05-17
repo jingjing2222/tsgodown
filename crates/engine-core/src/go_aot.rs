@@ -990,6 +990,15 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_number_is_integer_call(callee, args) {
                 imports.insert("math");
             }
+            if is_number_is_finite_call(callee, args)
+                || is_number_is_safe_integer_call(callee, args)
+                || is_global_is_finite_call(callee, args)
+            {
+                imports.insert("math");
+            }
+            if is_array_sort_call(callee, args) {
+                imports.insert("sort");
+            }
             if is_uri_string_call(callee, args) {
                 imports.insert("strings");
             }
@@ -2358,6 +2367,21 @@ func tsgodownObjectFromAny(value any) map[string]any {
 	}
 }
 
+func tsgodownObjectAssignKeys(groups ...[]string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, group := range groups {
+		for _, key := range group {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
 func tsgodownObjectProp(value any, key string) any {
 	object := tsgodownObjectFromAny(value)
 	return object[key]
@@ -3297,6 +3321,12 @@ func tsgodownAnyArrayJoin(values []any, separator string) string {
 		return leftValue < rightValue
 	})
 	return append(integerKeys, stringKeys...)
+}
+
+func tsgodownStringArraySort(values []string) []string {
+	out := append([]string(nil), values...)
+	sort.Strings(out)
+	return out
 }
 
 func tsgodownObjectMapKeys(value any) []string {
@@ -10959,6 +10989,22 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 "(!math.IsNaN({value}) && !math.IsInf({value}, 0) && math.Trunc({value}) == {value})"
             ))
         }
+        JsExpr::Call { callee, args, .. } if is_number_is_finite_call(callee, args) => {
+            let value = render_numeric_expr(args.first()?, state)?;
+            Some(format!("(!math.IsNaN({value}) && !math.IsInf({value}, 0))"))
+        }
+        JsExpr::Call { callee, args, .. } if is_number_is_safe_integer_call(callee, args) => {
+            let value = render_numeric_expr(args.first()?, state)?;
+            Some(format!(
+                "(!math.IsNaN({value}) && !math.IsInf({value}, 0) && math.Trunc({value}) == {value} && math.Abs({value}) <= 9007199254740991)"
+            ))
+        }
+        JsExpr::Call { callee, args, .. } if is_global_is_finite_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            Some(format!(
+                "func() bool {{ raw := any({value}); value := tsgodownToFloat64(raw); return !tsgodownIsNaN(raw) && !math.IsNaN(value) && !math.IsInf(value, 0) }}()"
+            ))
+        }
         JsExpr::Call { callee, args, .. } if is_map_has_call(callee, args, state) => {
             render_map_bool_call(callee, args, state)
         }
@@ -12956,6 +13002,10 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .unwrap_or_else(|| Some("10".to_string()))?;
             Some(format!("tsgodownParseInt({value}, {radix})"))
         }
+        JsExpr::Call { callee, args, .. } if is_parse_float_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
+        }
         JsExpr::Call { callee, args, .. } if is_number_cast_call(callee, args) => {
             let value = render_expr(args.first()?, state)?;
             Some(format!("tsgodownToFloat64({value})"))
@@ -13672,6 +13722,9 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bool_bindings.contains(name) => {
             Some("\"boolean\"".to_string())
         }
+        JsExpr::Call { callee, args, .. } if is_date_now_call(callee, args) => {
+            Some("\"number\"".to_string())
+        }
         JsExpr::Member {
             object,
             property,
@@ -14070,6 +14123,19 @@ fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<St
 
 fn render_dynamic_object_order_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     match expr {
+        JsExpr::Ident { name } if state.ordered_dynamic_object_bindings.contains(name) => {
+            Some(dynamic_object_order_ref(name, state))
+        }
+        JsExpr::Call { callee, args, .. } if is_object_assign_call(callee, args) => {
+            let groups = args
+                .iter()
+                .map(|arg| render_dynamic_object_order_init_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("tsgodownObjectAssignKeys({})", groups.join(", ")))
+        }
+        JsExpr::Call { callee, args, .. } if is_object_create_null_call(callee, args) => {
+            Some("[]string{}".to_string())
+        }
         JsExpr::Object { props } => {
             if props.iter().any(|prop| prop.spread) {
                 return Some("[]string{}".to_string());
@@ -16121,11 +16187,21 @@ fn render_string_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]string{{{}}}", items.join(", ")))
         }
-        JsExpr::Call { callee, args, .. } if args.is_empty() => {
+        JsExpr::Call { callee, args, .. }
+            if args.is_empty() && matches!(callee.as_ref(), JsExpr::Function { .. }) =>
+        {
             render_string_array_iife_expr(callee, state)
         }
         JsExpr::Call { callee, args, .. } if is_object_keys_call(callee, args) => {
             render_object_keys_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_array_sort_call(callee, args) => {
+            render_string_array_sort_call(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_array_map_to_string_values_call(callee, args, state).is_some() =>
+        {
+            render_array_map_to_string_values_call(callee, args, state)
         }
         JsExpr::Call { callee, args, .. } if is_array_map_to_string_call(callee, args) => {
             render_array_map_to_string_call(callee, args, state)
@@ -17589,6 +17665,98 @@ fn render_array_map_to_string_call(
     Some(format!("tsgodownStringArrayFromAny({value})"))
 }
 
+fn render_array_map_to_string_values_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_map_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let mapper = render_array_string_mapper_expr(args.first()?, state)?;
+    if let Some(values) = render_any_array_expr(object, state) {
+        return Some(format!(
+            "tsgodownStringArrayFromAny(tsgodownAnyArrayMap({values}, {mapper}))"
+        ));
+    }
+    let values = render_string_array_expr(object, state)?;
+    Some(format!(
+        "tsgodownStringArrayFromAny(tsgodownStringArrayMap({values}, {mapper}))"
+    ))
+}
+
+fn render_array_string_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    if params.len() > 2 {
+        return None;
+    }
+    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+        return None;
+    };
+    let mut mapper_state = clone_aot_state(state);
+    if let Some(param) = params.first() {
+        mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    if let Some(param) = params.get(1) {
+        mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
+    }
+    mark_any_array_locals(body, &mut mapper_state);
+    mark_dynamic_object_locals(body, &mut mapper_state);
+    let value = render_string_expr(value, &mapper_state)?;
+    let value_param = params
+        .first()
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    let index_param = params
+        .get(1)
+        .map(|param| sanitize_go_identifier(param))
+        .unwrap_or_else(|| "_".to_string());
+    Some(format!(
+        "func({value_param} any, {index_param} float64) any {{ return {value} }}"
+    ))
+}
+
+fn is_array_sort_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.is_empty()
+        && matches!(
+            callee,
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if property == "sort"
+        )
+}
+
+fn render_string_array_sort_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_array_sort_call(callee, args) {
+        return None;
+    }
+    let JsExpr::Member { object, .. } = callee else {
+        return None;
+    };
+    let values = render_string_array_expr(object, state)?;
+    Some(format!("tsgodownStringArraySort({values})"))
+}
+
 fn is_string_array_join_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 0 | 1)
         && matches!(
@@ -17657,7 +17825,7 @@ fn render_any_array_join_call(
     let JsExpr::Member { object, .. } = callee else {
         return None;
     };
-    let values = render_any_array_expr(object, state)?;
+    let values = render_any_array_from_any_expr(object, state)?;
     let separator = args
         .first()
         .map(|expr| render_string_expr(expr, state))
@@ -19556,6 +19724,34 @@ fn is_number_is_integer_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         )
 }
 
+fn is_number_is_finite_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Number")
+                && property == "isFinite"
+        )
+}
+
+fn is_number_is_safe_integer_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Number")
+                && property == "isSafeInteger"
+        )
+}
+
 fn is_uri_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
@@ -19601,8 +19797,16 @@ fn is_global_is_nan_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "isNaN")
 }
 
+fn is_global_is_finite_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "isFinite")
+}
+
 fn is_parse_int_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 1 | 2) && matches!(callee, JsExpr::Ident { name } if name == "parseInt")
+}
+
+fn is_parse_float_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "parseFloat")
 }
 
 fn is_process_supported_builtin_expr(expr: &JsExpr) -> bool {
