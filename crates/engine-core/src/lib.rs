@@ -10995,7 +10995,6 @@ console.log("regex", normalized, parts.join("."), matched[1], replaced, guarded,
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_array_iteration_search_and_slice_methods_subset() {
         let root = temp_project("engine-core-array-iteration-search-slice");
         write(
@@ -11048,10 +11047,14 @@ console.log("array-more", seen.join(","), result)
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics: {:?}",
+            response.diagnostics
+        );
 
         if std::process::Command::new("go")
             .arg("version")
