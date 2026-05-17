@@ -11558,7 +11558,6 @@ try {
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_derived_error_super_constructor_subset() {
         let root = temp_project("engine-core-derived-error-super");
         write(
@@ -11602,10 +11601,14 @@ try {
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics: {:?}",
+            response.diagnostics
+        );
 
         if std::process::Command::new("go")
             .arg("version")

@@ -2591,6 +2591,15 @@ func tsgodownErrorFromAny(value any) tsgodownError {
 }
 
 func tsgodownCaughtError(value any) map[string]any {
+	if object, ok := value.(map[string]any); ok {
+		if _, ok := object["name"]; !ok {
+			object["name"] = "Error"
+		}
+		if _, ok := object["message"]; !ok {
+			object["message"] = ""
+		}
+		return object
+	}
 	err := tsgodownErrorFromAny(value)
 	object := map[string]any{"name": err.Name, "message": err.Message}
 	if err.Code != "" {
@@ -2600,7 +2609,7 @@ func tsgodownCaughtError(value any) map[string]any {
 }
 
 func tsgodownThrow(value any) {
-	panic(tsgodownErrorFromAny(value))
+	panic(value)
 }
 
 func tsgodownErrorInstanceOf(value any, constructor string) bool {
@@ -4049,7 +4058,11 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
     else {
         return None;
     };
-    if super_class.is_some() {
+    let super_error_name = super_class
+        .as_ref()
+        .and_then(error_constructor_name)
+        .map(str::to_string);
+    if super_class.is_some() && super_error_name.is_none() {
         return None;
     }
     let go_name = if module.id == entry.id {
@@ -4062,6 +4075,7 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
     let mut constructor_values = Vec::new();
     let mut class_methods = BTreeMap::new();
     let mut class_getters = BTreeMap::new();
+    let mut constructor_body = Vec::new();
     for method in methods {
         if method.r#async || method.generator || method.rest_param.is_some() || method.is_static {
             return None;
@@ -4069,6 +4083,31 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
         if method.kind == "constructor" {
             for param in &method.params {
                 constructor_params.push(param.clone());
+            }
+            if super_error_name.is_some() {
+                constructor_body = method.body.clone();
+                for stmt in &method.body {
+                    if let Some((property, right)) = this_assignment(stmt) {
+                        let kind = match right {
+                            JsExpr::Value {
+                                value: JsValue::String { .. },
+                            } => AotSlotKind::String,
+                            JsExpr::Value {
+                                value: JsValue::Number { .. },
+                            } => AotSlotKind::Number,
+                            JsExpr::Value {
+                                value: JsValue::Bool { .. },
+                            } => AotSlotKind::Bool,
+                            JsExpr::Ident { name } if method.params.contains(name) => {
+                                AotSlotKind::Any
+                            }
+                            _ => AotSlotKind::Any,
+                        };
+                        fields.insert(property.clone(), kind);
+                        constructor_values.push((property, right.clone()));
+                    }
+                }
+                continue;
             }
             for stmt in &method.body {
                 let JsStmt::Expr { expr } = stmt else {
@@ -4135,8 +4174,10 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
         fields,
         constructor_params,
         constructor_values,
+        constructor_body,
         methods: class_methods,
         getters: class_getters,
+        super_error_name,
     })
 }
 
@@ -5629,6 +5670,20 @@ fn this_member_property(expr: &JsExpr) -> Option<String> {
     }
 }
 
+fn this_assignment(stmt: &JsStmt) -> Option<(String, &JsExpr)> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    let JsExpr::Assign { op, left, right } = expr else {
+        return None;
+    };
+    if op != "=" {
+        return None;
+    }
+    let property = this_member_property(left)?;
+    Some((property, right.as_ref()))
+}
+
 fn module_go_prefix(module: &Module) -> String {
     let raw = module
         .source_path
@@ -5897,8 +5952,10 @@ struct AotClass {
     fields: BTreeMap<String, AotSlotKind>,
     constructor_params: Vec<String>,
     constructor_values: Vec<(String, JsExpr)>,
+    constructor_body: Vec<JsStmt>,
     methods: BTreeMap<String, AotMethod>,
     getters: BTreeMap<String, AotMethod>,
+    super_error_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -6508,7 +6565,8 @@ fn render_try_catch_stmt(
     state: &AotState,
 ) -> Option<String> {
     let mut body_state = clone_aot_state(state);
-    let body = indent_lines(&render_stmt_sequence(body, &mut body_state)?);
+    let rendered_body = render_stmt_sequence(body, &mut body_state)?;
+    let body = indent_lines(&rendered_body);
     let mut catch_state = clone_aot_state(state);
     let catch_binding = catch_param.unwrap_or("__tsgodownCaughtError");
     let catch_ident = sanitize_go_identifier(catch_binding);
@@ -6519,7 +6577,8 @@ fn render_try_catch_stmt(
     catch_state
         .dynamic_object_bindings
         .insert(catch_binding.to_string());
-    let catch_body = indent_lines(&render_stmt_sequence(catch_body, &mut catch_state)?);
+    let rendered_catch_body = render_stmt_sequence(catch_body, &mut catch_state)?;
+    let catch_body = indent_lines(&rendered_catch_body);
     let finally = if finally_body.is_empty() {
         String::new()
     } else {
@@ -6742,6 +6801,9 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
 }
 
 fn render_class_decl(class: &AotClass) -> Option<String> {
+    if let Some(super_error_name) = &class.super_error_name {
+        return render_error_subclass_decl(class, super_error_name);
+    }
     let fields = class
         .fields
         .iter()
@@ -6798,6 +6860,82 @@ fn render_class_decl(class: &AotClass) -> Option<String> {
         out.push(render_class_method_decl(class, getter_name, getter)?);
     }
     Some(out.join("\n\n"))
+}
+
+fn render_error_subclass_decl(class: &AotClass, super_error_name: &str) -> Option<String> {
+    let params = class
+        .constructor_params
+        .iter()
+        .map(|param| format!("{} any", sanitize_go_identifier(param)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut state = AotState::default();
+    for param in &class.constructor_params {
+        state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    let mut prelude = Vec::new();
+    let mut super_message = None;
+    let mut field_assignments = Vec::new();
+    for stmt in &class.constructor_body {
+        if let Some(args) = super_call_args(stmt) {
+            let message = args
+                .first()
+                .map(|arg| render_string_expr(arg, &state))
+                .unwrap_or_else(|| Some("\"\"".to_string()))?;
+            super_message = Some(message);
+            continue;
+        }
+        if let Some((field, right)) = this_assignment(stmt) {
+            let value =
+                render_json_value_expr(right, &state).or_else(|| render_expr(right, &state))?;
+            field_assignments.push(format!(
+                "__tsgodownErr[{}] = {value}",
+                go_string_literal(&field)
+            ));
+            continue;
+        }
+        prelude.push(render_error_constructor_prelude_stmt(stmt, &mut state)?);
+    }
+    let message = super_message.unwrap_or_else(|| "\"\"".to_string());
+    prelude.push(format!(
+        "__tsgodownErr := tsgodownNewError({}, {message})",
+        go_string_literal(super_error_name)
+    ));
+    prelude.extend(field_assignments);
+    prelude.push("return __tsgodownErr".to_string());
+    Some(format!(
+        "func new_{}({params}) map[string]any {{\n{}\n}}",
+        class.go_name,
+        indent_lines(&prelude.join("\n"))
+    ))
+}
+
+fn super_call_args(stmt: &JsStmt) -> Option<&[JsExpr]> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if matches!(callee.as_ref(), JsExpr::Super) {
+        Some(args.as_slice())
+    } else {
+        None
+    }
+}
+
+fn render_error_constructor_prelude_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
+    if let JsStmt::VarDecl {
+        name,
+        init: Some(init),
+    } = stmt
+    {
+        let ident = sanitize_go_identifier(name);
+        let value = render_js_to_string_expr(init, state)?;
+        state.bind_slot(name, ident.clone(), AotSlotKind::String);
+        return Some(format!("var {ident} string = {value}"));
+    }
+    render_stmt(stmt, state)
 }
 
 fn render_class_constructor_value(expr: &JsExpr) -> Option<String> {
@@ -18552,6 +18690,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("tsgodownNullish({left}, {right})"))
         }
         JsExpr::Binary { op, .. } if op == "+" => render_expr(expr, state),
+        JsExpr::Binary { op, .. } if op == "instanceof" => render_bool_expr(expr, state),
         JsExpr::Binary { op, .. } if go_comparison_op(op).is_some() => {
             render_bool_expr(expr, state)
         }
