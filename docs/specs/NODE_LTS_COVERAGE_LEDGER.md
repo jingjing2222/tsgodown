@@ -10,7 +10,7 @@ diagnostics. `TODO` and `WIP` rows are allowed during development only.
 
 | Key | Area | Stability | Contract Status | Go Status | Diagnostic | Evidence | Notes |
 |---|---|---|---|---|---|---|---|
-| node.assert | Assertion testing | stable | TODO | TODO | NODE_ASSERT_UNSUPPORTED | planned | Assert API and assertion error shapes. |
+| node.assert | Assertion testing | stable | WIP | WIP | NODE_ASSERT_UNSUPPORTED | focused AOT subset | `assert.equal`, `assert.strictEqual`, and `assert.deepStrictEqual` lower through generic assertion helpers for primitive values and JSON-like arrays/objects. Full AssertionError object shape, messages, custom operators, partial/deep match variants, rejects/throws async behavior, and strict module aliases beyond the focused subset remain pending. |
 | node.async_context | Asynchronous context tracking | stable | TODO | TODO | NODE_ASYNC_CONTEXT_UNSUPPORTED | planned | AsyncLocalStorage and async resource propagation. |
 | node.async_hooks | Async hooks | stable | TODO | TODO | NODE_ASYNC_HOOKS_UNSUPPORTED | planned | Hook lifecycle and async resource IDs. |
 | node.buffer | Buffer | stable | WIP | WIP | NODE_BUFFER_UNSUPPORTED | focused AOT subset | `Buffer.alloc` lowers fixed-size byte-slice allocation with numeric fill, `Buffer.from` lowers string inputs with `utf8`, `hex`, and `base64` encodings plus numeric arrays, and `Buffer.isBuffer` lowers byte-slice predicates; Blob, full encodings, mutation, typed-array interop, and byte-level parity pending. |

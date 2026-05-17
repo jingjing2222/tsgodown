@@ -2224,6 +2224,78 @@ func tsgodownStrictEqual(left any, right any) bool {
 	}
 }
 
+func tsgodownSameValueStrict(left any, right any) bool {
+	switch leftValue := left.(type) {
+	case nil:
+		return right == nil
+	case bool:
+		rightValue, ok := right.(bool)
+		return ok && leftValue == rightValue
+	case float64:
+		rightValue, ok := right.(float64)
+		return ok && leftValue == rightValue
+	case int:
+		rightValue, ok := right.(int)
+		return ok && leftValue == rightValue
+	case int64:
+		rightValue, ok := right.(int64)
+		return ok && leftValue == rightValue
+	case string:
+		rightValue, ok := right.(string)
+		return ok && leftValue == rightValue
+	default:
+		return tsgodownComparableEqual(left, right)
+	}
+}
+
+func tsgodownComparableEqual(left any, right any) (equal bool) {
+	defer func() {
+		if recover() != nil {
+			equal = false
+		}
+	}()
+	return left == right
+}
+
+func tsgodownDeepStrictEqual(left any, right any) bool {
+	if tsgodownSameValueStrict(left, right) {
+		return true
+	}
+	switch leftValue := left.(type) {
+	case map[string]any:
+		rightValue, ok := right.(map[string]any)
+		if !ok || len(leftValue) != len(rightValue) {
+			return false
+		}
+		for key, leftItem := range leftValue {
+			rightItem, ok := rightValue[key]
+			if !ok || !tsgodownDeepStrictEqual(leftItem, rightItem) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		rightValue, ok := right.([]any)
+		if !ok || len(leftValue) != len(rightValue) {
+			return false
+		}
+		for index, leftItem := range leftValue {
+			if !tsgodownDeepStrictEqual(leftItem, rightValue[index]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func tsgodownAssert(condition bool) {
+	if !condition {
+		panic("AssertionError")
+	}
+}
+
 func tsgodownObjectFromAny(value any) map[string]any {
 	switch value := value.(type) {
 	case nil:
@@ -5186,6 +5258,9 @@ fn module_aot_state(
         if import.resolved.is_none() && is_node_builtin_spec(&import.spec) {
             for binding in &import.bindings {
                 state.builtin_bindings.insert(binding.local.clone());
+                if is_node_assert_spec(&import.spec) {
+                    state.assert_builtin_bindings.insert(binding.local.clone());
+                }
             }
             continue;
         }
@@ -6242,6 +6317,7 @@ struct AotState {
     classes: BTreeMap<String, AotClass>,
     namespace_functions: BTreeMap<(String, String), AotFunction>,
     builtin_bindings: BTreeSet<String>,
+    assert_builtin_bindings: BTreeSet<String>,
     dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
     module_exports_ref: Option<String>,
@@ -6356,6 +6432,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -6489,6 +6566,9 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         .insert(name.clone(), spec.to_string());
                     if is_node_builtin_spec(spec) && !name.starts_with("__tsgodown_destructure_") {
                         state.builtin_bindings.insert(name.clone());
+                        if is_node_assert_spec(spec) {
+                            state.assert_builtin_bindings.insert(name.clone());
+                        }
                     }
                     return Some(String::new());
                 }
@@ -6497,14 +6577,21 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         state.bindings.insert(name.clone());
                         state.binding_refs.insert(name.clone(), ident.clone());
                         state.builtin_bindings.insert(name.clone());
+                        if is_node_assert_spec(spec) {
+                            state.assert_builtin_bindings.insert(name.clone());
+                        }
                         return Some(String::new());
                     }
                 }
                 if let Some((spec, _property)) = dynamic_import_namespace_member(expr, state) {
-                    if is_node_builtin_spec(spec) {
+                    let spec = spec.to_string();
+                    if is_node_builtin_spec(&spec) {
                         state.bindings.insert(name.clone());
                         state.binding_refs.insert(name.clone(), ident.clone());
                         state.builtin_bindings.insert(name.clone());
+                        if is_node_assert_spec(&spec) {
+                            state.assert_builtin_bindings.insert(name.clone());
+                        }
                         return Some(String::new());
                     }
                 }
@@ -6881,6 +6968,7 @@ fn render_for_stmt(
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7378,6 +7466,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7421,6 +7510,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         classes: state.classes.clone(),
         namespace_functions: state.namespace_functions.clone(),
         builtin_bindings: state.builtin_bindings.clone(),
+        assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -10902,6 +10992,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             render_node_fs_rm_sync_stmt(callee, args, state)
         }
+        JsExpr::Call { callee, args, .. }
+            if render_node_assert_stmt(callee, args, state).is_some() =>
+        {
+            render_node_assert_stmt(callee, args, state)
+        }
         JsExpr::Assign { op, left, right } => render_assignment_stmt(op, left, right, state),
         JsExpr::Update { op, arg, .. } => render_update_stmt(op, arg, state),
         JsExpr::Call { callee, args, .. } => {
@@ -10910,6 +11005,38 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_node_assert_stmt(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if args.len() < 2 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.assert_builtin_bindings.contains(name) {
+        return None;
+    }
+    let left = render_json_value_expr(args.first()?, state)
+        .or_else(|| render_expr(args.first()?, state))?;
+    let right =
+        render_json_value_expr(args.get(1)?, state).or_else(|| render_expr(args.get(1)?, state))?;
+    let condition = match property.as_str() {
+        "equal" => format!("tsgodownStrictEqual({left}, {right})"),
+        "strictEqual" => format!("tsgodownSameValueStrict({left}, {right})"),
+        "deepStrictEqual" => format!("tsgodownDeepStrictEqual({left}, {right})"),
+        _ => return None,
+    };
+    Some(format!("tsgodownAssert({condition})"))
 }
 
 fn render_mutating_any_array_function_call_stmt(
@@ -12084,6 +12211,13 @@ fn is_node_builtin_spec(spec: &str) -> bool {
             | "util"
             | "v8"
             | "zlib"
+    )
+}
+
+fn is_node_assert_spec(spec: &str) -> bool {
+    matches!(
+        spec.strip_prefix("node:").unwrap_or(spec),
+        "assert" | "assert/strict"
     )
 }
 

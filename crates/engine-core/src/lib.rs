@@ -13606,7 +13606,6 @@ console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envVa
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_builtin_assert_import_subset() {
         let root = temp_project("engine-core-assert-import");
         write(
