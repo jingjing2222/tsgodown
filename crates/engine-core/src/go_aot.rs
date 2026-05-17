@@ -1130,7 +1130,7 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 collect_stmt_imports(stmt, imports);
             }
         }
-        JsExpr::Binary { left, right, .. } => {
+        JsExpr::Binary { left, right, .. } | JsExpr::Assign { left, right, .. } => {
             collect_expr_imports(left, imports);
             collect_expr_imports(right, imports);
         }
@@ -9150,6 +9150,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             render_any_index_compound_assignment_stmt(op, left, right, state)
         }
+        JsExpr::Assign { op, left, right }
+            if render_process_env_assignment_stmt(op, left, right, state).is_some() =>
+        {
+            render_process_env_assignment_stmt(op, left, right, state)
+        }
         JsExpr::Call { callee, args, .. }
             if render_bytes_set_stmt(callee, args, state).is_some() =>
         {
@@ -9159,6 +9164,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_dynamic_object_assignment_stmt(op, left, right, state).is_some() =>
         {
             render_dynamic_object_assignment_stmt(op, left, right, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_reflect_delete_property_stmt(callee, args, state).is_some() =>
+        {
+            render_reflect_delete_property_stmt(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_object_assign_stmt(callee, args, state).is_some() =>
@@ -9814,6 +9824,55 @@ fn render_dynamic_object_assignment_stmt(
         ));
     }
     Some(format!("tsgodownObjectSetProp({object}, {key}, {value})"))
+}
+
+fn render_process_env_assignment_stmt(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    if op != "=" {
+        return None;
+    }
+    let name = process_env_lookup_name(left)?;
+    let value = render_string_expr(right, state).or_else(|| {
+        let value = render_expr(right, state)?;
+        Some(format!("tsgodownToString({value})"))
+    })?;
+    Some(format!(
+        "_ = os.Setenv({}, {value})",
+        go_string_literal(name)
+    ))
+}
+
+fn render_reflect_delete_property_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_reflect_delete_property_call(callee, args) {
+        return None;
+    }
+    if !matches!(args.first(), Some(expr) if is_process_env_ref(expr)) {
+        return None;
+    }
+    let key = render_string_expr(args.get(1)?, state)?;
+    Some(format!("_ = os.Unsetenv({key})"))
+}
+
+fn is_reflect_delete_property_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 2
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if property == "deleteProperty"
+                && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Reflect")
+        )
 }
 
 fn render_number_array_call_stmt(

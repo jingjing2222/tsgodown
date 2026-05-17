@@ -13495,8 +13495,11 @@ writeFileSync(file, 'A=1\r\nB="x\\ny"\n')
 const fileText = readFileSync(file, { encoding: "utf8" })
 const flag = truthy({ debug: "yes" })
 const defaultValue = api.parseDefault("ok")
+process.env.TSGODOWN_TMP_ENV = "set"
+const envValue = process.env.TSGODOWN_TMP_ENV
+Reflect.deleteProperty(process.env, "TSGODOWN_TMP_ENV")
 rmSync(dir, { recursive: true, force: true })
-console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue)
+console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue, envValue)
 "#,
         );
 
@@ -13554,7 +13557,7 @@ console.log("dotenv", basename(file), fileText.trim(), flag, defaultValue)
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "dotenv sample.env A=1\nB=\"x\\ny\" true OK\n"
+            "dotenv sample.env A=1\nB=\"x\\ny\" true OK set\n"
         );
     }
 
