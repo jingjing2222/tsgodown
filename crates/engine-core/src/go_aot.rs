@@ -962,6 +962,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if is_string_cast_call(callee, args) {
                 imports.insert("strconv");
             }
+            if is_number_cast_call(callee, args) {
+                imports.insert("strconv");
+                imports.insert("strings");
+            }
             if is_uri_string_call(callee, args) {
                 imports.insert("strings");
             }
@@ -2640,11 +2644,43 @@ func tsgodownToFloat64(value any) float64 {
 	case int64:
 		return float64(value)
 	case string:
-		number, err := strconv.ParseFloat(value, 64)
+		text := strings.TrimSpace(value)
+		if text == "" {
+			return 0
+		}
+		sign := 1.0
+		if strings.HasPrefix(text, "-") || strings.HasPrefix(text, "+") {
+			if text[0] == '-' {
+				sign = -1
+			}
+			text = text[1:]
+		}
+		lower := strings.ToLower(text)
+		switch {
+		case strings.HasPrefix(lower, "0b"):
+			parsed, err := strconv.ParseInt(lower[2:], 2, 64)
+			if err != nil {
+				return 0
+			}
+			return sign * float64(parsed)
+		case strings.HasPrefix(lower, "0o"):
+			parsed, err := strconv.ParseInt(lower[2:], 8, 64)
+			if err != nil {
+				return 0
+			}
+			return sign * float64(parsed)
+		case strings.HasPrefix(lower, "0x"):
+			parsed, err := strconv.ParseInt(lower[2:], 16, 64)
+			if err != nil {
+				return 0
+			}
+			return sign * float64(parsed)
+		}
+		number, err := strconv.ParseFloat(text, 64)
 		if err != nil {
 			return 0
 		}
-		return number
+		return sign * number
 	default:
 		return 0
 	}
@@ -10623,6 +10659,10 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .unwrap_or_else(|| Some("10".to_string()))?;
             Some(format!("tsgodownParseInt({value}, {radix})"))
         }
+        JsExpr::Call { callee, args, .. } if is_number_cast_call(callee, args) => {
+            let value = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownToFloat64({value})"))
+        }
         JsExpr::Call { callee, args, .. } if is_number_array_pop_call(callee, args, state) => {
             let (name, _) = number_array_method_target(callee, state)?;
             let target = go_binding_ref(name, state);
@@ -16447,6 +16487,10 @@ fn render_string_numeric_method_call(
 
 fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "String")
+}
+
+fn is_number_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Number")
 }
 
 fn is_uri_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {

@@ -10676,7 +10676,6 @@ console.log("truthy-any", pick(0), pick("x"), pick({ name: "object" }))
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_binary_octal_hex_number_coercion_subset() {
         let root = temp_project("engine-core-js-number-prefixes");
         write(
