@@ -13872,7 +13872,6 @@ console.log("dynamic-import", value)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_static_package_dynamic_import_subset() {
         let root = temp_project("engine-core-package-dynamic-import");
         write(
@@ -13918,10 +13917,18 @@ export const value = "ok"
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "DYNAMIC_IMPORT_DETECTED"));
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "{:#?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("node_modules_pkg_dyn_index_js_value"));
 
         if std::process::Command::new("go")
             .arg("version")

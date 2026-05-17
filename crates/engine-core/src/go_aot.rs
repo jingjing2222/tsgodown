@@ -3572,7 +3572,7 @@ fn can_aot_module_graph(ir: &IrDocument) -> bool {
         module.executable.is_some()
             && module.imports.iter().all(|import| {
                 module_has_caught_require_spec(module, &import.spec)
-                    || matches!(import.kind.as_str(), "esm" | "cjs")
+                    || matches!(import.kind.as_str(), "esm" | "cjs" | "dynamic")
                         && (import.resolved.is_some() || is_node_builtin_spec(&import.spec))
             })
     })
@@ -5274,6 +5274,15 @@ fn module_aot_state(
             init: Some(expr),
         } = stmt
         {
+            if let Some(spec) = awaited_dynamic_import_spec(expr) {
+                bind_dynamic_import_namespace_slots(&mut state, name, spec, module, ir, context);
+            }
+        }
+        if let JsStmt::VarDecl {
+            name,
+            init: Some(expr),
+        } = stmt
+        {
             if let Some(method) = string_prototype_method_alias(expr) {
                 state.bindings.insert(name.clone());
                 state
@@ -5344,6 +5353,9 @@ fn module_aot_state(
             .modules
             .iter()
             .find(|candidate| &candidate.id == resolved)?;
+        if import.kind == "dynamic" {
+            bind_dynamic_import_spec_slots(&mut state, &import.spec, imported_module, context);
+        }
         for binding in &import.bindings {
             if import.kind == "cjs" {
                 if let Some(class) = context.default_class_exports.get(&imported_module.id) {
@@ -5540,6 +5552,76 @@ fn module_aot_state(
         }
     }
     Some(state)
+}
+
+fn bind_dynamic_import_namespace_slots(
+    state: &mut AotState,
+    local: &str,
+    spec: &str,
+    module: &Module,
+    ir: &IrDocument,
+    context: &AotModuleContext<'_>,
+) {
+    let Some(resolved) = module
+        .imports
+        .iter()
+        .find(|import| import.kind == "dynamic" && import.spec == spec)
+        .and_then(|import| import.resolved.as_deref())
+    else {
+        return;
+    };
+    let Some(imported_module) = ir.modules.iter().find(|candidate| candidate.id == resolved) else {
+        return;
+    };
+    bind_dynamic_import_spec_slots(state, spec, imported_module, context);
+    bind_dynamic_import_local_from_spec(state, local, spec);
+}
+
+fn bind_dynamic_import_spec_slots(
+    state: &mut AotState,
+    spec: &str,
+    imported_module: &Module,
+    context: &AotModuleContext<'_>,
+) {
+    for exported in &imported_module.exports {
+        if let Some(slot) = context
+            .slots
+            .get(&(imported_module.id.clone(), exported.clone()))
+        {
+            state.dynamic_import_spec_member_slots.insert(
+                (spec.to_string(), exported.clone()),
+                (slot.kind, slot.go_name.clone()),
+            );
+            continue;
+        }
+        if let Some(local_name) = context
+            .export_aliases
+            .get(&(imported_module.id.clone(), exported.clone()))
+        {
+            if let Some(slot) = context
+                .slots
+                .get(&(imported_module.id.clone(), local_name.clone()))
+            {
+                state.dynamic_import_spec_member_slots.insert(
+                    (spec.to_string(), exported.clone()),
+                    (slot.kind, slot.go_name.clone()),
+                );
+            }
+        }
+    }
+}
+
+fn bind_dynamic_import_local_from_spec(state: &mut AotState, local: &str, spec: &str) {
+    for ((_, property), (kind, rendered)) in state
+        .dynamic_import_spec_member_slots
+        .iter()
+        .filter(|((slot_spec, _), _)| slot_spec == spec)
+    {
+        state.dynamic_import_member_slots.insert(
+            (local.to_string(), property.clone()),
+            (*kind, rendered.clone()),
+        );
+    }
 }
 
 fn bind_cjs_default_function_static_slots(
@@ -6399,6 +6481,8 @@ struct AotState {
     builtin_bindings: BTreeSet<String>,
     assert_builtin_bindings: BTreeSet<String>,
     fs_promises_bindings: BTreeMap<String, String>,
+    dynamic_import_spec_member_slots: BTreeMap<(String, String), (AotSlotKind, String)>,
+    dynamic_import_member_slots: BTreeMap<(String, String), (AotSlotKind, String)>,
     dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
     module_exports_ref: Option<String>,
@@ -6515,6 +6599,8 @@ fn clone_aot_state(state: &AotState) -> AotState {
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         fs_promises_bindings: state.fs_promises_bindings.clone(),
+        dynamic_import_spec_member_slots: state.dynamic_import_spec_member_slots.clone(),
+        dynamic_import_member_slots: state.dynamic_import_member_slots.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -6646,6 +6732,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state
                         .dynamic_import_namespaces
                         .insert(name.clone(), spec.to_string());
+                    bind_dynamic_import_local_from_spec(state, name, spec);
                     if is_node_builtin_spec(spec) && !name.starts_with("__tsgodown_destructure_") {
                         state.builtin_bindings.insert(name.clone());
                         if is_node_assert_spec(spec) {
@@ -7052,6 +7139,8 @@ fn render_for_stmt(
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         fs_promises_bindings: state.fs_promises_bindings.clone(),
+        dynamic_import_spec_member_slots: state.dynamic_import_spec_member_slots.clone(),
+        dynamic_import_member_slots: state.dynamic_import_member_slots.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7551,6 +7640,8 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         fs_promises_bindings: state.fs_promises_bindings.clone(),
+        dynamic_import_spec_member_slots: state.dynamic_import_spec_member_slots.clone(),
+        dynamic_import_member_slots: state.dynamic_import_member_slots.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -7596,6 +7687,8 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         builtin_bindings: state.builtin_bindings.clone(),
         assert_builtin_bindings: state.assert_builtin_bindings.clone(),
         fs_promises_bindings: state.fs_promises_bindings.clone(),
+        dynamic_import_spec_member_slots: state.dynamic_import_spec_member_slots.clone(),
+        dynamic_import_member_slots: state.dynamic_import_member_slots.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
         module_exports_ref: state.module_exports_ref.clone(),
@@ -14196,6 +14289,12 @@ fn render_static_member_expr(object: &JsExpr, property: &str, state: &AotState) 
     {
         return Some(rendered.clone());
     }
+    if let Some((_, rendered)) = state
+        .dynamic_import_member_slots
+        .get(&(name.clone(), property.to_string()))
+    {
+        return Some(rendered.clone());
+    }
     Some(format!(
         "{}.{}",
         go_binding_ref(name, state),
@@ -14264,6 +14363,12 @@ fn static_member_kind(object: &JsExpr, property: &str, state: &AotState) -> Opti
     };
     if let Some((kind, _)) = state
         .function_static_members
+        .get(&(name.clone(), property.to_string()))
+    {
+        return Some(*kind);
+    }
+    if let Some((kind, _)) = state
+        .dynamic_import_member_slots
         .get(&(name.clone(), property.to_string()))
     {
         return Some(*kind);
