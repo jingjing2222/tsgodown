@@ -13968,7 +13968,6 @@ main()
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_create_require_relative_module_subset() {
         let root = temp_project("engine-core-create-require-relative");
         write(

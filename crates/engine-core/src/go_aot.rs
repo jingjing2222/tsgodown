@@ -77,7 +77,8 @@ pub(crate) fn render_aot_executable_program(
             stmt,
             JsStmt::VarDecl { name, .. }
                 if module_slots.contains_key(&(module.id.clone(), name.clone()))
-        ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+        ) || is_create_require_alias_decl(stmt)
+            || is_resolved_cjs_export_metadata_stmt(stmt, &state)
             || is_resolved_cjs_export_metadata_decl_stmt(stmt, &state)
             || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
         {
@@ -199,7 +200,8 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                     stmt,
                     JsStmt::VarDecl { name, .. }
                         if module_slots.contains_key(&(module.id.clone(), name.clone()))
-                ) || is_resolved_cjs_export_metadata_stmt(stmt, &render_state)
+                ) || is_create_require_alias_decl(stmt)
+                    || is_resolved_cjs_export_metadata_stmt(stmt, &render_state)
                     || is_resolved_cjs_export_metadata_decl_stmt(stmt, &render_state)
                     || is_resolved_default_export_metadata_decl_stmt(stmt, &render_state)
                 {
@@ -2970,6 +2972,16 @@ func tsgodownToFloat64(value any) float64 {
 	}
 }
 
+func tsgodownAdd(left any, right any) any {
+	if _, ok := left.(string); ok {
+		return tsgodownToString(left) + tsgodownToString(right)
+	}
+	if _, ok := right.(string); ok {
+		return tsgodownToString(left) + tsgodownToString(right)
+	}
+	return tsgodownToFloat64(left) + tsgodownToFloat64(right)
+}
+
 func tsgodownToUint32(value float64) uint32 {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value == 0 {
 		return 0
@@ -5069,7 +5081,8 @@ fn render_module_init_body(
             stmt,
             JsStmt::VarDecl { name, .. }
                 if module_slots.contains_key(&(module.id.clone(), name.clone()))
-        ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+        ) || is_create_require_alias_decl(stmt)
+            || is_resolved_cjs_export_metadata_stmt(stmt, &state)
             || is_resolved_cjs_export_metadata_decl_stmt(stmt, &state)
             || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
         {
@@ -5238,6 +5251,20 @@ fn module_aot_state(
                         state
                             .namespace_functions
                             .insert((binding.local.clone(), property.clone()), function.clone());
+                    }
+                    if module_uses_runtime_cjs_exports(
+                        imported_module,
+                        &AotState {
+                            module_exports_ref: Some(module_exports_go_name(imported_module)),
+                            ..AotState::default()
+                        },
+                    ) {
+                        state.bind_slot(
+                            &binding.local,
+                            module_exports_go_name(imported_module),
+                            AotSlotKind::Any,
+                        );
+                        state.dynamic_object_bindings.insert(binding.local.clone());
                     }
                     continue;
                 }
@@ -5958,6 +5985,24 @@ fn is_resolved_cjs_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState) ->
         return false;
     };
     name == "module.exports" && is_resolved_default_cjs_export_value(expr, state)
+}
+
+fn is_create_require_alias_decl(stmt: &JsStmt) -> bool {
+    let JsStmt::VarDecl {
+        name,
+        init:
+            Some(JsExpr::Call {
+                callee,
+                args,
+                optional: false,
+            }),
+    } = stmt
+    else {
+        return false;
+    };
+    name == "require"
+        && args.is_empty()
+        && matches!(callee.as_ref(), JsExpr::Ident { name } if name == "createRequire")
 }
 
 fn is_resolved_export_metadata_expr(expr: &JsExpr, state: &AotState) -> bool {
@@ -12069,9 +12114,15 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let JsExpr::Binary { left, right, .. } = expr else {
                 return None;
             };
-            let left = render_numeric_expr(left, state)?;
-            let right = render_numeric_expr(right, state)?;
-            Some(format!("({left} + {right})"))
+            if let (Some(left), Some(right)) = (
+                render_numeric_expr(left, state),
+                render_numeric_expr(right, state),
+            ) {
+                return Some(format!("({left} + {right})"));
+            }
+            let left = render_expr(left, state)?;
+            let right = render_expr(right, state)?;
+            Some(format!("tsgodownAdd({left}, {right})"))
         }),
         JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
             render_bitwise_numeric_expr(op, left, right, state)
@@ -12720,12 +12771,6 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("tsgodownToString({value})"))
         }
         JsExpr::Binary { op, left, right } if op == "+" => {
-            if let (Some(left), Some(right)) = (
-                render_string_expr(left, state),
-                render_string_expr(right, state),
-            ) {
-                return Some(format!("({left} + {right})"));
-            }
             if !is_string_concat_operand(left, state) && !is_string_concat_operand(right, state) {
                 return None;
             }
@@ -12865,6 +12910,15 @@ fn is_string_concat_operand(expr: &JsExpr, state: &AotState) -> bool {
     is_string_literal_like(expr)
         || matches!(expr, JsExpr::Ident { name } if state.string_bindings.contains(name))
         || render_string_array_index_expr(expr, state).is_some()
+        || matches!(
+            expr,
+            JsExpr::Conditional {
+                consequent,
+                alternate,
+                ..
+            } if is_string_concat_operand(consequent, state)
+                && is_string_concat_operand(alternate, state)
+        )
         || matches!(
             expr,
             JsExpr::Binary { op, left, right }
