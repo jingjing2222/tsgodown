@@ -11841,7 +11841,6 @@ console.log("types", typeof null, typeof undefined, null, undefined)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_basic_esm_import_subset() {
         let root = temp_project("engine-core-esm-import");
         write(

@@ -78,6 +78,7 @@ pub(crate) fn render_aot_executable_program(
             JsStmt::VarDecl { name, .. }
                 if module_slots.contains_key(&(module.id.clone(), name.clone()))
         ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+            || is_resolved_cjs_export_metadata_decl_stmt(stmt, &state)
             || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
         {
             continue;
@@ -196,6 +197,7 @@ pub(crate) fn aot_unsupported_features(ir: &IrDocument) -> Vec<String> {
                     JsStmt::VarDecl { name, .. }
                         if module_slots.contains_key(&(module.id.clone(), name.clone()))
                 ) || is_resolved_cjs_export_metadata_stmt(stmt, &render_state)
+                    || is_resolved_cjs_export_metadata_decl_stmt(stmt, &render_state)
                     || is_resolved_default_export_metadata_decl_stmt(stmt, &render_state)
                 {
                     continue;
@@ -4999,6 +5001,7 @@ fn render_module_init_body(
             JsStmt::VarDecl { name, .. }
                 if module_slots.contains_key(&(module.id.clone(), name.clone()))
         ) || is_resolved_cjs_export_metadata_stmt(stmt, &state)
+            || is_resolved_cjs_export_metadata_decl_stmt(stmt, &state)
             || is_resolved_default_export_metadata_decl_stmt(stmt, &state)
         {
             continue;
@@ -5183,7 +5186,11 @@ fn module_aot_state(
                     state.classes.insert(binding.local.clone(), class.clone());
                     continue;
                 }
-                if let Some(named) = context.named_exports.get(&imported_module.id) {
+                if let Some(named) = context
+                    .named_exports
+                    .get(&imported_module.id)
+                    .filter(|named| !named.is_empty())
+                {
                     for (property, function) in named {
                         state
                             .namespace_functions
@@ -5203,6 +5210,14 @@ fn module_aot_state(
                     state
                         .functions
                         .insert(binding.local.clone(), function.clone());
+                    bind_forwarded_function_static_slots(
+                        &mut state,
+                        &binding.local,
+                        &imported_module.id,
+                        local,
+                        ir,
+                        context,
+                    );
                     continue;
                 }
                 if let Some(class) = context
@@ -5378,20 +5393,29 @@ fn bind_forwarded_function_static_slots(
         if !matches!(object.as_ref(), JsExpr::Ident { name } if name == target_local) {
             continue;
         }
-        let JsExpr::Ident { name: slot_name } = right.as_ref() else {
-            continue;
+        if let JsExpr::Ident { name: slot_name } = right.as_ref() {
+            let slot = context
+                .slots
+                .get(&(target_module_id.to_string(), slot_name.clone()))
+                .or_else(|| forwarded_slot(target_module, slot_name, context));
+            if let Some(slot) = slot {
+                state.function_static_members.insert(
+                    (local.to_string(), property.clone()),
+                    (slot.kind, slot.go_name.clone()),
+                );
+                continue;
+            }
+        }
+        let target_state = AotState {
+            entry_source_path: state.entry_source_path.clone(),
+            module_exports_ref: Some(module_exports_go_name(target_module)),
+            ..AotState::default()
         };
-        let slot = context
-            .slots
-            .get(&(target_module_id.to_string(), slot_name.clone()))
-            .or_else(|| forwarded_slot(target_module, slot_name, context));
-        let Some(slot) = slot else {
-            continue;
-        };
-        state.function_static_members.insert(
-            (local.to_string(), property.clone()),
-            (slot.kind, slot.go_name.clone()),
-        );
+        if let Some((kind, rendered, _)) = render_typed_slot_expr(right, &target_state) {
+            state
+                .function_static_members
+                .insert((local.to_string(), property.clone()), (kind, rendered));
+        }
     }
 }
 
@@ -5686,6 +5710,17 @@ fn is_resolved_default_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState
         return false;
     };
     name == "default" && is_resolved_export_metadata_expr(expr, state)
+}
+
+fn is_resolved_cjs_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState) -> bool {
+    let JsStmt::VarDecl {
+        name,
+        init: Some(expr),
+    } = stmt
+    else {
+        return false;
+    };
+    name == "module.exports" && is_resolved_default_cjs_export_value(expr, state)
 }
 
 fn is_resolved_export_metadata_expr(expr: &JsExpr, state: &AotState) -> bool {
