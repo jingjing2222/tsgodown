@@ -11917,7 +11917,6 @@ export { parser as "module.exports" }
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_commonjs_function_exports_subset() {
         let root = temp_project("engine-core-cjs-function-export");
         write(

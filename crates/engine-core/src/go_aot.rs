@@ -4294,16 +4294,10 @@ fn collect_module_default_exports(
             continue;
         };
         for stmt in &executable.stmts {
-            let JsStmt::Expr { expr } = stmt else {
+            let Some(expr) = cjs_default_export_value_expr(stmt) else {
                 continue;
             };
-            let JsExpr::Assign { op, left, right } = expr else {
-                continue;
-            };
-            if op != "=" || !is_module_exports_member(left) {
-                continue;
-            }
-            let function = match right.as_ref() {
+            let function = match expr {
                 JsExpr::Ident { name } => module_functions.get(&(module.id.clone(), name.clone())),
                 JsExpr::Function { .. } => module_functions
                     .get(&(module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string())),
@@ -5028,6 +5022,14 @@ fn module_aot_state(
                 .get(&(module.id.clone(), parts.name.clone()))?;
             state.functions.insert(parts.name.clone(), function.clone());
         }
+        if cjs_default_function_expr(stmt).is_some() {
+            let function = context
+                .functions
+                .get(&(module.id.clone(), CJS_DEFAULT_EXPORT_FUNCTION.to_string()))?;
+            state
+                .functions
+                .insert(CJS_DEFAULT_EXPORT_FUNCTION.to_string(), function.clone());
+        }
         if let JsStmt::VarDecl { name, .. } = stmt {
             if let Some(slot) = context.slots.get(&(module.id.clone(), name.clone())) {
                 state.bind_slot(name, slot.go_name.clone(), slot.kind);
@@ -5110,6 +5112,13 @@ fn module_aot_state(
                     state
                         .functions
                         .insert(binding.local.clone(), function.clone());
+                    bind_cjs_default_function_static_slots(
+                        &mut state,
+                        &binding.local,
+                        imported_module,
+                        ir,
+                        context,
+                    );
                     continue;
                 }
                 if let Some(class) = context.default_class_exports.get(&imported_module.id) {
@@ -5270,6 +5279,8 @@ fn module_aot_state(
     for stmt in &module.executable.as_ref()?.stmts {
         if let Some((function, property, kind, rendered)) =
             function_static_member_assignment(stmt, &state)
+                .or_else(|| cjs_default_function_static_member_assignment(stmt, &state))
+                .or_else(|| object_define_property_static_member(stmt, &state))
         {
             state
                 .function_static_members
@@ -5277,6 +5288,25 @@ fn module_aot_state(
         }
     }
     Some(state)
+}
+
+fn bind_cjs_default_function_static_slots(
+    state: &mut AotState,
+    local: &str,
+    target_module: &Module,
+    ir: &IrDocument,
+    context: &AotModuleContext<'_>,
+) {
+    let Some(target_state) = module_aot_state(target_module, ir, context) else {
+        return;
+    };
+    for ((function, property), (kind, rendered)) in target_state.function_static_members {
+        if function == CJS_DEFAULT_EXPORT_FUNCTION {
+            state
+                .function_static_members
+                .insert((local.to_string(), property), (kind, rendered));
+        }
+    }
 }
 
 fn bind_forwarded_import(
@@ -5499,6 +5529,119 @@ fn function_static_member_assignment(
     Some((name.clone(), property.clone(), kind, rendered))
 }
 
+fn cjs_default_function_static_member_assignment(
+    stmt: &JsStmt,
+    state: &AotState,
+) -> Option<(String, String, AotSlotKind, String)> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    cjs_default_function_static_member_assignment_expr(expr, state)
+}
+
+fn cjs_default_function_static_member_assignment_expr(
+    expr: &JsExpr,
+    state: &AotState,
+) -> Option<(String, String, AotSlotKind, String)> {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return None;
+    };
+    if op != "=" || !state.functions.contains_key(CJS_DEFAULT_EXPORT_FUNCTION) {
+        return None;
+    }
+    let property = cjs_named_export_property(left)?;
+    let (kind, rendered, _) = render_typed_slot_expr(right, state)?;
+    Some((
+        CJS_DEFAULT_EXPORT_FUNCTION.to_string(),
+        property,
+        kind,
+        rendered,
+    ))
+}
+
+fn object_define_property_static_member(
+    stmt: &JsStmt,
+    state: &AotState,
+) -> Option<(String, String, AotSlotKind, String)> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    object_define_property_static_member_expr(expr, state)
+}
+
+fn object_define_property_static_member_expr(
+    expr: &JsExpr,
+    state: &AotState,
+) -> Option<(String, String, AotSlotKind, String)> {
+    let JsExpr::Call {
+        callee,
+        args,
+        optional: false,
+    } = expr
+    else {
+        return None;
+    };
+    if !is_object_define_property_ref(callee) || args.len() != 3 {
+        return None;
+    }
+    let function = static_member_target_function_name(args.first()?, state)?;
+    let property = string_literal_value(args.get(1)?)?.to_string();
+    let value = descriptor_static_member_value_expr(args.get(2)?)?;
+    let (kind, rendered, _) = render_typed_slot_expr(value, state)?;
+    Some((function, property, kind, rendered))
+}
+
+fn static_member_target_function_name(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.functions.contains_key(name) => Some(name.clone()),
+        expr if (is_exports_ident(expr) || is_module_exports_member(expr))
+            && state.functions.contains_key(CJS_DEFAULT_EXPORT_FUNCTION) =>
+        {
+            Some(CJS_DEFAULT_EXPORT_FUNCTION.to_string())
+        }
+        _ => None,
+    }
+}
+
+fn is_object_define_property_ref(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "defineProperty"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+    )
+}
+
+fn descriptor_static_member_value_expr(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Object { props } = expr else {
+        return None;
+    };
+    if let Some(prop) = props
+        .iter()
+        .find(|prop| !prop.spread && prop.key_expr.is_none() && prop.key == "value")
+    {
+        return Some(&prop.value);
+    }
+    let getter = props
+        .iter()
+        .find(|prop| !prop.spread && prop.key_expr.is_none() && prop.key == "get")?;
+    let JsExpr::Function { body, .. } = &getter.value else {
+        return None;
+    };
+    single_return_expr(body)
+}
+
+fn single_return_expr(body: &[JsStmt]) -> Option<&JsExpr> {
+    let [JsStmt::Return { value: Some(expr) }] = body else {
+        return None;
+    };
+    Some(expr)
+}
+
 fn is_exported_name(module: &Module, name: &str) -> bool {
     module.exports.iter().any(|exported| exported == name)
 }
@@ -5515,8 +5658,25 @@ fn is_module_exports_member(expr: &JsExpr) -> bool {
     )
 }
 
+fn is_exports_ident(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Ident { name } if name == "exports")
+}
+
 fn is_cjs_export_target(expr: &JsExpr) -> bool {
     is_module_exports_member(expr) || cjs_named_export_property(expr).is_some()
+}
+
+fn is_resolved_default_cjs_export_assignment_expr(expr: &JsExpr, state: &AotState) -> bool {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return false;
+    };
+    if op != "=" {
+        return false;
+    }
+    if is_module_exports_member(left) {
+        return is_resolved_default_cjs_export_value(right, state);
+    }
+    is_exports_ident(left) && is_resolved_default_cjs_export_assignment_expr(right, state)
 }
 
 fn is_resolved_cjs_export_metadata_stmt(stmt: &JsStmt, state: &AotState) -> bool {
@@ -5620,6 +5780,8 @@ fn stmt_uses_runtime_cjs_exports(stmt: &JsStmt, state: &AotState) -> bool {
 
 fn expr_uses_runtime_cjs_exports(expr: &JsExpr, state: &AotState) -> bool {
     match expr {
+        expr if cjs_default_function_static_member_assignment_expr(expr, state).is_some() => false,
+        expr if object_define_property_static_member_expr(expr, state).is_some() => false,
         JsExpr::Member { object, .. } if is_module_exports_member(object) => true,
         JsExpr::Assign { op, left, right } if op == "=" && is_module_exports_member(left) => {
             !is_resolved_default_cjs_export_value(right, state)
@@ -8589,15 +8751,7 @@ fn collect_mutated_any_array_params_expr(
 }
 
 fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>> {
-    let JsStmt::Expr { expr } = stmt else {
-        return None;
-    };
-    let JsExpr::Assign { op, left, right } = expr else {
-        return None;
-    };
-    if op != "=" || !is_module_exports_member(left) {
-        return None;
-    }
+    let expr = cjs_default_export_value_expr(stmt)?;
     let JsExpr::Function {
         params,
         rest_param,
@@ -8605,7 +8759,7 @@ fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>
         generator,
         body,
         ..
-    } = right.as_ref()
+    } = expr
     else {
         return None;
     };
@@ -8616,6 +8770,29 @@ fn cjs_default_function_expr(stmt: &JsStmt) -> Option<AotInlineFunctionParts<'_>
         generator,
         body,
     })
+}
+
+fn cjs_default_export_value_expr(stmt: &JsStmt) -> Option<&JsExpr> {
+    let JsStmt::Expr { expr } = stmt else {
+        return None;
+    };
+    cjs_default_export_value_from_assignment(expr)
+}
+
+fn cjs_default_export_value_from_assignment(expr: &JsExpr) -> Option<&JsExpr> {
+    let JsExpr::Assign { op, left, right } = expr else {
+        return None;
+    };
+    if op != "=" {
+        return None;
+    }
+    if is_module_exports_member(left) {
+        return Some(right);
+    }
+    if is_exports_ident(left) {
+        return cjs_default_export_value_from_assignment(right);
+    }
+    None
 }
 
 fn render_function_body(body: &[JsStmt], state: &AotState) -> Option<String> {
@@ -10273,6 +10450,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_array_is_array_alias_call(callee, args, state) => {
             render_array_is_array_call(args, state)
         }
+        JsExpr::Call { callee, args, .. } if is_object_has_own_call(callee, args) => {
+            render_object_has_own_call(callee, args, state)
+        }
         JsExpr::Call { callee, args, .. }
             if is_object_has_own_property_call(callee, args, state) =>
         {
@@ -10419,6 +10599,13 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             value: JsValue::String { .. },
         } => Some(String::new()),
         JsExpr::Await { arg } => render_await_promise_then_stmt(arg, state),
+        expr if is_resolved_default_cjs_export_assignment_expr(expr, state) => Some(String::new()),
+        expr if cjs_default_function_static_member_assignment_expr(expr, state).is_some() => {
+            Some(String::new())
+        }
+        expr if object_define_property_static_member_expr(expr, state).is_some() => {
+            Some(String::new())
+        }
         JsExpr::Call { callee, args, .. } if is_console_log(callee) => {
             let args = args
                 .iter()
@@ -16617,6 +16804,58 @@ fn render_object_has_own_property_call(
     Some(format!("tsgodownObjectHasOwn({object}, {key})"))
 }
 
+fn is_object_has_own_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "hasOwn"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+    )
+}
+
+fn render_object_has_own_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    if !is_object_has_own_call(callee, args) {
+        return None;
+    }
+    if let Some(value) = render_function_static_has_own(args.first()?, args.get(1)?, state) {
+        return Some(value);
+    }
+    let object = render_expr(args.first()?, state)?;
+    let key = render_expr(args.get(1)?, state)?;
+    Some(format!("tsgodownObjectHasOwn({object}, {key})"))
+}
+
+fn render_function_static_has_own(
+    object: &JsExpr,
+    key: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let JsExpr::Ident { name } = object else {
+        return None;
+    };
+    if !state.functions.contains_key(name) {
+        return None;
+    }
+    let property = string_literal_value(key)?;
+    Some(
+        state
+            .function_static_members
+            .contains_key(&(name.clone(), property))
+            .to_string(),
+    )
+}
+
 fn is_object_prototype_to_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     if args.len() != 1 {
         return false;
@@ -18970,7 +19209,28 @@ fn render_string_function_expr(expr: &JsExpr, state: &AotState) -> Option<String
     if is_crypto_random_uuid_ref(expr, state) {
         return Some("tsgodownCryptoRandomUUID".to_string());
     }
-    None
+    match expr {
+        JsExpr::Function {
+            params,
+            rest_param: None,
+            r#async: false,
+            generator: false,
+            body,
+            ..
+        } if params.is_empty() => {
+            let value = render_string_expr(single_return_expr(body)?, state)?;
+            Some(format!("func() string {{ return {value} }}"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if static_member_kind(object, property, state) == Some(AotSlotKind::StringFunction) => {
+            render_static_member_expr(object, property, state)
+        }
+        _ => None,
+    }
 }
 
 fn render_any_function_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
