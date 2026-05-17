@@ -18072,6 +18072,8 @@ fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
                 || is_node_os_homedir_call(callee, args)
                 || is_node_fs_exists_sync_call(callee, args)
                 || is_node_fs_stat_sync_call(callee, args)
+                || is_node_fs_mkdtemp_sync_call(callee, args)
+                || is_node_fs_read_file_sync_call(callee, args)
                 || is_node_buffer_from_call(callee, args)
                 || is_node_buffer_alloc_call(callee, args)
                 || is_node_buffer_is_buffer_call(callee, args)

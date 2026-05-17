@@ -30,7 +30,7 @@ diagnostics. `TODO` and `WIP` rows are allowed during development only.
 | node.env_vars | Environment Variables | stable | WIP | WIP | NODE_ENV_UNSUPPORTED | corpus subset | process.env and CLI env behavior. |
 | node.errors | Errors | stable | WIP | WIP | NODE_ERRORS_UNSUPPORTED | corpus error shape subset | Error classes/codes/stack semantics pending. |
 | node.events | Events | stable | TODO | TODO | NODE_EVENTS_UNSUPPORTED | planned | EventEmitter ordering/errors/listeners. |
-| node.fs | File system | stable | WIP | WIP | NODE_FS_UNSUPPORTED | fs-extra corpus subset | `fs.existsSync` lowers for string-path subsets; `fs.statSync` lowers a focused Stats subset with `mode`, `isFile()`, `isDirectory()`, and `isSymbolicLink()`; full fs/fs.promises/watch/stat/platform semantics pending. |
+| node.fs | File system | stable | WIP | WIP | NODE_FS_UNSUPPORTED | fs-extra corpus subset | `fs.existsSync` lowers for string-path subsets; `fs.statSync` lowers a focused Stats subset with `mode`, `isFile()`, `isDirectory()`, and `isSymbolicLink()`; `fs.readFileSync` lowers string reads for member and named-import subsets. Full fs/fs.promises/watch/stat/platform semantics pending. |
 | node.globals | Globals | stable | WIP | WIP | NODE_GLOBALS_UNSUPPORTED | corpus subset | globalThis, timers, URL, fetch-related globals pending. |
 | node.http | HTTP | stable | TODO | TODO | NODE_HTTP_UNSUPPORTED | route-era fixtures only | Full client/server streaming behavior pending. |
 | node.http2 | HTTP/2 | stable | TODO | TODO | NODE_HTTP2_UNSUPPORTED | planned | HTTP/2 sessions/streams. |
