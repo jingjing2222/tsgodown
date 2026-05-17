@@ -5142,13 +5142,32 @@ fn module_aot_state(
                         continue;
                     }
                 }
-                let Some(named) = context.named_exports.get(&imported_module.id) else {
+                if let Some(named) = context
+                    .named_exports
+                    .get(&imported_module.id)
+                    .filter(|named| !named.is_empty())
+                {
+                    for (property, function) in named {
+                        state
+                            .namespace_functions
+                            .insert((binding.local.clone(), property.clone()), function.clone());
+                    }
                     continue;
-                };
-                for (property, function) in named {
-                    state
-                        .namespace_functions
-                        .insert((binding.local.clone(), property.clone()), function.clone());
+                }
+                if module_uses_runtime_cjs_exports(
+                    imported_module,
+                    &AotState {
+                        module_exports_ref: Some(module_exports_go_name(imported_module)),
+                        ..AotState::default()
+                    },
+                ) {
+                    state.bind_slot(
+                        &binding.local,
+                        module_exports_go_name(imported_module),
+                        AotSlotKind::Any,
+                    );
+                    state.dynamic_object_bindings.insert(binding.local.clone());
+                    continue;
                 }
                 continue;
             }
@@ -5642,7 +5661,20 @@ fn expr_uses_runtime_cjs_exports(expr: &JsExpr, state: &AotState) -> bool {
 fn is_resolved_default_cjs_export_value(expr: &JsExpr, state: &AotState) -> bool {
     is_resolved_export_metadata_expr(expr, state)
         || matches!(expr, JsExpr::Function { .. })
-        || matches!(expr, JsExpr::Object { .. } | JsExpr::ArraySpread { .. })
+        || is_resolved_default_cjs_function_namespace_value(expr, state)
+}
+
+fn is_resolved_default_cjs_function_namespace_value(expr: &JsExpr, state: &AotState) -> bool {
+    let JsExpr::Object { props } = expr else {
+        return false;
+    };
+    !props.is_empty()
+        && props.iter().all(|prop| {
+            prop.key_expr.is_none()
+                && (prop.spread
+                    || is_require_call(&prop.value)
+                    || is_resolved_export_metadata_expr(&prop.value, state))
+        })
 }
 
 fn is_resolved_default_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState) -> bool {
@@ -10394,6 +10426,13 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         {
             Some(String::new())
         }
+        JsExpr::Assign { op, left, right }
+            if op == "="
+                && is_module_exports_member(left)
+                && render_module_exports_assignment_stmt(right, state).is_some() =>
+        {
+            render_module_exports_assignment_stmt(right, state)
+        }
         JsExpr::Assign { .. } if is_exports_module_exports_alias_assignment(expr) => {
             Some(String::new())
         }
@@ -11250,6 +11289,12 @@ fn render_dynamic_object_assignment_stmt(
         ));
     }
     Some(format!("tsgodownObjectSetProp({object}, {key}, {value})"))
+}
+
+fn render_module_exports_assignment_stmt(right: &JsExpr, state: &AotState) -> Option<String> {
+    let target = state.module_exports_ref.as_ref()?;
+    let value = render_dynamic_object_init_expr(right, state)?;
+    Some(format!("{target} = {value}"))
 }
 
 fn render_process_env_assignment_stmt(
@@ -12125,8 +12170,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr,
             optional: false,
         } if is_length_member_property(property, property_expr.as_deref()) => {
-            let object = render_string_expr(object, state)?;
-            Some(format!("float64(len([]rune({object})))"))
+            let object =
+                render_expr(object, state).or_else(|| render_string_expr(object, state))?;
+            Some(format!("tsgodownLengthFloat({object}, false)"))
         }
         JsExpr::Member {
             object,
@@ -19498,6 +19544,13 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let items = items
                 .iter()
                 .map(|item| render_json_value_expr(item, state))
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("[]any{{{}}}", items.join(", ")))
+        }
+        JsExpr::ArraySpread { items } if items.iter().all(|item| !item.spread) => {
+            let items = items
+                .iter()
+                .map(|item| render_json_value_expr(&item.value, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]any{{{}}}", items.join(", ")))
         }

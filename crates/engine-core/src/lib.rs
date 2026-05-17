@@ -4568,7 +4568,7 @@ console.log("string-methods", normalize(" Go "), inspect("tsgodown"), inspect("r
         assert!(response.files[0].contents.contains("strings.Index"));
         assert!(response.files[0]
             .contents
-            .contains("float64(len([]rune(value)))"));
+            .contains("tsgodownLengthFloat(value, false)"));
 
         if std::process::Command::new("go")
             .arg("version")
@@ -12089,7 +12089,6 @@ module.exports = new Make("side")
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_json_module_require_subset() {
         let root = temp_project("engine-core-json-module");
         write(
