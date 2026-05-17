@@ -12313,7 +12313,6 @@ console.log("ctor", box.value, typeof factory, factory(), factory instanceof Fac
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_array_destructuring_subset() {
         let root = temp_project("engine-core-array-destructuring");
         write(
@@ -12347,6 +12346,7 @@ console.log("args", corpus, vectorPath, mapped[0], mapped[1], flag)
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(!response.files[0].contents.contains("RunProgram"));
 
         if std::process::Command::new("go")
             .arg("version")

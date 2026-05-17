@@ -6887,6 +6887,17 @@ impl AotState {
     }
 }
 
+fn clear_collection_slot_metadata(state: &mut AotState, name: &str) {
+    state.number_array_bindings.remove(name);
+    state.string_array_bindings.remove(name);
+    state.any_array_bindings.remove(name);
+    state.array_property_bindings.remove(name);
+    state.bytes_bindings.remove(name);
+    state.map_bindings.remove(name);
+    state.set_bindings.remove(name);
+    state.object_bindings.remove(name);
+}
+
 fn clone_aot_state(state: &AotState) -> AotState {
     AotState {
         go_imports: state.go_imports.clone(),
@@ -7117,6 +7128,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     return Some(format!("var {ident} []float64 = nil"));
                 }
                 if state.dynamic_object_bindings.contains(name) && is_nullish_expr(expr) {
+                    clear_collection_slot_metadata(state, name);
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.ordered_dynamic_object_bindings.insert(name.clone());
@@ -7288,6 +7300,7 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                 }
                 if state.dynamic_object_bindings.contains(name) {
                     if let Some(value) = render_dynamic_object_init_expr(expr, state) {
+                        clear_collection_slot_metadata(state, name);
                         state.bindings.insert(name.clone());
                         state.binding_refs.insert(name.clone(), ident.clone());
                         state.ordered_dynamic_object_bindings.insert(name.clone());
@@ -7321,12 +7334,14 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     return Some(value);
                 }
                 if let Some((value, object)) = render_object_literal(expr, state) {
+                    clear_collection_slot_metadata(state, name);
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.object_bindings.insert(name.clone(), object);
                     return Some(format!("var {ident} = {value}"));
                 }
                 if let Some(value) = render_object_map_expr(expr, state) {
+                    clear_collection_slot_metadata(state, name);
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.dynamic_object_bindings.insert(name.clone());
@@ -13730,7 +13745,7 @@ fn render_sync_iife_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> 
     else {
         return None;
     };
-    if params.len() != args.len() {
+    if args.len() > params.len() {
         return None;
     }
     let param_kinds = infer_function_param_kinds(params, body, &state.builtin_function_aliases);
@@ -13750,7 +13765,10 @@ fn render_sync_iife_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> 
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let rendered_args = render_call_args(args, &param_kinds, state)?;
+    let mut rendered_args = render_call_args(args, &param_kinds[..args.len()], state)?;
+    for kind in param_kinds.iter().skip(args.len()) {
+        rendered_args.push(render_missing_arg_to_kind(*kind));
+    }
     let rendered_body = render_function_body(body, &function_state)?;
     let rendered_body = if rendered_body.trim_end().ends_with("return nil") {
         rendered_body
@@ -13762,6 +13780,22 @@ fn render_sync_iife_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> 
         indent_lines(&rendered_body),
         rendered_args.join(", ")
     ))
+}
+
+fn render_missing_arg_to_kind(kind: AotSlotKind) -> String {
+    match kind {
+        AotSlotKind::Any | AotSlotKind::AnyArray => "nil".to_string(),
+        AotSlotKind::Bool => "false".to_string(),
+        AotSlotKind::Bytes => "nil".to_string(),
+        AotSlotKind::Date => "\"\"".to_string(),
+        AotSlotKind::Number => "math.NaN()".to_string(),
+        AotSlotKind::NumberArray => "nil".to_string(),
+        AotSlotKind::RegExp => "\"\"".to_string(),
+        AotSlotKind::String => "\"\"".to_string(),
+        AotSlotKind::StringArray => "nil".to_string(),
+        AotSlotKind::BoolFunction => "nil".to_string(),
+        AotSlotKind::StringFunction => "nil".to_string(),
+    }
 }
 
 fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
@@ -15459,6 +15493,9 @@ fn render_typed_slot_expr(
     expr: &JsExpr,
     state: &AotState,
 ) -> Option<(AotSlotKind, String, &'static str)> {
+    if let Some(value) = render_string_array_index_expr(expr, state) {
+        return Some((AotSlotKind::String, value, "string"));
+    }
     if let Some(value) = render_numeric_expr(expr, state) {
         return Some((AotSlotKind::Number, value, "float64"));
     }
@@ -19246,7 +19283,8 @@ fn render_array_string_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<St
     if params.len() > 2 {
         return None;
     }
-    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+    let (last, prelude) = body.split_last()?;
+    let JsStmt::Return { value: Some(value) } = last else {
         return None;
     };
     let mut mapper_state = clone_aot_state(state);
@@ -19256,9 +19294,16 @@ fn render_array_string_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<St
     if let Some(param) = params.get(1) {
         mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
     }
+    mark_number_array_locals(body, &mut mapper_state);
+    mark_string_array_locals(body, &mut mapper_state);
     mark_any_array_locals(body, &mut mapper_state);
     mark_array_property_locals(body, &mut mapper_state);
     mark_dynamic_object_locals(body, &mut mapper_state);
+    let prelude = prelude
+        .iter()
+        .map(|stmt| render_stmt(stmt, &mut mapper_state))
+        .collect::<Option<Vec<_>>>()?
+        .join("\n");
     let value = render_string_expr(value, &mapper_state)?;
     let value_param = params
         .first()
@@ -19268,8 +19313,14 @@ fn render_array_string_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<St
         .get(1)
         .map(|param| sanitize_go_identifier(param))
         .unwrap_or_else(|| "_".to_string());
+    let body = if prelude.is_empty() {
+        format!("return {value}")
+    } else {
+        format!("{prelude}\nreturn {value}")
+    };
     Some(format!(
-        "func({value_param} any, {index_param} float64) any {{ return {value} }}"
+        "func({value_param} any, {index_param} float64) any {{\n{}\n}}",
+        indent_lines(&body)
     ))
 }
 
