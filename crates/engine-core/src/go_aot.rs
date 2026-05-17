@@ -2754,15 +2754,17 @@ func tsgodownAnyArrayJoin(values []any, separator string) string {
 	return append(integerKeys, stringKeys...)
 }
 
-func tsgodownObjectMapKeys(object map[string]any) []string {
+func tsgodownObjectMapKeys(value any) []string {
+	object := tsgodownObjectFromAny(value)
 	keys := make([]string, 0, len(object))
 	for key := range object {
-		keys = append(keys, key)
+	keys = append(keys, key)
 	}
 	return tsgodownObjectKeys(keys)
 }
 
-func tsgodownObjectEntries(object map[string]any) []any {
+func tsgodownObjectEntries(value any) []any {
+	object := tsgodownObjectFromAny(value)
 	keys := tsgodownObjectMapKeys(object)
 	entries := make([]any, 0, len(keys))
 	for _, key := range keys {
@@ -2972,7 +2974,10 @@ fn collect_module_functions(ir: &IrDocument) -> BTreeMap<(String, String), AotFu
             }
         }
     }
-    propagate_function_param_kinds(&mut functions);
+    let export_aliases = collect_module_export_aliases(ir);
+    let imported_function_aliases =
+        collect_imported_function_aliases(ir, &functions, &export_aliases);
+    propagate_function_param_kinds(&mut functions, &imported_function_aliases);
     functions
 }
 
@@ -2992,7 +2997,44 @@ fn collect_builtin_function_aliases(stmts: &[JsStmt]) -> BTreeMap<String, AotBui
     aliases
 }
 
-fn propagate_function_param_kinds(functions: &mut BTreeMap<(String, String), AotFunction>) {
+fn collect_imported_function_aliases(
+    ir: &IrDocument,
+    functions: &BTreeMap<(String, String), AotFunction>,
+    export_aliases: &BTreeMap<(String, String), String>,
+) -> BTreeMap<(String, String), (String, String)> {
+    let mut aliases = BTreeMap::new();
+    for module in &ir.modules {
+        for import in &module.imports {
+            let Some(resolved) = &import.resolved else {
+                continue;
+            };
+            for binding in &import.bindings {
+                let imported = binding.imported.as_deref().unwrap_or(&binding.local);
+                let mut candidates = Vec::new();
+                candidates.push(imported.to_string());
+                if let Some(local) = export_aliases.get(&(resolved.clone(), imported.to_string())) {
+                    candidates.push(local.clone());
+                }
+                if imported == "default" {
+                    candidates.push(CJS_DEFAULT_EXPORT_FUNCTION.to_string());
+                }
+                for candidate in candidates {
+                    let key = (resolved.clone(), candidate);
+                    if functions.contains_key(&key) {
+                        aliases.insert((module.id.clone(), binding.local.clone()), key);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    aliases
+}
+
+fn propagate_function_param_kinds(
+    functions: &mut BTreeMap<(String, String), AotFunction>,
+    imported_function_aliases: &BTreeMap<(String, String), (String, String)>,
+) {
     for _ in 0..functions.len().max(1) {
         let snapshot = functions.clone();
         let mut changed = false;
@@ -3009,6 +3051,7 @@ fn propagate_function_param_kinds(functions: &mut BTreeMap<(String, String), Aot
                     stmt,
                     module_id,
                     &snapshot,
+                    imported_function_aliases,
                     &param_index,
                     &mut propagated,
                 );
@@ -3028,6 +3071,7 @@ fn propagate_stmt_param_kinds(
     stmt: &JsStmt,
     module_id: &str,
     functions: &BTreeMap<(String, String), AotFunction>,
+    imported_function_aliases: &BTreeMap<(String, String), (String, String)>,
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
 ) {
@@ -3040,18 +3084,46 @@ fn propagate_stmt_param_kinds(
         | JsStmt::Throw { value: expr }
         | JsStmt::Yield {
             value: Some(expr), ..
-        } => propagate_expr_param_kinds(expr, module_id, functions, param_index, kinds),
+        } => propagate_expr_param_kinds(
+            expr,
+            module_id,
+            functions,
+            imported_function_aliases,
+            param_index,
+            kinds,
+        ),
         JsStmt::If {
             test,
             consequent,
             alternate,
         } => {
-            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                test,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             for stmt in consequent {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             for stmt in alternate {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsStmt::For {
@@ -3061,28 +3133,84 @@ fn propagate_stmt_param_kinds(
             body,
         } => {
             for stmt in init {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             if let Some(test) = test {
-                propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    test,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             if let Some(update) = update {
-                propagate_expr_param_kinds(update, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    update,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             for stmt in body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsStmt::ForOf { right, body, .. } => {
-            propagate_expr_param_kinds(right, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                right,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             for stmt in body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
-            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                test,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             for stmt in body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsStmt::Try {
@@ -3092,13 +3220,34 @@ fn propagate_stmt_param_kinds(
             ..
         } => {
             for stmt in body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             for stmt in catch_body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
             for stmt in finally_body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         _ => {}
@@ -3109,6 +3258,7 @@ fn propagate_expr_param_kinds(
     expr: &JsExpr,
     module_id: &str,
     functions: &BTreeMap<(String, String), AotFunction>,
+    imported_function_aliases: &BTreeMap<(String, String), (String, String)>,
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
 ) {
@@ -3121,39 +3271,111 @@ fn propagate_expr_param_kinds(
                         mark_forwarded_param_kind(arg, *required, param_index, kinds);
                     }
                 }
+                if let Some(target_key) =
+                    imported_function_aliases.get(&(module_id.to_string(), name.clone()))
+                {
+                    if let Some(callee_function) = functions.get(target_key) {
+                        for (arg, required) in args.iter().zip(callee_function.param_kinds.iter()) {
+                            mark_forwarded_param_kind(arg, *required, param_index, kinds);
+                        }
+                    }
+                }
             }
-            propagate_expr_param_kinds(callee, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                callee,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             for arg in args {
-                propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    arg,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
-            propagate_expr_param_kinds(left, module_id, functions, param_index, kinds);
-            propagate_expr_param_kinds(right, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                left,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
+            propagate_expr_param_kinds(
+                right,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
         }
         JsExpr::Member {
             object,
             property_expr,
             ..
         } => {
-            propagate_expr_param_kinds(object, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                object,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             if let Some(property_expr) = property_expr {
-                propagate_expr_param_kinds(property_expr, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    property_expr,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Array { items } => {
             for item in items {
-                propagate_expr_param_kinds(item, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    item,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::ArraySpread { items } => {
             for item in items {
-                propagate_expr_param_kinds(&item.value, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    &item.value,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Object { props } => {
             for prop in props {
-                propagate_expr_param_kinds(&prop.value, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    &prop.value,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Unary { arg, .. }
@@ -3161,31 +3383,87 @@ fn propagate_expr_param_kinds(
         | JsExpr::Update { arg, .. }
         | JsExpr::Spread { arg }
         | JsExpr::ObjectRest { object: arg, .. } => {
-            propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                arg,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
         }
         JsExpr::Conditional {
             test,
             consequent,
             alternate,
         } => {
-            propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
-            propagate_expr_param_kinds(consequent, module_id, functions, param_index, kinds);
-            propagate_expr_param_kinds(alternate, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                test,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
+            propagate_expr_param_kinds(
+                consequent,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
+            propagate_expr_param_kinds(
+                alternate,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
         }
         JsExpr::New { callee, args } => {
-            propagate_expr_param_kinds(callee, module_id, functions, param_index, kinds);
+            propagate_expr_param_kinds(
+                callee,
+                module_id,
+                functions,
+                imported_function_aliases,
+                param_index,
+                kinds,
+            );
             for arg in args {
-                propagate_expr_param_kinds(arg, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    arg,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Template { exprs, .. } | JsExpr::Sequence { exprs } => {
             for expr in exprs {
-                propagate_expr_param_kinds(expr, module_id, functions, param_index, kinds);
+                propagate_expr_param_kinds(
+                    expr,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         JsExpr::Function { body, .. } => {
             for stmt in body {
-                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+                propagate_stmt_param_kinds(
+                    stmt,
+                    module_id,
+                    functions,
+                    imported_function_aliases,
+                    param_index,
+                    kinds,
+                );
             }
         }
         _ => {}
@@ -3198,15 +3476,16 @@ fn mark_forwarded_param_kind(
     param_index: &BTreeMap<String, usize>,
     kinds: &mut [AotSlotKind],
 ) {
-    if required == AotSlotKind::Any {
-        return;
-    }
     let JsExpr::Ident { name } = expr else {
         return;
     };
     let Some(index) = param_index.get(name) else {
         return;
     };
+    if required == AotSlotKind::Any {
+        kinds[*index] = AotSlotKind::Any;
+        return;
+    }
     if kinds[*index] == AotSlotKind::Number || kinds[*index] == required {
         kinds[*index] = required;
     }
@@ -11517,6 +11796,14 @@ fn render_any_array_from_any_expr(expr: &JsExpr, state: &AotState) -> Option<Str
     Some(format!("tsgodownAnyArrayFromAny({value})"))
 }
 
+fn render_any_array_coerced_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let value = render_json_value_expr(expr, state)
+        .or_else(|| render_expr(expr, state))
+        .or_else(|| render_bytes_expr(expr, state))
+        .or_else(|| render_any_array_expr(expr, state))?;
+    Some(format!("tsgodownAnyArrayFromAny({value})"))
+}
+
 fn is_array_from_length_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
         && matches!(
@@ -12258,7 +12545,9 @@ fn render_any_array_index_expr(expr: &JsExpr, state: &AotState) -> Option<String
     }
     let values = render_any_array_expr(object, state)?;
     let index = render_member_index_expr(property, property_expr.as_deref(), state)?;
-    Some(format!("tsgodownAnyArrayAt({values}, {index})"))
+    Some(format!(
+        "tsgodownAnyArrayAt(tsgodownAnyArrayFromAny({values}), {index})"
+    ))
 }
 
 fn render_regexp_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -13012,7 +13301,7 @@ fn render_any_array_length_expr(expr: &JsExpr, state: &AotState) -> Option<Strin
         return None;
     }
     let values = render_any_array_expr(object, state)?;
-    Some(format!("float64(len({values}))"))
+    Some(format!("float64(len(tsgodownAnyArrayFromAny({values})))"))
 }
 
 fn render_bytes_length_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -16525,10 +16814,7 @@ fn render_arg_for_kind(expr: &JsExpr, kind: AotSlotKind, state: &AotState) -> Op
         AotSlotKind::Any => {
             render_json_value_expr(expr, state).or_else(|| render_expr(expr, state))
         }
-        AotSlotKind::AnyArray => render_any_array_expr(expr, state).or_else(|| {
-            let value = render_bytes_expr(expr, state)?;
-            Some(format!("tsgodownAnyArrayFromAny(any({value}))"))
-        }),
+        AotSlotKind::AnyArray => render_any_array_coerced_expr(expr, state),
         AotSlotKind::Bool => render_bool_expr(expr, state),
         AotSlotKind::Bytes => render_bytes_expr_with_any_cast(expr, state),
         AotSlotKind::Date => render_date_expr(expr, state),
