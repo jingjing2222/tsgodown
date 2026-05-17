@@ -5767,6 +5767,7 @@ fn is_array_destructure_source_expr(expr: &JsExpr, state: &AotState) -> bool {
         JsExpr::Array { .. } => true,
         JsExpr::Ident { name } if name == "__tsgodown_forof_value" => true,
         JsExpr::Ident { name } if state.any_array_bindings.contains(name) => true,
+        JsExpr::Ident { name } if is_any_binding(name, state) => true,
         _ => false,
     }
 }
@@ -10092,7 +10093,8 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
     if params.len() > 2 {
         return None;
     }
-    let [JsStmt::Return { value: Some(value) }] = body.as_slice() else {
+    let (last, prelude) = body.split_last()?;
+    let JsStmt::Return { value: Some(value) } = last else {
         return None;
     };
     let mut mapper_state = clone_aot_state(state);
@@ -10102,6 +10104,15 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
     if let Some(param) = params.get(1) {
         mapper_state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Number);
     }
+    mark_number_array_locals(body, &mut mapper_state);
+    mark_string_array_locals(body, &mut mapper_state);
+    mark_any_array_locals(body, &mut mapper_state);
+    mark_dynamic_object_locals(body, &mut mapper_state);
+    let prelude = prelude
+        .iter()
+        .map(|stmt| render_stmt(stmt, &mut mapper_state))
+        .collect::<Option<Vec<_>>>()?
+        .join("\n");
     let value = render_json_value_expr(value, &mapper_state)
         .or_else(|| render_expr(value, &mapper_state))?;
     let value_param = params
@@ -10112,8 +10123,14 @@ fn render_array_from_mapper_expr(expr: &JsExpr, state: &AotState) -> Option<Stri
         .get(1)
         .map(|param| sanitize_go_identifier(param))
         .unwrap_or_else(|| "_".to_string());
+    let body = if prelude.is_empty() {
+        format!("return {value}")
+    } else {
+        format!("{prelude}\nreturn {value}")
+    };
     Some(format!(
-        "func({value_param} any, {index_param} float64) any {{ return {value} }}"
+        "func({value_param} any, {index_param} float64) any {{\n{}\n}}",
+        indent_lines(&body)
     ))
 }
 
@@ -14874,6 +14891,9 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         expr if render_string_array_expr(expr, state).is_some() => {
             render_string_array_expr(expr, state)
+        }
+        JsExpr::Call { callee, args, .. } if is_array_map_call(callee, args) => {
+            render_any_array_map_call(callee, args, state)
         }
         JsExpr::Array { items } => {
             let items = items
