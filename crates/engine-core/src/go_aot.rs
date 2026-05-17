@@ -12186,6 +12186,9 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if let Some(arg) = object_freeze_arg(expr) {
         return render_object_map_expr(arg, state);
     }
+    if let Some(value) = render_error_object_expr(expr, state) {
+        return Some(value);
+    }
     if is_process_env_ref(expr) {
         return Some("tsgodownProcessEnv()".to_string());
     }
@@ -12478,6 +12481,9 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
             Some(go_binding_ref(name, state))
         }
         expr if is_module_exports_member(expr) => state.module_exports_ref.clone(),
+        expr if render_error_object_expr(expr, state).is_some() => {
+            render_error_object_expr(expr, state)
+        }
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             if state.number_array_bindings.contains(name)
                 || state.string_array_bindings.contains(name)

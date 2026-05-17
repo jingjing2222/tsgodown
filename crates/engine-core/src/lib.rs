@@ -11494,7 +11494,6 @@ console.log("symbol-math", typeof Symbol, typeof symbol, symbol.toString(), Symb
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_error_subclass_constructors_subset() {
         let root = temp_project("engine-core-error-subclasses");
         write(
