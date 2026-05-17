@@ -6386,6 +6386,274 @@ console.log("uri-bytes", bytes.length, bytes[0], bytes[3], bytes[4], bytes[5], e
     }
 
     #[test]
+    fn emit_go_runs_aot_bytes_callback_optional_length_subset() {
+        let root = temp_project("engine-core-aot-bytes-callback-optional-length");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function stringToBytes(str) {
+  str = unescape(encodeURIComponent(str))
+  const bytes = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; ++i) {
+    bytes[i] = str.charCodeAt(i)
+  }
+  return bytes
+}
+function pick(bytes) {
+  if (Array.isArray(bytes)) {
+    bytes = Uint8Array.of(bytes[0], bytes[1])
+  }
+  const out = new Uint8Array(2)
+  out[0] = bytes[0]
+  out[1] = bytes[1]
+  out[0] = (out[0] & 0x0f) | 0x30
+  return out
+}
+function encode(hash, value, namespace, buf, offset) {
+  const valueBytes = typeof value === "string" ? stringToBytes(value) : value
+  const namespaceBytes = typeof namespace === "string" ? stringToBytes(namespace) : namespace
+  if (typeof namespace === "string") {
+    namespace = stringToBytes(namespace)
+  }
+  if (namespace?.length !== 2) {
+    throw TypeError("bad namespace")
+  }
+  let bytes = new Uint8Array(2 + valueBytes.length)
+  bytes.set(namespaceBytes)
+  bytes.set(valueBytes, namespaceBytes.length)
+  bytes = hash(bytes)
+  if (buf) {
+    offset = offset || 0
+    if (offset < 0 || offset + 2 > buf.length) {
+      throw new RangeError(`range ${offset}:${offset + 1}`)
+    }
+    for (let i = 0; i < 2; ++i) {
+      buf[offset + i] = bytes[i]
+    }
+    return buf
+  }
+  return bytes[0] + "-" + bytes[1]
+}
+const out = new Uint8Array(4)
+encode(pick, "AZ", "ns", out)
+console.log("bytes-callback", encode(pick, Uint8Array.of(65, 90), Uint8Array.of(110, 115)), out[0], out[1], out.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-bytes-callback-optional-length".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownCall"));
+        assert!(response.files[0].contents.contains("tsgodownLengthFloat"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownSetBytesIndexAny"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "bytes-callback 62-115 62 115 4\n"
+        );
+    }
+
+    #[test]
+    fn emit_go_runs_aot_uuid_v35_bytes_subset() {
+        let root = temp_project("engine-core-aot-uuid-v35-bytes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function stringToBytes(str) {
+  str = unescape(encodeURIComponent(str))
+  const bytes = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; ++i) {
+    bytes[i] = str.charCodeAt(i)
+  }
+  return bytes
+}
+function validate(uuid) {
+  return typeof uuid === "string"
+}
+function parseUuid(uuid) {
+  if (!validate(uuid)) {
+    throw TypeError("bad uuid")
+  }
+  let v
+  return Uint8Array.of((v = parseInt(uuid.slice(0, 8), 16)) >>> 24, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff, (v = parseInt(uuid.slice(9, 13), 16)) >>> 8, v & 0xff, (v = parseInt(uuid.slice(14, 18), 16)) >>> 8, v & 0xff, (v = parseInt(uuid.slice(19, 23), 16)) >>> 8, v & 0xff, ((v = parseInt(uuid.slice(24, 36), 16)) / 0x10000000000) & 0xff, (v / 0x100000000) & 0xff, (v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff)
+}
+const byteToHex = []
+for (let i = 0; i < 256; ++i) {
+  byteToHex.push((i + 0x100).toString(16).slice(1))
+}
+function unsafeStringify(arr, offset = 0) {
+  return (byteToHex[arr[offset + 0]] +
+    byteToHex[arr[offset + 1]] +
+    byteToHex[arr[offset + 2]] +
+    byteToHex[arr[offset + 3]] +
+    "-" +
+    byteToHex[arr[offset + 4]] +
+    byteToHex[arr[offset + 5]] +
+    "-" +
+    byteToHex[arr[offset + 6]] +
+    byteToHex[arr[offset + 7]] +
+    "-" +
+    byteToHex[arr[offset + 8]] +
+    byteToHex[arr[offset + 9]] +
+    "-" +
+    byteToHex[arr[offset + 10]] +
+    byteToHex[arr[offset + 11]] +
+    byteToHex[arr[offset + 12]] +
+    byteToHex[arr[offset + 13]] +
+    byteToHex[arr[offset + 14]] +
+    byteToHex[arr[offset + 15]]).toLowerCase()
+}
+function hash(bytes) {
+  return bytes
+}
+function v35(version, hash, value, namespace, buf, offset) {
+  const valueBytes = typeof value === "string" ? stringToBytes(value) : value
+  const namespaceBytes = typeof namespace === "string" ? parseUuid(namespace) : namespace
+  if (typeof namespace === "string") {
+    namespace = parseUuid(namespace)
+  }
+  if (namespace?.length !== 16) {
+    throw TypeError("bad namespace")
+  }
+  let bytes = new Uint8Array(16 + valueBytes.length)
+  bytes.set(namespaceBytes)
+  bytes.set(valueBytes, namespaceBytes.length)
+  bytes = hash(bytes)
+  bytes[6] = (bytes[6] & 0x0f) | version
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  if (buf) {
+    offset = offset || 0
+    if (offset < 0 || offset + 16 > buf.length) {
+      throw new RangeError(`range ${offset}:${offset + 15}`)
+    }
+    for (let i = 0; i < 16; ++i) {
+      buf[offset + i] = bytes[i]
+    }
+    return buf
+  }
+  return unsafeStringify(bytes)
+}
+const namespace = "00010203-0405-0607-0809-0a0b0c0d0e0f"
+const out = new Uint8Array(18)
+v35(0x30, hash, "AZ", namespace, out, 1)
+console.log("uuid-v35", v35(0x30, hash, "AZ", namespace), out[1], out[7], out[9], out.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-uuid-v35-bytes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}\nmain.go={}",
+            response.diagnostics,
+            response
+                .files
+                .first()
+                .map(|file| file.contents.as_str())
+                .unwrap_or("")
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownAnyArrayFromAny"));
+        assert!(response.files[0].contents.contains("tsgodownLengthFloat"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uuid-v35 00010203-0405-3607-8809-0a0b0c0d0e0f 0 54 136 18\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(
