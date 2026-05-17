@@ -6891,6 +6891,150 @@ console.log("uuid-v7", out[1], out[6], out[7], out[8], out[9], out[10], out[11],
     }
 
     #[test]
+    fn emit_go_runs_aot_uuid_v1_v6_slice_nullish_bytes_subset() {
+        let root = temp_project("engine-core-aot-uuid-v1-v6-slice-nullish-bytes");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+function v1Bytes(rnds, msecs, nsecs, clockseq, node, buf, offset = 0) {
+  if (rnds.length < 16) {
+    throw new Error("Random bytes length must be >= 16")
+  }
+  if (!buf) {
+    buf = new Uint8Array(16)
+    offset = 0
+  }
+  msecs ??= Date.now()
+  nsecs ??= 0
+  clockseq ??= ((rnds[8] << 8) | rnds[9]) & 0x3fff
+  node ??= rnds.slice(10, 16)
+  msecs += 12219292800000
+  const tl = ((msecs & 0xfffffff) * 10000 + nsecs) % 0x100000000
+  buf[offset++] = (tl >>> 24) & 0xff
+  buf[offset++] = (tl >>> 16) & 0xff
+  buf[offset++] = (tl >>> 8) & 0xff
+  buf[offset++] = tl & 0xff
+  const tmh = ((msecs / 0x100000000) * 10000) & 0xfffffff
+  buf[offset++] = (tmh >>> 8) & 0xff
+  buf[offset++] = tmh & 0xff
+  buf[offset++] = ((tmh >>> 24) & 0xf) | 0x10
+  buf[offset++] = (tmh >>> 16) & 0xff
+  buf[offset++] = (clockseq >>> 8) | 0x80
+  buf[offset++] = clockseq & 0xff
+  for (let n = 0; n < 6; ++n) {
+    buf[offset++] = node[n]
+  }
+  return buf
+}
+function v1(options, buf, offset) {
+  let bytes = v1Bytes(options.random, options.msecs, options.nsecs, options.clockseq, options.node, buf, offset)
+  if (!buf) {
+    buf = bytes
+  }
+  return buf
+}
+function v1ToV6(v1Bytes) {
+  return Uint8Array.of(
+    ((v1Bytes[6] & 0x0f) << 4) | ((v1Bytes[7] >> 4) & 0x0f),
+    ((v1Bytes[7] & 0x0f) << 4) | ((v1Bytes[4] & 0xf0) >> 4),
+    ((v1Bytes[4] & 0x0f) << 4) | ((v1Bytes[5] & 0xf0) >> 4),
+    ((v1Bytes[5] & 0x0f) << 4) | ((v1Bytes[0] & 0xf0) >> 4),
+    ((v1Bytes[0] & 0x0f) << 4) | ((v1Bytes[1] & 0xf0) >> 4),
+    ((v1Bytes[1] & 0x0f) << 4) | ((v1Bytes[2] & 0xf0) >> 4),
+    0x60 | (v1Bytes[2] & 0x0f),
+    v1Bytes[3],
+    v1Bytes[8],
+    v1Bytes[9],
+    v1Bytes[10],
+    v1Bytes[11],
+    v1Bytes[12],
+    v1Bytes[13],
+    v1Bytes[14],
+    v1Bytes[15],
+  )
+}
+function v6(options, buf, offset) {
+  options ??= {}
+  offset ??= 0
+  let bytes = v1Bytes(options.random, options.msecs, options.nsecs, options.clockseq, options.node, new Uint8Array(16))
+  bytes = v1ToV6(bytes)
+  if (buf) {
+    for (let i = 0; i < 16; i++) {
+      buf[offset + i] = bytes[i]
+    }
+    return buf
+  }
+  return bytes
+}
+const rnds = Uint8Array.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+const out = new Uint8Array(20)
+const bytes = v6({ random: rnds, msecs: 0x12345678, nsecs: 42 }, out, 2)
+console.log("uuid-v6", bytes[2], bytes[7], bytes[8], bytes[9], bytes[17], bytes.length)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-uuid-v1-v6-slice-nullish-bytes".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}\nmain.go={}",
+            response.diagnostics,
+            response
+                .files
+                .first()
+                .map(|file| file.contents.as_str())
+                .unwrap_or("")
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "uuid-v6 27 46 111 170 15 20\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_regexp_test_subset() {
         let root = temp_project("engine-core-aot-regexp-test");
         write(

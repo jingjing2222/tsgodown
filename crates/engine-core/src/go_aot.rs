@@ -5949,6 +5949,28 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
+        JsExpr::Binary { op, left, right } if op == "??" => {
+            mark_ident_param_kind(left, param_index, kinds, AotSlotKind::Any);
+            mark_ident_param_kind(right, param_index, kinds, AotSlotKind::Any);
+            if is_string_result_shape(right)
+                || matches!(
+                    right.as_ref(),
+                    JsExpr::Object { .. } | JsExpr::Array { .. } | JsExpr::New { .. }
+                )
+            {
+                mark_ident_param_kind(left, param_index, kinds, AotSlotKind::Any);
+            }
+            if is_string_result_shape(left)
+                || matches!(
+                    left.as_ref(),
+                    JsExpr::Object { .. } | JsExpr::Array { .. } | JsExpr::New { .. }
+                )
+            {
+                mark_ident_param_kind(right, param_index, kinds, AotSlotKind::Any);
+            }
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
+        }
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             infer_comparison_param_kind(left, right, param_index, kinds);
             infer_comparison_param_kind(right, left, param_index, kinds);
@@ -5986,6 +6008,15 @@ fn infer_expr_param_kinds(
             if let Some(separator) = args.first() {
                 mark_ident_param_kind(separator, param_index, kinds, AotSlotKind::String);
                 infer_expr_param_kinds(separator, param_index, kinds, builtin_aliases);
+            }
+        }
+        JsExpr::Call { callee, args, .. } if is_member_slice_call_shape(callee, args) => {
+            if let JsExpr::Member { object, .. } = callee.as_ref() {
+                mark_ident_param_kind(object, param_index, kinds, AotSlotKind::Any);
+                infer_expr_param_kinds(object, param_index, kinds, builtin_aliases);
+            }
+            for arg in args {
+                infer_expr_param_kinds(arg, param_index, kinds, builtin_aliases);
             }
         }
         JsExpr::Call { callee, args, .. } if string_method_name(callee).is_some() => {
@@ -8642,10 +8673,13 @@ fn render_assignment_stmt(
     };
     if op == "??=" && state.bindings.contains(name) {
         let target = go_binding_ref(name, state);
-        let right = render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
         if is_any_binding(name, state) {
+            let right = render_bytes_expr(right, state)
+                .or_else(|| render_json_value_expr(right, state))
+                .or_else(|| render_expr(right, state))?;
             return Some(format!("if {target} == nil {{ {target} = {right} }}"));
         }
+        let _right = render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
         return Some(String::new());
     }
     if !state.numeric_bindings.contains(name) {
@@ -8677,6 +8711,14 @@ fn render_assignment_stmt(
         if state.bytes_bindings.contains(name) && op == "=" {
             let right = render_bytes_expr_with_any_cast(right, state)?;
             return Some(format!("{} = {right}", go_binding_ref(name, state)));
+        }
+        if is_any_binding(name, state) && matches!(op, "+=" | "-=" | "*=" | "/=" | "%=") {
+            let target = go_binding_ref(name, state);
+            let right = render_numeric_expr(right, state)?;
+            let numeric_op = op.trim_end_matches('=');
+            return Some(format!(
+                "{target} = tsgodownToFloat64({target}) {numeric_op} {right}"
+            ));
         }
         if state.bindings.contains(name) && op == "=" {
             if let Some(right) = render_bytes_expr(right, state) {
@@ -9109,7 +9151,9 @@ fn render_dynamic_object_assignment_stmt(
     };
     let object = render_dynamic_object_source_expr(object, state)?;
     let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
-    let value = render_json_value_expr(right, state).or_else(|| render_expr(right, state))?;
+    let value = render_json_value_expr(right, state)
+        .or_else(|| render_numeric_expr(right, state))
+        .or_else(|| render_expr(right, state))?;
     if op == "??=" {
         return Some(format!(
             "if tsgodownObjectProp({object}, {key}) == nil {{ tsgodownObjectSetProp({object}, {key}, {value}) }}"
@@ -9350,6 +9394,9 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
+            if op == "%" {
+                return Some(format!("math.Mod({left}, {right})"));
+            }
             Some(format!("({left} {op} {right})"))
         }
         JsExpr::Binary { op, .. } if op == "instanceof" => render_bool_expr(expr, state),
@@ -9392,6 +9439,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::New { .. } => render_error_object_expr(expr, state)
             .or_else(|| render_date_expr(expr, state))
+            .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
@@ -9722,6 +9770,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
             let right = render_numeric_expr(right, state)?;
+            if op == "%" {
+                return Some(format!("math.Mod({left}, {right})"));
+            }
             Some(format!("({left} {op} {right})"))
         }
         JsExpr::Binary { op, left, right } if op == "||" => {
@@ -11114,15 +11165,23 @@ fn is_uint8_array_of_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 }
 
 fn is_bytes_slice_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    is_member_slice_call_shape(callee, args)
+        && matches!(
+            callee,
+            JsExpr::Member { object, .. } if render_bytes_expr_with_any_cast(object, state).is_some()
+        )
+}
+
+fn is_member_slice_call_shape(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 1 | 2)
         && matches!(
             callee,
             JsExpr::Member {
-                object,
                 property,
                 property_expr: None,
                 optional: false,
-            } if property == "slice" && render_bytes_expr_with_any_cast(object, state).is_some()
+                ..
+            } if property == "slice"
         )
 }
 
