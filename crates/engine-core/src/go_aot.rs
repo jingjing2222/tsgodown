@@ -5898,6 +5898,14 @@ fn render_for_of_stmt(
         let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
         return Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"));
     }
+    if let Some(values) = render_expr(right, state) {
+        let mut loop_state = clone_aot_state(state);
+        loop_state.bind_slot(left, ident.clone(), AotSlotKind::Any);
+        let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+        return Some(format!(
+            "for _, {ident} := range tsgodownAnyArrayFromAny({values}) {{\n{body}\n}}"
+        ));
+    }
     None
 }
 
@@ -8166,6 +8174,9 @@ fn collect_string_array_candidates_expr(
             collect_string_array_candidates_expr(right, state, candidates);
         }
         JsExpr::Call { callee, args, .. } => {
+            if let Some(name) = string_array_candidate_push_target(callee, args, state) {
+                candidates.insert(name.to_string());
+            }
             collect_string_array_candidates_expr(callee, state, candidates);
             for arg in args {
                 collect_string_array_candidates_expr(arg, state, candidates);
@@ -8565,6 +8576,17 @@ fn collect_number_array_candidates_expr(expr: &JsExpr, candidates: &mut BTreeSet
 
 fn number_array_candidate_push_target<'a>(callee: &'a JsExpr, args: &[JsExpr]) -> Option<&'a str> {
     if args.len() != 1 || !is_numeric_array_candidate_item(args.first()?) {
+        return None;
+    }
+    number_array_candidate_method_target(callee, "push")
+}
+
+fn string_array_candidate_push_target<'a>(
+    callee: &'a JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<&'a str> {
+    if args.len() != 1 || !is_string_array_candidate_value(args.first()?, state) {
         return None;
     }
     number_array_candidate_method_target(callee, "push")
@@ -9208,6 +9230,11 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
             if render_any_array_call_stmt(callee, args, state).is_some() =>
         {
             render_any_array_call_stmt(callee, args, state)
+        }
+        JsExpr::Call { callee, args, .. }
+            if render_string_array_push_call_stmt(callee, args, state).is_some() =>
+        {
+            render_string_array_push_call_stmt(callee, args, state)
         }
         JsExpr::Call { callee, args, .. }
             if render_any_array_pop_call(callee, args, state).is_some() =>
@@ -13458,6 +13485,37 @@ fn render_any_array_call_stmt(
     }
     let target = go_binding_ref(name, state);
     let value = render_json_value_expr(args.first()?, state)?;
+    Some(format!("{target} = append({target}, {value})"))
+}
+
+fn render_string_array_push_call_stmt(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &mut AotState,
+) -> Option<String> {
+    if args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "push" {
+        return None;
+    }
+    let JsExpr::Ident { name } = object.as_ref() else {
+        return None;
+    };
+    if !state.string_array_bindings.contains(name) {
+        return None;
+    }
+    let target = go_binding_ref(name, state);
+    let value = render_string_expr(args.first()?, state)?;
     Some(format!("{target} = append({target}, {value})"))
 }
 
