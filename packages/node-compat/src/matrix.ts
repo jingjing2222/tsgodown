@@ -138,11 +138,12 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
   "node.assert": {
     key: "node.assert",
     scope: "node api",
-    status: CapabilityStatus.TODO,
+    status: CapabilityStatus.WIP,
     strategy: "node-lts: Assertion testing",
     backends: backendRules({
-      status: CapabilityStatus.TODO,
-      strategy: "Assert API and assertion error shapes.",
+      status: CapabilityStatus.WIP,
+      strategy:
+        "`assert.equal`, `assert.strictEqual`, and `assert.deepStrictEqual` lower through generic assertion helpers for primitive values and JSON-like arrays/objects. Full AssertionError object shape, messages, custom operators, partial/deep match variants, rejects/throws async behavior, and strict module aliases beyond the focused subset remain pending.",
     }),
   },
   "node.async_context": {
@@ -168,11 +169,12 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
   "node.buffer": {
     key: "node.buffer",
     scope: "node api",
-    status: CapabilityStatus.TODO,
+    status: CapabilityStatus.WIP,
     strategy: "node-lts: Buffer",
     backends: backendRules({
-      status: CapabilityStatus.TODO,
-      strategy: "Buffer, Blob, encodings, byte-level parity.",
+      status: CapabilityStatus.WIP,
+      strategy:
+        "`Buffer.alloc` lowers fixed-size byte-slice allocation with numeric fill, `Buffer.from` lowers string inputs with `utf8`, `hex`, and `base64` encodings plus numeric arrays and index reads, and `Buffer.isBuffer` lowers byte-slice predicates; Blob, full encodings, mutation, typed-array interop, and byte-level parity pending.",
     }),
   },
   "node.addons_cpp": {
@@ -252,7 +254,8 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
     strategy: "node-lts: Crypto",
     backends: backendRules({
       status: CapabilityStatus.WIP,
-      strategy: "Hash/HMAC/random/WebCrypto/key APIs pending.",
+      strategy:
+        '`crypto.createHash(...).update(...).digest("hex")` lowers md5/sha1/sha256 string digests, `crypto.randomFillSync` lowers byte fill, and `crypto.randomUUID` lowers UUID v4 generation for focused AOT subsets. HMAC, broader random APIs, WebCrypto, keys, streaming hash objects, and error shapes pending.',
     }),
   },
   "node.debugger": {
@@ -342,7 +345,8 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
     strategy: "node-lts: File system",
     backends: backendRules({
       status: CapabilityStatus.WIP,
-      strategy: "Full fs/fs.promises/watch/stat/platform semantics pending.",
+      strategy:
+        "`fs.existsSync` lowers for string-path subsets; `fs.statSync` lowers a focused Stats subset with `mode`, `isFile()`, `isDirectory()`, and `isSymbolicLink()`; `fs.readFileSync` lowers string reads for member and named-import subsets; awaited `fs.promises.readFile`, `fs.promises.writeFile`, and `fs.promises.readdir` lower for sequential string-path/string-data/string-name-array subsets. Full fs/fs.promises/watch/stat/platform semantics pending.",
     }),
   },
   "node.globals": {
@@ -469,11 +473,12 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
   "node.os": {
     key: "node.os",
     scope: "node api",
-    status: CapabilityStatus.TODO,
+    status: CapabilityStatus.WIP,
     strategy: "node-lts: OS",
     backends: backendRules({
-      status: CapabilityStatus.TODO,
-      strategy: "OS info and platform differences.",
+      status: CapabilityStatus.WIP,
+      strategy:
+        "`os.homedir` lowers to a Go helper and `typeof os.homedir()` lowers as a string result; broader OS info and platform differences pending.",
     }),
   },
   "node.path": {
@@ -483,7 +488,8 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
     strategy: "node-lts: Path",
     backends: backendRules({
       status: CapabilityStatus.WIP,
-      strategy: "POSIX/win32 edge cases pending.",
+      strategy:
+        "`path.basename`, `path.delimiter`, `path.dirname`, `path.isAbsolute`, `path.join`, `path.normalize`, `path.parse`, `path.relative`, `path.resolve`, `path.sep`, `path.posix.sep`, and `path.win32.sep` lower for string-path subsets, including direct named ESM imports for supported string-returning helpers; full POSIX/win32 edge cases pending.",
     }),
   },
   "node.perf_hooks": {
@@ -513,7 +519,8 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
     strategy: "node-lts: Process",
     backends: backendRules({
       status: CapabilityStatus.WIP,
-      strategy: "Signals, lifecycle, stdin, versions pending.",
+      strategy:
+        "`process.arch`, `process.chdir`, `process.env`, `process.cwd`, `process.cwd()`, `process.execPath`, `process.getgid()`, `process.getuid()`, `process.version`, `process.versions`, `process.versions.node`, `process.platform`, `process.stdin`, `process.stdout`, `process.stderr`, no-IPC `process.channel`, and process function ref truthiness/`typeof` have focused AOT coverage for the Node.js 24.15.0 LTS target; signals, lifecycle, full stdio stream behavior, and broader process object behavior pending.",
     }),
   },
   "node.punycode": {

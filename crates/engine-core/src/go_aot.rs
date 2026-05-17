@@ -2649,6 +2649,10 @@ type tsgodownJSSet struct {
 	items map[string]any
 }
 
+type tsgodownWeakMap struct {
+	items map[string]any
+}
+
 func tsgodownNewMap() *tsgodownJSMap {
 	return &tsgodownJSMap{order: []string{}, items: map[string]any{}}
 }
@@ -2659,6 +2663,10 @@ func tsgodownNewSet(values []any) *tsgodownJSSet {
 		tsgodownSetAdd(target, value)
 	}
 	return target
+}
+
+func tsgodownNewWeakMap() *tsgodownWeakMap {
+	return &tsgodownWeakMap{items: map[string]any{}}
 }
 
 func tsgodownMapSet(target *tsgodownJSMap, key string, value any) *tsgodownJSMap {
@@ -2773,6 +2781,48 @@ func tsgodownSetSize(target *tsgodownJSSet) float64 {
 	return float64(len(target.items))
 }
 
+func tsgodownWeakMapKey(value any) string {
+	if value == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%T:%p", value, value)
+}
+
+func tsgodownWeakMapSet(target *tsgodownWeakMap, key any, value any) *tsgodownWeakMap {
+	if target == nil {
+		target = tsgodownNewWeakMap()
+	}
+	target.items[tsgodownWeakMapKey(key)] = value
+	return target
+}
+
+func tsgodownWeakMapGet(target *tsgodownWeakMap, key any) any {
+	if target == nil {
+		return nil
+	}
+	return target.items[tsgodownWeakMapKey(key)]
+}
+
+func tsgodownWeakMapHas(target *tsgodownWeakMap, key any) bool {
+	if target == nil {
+		return false
+	}
+	_, ok := target.items[tsgodownWeakMapKey(key)]
+	return ok
+}
+
+func tsgodownWeakMapDelete(target *tsgodownWeakMap, key any) bool {
+	if target == nil {
+		return false
+	}
+	keyName := tsgodownWeakMapKey(key)
+	if _, ok := target.items[keyName]; !ok {
+		return false
+	}
+	delete(target.items, keyName)
+	return true
+}
+
 func tsgodownIteratorFirstValue(values []any) any {
 	if len(values) == 0 {
 		return nil
@@ -2785,21 +2835,29 @@ func tsgodownCall(value any, args ...any) any {
 	case func(...any) any:
 		return fn(args...)
 	case func() any:
-		if len(args) == 0 {
-			return fn()
-		}
+		return fn()
 	case func(any) any:
-		if len(args) == 1 {
-			return fn(args[0])
+		var arg0 any
+		if len(args) > 0 {
+			arg0 = args[0]
 		}
+		return fn(arg0)
 	case func(string) any:
-		if len(args) == 1 {
-			return fn(tsgodownToString(args[0]))
+		var arg0 any
+		if len(args) > 0 {
+			arg0 = args[0]
 		}
+		return fn(tsgodownToString(arg0))
 	case func(any, any) any:
-		if len(args) == 2 {
-			return fn(args[0], args[1])
+		var arg0 any
+		var arg1 any
+		if len(args) > 0 {
+			arg0 = args[0]
 		}
+		if len(args) > 1 {
+			arg1 = args[1]
+		}
+		return fn(arg0, arg1)
 	}
 	return nil
 }
@@ -3446,6 +3504,54 @@ func tsgodownObjectPrototypeHasOwn(key any) bool {
 	default:
 		return false
 	}
+}
+
+func tsgodownConstructorHasOwn(name string, key any) bool {
+	switch name {
+	case "Object", "Function", "Array", "String", "Number", "Boolean", "Date", "RegExp", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError":
+		return tsgodownToString(key) == "prototype"
+	default:
+		return false
+	}
+}
+
+func tsgodownPrototypeHasOwn(name string, key any) bool {
+	prop := tsgodownToString(key)
+	switch name {
+	case "Object":
+		return tsgodownObjectPrototypeHasOwn(prop)
+	case "String":
+		switch prop {
+		case "constructor", "anchor", "at", "big", "blink", "bold", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "fixed", "fontcolor", "fontsize", "includes", "indexOf", "isWellFormed", "italics", "lastIndexOf", "link", "localeCompare", "match", "matchAll", "normalize", "padEnd", "padStart", "repeat", "replace", "replaceAll", "search", "slice", "small", "split", "startsWith", "strike", "sub", "substr", "substring", "sup", "toLocaleLowerCase", "toLocaleUpperCase", "toLowerCase", "toString", "toUpperCase", "toWellFormed", "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf":
+			return true
+		}
+	case "Array":
+		switch prop {
+		case "constructor", "at", "concat", "copyWithin", "entries", "every", "fill", "filter", "find", "findIndex", "findLast", "findLastIndex", "flat", "flatMap", "forEach", "includes", "indexOf", "join", "keys", "lastIndexOf", "map", "pop", "push", "reduce", "reduceRight", "reverse", "shift", "slice", "some", "sort", "splice", "toLocaleString", "toReversed", "toSorted", "toSpliced", "toString", "unshift", "values", "with":
+			return true
+		}
+	case "Map":
+		switch prop {
+		case "constructor", "clear", "delete", "entries", "forEach", "get", "has", "keys", "set", "values", "size":
+			return true
+		}
+	case "Set":
+		switch prop {
+		case "constructor", "add", "clear", "delete", "entries", "forEach", "has", "keys", "values", "size":
+			return true
+		}
+	case "WeakMap":
+		switch prop {
+		case "constructor", "delete", "get", "has", "set":
+			return true
+		}
+	case "WeakSet":
+		switch prop {
+		case "constructor", "add", "delete", "has":
+			return true
+		}
+	}
+	return false
 }
 
 func tsgodownParseInt(value any, radix float64) float64 {
@@ -6787,6 +6893,7 @@ struct AotState {
     regexp_replace_bindings: BTreeMap<String, (String, bool)>,
     map_bindings: BTreeSet<String>,
     set_bindings: BTreeSet<String>,
+    weak_map_bindings: BTreeSet<String>,
     url_bindings: BTreeSet<String>,
     event_emitter_bindings: BTreeSet<String>,
     number_closure_bindings: BTreeSet<String>,
@@ -6842,6 +6949,7 @@ impl AotState {
         self.array_property_bindings.remove(name);
         self.map_bindings.remove(name);
         self.set_bindings.remove(name);
+        self.weak_map_bindings.remove(name);
         self.url_bindings.remove(name);
         self.event_emitter_bindings.remove(name);
         self.number_closure_bindings.remove(name);
@@ -6895,6 +7003,7 @@ fn clear_collection_slot_metadata(state: &mut AotState, name: &str) {
     state.bytes_bindings.remove(name);
     state.map_bindings.remove(name);
     state.set_bindings.remove(name);
+    state.weak_map_bindings.remove(name);
     state.object_bindings.remove(name);
 }
 
@@ -6918,6 +7027,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         set_bindings: state.set_bindings.clone(),
+        weak_map_bindings: state.weak_map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -7286,6 +7396,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.set_bindings.insert(name.clone());
                     return Some(format!("var {ident} *tsgodownJSSet = {value}"));
                 }
+                if let Some(value) = render_weak_map_new_expr(expr) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.weak_map_bindings.insert(name.clone());
+                    return Some(format!("var {ident} *tsgodownWeakMap = {value}"));
+                }
                 if let Some(value) = render_url_new_expr(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -7497,6 +7613,7 @@ fn render_for_stmt(
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         set_bindings: state.set_bindings.clone(),
+        weak_map_bindings: state.weak_map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -7999,6 +8116,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         set_bindings: state.set_bindings.clone(),
+        weak_map_bindings: state.weak_map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -8047,6 +8165,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
         set_bindings: state.set_bindings.clone(),
+        weak_map_bindings: state.weak_map_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -8617,6 +8736,11 @@ fn infer_expr_param_kinds(
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
+        JsExpr::Binary { op, left, right } if op == "in" => {
+            mark_member_object_param_kind(left, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
+        }
         JsExpr::Assign { op, left, right } if op == "=" && is_string_result_shape(right) => {
             mark_ident_param_kind(left, param_index, kinds, AotSlotKind::String);
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
@@ -9018,6 +9142,22 @@ fn mark_assigned_member_object_param_kind(
         return;
     }
     kinds[*index] = AotSlotKind::Any;
+}
+
+fn mark_member_object_param_kind(
+    expr: &JsExpr,
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+) {
+    let JsExpr::Member {
+        object,
+        optional: false,
+        ..
+    } = expr
+    else {
+        return;
+    };
+    mark_ident_param_kind(object, param_index, kinds, AotSlotKind::Any);
 }
 
 fn infer_bool_context_param_kinds(
@@ -9691,6 +9831,7 @@ fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
             || state.any_array_bindings.contains(&name)
             || state.map_bindings.contains(&name)
             || state.set_bindings.contains(&name)
+            || state.weak_map_bindings.contains(&name)
             || state.url_bindings.contains(&name)
             || state.event_emitter_bindings.contains(&name)
             || state.number_closure_bindings.contains(&name)
@@ -10004,6 +10145,9 @@ fn collect_dynamic_object_candidates_expr(expr: &JsExpr, candidates: &mut BTreeS
         JsExpr::Call { callee, args, .. } => {
             if let Some(name) = ts_enum_iife_target(callee, args) {
                 candidates.insert(name.to_string());
+            }
+            if let Some(JsExpr::Ident { name }) = weak_map_call_key_arg(callee, args) {
+                candidates.insert(name.clone());
             }
             if is_object_keys_call(callee, args) {
                 if let Some(JsExpr::Ident { name }) = args.first() {
@@ -11888,6 +12032,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             render_comparison_expr(op, left, right, state)
         }
         JsExpr::Binary { op, left, right } if op == "in" => {
+            if let Some(value) = render_builtin_in_operator_expr(left, right, state) {
+                return Some(value);
+            }
             let key = render_expr(left, state)?;
             let object = render_expr(right, state)?;
             Some(format!("tsgodownObjectHasOwn({object}, {key})"))
@@ -11976,6 +12123,64 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_array_bool_method_call(callee, args, state)),
         _ => None,
     }
+}
+
+fn render_builtin_in_operator_expr(
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let key = render_expr(left, state)?;
+    match right {
+        JsExpr::Ident { name } if is_builtin_constructor_with_prototype(name) => Some(format!(
+            "tsgodownConstructorHasOwn({}, {key})",
+            go_string_literal(name)
+        )),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "prototype" => {
+            let JsExpr::Ident { name } = object.as_ref() else {
+                return None;
+            };
+            if !is_builtin_constructor_with_prototype(name) {
+                return None;
+            }
+            Some(format!(
+                "tsgodownPrototypeHasOwn({}, {key})",
+                go_string_literal(name)
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn is_builtin_constructor_with_prototype(name: &str) -> bool {
+    matches!(
+        name,
+        "Object"
+            | "Function"
+            | "Array"
+            | "String"
+            | "Number"
+            | "Boolean"
+            | "Date"
+            | "RegExp"
+            | "Map"
+            | "Set"
+            | "WeakMap"
+            | "WeakSet"
+            | "Promise"
+            | "Error"
+            | "TypeError"
+            | "RangeError"
+            | "ReferenceError"
+            | "SyntaxError"
+            | "URIError"
+            | "EvalError"
+    )
 }
 
 fn render_bool_test_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
@@ -13626,6 +13831,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_any_array_pop_call(callee, args, state))
             .or_else(|| render_map_call_expr(callee, args, state))
             .or_else(|| render_set_call_expr(callee, args, state))
+            .or_else(|| render_weak_map_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
             .or_else(|| render_array_find_call(callee, args, state))
             .or_else(|| render_call_expr(callee, args, state))
@@ -13640,6 +13846,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
             .or_else(|| render_js_set_expr(expr, state))
+            .or_else(|| render_weak_map_new_expr(expr))
             .or_else(|| render_new_class_expr(expr, state).map(|(_, value)| value)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
@@ -15469,6 +15676,7 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
                 || state.bytes_bindings.contains(name)
                 || state.map_bindings.contains(name)
                 || state.set_bindings.contains(name)
+                || state.weak_map_bindings.contains(name)
             {
                 return None;
             }
@@ -17104,6 +17312,129 @@ fn render_js_set_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         _ => return None,
     };
     Some(format!("tsgodownNewSet({values})"))
+}
+
+fn render_weak_map_new_expr(expr: &JsExpr) -> Option<String> {
+    matches!(
+        expr,
+        JsExpr::New { callee, args }
+            if args.is_empty()
+                && matches!(callee.as_ref(), JsExpr::Ident { name } if name == "WeakMap")
+    )
+    .then(|| "tsgodownNewWeakMap()".to_string())
+}
+
+fn render_weak_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.weak_map_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::New { .. } => render_weak_map_new_expr(expr),
+        _ => None,
+    }
+}
+
+fn weak_map_prototype_call_method(callee: &JsExpr) -> Option<&str> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "call" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property: method,
+        property_expr: None,
+        optional: false,
+    } = object.as_ref()
+    else {
+        return None;
+    };
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = object.as_ref()
+    else {
+        return None;
+    };
+    if property != "prototype" {
+        return None;
+    }
+    if !matches!(object.as_ref(), JsExpr::Ident { name } if name == "WeakMap") {
+        return None;
+    }
+    Some(method.as_str())
+}
+
+fn weak_map_call_key_arg<'a>(callee: &JsExpr, args: &'a [JsExpr]) -> Option<&'a JsExpr> {
+    if weak_map_prototype_call_method(callee).is_some() {
+        return args.get(1);
+    }
+    let JsExpr::Member {
+        property,
+        property_expr: None,
+        optional: false,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    matches!(property.as_str(), "set" | "get" | "has" | "delete").then(|| args.first())?
+}
+
+fn render_weak_map_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    if let Some(method) = weak_map_prototype_call_method(callee) {
+        let target = render_weak_map_expr(args.first()?, state)?;
+        return render_weak_map_method_call(method, &target, &args[1..], state);
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let target = render_weak_map_expr(object, state)?;
+    render_weak_map_method_call(property, &target, args, state)
+}
+
+fn render_weak_map_method_call(
+    method: &str,
+    target: &str,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    match method {
+        "set" if args.len() == 2 => {
+            let key = render_expr(args.first()?, state)?;
+            let value = render_json_value_expr(args.get(1)?, state)
+                .or_else(|| render_expr(args.get(1)?, state))?;
+            Some(format!("tsgodownWeakMapSet({target}, {key}, {value})"))
+        }
+        "get" if args.len() == 1 => {
+            let key = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownWeakMapGet({target}, {key})"))
+        }
+        "has" if args.len() == 1 => {
+            let key = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownWeakMapHas({target}, {key})"))
+        }
+        "delete" if args.len() == 1 => {
+            let key = render_expr(args.first()?, state)?;
+            Some(format!("tsgodownWeakMapDelete({target}, {key})"))
+        }
+        _ => None,
+    }
 }
 
 fn is_new_url_expr(callee: &JsExpr, args: &[JsExpr]) -> bool {
@@ -22094,6 +22425,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     if let Some(value) = render_set_call_expr(callee, args, state) {
         return Some(value);
     }
+    if let Some(value) = render_weak_map_call_expr(callee, args, state) {
+        return Some(value);
+    }
     if let Some(value) = render_array_at_call(callee, args, state) {
         return Some(value);
     }
@@ -22651,6 +22985,7 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.string_array_bindings.contains(name)
         && !state.map_bindings.contains(name)
         && !state.set_bindings.contains(name)
+        && !state.weak_map_bindings.contains(name)
         && !state.url_bindings.contains(name)
         && !state.event_emitter_bindings.contains(name)
         && !state.number_closure_bindings.contains(name)

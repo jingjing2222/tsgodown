@@ -11245,7 +11245,6 @@ console.log("stringify-like", stringify({ user: { name: "kim", roles: ["admin", 
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_object_in_and_option_normalization_subset() {
         let root = temp_project("engine-core-object-in-option-normalization");
         write(
@@ -11311,10 +11310,17 @@ console.log(
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("tsgodownObjectHasOwn"));
+        assert!(response.files[0].contents.contains("tsgodownWeakMapSet"));
 
         if std::process::Command::new("go")
             .arg("version")
