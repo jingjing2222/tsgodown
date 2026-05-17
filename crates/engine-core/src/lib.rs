@@ -13667,7 +13667,6 @@ console.log("assert-ok")
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_builtin_crypto_buffer_import_subset() {
         let root = temp_project("engine-core-crypto-buffer-import");
         write(

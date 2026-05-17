@@ -978,6 +978,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("strconv");
                 imports.insert("strings");
             }
+            if is_number_is_integer_call(callee, args) {
+                imports.insert("math");
+            }
             if is_uri_string_call(callee, args) {
                 imports.insert("strings");
             }
@@ -1039,16 +1042,24 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
                 imports.insert("net/url");
                 imports.insert("strings");
             }
-            if is_crypto_sha256_hex_slice_call(callee) || is_crypto_sha256_hex_digest_call(callee) {
+            if is_crypto_sha256_hex_slice_call(callee)
+                || is_crypto_sha256_hex_digest_call(callee)
+                || is_crypto_hash_hex_digest_call(callee, args)
+            {
                 imports.insert("encoding/hex");
             }
-            if let Some(algorithm) = crypto_hash_bytes_digest_algorithm(callee, args) {
+            if let Some(algorithm) = crypto_hash_bytes_digest_algorithm(callee, args)
+                .or_else(|| crypto_hash_hex_digest_algorithm(callee, args))
+            {
                 match algorithm {
                     "md5" => {
                         imports.insert("crypto/md5");
                     }
                     "sha1" => {
                         imports.insert("crypto/sha1");
+                    }
+                    "sha256" => {
+                        imports.insert("crypto/sha256");
                     }
                     _ => {}
                 }
@@ -1248,6 +1259,7 @@ fn render_go_import_spec(import: &str) -> String {
     match import {
         "crypto/md5" => "tsgodownmd5 \"crypto/md5\"".to_string(),
         "crypto/sha1" => "tsgodownsha1 \"crypto/sha1\"".to_string(),
+        "crypto/sha256" => "tsgodownsha256 \"crypto/sha256\"".to_string(),
         _ => format!("{import:?}"),
     }
 }
@@ -1270,6 +1282,7 @@ fn go_import_usage_token(import: &str) -> &'static str {
         "crypto/md5" => "tsgodownmd5.",
         "crypto/rand" => "rand.",
         "crypto/sha1" => "tsgodownsha1.",
+        "crypto/sha256" => "tsgodownsha256.",
         "encoding/base64" => "base64.",
         "encoding/hex" => "hex.",
         "encoding/json" => "json.",
@@ -1686,6 +1699,24 @@ func tsgodownStringArraySome(values []string, predicate func(any, float64) bool)
 func tsgodownStringArrayEvery(values []string, predicate func(any, float64) bool) bool {
 	for index, value := range values {
 		if !predicate(value, float64(index)) {
+			return false
+		}
+	}
+	return true
+}
+
+func tsgodownBytesSome(values []byte, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if predicate(float64(value), float64(index)) {
+			return true
+		}
+	}
+	return false
+}
+
+func tsgodownBytesEvery(values []byte, predicate func(any, float64) bool) bool {
+	for index, value := range values {
+		if !predicate(float64(value), float64(index)) {
 			return false
 		}
 	}
@@ -10773,6 +10804,12 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             let value = render_expr(args.first()?, state)?;
             Some(format!("tsgodownIsNaN({value})"))
         }
+        JsExpr::Call { callee, args, .. } if is_number_is_integer_call(callee, args) => {
+            let value = render_numeric_expr(args.first()?, state)?;
+            Some(format!(
+                "(!math.IsNaN({value}) && !math.IsInf({value}, 0) && math.Trunc({value}) == {value})"
+            ))
+        }
         JsExpr::Call { callee, args, .. } if is_map_has_call(callee, args, state) => {
             render_map_bool_call(callee, args, state)
         }
@@ -13003,6 +13040,7 @@ fn render_string_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_node_fs_read_file_sync_call(callee, args, state))
             .or_else(|| render_buffer_to_string_call(callee, args, state))
             .or_else(|| render_url_search_params_get_call(callee, args, state))
+            .or_else(|| render_crypto_hash_hex_digest_call(callee, args, state))
             .or_else(|| render_crypto_sha256_hex_call(callee, args, state))
             .or_else(|| {
                 if is_process_cwd_call(callee, args) {
@@ -15125,6 +15163,11 @@ fn render_array_predicate_call(
     if let Some(values) = render_any_array_expr(object, state) {
         return Some(format!(
             "tsgodownAnyArray{helper_suffix}({values}, {predicate})"
+        ));
+    }
+    if let Some(values) = render_bytes_expr(object, state) {
+        return Some(format!(
+            "tsgodownBytes{helper_suffix}({values}, {predicate})"
         ));
     }
     let values = render_string_array_expr(object, state)?;
@@ -18034,6 +18077,10 @@ fn is_supported_node_builtin_call_expr(expr: &JsExpr) -> bool {
                 || is_node_buffer_is_buffer_call(callee, args)
                 || is_node_path_bool_call(callee, args)
                 || is_node_path_parse_call(callee, args)
+                || is_crypto_hash_bytes_digest_call(callee, args)
+                || is_crypto_hash_hex_digest_call(callee, args)
+                || is_crypto_random_fill_sync_call_shape(callee, args)
+                || is_crypto_random_uuid_call_shape(callee, args)
     )
 }
 
@@ -18973,8 +19020,85 @@ fn crypto_hash_bytes_digest_algorithm(callee: &JsExpr, args: &[JsExpr]) -> Optio
     Some(algorithm)
 }
 
+fn crypto_hash_hex_digest_source_expr<'a>(
+    callee: &'a JsExpr,
+    args: &[JsExpr],
+) -> Option<(&'static str, &'a JsExpr, &'a JsExpr)> {
+    if args.len() != 1
+        || !matches!(
+            args.first().and_then(string_literal_value).as_deref(),
+            Some("hex")
+        )
+    {
+        return None;
+    }
+    let JsExpr::Member {
+        object: update_call,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    if property != "digest" {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: update_callee,
+        args: update_args,
+        optional: false,
+    } = update_call.as_ref()
+    else {
+        return None;
+    };
+    let JsExpr::Member {
+        object: create_hash_call,
+        property,
+        property_expr: None,
+        optional: false,
+    } = update_callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "update" || update_args.len() != 1 {
+        return None;
+    }
+    let JsExpr::Call {
+        callee: create_hash_callee,
+        args: create_hash_args,
+        optional: false,
+    } = create_hash_call.as_ref()
+    else {
+        return None;
+    };
+    if create_hash_args.len() != 1 {
+        return None;
+    }
+    let algorithm = match create_hash_args
+        .first()
+        .and_then(string_literal_value)?
+        .as_str()
+    {
+        "md5" => "md5",
+        "sha1" => "sha1",
+        "sha256" => "sha256",
+        _ => return None,
+    };
+    Some((algorithm, create_hash_callee, update_args.first()?))
+}
+
+fn crypto_hash_hex_digest_algorithm(callee: &JsExpr, args: &[JsExpr]) -> Option<&'static str> {
+    let (algorithm, _, _) = crypto_hash_hex_digest_source_expr(callee, args)?;
+    Some(algorithm)
+}
+
 fn is_crypto_hash_bytes_digest_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     crypto_hash_bytes_digest_source_expr(callee, args).is_some()
+}
+
+fn is_crypto_hash_hex_digest_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    crypto_hash_hex_digest_source_expr(callee, args).is_some()
 }
 
 fn render_crypto_hash_bytes_digest_call(
@@ -19007,6 +19131,39 @@ fn render_crypto_hash_bytes_digest_call(
     };
     Some(format!(
         "func() []byte {{ sum := {package}.Sum({source}); return sum[:] }}()"
+    ))
+}
+
+fn render_crypto_hash_hex_digest_call(
+    callee: &JsExpr,
+    args: &[JsExpr],
+    state: &AotState,
+) -> Option<String> {
+    let (algorithm, create_hash_callee, source) = crypto_hash_hex_digest_source_expr(callee, args)?;
+    if !is_crypto_create_hash_ref(create_hash_callee, state) {
+        return None;
+    }
+    let source = render_bytes_expr(source, state)
+        .or_else(|| {
+            if let JsExpr::Ident { name } = source {
+                if is_any_binding(name, state) {
+                    return Some(format!(
+                        "tsgodownBufferFromAny({}, \"utf8\")",
+                        go_binding_ref(name, state)
+                    ));
+                }
+            }
+            None
+        })
+        .or_else(|| render_string_expr(source, state).map(|value| format!("[]byte({value})")))?;
+    let package = match algorithm {
+        "md5" => "tsgodownmd5",
+        "sha1" => "tsgodownsha1",
+        "sha256" => "tsgodownsha256",
+        _ => return None,
+    };
+    Some(format!(
+        "func() string {{ sum := {package}.Sum({source}); return hex.EncodeToString(sum[:]) }}()"
     ))
 }
 
@@ -19124,6 +19281,20 @@ fn is_string_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
 
 fn is_number_cast_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1 && matches!(callee, JsExpr::Ident { name } if name == "Number")
+}
+
+fn is_number_is_integer_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
+        && matches!(
+            callee,
+            JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Number")
+                && property == "isInteger"
+        )
 }
 
 fn is_uri_string_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
