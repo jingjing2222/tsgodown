@@ -11759,7 +11759,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_local_function_call(callee, state) => {
             render_call_expr(callee, args, state)
         }
-        JsExpr::Call { callee, args, .. } => render_error_object_expr(expr, state)
+        JsExpr::Call { callee, args, .. } => render_sync_iife_expr(callee, args, state)
+            .or_else(|| render_error_object_expr(expr, state))
             .or_else(|| render_symbol_expr(expr, state))
             .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
@@ -11860,6 +11861,52 @@ fn render_async_iife_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_sync_iife_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Function {
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    if params.len() != args.len() {
+        return None;
+    }
+    let param_kinds = infer_function_param_kinds(params, body, &state.builtin_function_aliases);
+    let mut function_state = clone_aot_state(state);
+    for (param, kind) in params.iter().zip(param_kinds.iter()) {
+        function_state.bind_slot(param, sanitize_go_identifier(param), *kind);
+    }
+    let rendered_params = params
+        .iter()
+        .zip(param_kinds.iter())
+        .map(|(param, kind)| {
+            format!(
+                "{} {}",
+                sanitize_go_identifier(param),
+                go_type_for_slot(*kind)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let rendered_args = render_call_args(args, &param_kinds, state)?;
+    let rendered_body = render_function_body(body, &function_state)?;
+    let rendered_body = if rendered_body.trim_end().ends_with("return nil") {
+        rendered_body
+    } else {
+        format!("{rendered_body}\nreturn nil")
+    };
+    Some(format!(
+        "func({rendered_params}) any {{\n{}\n}}({})",
+        indent_lines(&rendered_body),
+        rendered_args.join(", ")
+    ))
 }
 
 fn render_iife_block_expr(body: &[JsStmt], state: &AotState) -> Option<String> {
