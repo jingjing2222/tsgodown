@@ -83,6 +83,11 @@ pub(crate) fn render_aot_executable_program(
         }
         body.push(render_stmt(stmt, &mut state)?);
     }
+    let declarations = declarations.join("\n\n");
+    let helpers = render_aot_helpers(&state.go_imports);
+    let body = indent_lines(&body.join("\n"));
+    let source_without_imports = format!("{declarations}\n{helpers}\nfunc main() {{\n{body}\n}}\n");
+    let imports = prune_unused_go_imports(&state.go_imports, &source_without_imports);
     Some(format!(
         r#"package {package_name}
 
@@ -94,10 +99,7 @@ func main() {{
 {body}
 }}
 "#,
-        imports = render_go_imports(&state.go_imports),
-        declarations = declarations.join("\n\n"),
-        helpers = render_aot_helpers(&state.go_imports),
-        body = indent_lines(&body.join("\n"))
+        imports = render_go_imports(&imports),
     ))
 }
 
@@ -1194,6 +1196,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
 }
 
 fn render_go_imports(imports: &BTreeSet<&'static str>) -> String {
+    if imports.is_empty() {
+        return String::new();
+    }
     if imports.len() == 1 {
         return format!(
             "import {}",
@@ -1215,6 +1220,44 @@ fn render_go_import_spec(import: &str) -> String {
         "crypto/md5" => "tsgodownmd5 \"crypto/md5\"".to_string(),
         "crypto/sha1" => "tsgodownsha1 \"crypto/sha1\"".to_string(),
         _ => format!("{import:?}"),
+    }
+}
+
+fn prune_unused_go_imports(
+    imports: &BTreeSet<&'static str>,
+    source: &str,
+) -> BTreeSet<&'static str> {
+    imports
+        .iter()
+        .copied()
+        .filter(|import| source.contains(go_import_usage_token(import)))
+        .collect()
+}
+
+fn go_import_usage_token(import: &str) -> &'static str {
+    match import {
+        "compress/gzip" => "gzip.",
+        "compress/zlib" => "zlib.",
+        "crypto/md5" => "tsgodownmd5.",
+        "crypto/rand" => "rand.",
+        "crypto/sha1" => "tsgodownsha1.",
+        "encoding/base64" => "base64.",
+        "encoding/hex" => "hex.",
+        "encoding/json" => "json.",
+        "fmt" => "fmt.",
+        "io" => "io.",
+        "math" => "math.",
+        "net/http" => "http.",
+        "net/url" => "url.",
+        "os" => "os.",
+        "path" => "path.",
+        "path/filepath" => "filepath.",
+        "regexp" => "regexp.",
+        "sort" => "sort.",
+        "strconv" => "strconv.",
+        "strings" => "strings.",
+        "time" => "time.",
+        _ => ".",
     }
 }
 
@@ -2128,6 +2171,10 @@ func tsgodownCall(value any, args ...any) any {
 	case func(any) any:
 		if len(args) == 1 {
 			return fn(args[0])
+		}
+	case func(string) any:
+		if len(args) == 1 {
+			return fn(tsgodownToString(args[0]))
 		}
 	case func(any, any) any:
 		if len(args) == 2 {
@@ -8738,6 +8785,11 @@ fn render_string_return_expr(expr: &JsExpr, state: &AotState) -> Option<String> 
             render_string_expr(expr, state)
         }
         JsExpr::Conditional { .. } => render_string_expr(expr, state),
+        JsExpr::Member {
+            property,
+            property_expr: None,
+            ..
+        } if property == "exports" => None,
         JsExpr::Member { .. } => render_string_expr(expr, state),
         _ => None,
     }
