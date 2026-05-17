@@ -4728,6 +4728,12 @@ fn render_module_decls(
                 }
             }
         }
+        if module_uses_runtime_cjs_exports(module, &state) {
+            declarations.push(format!(
+                "var {} map[string]any = map[string]any{{}}",
+                module_exports_go_name(module)
+            ));
+        }
         for stmt in &module.executable.as_ref()?.stmts {
             if let Some(parts) = function_parts(stmt) {
                 let function = module_functions.get(&(module.id.clone(), parts.name.clone()))?;
@@ -4789,6 +4795,7 @@ fn module_aot_state(
 ) -> Option<AotState> {
     let mut state = AotState {
         entry_source_path: entry_module(ir).map(|module| module.source_path.clone()),
+        module_exports_ref: Some(module_exports_go_name(module)),
         ..AotState::default()
     };
     for stmt in &module.executable.as_ref()?.stmts {
@@ -5259,6 +5266,162 @@ fn is_resolved_cjs_export_metadata_stmt(stmt: &JsStmt, state: &AotState) -> bool
     is_resolved_export_metadata_expr(right, state)
 }
 
+fn module_uses_runtime_cjs_exports(module: &Module, state: &AotState) -> bool {
+    module
+        .executable
+        .as_ref()
+        .is_some_and(|executable| stmt_list_uses_runtime_cjs_exports(&executable.stmts, state))
+}
+
+fn stmt_list_uses_runtime_cjs_exports(stmts: &[JsStmt], state: &AotState) -> bool {
+    stmts
+        .iter()
+        .any(|stmt| stmt_uses_runtime_cjs_exports(stmt, state))
+}
+
+fn stmt_uses_runtime_cjs_exports(stmt: &JsStmt, state: &AotState) -> bool {
+    match stmt {
+        JsStmt::Expr { expr } => expr_uses_runtime_cjs_exports(expr, state),
+        JsStmt::FunctionDecl { body, .. } => stmt_list_uses_runtime_cjs_exports(body, state),
+        JsStmt::ClassDecl { methods, .. } => methods
+            .iter()
+            .any(|method| stmt_list_uses_runtime_cjs_exports(&method.body, state)),
+        JsStmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_uses_runtime_cjs_exports(test, state)
+                || stmt_list_uses_runtime_cjs_exports(consequent, state)
+                || stmt_list_uses_runtime_cjs_exports(alternate, state)
+        }
+        JsStmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            stmt_list_uses_runtime_cjs_exports(init, state)
+                || test
+                    .as_ref()
+                    .is_some_and(|expr| expr_uses_runtime_cjs_exports(expr, state))
+                || update
+                    .as_ref()
+                    .is_some_and(|expr| expr_uses_runtime_cjs_exports(expr, state))
+                || stmt_list_uses_runtime_cjs_exports(body, state)
+        }
+        JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+            expr_uses_runtime_cjs_exports(test, state)
+                || stmt_list_uses_runtime_cjs_exports(body, state)
+        }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            stmt_list_uses_runtime_cjs_exports(body, state)
+                || stmt_list_uses_runtime_cjs_exports(catch_body, state)
+                || stmt_list_uses_runtime_cjs_exports(finally_body, state)
+        }
+        JsStmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            expr_uses_runtime_cjs_exports(discriminant, state)
+                || cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(|expr| expr_uses_runtime_cjs_exports(expr, state))
+                        || stmt_list_uses_runtime_cjs_exports(&case.consequent, state)
+                })
+        }
+        JsStmt::Return { value } => value
+            .as_ref()
+            .is_some_and(|expr| expr_uses_runtime_cjs_exports(expr, state)),
+        JsStmt::Throw { value } => expr_uses_runtime_cjs_exports(value, state),
+        JsStmt::ForOf { right, body, .. } => {
+            expr_uses_runtime_cjs_exports(right, state)
+                || stmt_list_uses_runtime_cjs_exports(body, state)
+        }
+        JsStmt::Label { body, .. } => stmt_list_uses_runtime_cjs_exports(body, state),
+        JsStmt::VarDecl { init, .. } => init
+            .as_ref()
+            .is_some_and(|expr| expr_uses_runtime_cjs_exports(expr, state)),
+        _ => false,
+    }
+}
+
+fn expr_uses_runtime_cjs_exports(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Member { object, .. } if is_module_exports_member(object) => true,
+        JsExpr::Assign { op, left, right } if op == "=" && is_module_exports_member(left) => {
+            !is_resolved_default_cjs_export_value(right, state)
+                || expr_uses_runtime_cjs_exports(right, state)
+        }
+        JsExpr::Assign { op, left, right }
+            if op == "=" && cjs_named_export_property(left).is_some() =>
+        {
+            !is_resolved_export_metadata_expr(right, state)
+                || expr_uses_runtime_cjs_exports(right, state)
+        }
+        JsExpr::Assign { left, right, .. } | JsExpr::Binary { left, right, .. } => {
+            expr_uses_runtime_cjs_exports(left, state)
+                || expr_uses_runtime_cjs_exports(right, state)
+        }
+        JsExpr::Unary { arg, .. } | JsExpr::Await { arg } | JsExpr::Spread { arg } => {
+            expr_uses_runtime_cjs_exports(arg, state)
+        }
+        JsExpr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            expr_uses_runtime_cjs_exports(test, state)
+                || expr_uses_runtime_cjs_exports(consequent, state)
+                || expr_uses_runtime_cjs_exports(alternate, state)
+        }
+        JsExpr::Call { callee, args, .. } | JsExpr::New { callee, args } => {
+            expr_uses_runtime_cjs_exports(callee, state)
+                || args
+                    .iter()
+                    .any(|arg| expr_uses_runtime_cjs_exports(arg, state))
+        }
+        JsExpr::Member {
+            object,
+            property_expr,
+            ..
+        } => {
+            expr_uses_runtime_cjs_exports(object, state)
+                || property_expr
+                    .as_ref()
+                    .is_some_and(|key| expr_uses_runtime_cjs_exports(key, state))
+        }
+        JsExpr::Array { items } | JsExpr::Sequence { exprs: items } => items
+            .iter()
+            .any(|item| expr_uses_runtime_cjs_exports(item, state)),
+        JsExpr::ArraySpread { items } => items
+            .iter()
+            .any(|item| expr_uses_runtime_cjs_exports(&item.value, state)),
+        JsExpr::Object { props } => props.iter().any(|prop| {
+            prop.key_expr
+                .as_ref()
+                .is_some_and(|key| expr_uses_runtime_cjs_exports(key, state))
+                || expr_uses_runtime_cjs_exports(&prop.value, state)
+        }),
+        JsExpr::Template { exprs, .. } => exprs
+            .iter()
+            .any(|expr| expr_uses_runtime_cjs_exports(expr, state)),
+        _ => false,
+    }
+}
+
+fn is_resolved_default_cjs_export_value(expr: &JsExpr, state: &AotState) -> bool {
+    is_resolved_export_metadata_expr(expr, state)
+        || matches!(expr, JsExpr::Function { .. })
+        || matches!(expr, JsExpr::Object { .. } | JsExpr::ArraySpread { .. })
+}
+
 fn is_resolved_default_export_metadata_decl_stmt(stmt: &JsStmt, state: &AotState) -> bool {
     let JsStmt::VarDecl {
         name,
@@ -5422,6 +5585,10 @@ fn module_init_go_name(module: &Module) -> String {
     module_member_go_name(module, "__init")
 }
 
+fn module_exports_go_name(module: &Module) -> String {
+    module_member_go_name(module, "__exports")
+}
+
 fn module_init_order<'a>(ir: &'a IrDocument, entry: &'a Module) -> Vec<&'a Module> {
     let mut visited = BTreeSet::new();
     let mut ordered = Vec::new();
@@ -5490,6 +5657,7 @@ struct AotState {
     builtin_bindings: BTreeSet<String>,
     dynamic_import_namespaces: BTreeMap<String, String>,
     entry_source_path: Option<String>,
+    module_exports_ref: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -5601,6 +5769,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         builtin_bindings: state.builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
+        module_exports_ref: state.module_exports_ref.clone(),
     }
 }
 
@@ -6116,6 +6285,7 @@ fn render_for_stmt(
         builtin_bindings: state.builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
+        module_exports_ref: state.module_exports_ref.clone(),
     };
     let init = init
         .first()
@@ -6439,6 +6609,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         builtin_bindings: state.builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
+        module_exports_ref: state.module_exports_ref.clone(),
     };
     render_stmt_block_with_state(stmts, &block_state)
 }
@@ -6480,6 +6651,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         builtin_bindings: state.builtin_bindings.clone(),
         dynamic_import_namespaces: state.dynamic_import_namespaces.clone(),
         entry_source_path: state.entry_source_path.clone(),
+        module_exports_ref: state.module_exports_ref.clone(),
     };
     mark_number_array_locals(stmts, &mut block_state);
     mark_string_array_locals(stmts, &mut block_state);
@@ -9596,10 +9768,18 @@ fn render_expr_stmt(expr: &JsExpr, state: &mut AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if ts_enum_iife_target(callee, args).is_some() => {
             render_ts_enum_iife_stmt(callee, args, state)
         }
+        JsExpr::Assign { op, left, right }
+            if op == "="
+                && is_module_exports_member(left)
+                && is_resolved_default_cjs_export_value(right, state) =>
+        {
+            Some(String::new())
+        }
         JsExpr::Assign { op, left, .. }
             if op == "="
                 && is_cjs_export_target(left)
-                && !is_shadowed_cjs_export_target(left, state) =>
+                && !is_shadowed_cjs_export_target(left, state)
+                && matches!(expr, JsExpr::Assign { right, .. } if is_resolved_export_metadata_expr(right, state)) =>
         {
             Some(String::new())
         }
@@ -12053,6 +12233,7 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if is_module_exports_member(expr) => state.module_exports_ref.clone(),
         JsExpr::Ident { name } if is_any_binding(name, state) => {
             let value = go_binding_ref(name, state);
             Some(format!("tsgodownObjectFromAny({value})"))
@@ -12296,6 +12477,7 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
         }
+        expr if is_module_exports_member(expr) => state.module_exports_ref.clone(),
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             if state.number_array_bindings.contains(name)
                 || state.string_array_bindings.contains(name)
