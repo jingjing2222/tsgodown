@@ -11264,7 +11264,6 @@ console.log(
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_string_search_and_slice_methods_subset() {
         let root = temp_project("engine-core-string-search-slice");
         write(

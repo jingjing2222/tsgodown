@@ -1099,6 +1099,9 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             if string_method_name(callee).is_some() {
                 imports.insert("strconv");
             }
+            if matches!(string_method_name(callee), Some("trimStart" | "trimEnd")) {
+                imports.insert("unicode");
+            }
             collect_expr_imports(callee, imports);
             for arg in args {
                 collect_expr_imports(arg, imports);
@@ -1273,6 +1276,7 @@ fn go_import_usage_token(import: &str) -> &'static str {
         "strconv" => "strconv.",
         "strings" => "strings.",
         "time" => "time.",
+        "unicode" => "unicode.",
         _ => ".",
     }
 }
@@ -2041,6 +2045,76 @@ func tsgodownStringSlice(value string, start float64, endValues ...float64) stri
 		to = from
 	}
 	return string(chars[from:to])
+}
+
+func tsgodownStringSubstring(value string, start float64, end float64) string {
+	chars := []rune(value)
+	length := len(chars)
+	from := int(start)
+	to := int(end)
+	if from < 0 {
+		from = 0
+	}
+	if to < 0 {
+		to = 0
+	}
+	if from > length {
+		from = length
+	}
+	if to > length {
+		to = length
+	}
+	if from > to {
+		from, to = to, from
+	}
+	return string(chars[from:to])
+}
+
+func tsgodownStringSubstr(value string, start float64, lengthValues ...float64) string {
+	chars := []rune(value)
+	total := len(chars)
+	from := int(start)
+	if from < 0 {
+		from = total + from
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > total {
+		from = total
+	}
+	to := total
+	if len(lengthValues) > 0 {
+		length := int(lengthValues[0])
+		if length < 0 {
+			length = 0
+		}
+		to = from + length
+		if to > total {
+			to = total
+		}
+	}
+	return string(chars[from:to])
+}
+
+func tsgodownStringLastIndexOf(value string, needle string, startValues ...float64) float64 {
+	search := value
+	if len(startValues) > 0 {
+		chars := []rune(value)
+		offset := int(startValues[0])
+		if offset < 0 {
+			return -1
+		}
+		if offset >= len(chars) {
+			offset = len(chars) - 1
+		}
+		search = string(chars[:offset+1])
+	}
+	found := strings.LastIndex(search, needle)
+	if found < 0 {
+		return -1
+	}
+	return float64(found)
 }
 
 func tsgodownStrictEqual(left any, right any) bool {
@@ -6863,13 +6937,21 @@ fn infer_expr_param_kinds(
             }
             if matches!(
                 string_method_name(callee),
-                Some("includes" | "indexOf" | "replace")
+                Some(
+                    "includes"
+                        | "indexOf"
+                        | "lastIndexOf"
+                        | "replace"
+                        | "replaceAll"
+                        | "startsWith"
+                        | "endsWith"
+                )
             ) {
                 if let Some(arg) = args.first() {
                     mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::String);
                 }
             }
-            if string_method_name(callee) == Some("replace") {
+            if matches!(string_method_name(callee), Some("replace" | "replaceAll")) {
                 if let Some(arg) = args.get(1) {
                     mark_ident_param_kind(arg, param_index, kinds, AotSlotKind::String);
                 }
@@ -7286,6 +7368,8 @@ fn is_string_result_shape(expr: &JsExpr) -> bool {
                     | "trim"
                     | "trimStart"
                     | "trimEnd"
+                    | "repeat"
+                    | "replaceAll"
                     | "toLowerCase"
                     | "toUpperCase"
                     | "charAt"
@@ -10564,8 +10648,11 @@ fn string_prototype_method_alias(expr: &JsExpr) -> Option<&'static str> {
         return None;
     };
     let method = match property.as_str() {
-        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt"
-        | "charCodeAt" | "replace" | "slice" => property.as_str(),
+        "toLowerCase" | "toUpperCase" | "trim" | "trimStart" | "trimEnd" | "includes"
+        | "indexOf" | "lastIndexOf" | "startsWith" | "endsWith" | "charAt" | "charCodeAt"
+        | "replace" | "replaceAll" | "slice" | "substring" | "substr" | "repeat" => {
+            property.as_str()
+        }
         _ => return None,
     };
     let JsExpr::Member {
@@ -14416,7 +14503,20 @@ fn render_string_index_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
 fn call_uses_strings_import(callee: &JsExpr) -> bool {
     matches!(
         string_method_name(callee),
-        Some("toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf")
+        Some(
+            "toLowerCase"
+                | "toUpperCase"
+                | "trim"
+                | "trimStart"
+                | "trimEnd"
+                | "includes"
+                | "startsWith"
+                | "endsWith"
+                | "indexOf"
+                | "lastIndexOf"
+                | "replaceAll"
+                | "repeat"
+        )
     )
 }
 
@@ -14431,8 +14531,11 @@ fn string_method_name(callee: &JsExpr) -> Option<&str> {
         return None;
     };
     match property.as_str() {
-        "toLowerCase" | "toUpperCase" | "trim" | "includes" | "indexOf" | "charAt"
-        | "charCodeAt" | "replace" | "slice" => Some(property.as_str()),
+        "toLowerCase" | "toUpperCase" | "trim" | "trimStart" | "trimEnd" | "includes"
+        | "startsWith" | "endsWith" | "indexOf" | "lastIndexOf" | "charAt" | "charCodeAt"
+        | "replace" | "replaceAll" | "slice" | "substring" | "substr" | "repeat" => {
+            Some(property.as_str())
+        }
         _ => None,
     }
 }
@@ -14450,13 +14553,19 @@ fn string_method_receiver<'a>(
         return None;
     };
     match method {
-        "toLowerCase" | "toUpperCase" | "trim" if args.is_empty() => {}
+        "toLowerCase" | "toUpperCase" | "trim" | "trimStart" | "trimEnd" if args.is_empty() => {}
         "includes" if args.len() == 1 => {}
+        "startsWith" | "endsWith" if args.len() == 1 => {}
         "indexOf" if matches!(args.len(), 1 | 2) => {}
+        "lastIndexOf" if matches!(args.len(), 1 | 2) => {}
         "charAt" if args.len() == 1 => {}
         "charCodeAt" if args.len() == 1 => {}
         "replace" if args.len() == 2 => {}
+        "replaceAll" if args.len() == 2 => {}
         "slice" if matches!(args.len(), 1 | 2) => {}
+        "substring" if args.len() == 2 => {}
+        "substr" if matches!(args.len(), 1 | 2) => {}
+        "repeat" if args.len() == 1 => {}
         _ => return None,
     }
     render_string_expr(object, state)?;
@@ -14480,6 +14589,14 @@ fn render_string_string_method_call(
         let object = render_string_expr(object, state)?;
         return Some(format!("strings.TrimSpace({object})"));
     }
+    if let Some(object) = string_method_receiver(callee, "trimStart", args, state) {
+        let object = render_string_expr(object, state)?;
+        return Some(format!("strings.TrimLeftFunc({object}, unicode.IsSpace)"));
+    }
+    if let Some(object) = string_method_receiver(callee, "trimEnd", args, state) {
+        let object = render_string_expr(object, state)?;
+        return Some(format!("strings.TrimRightFunc({object}, unicode.IsSpace)"));
+    }
     if let Some(object) = string_method_receiver(callee, "charAt", args, state) {
         let object = render_string_expr(object, state)?;
         let index = render_numeric_expr(args.first()?, state)?;
@@ -14493,6 +14610,26 @@ fn render_string_string_method_call(
             return Some(format!("tsgodownStringSlice({object}, {start}, {end})"));
         }
         return Some(format!("tsgodownStringSlice({object}, {start})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "substring", args, state) {
+        let object = render_string_expr(object, state)?;
+        let start = render_numeric_expr(args.first()?, state)?;
+        let end = render_numeric_expr(args.get(1)?, state)?;
+        return Some(format!("tsgodownStringSubstring({object}, {start}, {end})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "substr", args, state) {
+        let object = render_string_expr(object, state)?;
+        let start = render_numeric_expr(args.first()?, state)?;
+        if let Some(length) = args.get(1) {
+            let length = render_numeric_expr(length, state)?;
+            return Some(format!("tsgodownStringSubstr({object}, {start}, {length})"));
+        }
+        return Some(format!("tsgodownStringSubstr({object}, {start})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "repeat", args, state) {
+        let object = render_string_expr(object, state)?;
+        let count = render_numeric_expr(args.first()?, state)?;
+        return Some(format!("strings.Repeat({object}, int({count}))"));
     }
     if let Some(object) = string_method_receiver(callee, "replace", args, state) {
         let object = render_string_expr(object, state)?;
@@ -14526,6 +14663,14 @@ fn render_string_string_method_call(
             _ => {}
         }
     }
+    if let Some(object) = string_method_receiver(callee, "replaceAll", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        let replacement = render_string_expr(args.get(1)?, state)?;
+        return Some(format!(
+            "strings.ReplaceAll({object}, {needle}, {replacement})"
+        ));
+    }
     None
 }
 
@@ -14534,10 +14679,22 @@ fn render_string_bool_method_call(
     args: &[JsExpr],
     state: &AotState,
 ) -> Option<String> {
-    let object = string_method_receiver(callee, "includes", args, state)?;
-    let object = render_string_expr(object, state)?;
-    let needle = render_string_expr(args.first()?, state)?;
-    Some(format!("strings.Contains({object}, {needle})"))
+    if let Some(object) = string_method_receiver(callee, "includes", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        return Some(format!("strings.Contains({object}, {needle})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "startsWith", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        return Some(format!("strings.HasPrefix({object}, {needle})"));
+    }
+    if let Some(object) = string_method_receiver(callee, "endsWith", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        return Some(format!("strings.HasSuffix({object}, {needle})"));
+    }
+    None
 }
 
 fn render_array_bool_method_call(
@@ -15301,6 +15458,14 @@ fn render_string_method_alias_call(
             let object = render_string_expr(object, state)?;
             Some(format!("strings.TrimSpace({object})"))
         }
+        "trimStart" if args.len() == 1 => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("strings.TrimLeftFunc({object}, unicode.IsSpace)"))
+        }
+        "trimEnd" if args.len() == 1 => {
+            let object = render_string_expr(object, state)?;
+            Some(format!("strings.TrimRightFunc({object}, unicode.IsSpace)"))
+        }
         "slice" if matches!(args.len(), 2 | 3) => {
             let object = render_string_expr(object, state)?;
             let start = render_numeric_expr(args.get(1)?, state)?;
@@ -15310,12 +15475,40 @@ fn render_string_method_alias_call(
             }
             Some(format!("tsgodownStringSlice({object}, {start})"))
         }
+        "substring" if args.len() == 3 => {
+            let object = render_string_expr(object, state)?;
+            let start = render_numeric_expr(args.get(1)?, state)?;
+            let end = render_numeric_expr(args.get(2)?, state)?;
+            Some(format!("tsgodownStringSubstring({object}, {start}, {end})"))
+        }
+        "substr" if matches!(args.len(), 2 | 3) => {
+            let object = render_string_expr(object, state)?;
+            let start = render_numeric_expr(args.get(1)?, state)?;
+            if let Some(length) = args.get(2) {
+                let length = render_numeric_expr(length, state)?;
+                return Some(format!("tsgodownStringSubstr({object}, {start}, {length})"));
+            }
+            Some(format!("tsgodownStringSubstr({object}, {start})"))
+        }
+        "repeat" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let count = render_numeric_expr(args.get(1)?, state)?;
+            Some(format!("strings.Repeat({object}, int({count}))"))
+        }
         "charAt" if args.len() == 2 => {
             let object = render_string_expr(object, state)?;
             let index = render_numeric_expr(args.get(1)?, state)?;
             Some(format!("tsgodownStringCharAt({object}, {index})"))
         }
         "replace" => render_string_replace_alias_call(args, state),
+        "replaceAll" if args.len() == 3 => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            let replacement = render_string_expr(args.get(2)?, state)?;
+            Some(format!(
+                "strings.ReplaceAll({object}, {needle}, {replacement})"
+            ))
+        }
         _ => None,
     }
 }
@@ -15331,6 +15524,16 @@ fn render_string_bool_method_alias_call(
             let object = render_string_expr(object, state)?;
             let needle = render_string_expr(args.get(1)?, state)?;
             Some(format!("strings.Contains({object}, {needle})"))
+        }
+        "startsWith" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            Some(format!("strings.HasPrefix({object}, {needle})"))
+        }
+        "endsWith" if args.len() == 2 => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            Some(format!("strings.HasSuffix({object}, {needle})"))
         }
         _ => None,
     }
@@ -15353,6 +15556,17 @@ fn render_string_numeric_method_alias_call(
                 ));
             }
             Some(format!("float64(strings.Index({object}, {needle}))"))
+        }
+        "lastIndexOf" if matches!(args.len(), 2 | 3) => {
+            let object = render_string_expr(object, state)?;
+            let needle = render_string_expr(args.get(1)?, state)?;
+            if let Some(start) = args.get(2) {
+                let start = render_numeric_expr(start, state)?;
+                return Some(format!(
+                    "tsgodownStringLastIndexOf({object}, {needle}, {start})"
+                ));
+            }
+            Some(format!("float64(strings.LastIndex({object}, {needle}))"))
         }
         "charCodeAt" if args.len() == 2 => {
             let object = render_string_expr(object, state)?;
@@ -16910,6 +17124,17 @@ fn render_string_numeric_method_call(
             ));
         }
         return Some(format!("float64(strings.Index({object}, {needle}))"));
+    }
+    if let Some(object) = string_method_receiver(callee, "lastIndexOf", args, state) {
+        let object = render_string_expr(object, state)?;
+        let needle = render_string_expr(args.first()?, state)?;
+        if let Some(start) = args.get(1) {
+            let start = render_numeric_expr(start, state)?;
+            return Some(format!(
+                "tsgodownStringLastIndexOf({object}, {needle}, {start})"
+            ));
+        }
+        return Some(format!("float64(strings.LastIndex({object}, {needle}))"));
     }
     if let Some(object) = string_method_receiver(callee, "charCodeAt", args, state) {
         let object = render_string_expr(object, state)?;
