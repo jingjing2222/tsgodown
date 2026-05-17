@@ -2062,6 +2062,7 @@ func tsgodownQuerystringParse(value string) map[string]any {
         r#"type tsgodownError struct {
 	Name string
 	Message string
+	Code string
 }
 
 func (err tsgodownError) Error() string {
@@ -2072,6 +2073,58 @@ func (err tsgodownError) Error() string {
 		return err.Name
 	}
 	return err.Name + ": " + err.Message
+}
+
+func tsgodownNewError(name string, message string) map[string]any {
+	return map[string]any{"name": name, "message": message}
+}
+
+func tsgodownErrorStringProp(object map[string]any, key string) string {
+	value, ok := object[key].(string)
+	if ok {
+		return value
+	}
+	return ""
+}
+
+func tsgodownErrorFromAny(value any) tsgodownError {
+	switch value := value.(type) {
+	case tsgodownError:
+		return value
+	case map[string]any:
+		name := tsgodownErrorStringProp(value, "name")
+		if name == "" {
+			name = "Error"
+		}
+		return tsgodownError{Name: name, Message: tsgodownErrorStringProp(value, "message"), Code: tsgodownErrorStringProp(value, "code")}
+	case error:
+		return tsgodownError{Name: "Error", Message: value.Error()}
+	case string:
+		return tsgodownError{Name: "Error", Message: value}
+	default:
+		return tsgodownError{Name: "Error"}
+	}
+}
+
+func tsgodownCaughtError(value any) map[string]any {
+	err := tsgodownErrorFromAny(value)
+	object := map[string]any{"name": err.Name, "message": err.Message}
+	if err.Code != "" {
+		object["code"] = err.Code
+	}
+	return object
+}
+
+func tsgodownThrow(value any) {
+	panic(tsgodownErrorFromAny(value))
+}
+
+func tsgodownErrorInstanceOf(value any, constructor string) bool {
+	err := tsgodownErrorFromAny(value)
+	if constructor == "Error" {
+		return err.Name == "Error" || err.Name == "TypeError" || err.Name == "RangeError"
+	}
+	return err.Name == constructor
 }
 "#
         .to_string(),
@@ -4600,10 +4653,17 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
         JsStmt::Try {
             body,
+            catch_param,
             catch_body,
             finally_body,
             ..
-        } => render_try_finally_stmt(body, catch_body, finally_body, state),
+        } => render_try_finally_stmt(
+            body,
+            catch_param.as_deref(),
+            catch_body,
+            finally_body,
+            state,
+        ),
         JsStmt::Throw { value } => render_throw_stmt(value, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
@@ -4701,12 +4761,13 @@ fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option
 
 fn render_try_finally_stmt(
     body: &[JsStmt],
+    catch_param: Option<&str>,
     catch_body: &[JsStmt],
     finally_body: &[JsStmt],
     state: &mut AotState,
 ) -> Option<String> {
     if !catch_body.is_empty() {
-        return None;
+        return render_try_catch_stmt(body, catch_param, catch_body, finally_body, state);
     }
     let mut rendered = Vec::new();
     if !body.is_empty() {
@@ -4718,11 +4779,46 @@ fn render_try_finally_stmt(
     Some(rendered.join("\n"))
 }
 
-fn render_throw_stmt(value: &JsExpr, state: &AotState) -> Option<String> {
-    let (name, message) = render_error_constructor_expr(value, state)?;
+fn render_try_catch_stmt(
+    body: &[JsStmt],
+    catch_param: Option<&str>,
+    catch_body: &[JsStmt],
+    finally_body: &[JsStmt],
+    state: &AotState,
+) -> Option<String> {
+    let mut body_state = clone_aot_state(state);
+    let body = indent_lines(&render_stmt_sequence(body, &mut body_state)?);
+    let mut catch_state = clone_aot_state(state);
+    let catch_binding = catch_param.unwrap_or("__tsgodownCaughtError");
+    let catch_ident = sanitize_go_identifier(catch_binding);
+    catch_state.bindings.insert(catch_binding.to_string());
+    catch_state
+        .binding_refs
+        .insert(catch_binding.to_string(), catch_ident.clone());
+    catch_state
+        .dynamic_object_bindings
+        .insert(catch_binding.to_string());
+    let catch_body = indent_lines(&render_stmt_sequence(catch_body, &mut catch_state)?);
+    let finally = if finally_body.is_empty() {
+        String::new()
+    } else {
+        let mut finally_state = clone_aot_state(state);
+        let finally_body = indent_lines(&render_stmt_sequence(finally_body, &mut finally_state)?);
+        format!("defer func() {{\n{}\n}}()\n", indent_lines(&finally_body))
+    };
     Some(format!(
-        "panic(tsgodownError{{Name: {name}, Message: {message}}})"
+        "func() {{\n{finally}var __tsgodownCaught any\nfunc() {{\n\tdefer func() {{\n\t\tif __tsgodownRecovered := recover(); __tsgodownRecovered != nil {{\n\t\t\t__tsgodownCaught = __tsgodownRecovered\n\t\t}}\n\t}}()\n{body}\n}}()\nif __tsgodownCaught != nil {{\n\t{catch_ident} := tsgodownCaughtError(__tsgodownCaught)\n{catch_body}\n}}\n}}()"
     ))
+}
+
+fn render_throw_stmt(value: &JsExpr, state: &AotState) -> Option<String> {
+    if let Some((name, message)) = render_error_constructor_expr(value, state) {
+        return Some(format!(
+            "panic(tsgodownError{{Name: {name}, Message: {message}}})"
+        ));
+    }
+    let value = render_expr(value, state)?;
+    Some(format!("tsgodownThrow({value})"))
 }
 
 fn render_error_constructor_expr(expr: &JsExpr, state: &AotState) -> Option<(String, String)> {
@@ -4743,6 +4839,21 @@ fn render_error_constructor_expr(expr: &JsExpr, state: &AotState) -> Option<(Str
         .map(|arg| render_string_expr(arg, state))
         .unwrap_or_else(|| Some("\"\"".to_string()))?;
     Some((go_string_literal(name), message))
+}
+
+fn render_error_object_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let (name, message) = render_error_constructor_expr(expr, state)?;
+    Some(format!("tsgodownNewError({name}, {message})"))
+}
+
+fn error_constructor_name(expr: &JsExpr) -> Option<&str> {
+    let JsExpr::Ident { name } = expr else {
+        return None;
+    };
+    match name.as_str() {
+        "Error" | "TypeError" | "RangeError" => Some(name),
+        _ => None,
+    }
 }
 
 fn render_stmt_sequence(stmts: &[JsStmt], state: &mut AotState) -> Option<String> {
@@ -5131,7 +5242,97 @@ fn infer_stmt_param_kinds(
                 infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
         }
+        JsStmt::Try {
+            body,
+            catch_body,
+            finally_body,
+            ..
+        } => {
+            infer_try_param_kinds_shallow(body, param_index, kinds, builtin_aliases, 16);
+            infer_try_param_kinds_shallow(catch_body, param_index, kinds, builtin_aliases, 16);
+            infer_try_param_kinds_shallow(finally_body, param_index, kinds, builtin_aliases, 16);
+        }
         _ => {}
+    }
+}
+
+fn infer_try_param_kinds_shallow(
+    stmts: &[JsStmt],
+    param_index: &BTreeMap<String, usize>,
+    kinds: &mut [AotSlotKind],
+    builtin_aliases: &BTreeMap<String, AotBuiltinFunctionAlias>,
+    depth: usize,
+) {
+    if depth == 0 {
+        return;
+    }
+    for stmt in stmts {
+        match stmt {
+            JsStmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
+                infer_try_param_kinds_shallow(
+                    consequent,
+                    param_index,
+                    kinds,
+                    builtin_aliases,
+                    depth - 1,
+                );
+                infer_try_param_kinds_shallow(
+                    alternate,
+                    param_index,
+                    kinds,
+                    builtin_aliases,
+                    depth - 1,
+                );
+            }
+            JsStmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                infer_try_param_kinds_shallow(init, param_index, kinds, builtin_aliases, depth - 1);
+                if let Some(test) = test {
+                    infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
+                }
+                if let Some(update) = update {
+                    infer_expr_param_kinds(update, param_index, kinds, builtin_aliases);
+                }
+                infer_try_param_kinds_shallow(body, param_index, kinds, builtin_aliases, depth - 1);
+            }
+            JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
+                infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
+                infer_try_param_kinds_shallow(body, param_index, kinds, builtin_aliases, depth - 1);
+            }
+            JsStmt::Try {
+                body,
+                catch_body,
+                finally_body,
+                ..
+            } => {
+                infer_try_param_kinds_shallow(body, param_index, kinds, builtin_aliases, depth - 1);
+                infer_try_param_kinds_shallow(
+                    catch_body,
+                    param_index,
+                    kinds,
+                    builtin_aliases,
+                    depth - 1,
+                );
+                infer_try_param_kinds_shallow(
+                    finally_body,
+                    param_index,
+                    kinds,
+                    builtin_aliases,
+                    depth - 1,
+                );
+            }
+            JsStmt::FunctionDecl { .. } | JsStmt::ClassDecl { .. } => {}
+            _ => {}
+        }
     }
 }
 
@@ -7249,10 +7450,17 @@ fn render_function_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
         JsStmt::While { test, body } => render_while_stmt(test, body, state),
         JsStmt::Try {
             body,
+            catch_param,
             catch_body,
             finally_body,
             ..
-        } => render_try_finally_stmt(body, catch_body, finally_body, state),
+        } => render_try_finally_stmt(
+            body,
+            catch_param.as_deref(),
+            catch_body,
+            finally_body,
+            state,
+        ),
         JsStmt::Throw { value } => render_throw_stmt(value, state),
         JsStmt::Break { label: None } => Some("break".to_string()),
         JsStmt::Continue { label: None } => Some("continue".to_string()),
@@ -7356,6 +7564,16 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             if op == "instanceof" && is_date_constructor_ref(right) =>
         {
             render_date_instanceof_expr(left, state)
+        }
+        JsExpr::Binary { op, left, right }
+            if op == "instanceof" && error_constructor_name(right).is_some() =>
+        {
+            let value = render_expr(left, state)?;
+            let constructor = error_constructor_name(right)?;
+            Some(format!(
+                "tsgodownErrorInstanceOf({value}, {})",
+                go_string_literal(constructor)
+            ))
         }
         JsExpr::Unary { op, arg } if op == "!" => {
             let arg = render_bool_test_expr(arg, state)?;
@@ -8173,7 +8391,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_local_function_call(callee, state) => {
             render_call_expr(callee, args, state)
         }
-        JsExpr::Call { callee, args, .. } => render_string_expr(expr, state)
+        JsExpr::Call { callee, args, .. } => render_error_object_expr(expr, state)
+            .or_else(|| render_string_expr(expr, state))
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bytes_expr(expr, state))
             .or_else(|| render_any_array_expr(expr, state))
@@ -8187,7 +8406,8 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Await { arg } => {
             render_async_iife_expr(arg, state).or_else(|| render_expr(arg, state))
         }
-        JsExpr::New { .. } => render_date_expr(expr, state)
+        JsExpr::New { .. } => render_error_object_expr(expr, state)
+            .or_else(|| render_date_expr(expr, state))
             .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
@@ -9323,14 +9543,16 @@ fn is_numeric_property_key_operand(expr: &JsExpr) -> bool {
 }
 
 fn render_dynamic_object_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
-    render_object_map_expr(expr, state).or_else(|| {
-        if let JsExpr::Call { callee, args, .. } = expr {
-            let value = render_call_expr(callee, args, state)?;
-            Some(format!("tsgodownObjectFromAny({value})"))
-        } else {
-            None
-        }
-    })
+    render_error_object_expr(expr, state)
+        .or_else(|| render_object_map_expr(expr, state))
+        .or_else(|| {
+            if let JsExpr::Call { callee, args, .. } = expr {
+                let value = render_call_expr(callee, args, state)?;
+                Some(format!("tsgodownObjectFromAny({value})"))
+            } else {
+                None
+            }
+        })
 }
 
 fn render_dynamic_object_order_init_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
