@@ -6563,6 +6563,12 @@ fn render_for_of_stmt(
         let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
         return Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"));
     }
+    if let Some(values) = render_number_array_expr(right, state) {
+        let mut loop_state = clone_aot_state(state);
+        loop_state.bind_slot(left, ident.clone(), AotSlotKind::Number);
+        let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+        return Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"));
+    }
     if let Some(values) = render_any_array_expr(right, state) {
         let mut loop_state = clone_aot_state(state);
         loop_state.bind_slot(left, ident.clone(), AotSlotKind::Any);
@@ -8981,11 +8987,12 @@ fn mark_number_array_locals(stmts: &[JsStmt], state: &mut AotState) {
         if any_candidates.contains(&name) {
             continue;
         }
-        state.bind_slot(
-            &name,
-            sanitize_go_identifier(&name),
-            AotSlotKind::NumberArray,
-        );
+        let go_ref = state
+            .binding_refs
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| sanitize_go_identifier(&name));
+        state.bind_slot(&name, go_ref, AotSlotKind::NumberArray);
     }
 }
 
@@ -9576,10 +9583,25 @@ fn collect_number_array_candidates(stmts: &[JsStmt], candidates: &mut BTreeSet<S
             } if !items.is_empty() && items.iter().all(is_numeric_array_candidate_item) => {
                 candidates.insert(name.clone());
             }
+            JsStmt::VarDecl {
+                name,
+                init: Some(JsExpr::ArraySpread { items }),
+            } if is_numeric_array_spread_candidate_items(items) => {
+                candidates.insert(name.clone());
+            }
             JsStmt::Expr {
                 expr: JsExpr::Assign { op, left, right },
             } if op == "="
                 && matches!(right.as_ref(), JsExpr::Array { items } if !items.is_empty() && items.iter().all(is_numeric_array_candidate_item)) =>
+            {
+                if let JsExpr::Ident { name } = left.as_ref() {
+                    candidates.insert(name.clone());
+                }
+            }
+            JsStmt::Expr {
+                expr: JsExpr::Assign { op, left, right },
+            } if op == "="
+                && matches!(right.as_ref(), JsExpr::ArraySpread { items } if is_numeric_array_spread_candidate_items(items)) =>
             {
                 if let JsExpr::Ident { name } = left.as_ref() {
                     candidates.insert(name.clone());
@@ -9744,6 +9766,17 @@ fn is_numeric_array_candidate_item(expr: &JsExpr) -> bool {
         } | JsExpr::Binary { .. }
             | JsExpr::Member { .. }
     ) || matches!(expr, JsExpr::Call { callee, .. } if string_method_name(callee).is_none())
+}
+
+fn is_numeric_array_spread_candidate_items(items: &[crate::contract::JsArrayElement]) -> bool {
+    !items.is_empty()
+        && items.iter().all(|item| {
+            if item.spread {
+                matches!(item.value, JsExpr::Ident { .. } | JsExpr::Array { .. })
+            } else {
+                is_numeric_array_candidate_item(&item.value)
+            }
+        })
 }
 
 fn function_returns_string_array(function: &AotFunction, state: &AotState) -> bool {
@@ -13628,6 +13661,7 @@ fn render_number_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]float64{{{}}}", items.join(", ")))
         }
+        JsExpr::ArraySpread { items } => render_number_array_spread_expr(items, state),
         JsExpr::Call { callee, args, .. } => {
             let JsExpr::Ident { name } = callee.as_ref() else {
                 return None;
@@ -13641,6 +13675,30 @@ fn render_number_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn render_number_array_spread_expr(
+    items: &[crate::contract::JsArrayElement],
+    state: &AotState,
+) -> Option<String> {
+    if items.is_empty() {
+        return None;
+    }
+    let mut statements = vec!["out := []float64{}".to_string()];
+    for item in items {
+        if item.spread {
+            let value = render_number_array_expr(&item.value, state)?;
+            statements.push(format!("out = append(out, {value}...)"));
+        } else {
+            let value = render_numeric_expr(&item.value, state)?;
+            statements.push(format!("out = append(out, {value})"));
+        }
+    }
+    statements.push("return out".to_string());
+    Some(format!(
+        "func() []float64 {{ {} }}()",
+        statements.join("; ")
+    ))
 }
 
 fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {

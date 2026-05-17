@@ -12644,7 +12644,6 @@ console.log("switch", result, "length" in [1, 2], "4" in [1, 2])
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_array_spread_subset() {
         let root = temp_project("engine-core-array-spread");
         write(
