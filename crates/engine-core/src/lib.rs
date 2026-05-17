@@ -11641,7 +11641,6 @@ try {
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_map_set_iterator_subset() {
         let root = temp_project("engine-core-map-set-iterator");
         write(

@@ -2283,8 +2283,21 @@ type tsgodownJSMap struct {
 	items map[string]any
 }
 
+type tsgodownJSSet struct {
+	order []string
+	items map[string]any
+}
+
 func tsgodownNewMap() *tsgodownJSMap {
 	return &tsgodownJSMap{order: []string{}, items: map[string]any{}}
+}
+
+func tsgodownNewSet(values []any) *tsgodownJSSet {
+	target := &tsgodownJSSet{order: []string{}, items: map[string]any{}}
+	for _, value := range values {
+		tsgodownSetAdd(target, value)
+	}
+	return target
 }
 
 func tsgodownMapSet(target *tsgodownJSMap, key string, value any) *tsgodownJSMap {
@@ -2335,6 +2348,75 @@ func tsgodownMapSize(target *tsgodownJSMap) float64 {
 		return 0
 	}
 	return float64(len(target.items))
+}
+
+func tsgodownMapKeys(target *tsgodownJSMap) []any {
+	if target == nil {
+		return []any{}
+	}
+	values := make([]any, 0, len(target.order))
+	for _, key := range target.order {
+		if _, ok := target.items[key]; ok {
+			values = append(values, key)
+		}
+	}
+	return values
+}
+
+func tsgodownMapValues(target *tsgodownJSMap) []any {
+	if target == nil {
+		return []any{}
+	}
+	values := make([]any, 0, len(target.order))
+	for _, key := range target.order {
+		if value, ok := target.items[key]; ok {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func tsgodownSetKey(value any) string {
+	return fmt.Sprintf("%T:%v", value, value)
+}
+
+func tsgodownSetAdd(target *tsgodownJSSet, value any) *tsgodownJSSet {
+	if target == nil {
+		target = tsgodownNewSet(nil)
+	}
+	key := tsgodownSetKey(value)
+	if _, ok := target.items[key]; !ok {
+		target.order = append(target.order, key)
+	}
+	target.items[key] = value
+	return target
+}
+
+func tsgodownSetValues(target *tsgodownJSSet) []any {
+	if target == nil {
+		return []any{}
+	}
+	values := make([]any, 0, len(target.order))
+	for _, key := range target.order {
+		if value, ok := target.items[key]; ok {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func tsgodownSetSize(target *tsgodownJSSet) float64 {
+	if target == nil {
+		return 0
+	}
+	return float64(len(target.items))
+}
+
+func tsgodownIteratorFirstValue(values []any) any {
+	if len(values) == 0 {
+		return nil
+	}
+	return values[0]
 }
 
 func tsgodownCall(value any, args ...any) any {
@@ -5793,6 +5875,7 @@ struct AotState {
     regexp_bindings: BTreeSet<String>,
     regexp_replace_bindings: BTreeMap<String, (String, bool)>,
     map_bindings: BTreeSet<String>,
+    set_bindings: BTreeSet<String>,
     url_bindings: BTreeSet<String>,
     event_emitter_bindings: BTreeSet<String>,
     number_closure_bindings: BTreeSet<String>,
@@ -5842,6 +5925,7 @@ impl AotState {
         self.regexp_bindings.remove(name);
         self.string_array_bindings.remove(name);
         self.map_bindings.remove(name);
+        self.set_bindings.remove(name);
         self.url_bindings.remove(name);
         self.event_emitter_bindings.remove(name);
         self.number_closure_bindings.remove(name);
@@ -5905,6 +5989,7 @@ fn clone_aot_state(state: &AotState) -> AotState {
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        set_bindings: state.set_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -6217,6 +6302,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.map_bindings.insert(name.clone());
                     return Some(format!("var {ident} *tsgodownJSMap = {value}"));
                 }
+                if let Some(value) = render_js_set_expr(expr, state) {
+                    state.bindings.insert(name.clone());
+                    state.binding_refs.insert(name.clone(), ident.clone());
+                    state.set_bindings.insert(name.clone());
+                    return Some(format!("var {ident} *tsgodownJSSet = {value}"));
+                }
                 if let Some(value) = render_url_new_expr(expr, state) {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
@@ -6423,6 +6514,7 @@ fn render_for_stmt(
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        set_bindings: state.set_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -6913,6 +7005,7 @@ fn render_stmt_block(stmts: &[JsStmt], state: &AotState) -> Option<String> {
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        set_bindings: state.set_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -6955,6 +7048,7 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
         regexp_bindings: state.regexp_bindings.clone(),
         regexp_replace_bindings: state.regexp_replace_bindings.clone(),
         map_bindings: state.map_bindings.clone(),
+        set_bindings: state.set_bindings.clone(),
         url_bindings: state.url_bindings.clone(),
         event_emitter_bindings: state.event_emitter_bindings.clone(),
         number_closure_bindings: state.number_closure_bindings.clone(),
@@ -8451,6 +8545,7 @@ fn mark_dynamic_object_locals(stmts: &[JsStmt], state: &mut AotState) {
             || state.string_array_bindings.contains(&name)
             || state.any_array_bindings.contains(&name)
             || state.map_bindings.contains(&name)
+            || state.set_bindings.contains(&name)
             || state.url_bindings.contains(&name)
             || state.event_emitter_bindings.contains(&name)
             || state.number_closure_bindings.contains(&name)
@@ -8902,6 +8997,7 @@ fn mark_string_array_locals(stmts: &[JsStmt], state: &mut AotState) {
             || state.any_array_bindings.contains(&name)
             || state.bytes_bindings.contains(&name)
             || state.map_bindings.contains(&name)
+            || state.set_bindings.contains(&name)
             || state.object_bindings.contains_key(&name)
             || state.class_instance_bindings.contains_key(&name)
         {
@@ -9076,6 +9172,7 @@ fn mark_any_array_locals(stmts: &[JsStmt], state: &mut AotState) {
             || state.string_array_bindings.contains(&name)
             || state.bytes_bindings.contains(&name)
             || state.map_bindings.contains(&name)
+            || state.set_bindings.contains(&name)
             || state.object_bindings.contains_key(&name)
             || state.class_instance_bindings.contains_key(&name)
         {
@@ -11518,6 +11615,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Array { .. } => {
             render_string_array_expr(expr, state).or_else(|| render_json_value_expr(expr, state))
         }
+        JsExpr::ArraySpread { .. } => render_any_array_expr(expr, state),
         JsExpr::Object { .. } => render_object_map_expr(expr, state),
         JsExpr::Binary { op, left, right } if op == "??" => {
             let left = render_expr(left, state)?;
@@ -11577,6 +11675,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_string_array_expr(expr, state))
             .or_else(|| render_any_array_pop_call(callee, args, state))
             .or_else(|| render_map_call_expr(callee, args, state))
+            .or_else(|| render_set_call_expr(callee, args, state))
             .or_else(|| render_object_map_expr(expr, state))
             .or_else(|| render_array_find_call(callee, args, state))
             .or_else(|| render_call_expr(callee, args, state))
@@ -11590,6 +11689,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             .or_else(|| render_any_array_expr(expr, state))
             .or_else(|| render_url_new_expr(expr, state))
             .or_else(|| render_event_emitter_new_expr(expr, state))
+            .or_else(|| render_js_set_expr(expr, state))
             .or_else(|| render_new_class_expr(expr, state).map(|(_, value)| value)),
         expr if is_process_version_expr(expr) => render_process_version_expr(expr),
         expr if is_process_platform_expr(expr) => Some("tsgodownProcessPlatform()".to_string()),
@@ -11617,6 +11717,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             property_expr: None,
             optional: false,
         } => render_symbol_expr(expr, state)
+            .or_else(|| render_iterator_value_member_expr(object, property, state))
             .or_else(|| render_class_getter_member_expr(object, property, state))
             .or_else(|| render_static_member_expr(object, property, state))
             .or_else(|| {
@@ -11786,6 +11887,15 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         } if is_map_size_member(object, property, property_expr.as_deref(), state) => {
             let object = render_map_expr(object, state)?;
             Some(format!("tsgodownMapSize({object})"))
+        }
+        JsExpr::Member {
+            object,
+            property,
+            property_expr,
+            optional: false,
+        } if is_set_size_member(object, property, property_expr.as_deref(), state) => {
+            let object = render_set_expr(object, state)?;
+            Some(format!("tsgodownSetSize({object})"))
         }
         JsExpr::Member {
             object,
@@ -13211,6 +13321,8 @@ fn render_dynamic_object_source_expr(object: &JsExpr, state: &AotState) -> Optio
                 || state.string_array_bindings.contains(name)
                 || state.any_array_bindings.contains(name)
                 || state.bytes_bindings.contains(name)
+                || state.map_bindings.contains(name)
+                || state.set_bindings.contains(name)
             {
                 return None;
             }
@@ -13551,6 +13663,9 @@ fn render_any_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 .map(|item| render_json_value_expr(item, state))
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("[]any{{{}}}", items.join(", ")))
+        }
+        JsExpr::ArraySpread { items } if items.len() == 1 => {
+            render_iterable_array_expr(&items.first()?.value, state)
         }
         JsExpr::Call { callee, args, .. } if is_array_concat_call_shape(callee) => {
             render_any_array_concat_call(callee, args, state)
@@ -14613,6 +14728,21 @@ fn render_js_map_expr(expr: &JsExpr) -> Option<String> {
     .then(|| "tsgodownNewMap()".to_string())
 }
 
+fn render_js_set_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::New { callee, args } = expr else {
+        return None;
+    };
+    if !matches!(callee.as_ref(), JsExpr::Ident { name } if name == "Set") {
+        return None;
+    }
+    let values = match args.as_slice() {
+        [] => "nil".to_string(),
+        [value] => render_iterable_array_expr(value, state)?,
+        _ => return None,
+    };
+    Some(format!("tsgodownNewSet({values})"))
+}
+
 fn is_new_url_expr(callee: &JsExpr, args: &[JsExpr]) -> bool {
     matches!(args.len(), 1 | 2) && matches!(callee, JsExpr::Ident { name } if name == "URL")
 }
@@ -14767,6 +14897,18 @@ fn render_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     }
 }
 
+fn render_set_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    match expr {
+        JsExpr::Ident { name } if state.set_bindings.contains(name) => {
+            Some(go_binding_ref(name, state))
+        }
+        JsExpr::Call { callee, args, .. } if is_set_add_call(callee, args, state) => {
+            render_set_call_expr(callee, args, state)
+        }
+        _ => None,
+    }
+}
+
 fn is_map_size_member(
     object: &JsExpr,
     property: &str,
@@ -14774,6 +14916,15 @@ fn is_map_size_member(
     state: &AotState,
 ) -> bool {
     property_expr.is_none() && property == "size" && render_map_expr(object, state).is_some()
+}
+
+fn is_set_size_member(
+    object: &JsExpr,
+    property: &str,
+    property_expr: Option<&JsExpr>,
+    state: &AotState,
+) -> bool {
+    property_expr.is_none() && property == "size" && render_set_expr(object, state).is_some()
 }
 
 fn render_map_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -14807,6 +14958,127 @@ fn render_map_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> O
         }
         _ => None,
     }
+}
+
+fn render_set_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return None;
+    };
+    let target = render_set_expr(object, state)?;
+    match property.as_str() {
+        "add" if args.len() == 1 => {
+            let value = render_json_value_expr(args.first()?, state)?;
+            Some(format!("tsgodownSetAdd({target}, {value})"))
+        }
+        "values" if args.is_empty() => Some(format!("tsgodownSetValues({target})")),
+        _ => None,
+    }
+}
+
+fn is_set_add_call(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> bool {
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee
+    else {
+        return false;
+    };
+    args.len() == 1 && property == "add" && render_set_expr(object, state).is_some()
+}
+
+fn render_iterable_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    render_map_iterator_array_expr(expr, state)
+        .or_else(|| render_set_iterator_array_expr(expr, state))
+        .or_else(|| render_any_array_expr(expr, state))
+        .or_else(|| {
+            render_string_array_expr(expr, state)
+                .map(|value| format!("tsgodownAnyArrayFromAny({value})"))
+        })
+}
+
+fn render_map_iterator_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    let target = render_map_expr(object, state)?;
+    match property.as_str() {
+        "keys" => Some(format!("tsgodownMapKeys({target})")),
+        "values" => Some(format!("tsgodownMapValues({target})")),
+        _ => None,
+    }
+}
+
+fn render_set_iterator_array_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Call { callee, args, .. } = expr else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "values" {
+        return None;
+    }
+    let target = render_set_expr(object, state)?;
+    Some(format!("tsgodownSetValues({target})"))
+}
+
+fn render_iterator_value_member_expr(
+    object: &JsExpr,
+    property: &str,
+    state: &AotState,
+) -> Option<String> {
+    if property != "value" {
+        return None;
+    }
+    let JsExpr::Call { callee, args, .. } = object else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = callee.as_ref()
+    else {
+        return None;
+    };
+    if property != "next" {
+        return None;
+    }
+    let values = render_iterable_array_expr(object, state)?;
+    Some(format!("tsgodownIteratorFirstValue({values})"))
 }
 
 fn map_method_name(callee: &JsExpr) -> Option<&str> {
@@ -18777,6 +19049,9 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     if let Some(value) = render_map_call_expr(callee, args, state) {
         return Some(value);
     }
+    if let Some(value) = render_set_call_expr(callee, args, state) {
+        return Some(value);
+    }
     if let Some(value) = render_array_at_call(callee, args, state) {
         return Some(value);
     }
@@ -19275,6 +19550,7 @@ fn is_any_binding(name: &str, state: &AotState) -> bool {
         && !state.number_array_bindings.contains(name)
         && !state.string_array_bindings.contains(name)
         && !state.map_bindings.contains(name)
+        && !state.set_bindings.contains(name)
         && !state.url_bindings.contains(name)
         && !state.event_emitter_bindings.contains(name)
         && !state.number_closure_bindings.contains(name)
