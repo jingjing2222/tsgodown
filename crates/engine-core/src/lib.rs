@@ -5832,6 +5832,75 @@ console.log("bytes", take(), take(), Uint8Array.of(1, 2, 255)[2])
     }
 
     #[test]
+    fn emit_go_runs_aot_assignment_expression_unsigned_shift_subset() {
+        let root = temp_project("engine-core-aot-assignment-expression-unsigned-shift");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+let v
+const bytes = Uint8Array.of((v = parseInt("6fa459ea", 16)) >>> 24, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff)
+console.log("assign-shift", bytes[0], bytes[1], bytes[2], bytes[3], (v >>> 0) > 0)
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: AnalyzeConfig::default(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-assignment-expression-unsigned-shift".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0].contents.contains("uint32"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "assign-shift 111 164 89 234 true\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_any_array_index_number_to_string_subset() {
         let root = temp_project("engine-core-aot-any-array-index-number-to-string");
         write(

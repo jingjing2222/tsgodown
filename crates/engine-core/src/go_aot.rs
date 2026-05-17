@@ -8193,11 +8193,16 @@ fn render_numeric_assignment_expr(
     let JsExpr::Ident { name } = left else {
         return None;
     };
-    if !state.numeric_bindings.contains(name) {
-        return None;
-    }
     let target = go_binding_ref(name, state);
     let right = render_numeric_expr(right, state)?;
+    if !state.numeric_bindings.contains(name) {
+        if is_any_binding(name, state) && op == "=" {
+            return Some(format!(
+                "func() float64 {{ {target} = {right}; return tsgodownToFloat64({target}) }}()"
+            ));
+        }
+        return None;
+    }
     match op {
         "=" => Some(format!(
             "func() float64 {{ {target} = {right}; return {target} }}()"
@@ -8207,6 +8212,26 @@ fn render_numeric_assignment_expr(
         )),
         _ => None,
     }
+}
+
+fn render_bitwise_numeric_expr(
+    op: &str,
+    left: &JsExpr,
+    right: &JsExpr,
+    state: &AotState,
+) -> Option<String> {
+    let left = render_numeric_expr(left, state)?;
+    let right = render_numeric_expr(right, state)?;
+    let expr = match op {
+        ">>>" => format!("(uint32(int64({left})) >> uint(int({right}) & 31))"),
+        ">>" => format!("(int({left}) >> uint(int({right}) & 31))"),
+        "<<" => format!("(int({left}) << uint(int({right}) & 31))"),
+        "&" => format!("(int({left}) & int({right}))"),
+        "|" => format!("(int({left}) | int({right}))"),
+        "^" => format!("(int({left}) ^ int({right}))"),
+        _ => return None,
+    };
+    Some(format!("float64({expr})"))
 }
 
 fn render_string_array_assignment_stmt(
@@ -8627,17 +8652,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             Some(format!("({left} + {right})"))
         }),
         JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
-            let left = render_numeric_expr(left, state)?;
-            let right = render_numeric_expr(right, state)?;
-            let expr = match op.as_str() {
-                ">>" => format!("(int({left}) >> int({right}))"),
-                "<<" => format!("(int({left}) << int({right}))"),
-                "&" => format!("(int({left}) & int({right}))"),
-                "|" => format!("(int({left}) | int({right}))"),
-                "^" => format!("(int({left}) ^ int({right}))"),
-                _ => return None,
-            };
-            Some(format!("float64({expr})"))
+            render_bitwise_numeric_expr(op, left, right, state)
         }
         JsExpr::Binary { op, left, right } if is_numeric_binary_op(op) => {
             let left = render_numeric_expr(left, state)?;
@@ -8807,6 +8822,9 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Assign { op, left, right } if matches!(op.as_str(), "=" | "+=" | "-=") => {
             render_numeric_assignment_expr(op, left, right, state)
+        }
+        JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
+            render_bitwise_numeric_expr(op, left, right, state)
         }
         expr if render_number_array_index_expr(expr, state).is_some() => {
             render_number_array_index_expr(expr, state)
@@ -15438,7 +15456,7 @@ fn is_numeric_binary_op(op: &str) -> bool {
 }
 
 fn is_bitwise_binary_op(op: &str) -> bool {
-    matches!(op, ">>" | "<<" | "&" | "|" | "^")
+    matches!(op, ">>>" | ">>" | "<<" | "&" | "|" | "^")
 }
 
 fn go_comparison_op(op: &str) -> Option<&'static str> {
