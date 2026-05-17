@@ -12354,7 +12354,6 @@ console.log("loop", results.length, results[0], results[2])
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_update_and_bitwise_operator_subset() {
         let root = temp_project("engine-core-operators");
         write(

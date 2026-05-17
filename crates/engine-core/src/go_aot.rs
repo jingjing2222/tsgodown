@@ -1145,7 +1145,10 @@ fn collect_expr_imports(expr: &JsExpr, imports: &mut BTreeSet<&'static str>) {
             collect_expr_imports(left, imports);
             collect_expr_imports(right, imports);
         }
-        JsExpr::Binary { left, right, .. } => {
+        JsExpr::Binary { op, left, right } => {
+            if op == "**" {
+                imports.insert("math");
+            }
             collect_expr_imports(left, imports);
             collect_expr_imports(right, imports);
         }
@@ -2699,6 +2702,15 @@ func tsgodownToFloat64(value any) float64 {
 	default:
 		return 0
 	}
+}
+
+func tsgodownToUint32(value float64) uint32 {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value == 0 {
+		return 0
+	}
+	truncated := math.Trunc(value)
+	modulo := math.Mod(truncated, 4294967296)
+	return uint32(int64(modulo))
 }
 
 func tsgodownToBool(value any) bool {
@@ -9971,14 +9983,30 @@ fn render_numeric_assignment_expr(
     }
 }
 
-fn render_update_numeric_expr(op: &str, arg: &JsExpr, state: &AotState) -> Option<String> {
-    if op != "++" {
+fn render_update_numeric_expr(
+    op: &str,
+    arg: &JsExpr,
+    prefix: bool,
+    state: &AotState,
+) -> Option<String> {
+    if !matches!(op, "++" | "--") {
         return None;
     }
     match arg {
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
             let target = go_binding_ref(name, state);
-            Some(format!("tsgodownPostIncFloat(&{target})"))
+            let delta = if op == "++" { "1" } else { "-1" };
+            if prefix {
+                return Some(format!(
+                    "func() float64 {{ {target} += {delta}; return {target} }}()"
+                ));
+            }
+            if op == "++" {
+                return Some(format!("tsgodownPostIncFloat(&{target})"));
+            }
+            Some(format!(
+                "func() float64 {{ old := {target}; {target} -= 1; return old }}()"
+            ))
         }
         JsExpr::Member {
             object,
@@ -10005,7 +10033,7 @@ fn render_bitwise_numeric_expr(
     let left = render_numeric_expr(left, state)?;
     let right = render_numeric_expr(right, state)?;
     let expr = match op {
-        ">>>" => format!("(uint32(int64({left})) >> uint(int({right}) & 31))"),
+        ">>>" => format!("(tsgodownToUint32({left}) >> uint(int({right}) & 31))"),
         ">>" => format!("(int({left}) >> uint(int({right}) & 31))"),
         "<<" => format!("(int({left}) << uint(int({right}) & 31))"),
         "&" => format!("(int({left}) & int({right}))"),
@@ -10018,7 +10046,7 @@ fn render_bitwise_numeric_expr(
 
 fn render_bitwise_compound_expr(op: &str, target: &str, right: &str) -> Option<String> {
     let expr = match op {
-        ">>>=" => format!("(uint32(int64({target})) >> uint(int({right}) & 31))"),
+        ">>>=" => format!("(tsgodownToUint32({target}) >> uint(int({right}) & 31))"),
         ">>=" => format!("(int({target}) >> uint(int({right}) & 31))"),
         "<<=" => format!("(int({target}) << uint(int({right}) & 31))"),
         "&=" => format!("(int({target}) & int({right}))"),
@@ -10427,13 +10455,13 @@ fn render_number_array_call_stmt(
 }
 
 fn render_update_stmt(op: &str, arg: &JsExpr, state: &AotState) -> Option<String> {
-    if op != "++" {
+    if !matches!(op, "++" | "--") {
         return None;
     }
-    let _ = render_update_numeric_expr(op, arg, state)?;
+    let _ = render_update_numeric_expr(op, arg, false, state)?;
     match arg {
         JsExpr::Ident { name } if state.numeric_bindings.contains(name) => {
-            Some(format!("{}++", go_binding_ref(name, state)))
+            Some(format!("{}{}", go_binding_ref(name, state), op))
         }
         JsExpr::Member {
             object,
@@ -10481,6 +10509,7 @@ fn render_console_arg_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             value: JsValue::Undefined,
         } => Some("\"undefined\"".to_string()),
         JsExpr::Ident { name } if name == "undefined" => Some("\"undefined\"".to_string()),
+        JsExpr::Unary { op, .. } if op == "void" => Some("\"undefined\"".to_string()),
         _ => render_expr(expr, state),
     }
 }
@@ -10652,6 +10681,7 @@ fn render_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Binary { op, .. } if matches!(op.as_str(), "&&" | "||") => {
             render_bool_expr(expr, state).or_else(|| render_logical_value_expr(expr, state))
         }
+        JsExpr::Unary { op, .. } if op == "void" => Some("nil".to_string()),
         JsExpr::Unary { .. } => render_string_expr(expr, state)
             .or_else(|| render_numeric_expr(expr, state))
             .or_else(|| render_bool_expr(expr, state)),
@@ -10827,9 +10857,18 @@ fn render_numeric_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Assign { op, left, right } if matches!(op.as_str(), "=" | "+=" | "-=") => {
             render_numeric_assignment_expr(op, left, right, state)
         }
-        JsExpr::Update { op, arg, .. } => render_update_numeric_expr(op, arg, state),
+        JsExpr::Update { op, arg, prefix } => render_update_numeric_expr(op, arg, *prefix, state),
         JsExpr::Binary { op, left, right } if is_bitwise_binary_op(op) => {
             render_bitwise_numeric_expr(op, left, right, state)
+        }
+        JsExpr::Binary { op, left, right } if op == "**" => {
+            let left = render_numeric_expr(left, state)?;
+            let right = render_numeric_expr(right, state)?;
+            Some(format!("math.Pow({left}, {right})"))
+        }
+        JsExpr::Unary { op, arg } if op == "~" => {
+            let value = render_numeric_expr(arg, state)?;
+            Some(format!("float64(int32(^int32({value})))"))
         }
         expr if render_number_array_index_expr(expr, state).is_some() => {
             render_number_array_index_expr(expr, state)
