@@ -2724,6 +2724,12 @@ fn propagate_stmt_param_kinds(
                 propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
             }
         }
+        JsStmt::ForOf { right, body, .. } => {
+            propagate_expr_param_kinds(right, module_id, functions, param_index, kinds);
+            for stmt in body {
+                propagate_stmt_param_kinds(stmt, module_id, functions, param_index, kinds);
+            }
+        }
         JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
             propagate_expr_param_kinds(test, module_id, functions, param_index, kinds);
             for stmt in body {
@@ -4390,6 +4396,13 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bind_slot(name, ident.clone(), AotSlotKind::AnyArray);
                     return Some(format!("var {ident} []any = {value}"));
                 }
+                if name.starts_with("__tsgodown_destructure_")
+                    && is_array_destructure_source_expr(expr, state)
+                {
+                    let value = render_any_array_from_any_expr(expr, state)?;
+                    state.bind_slot(name, ident.clone(), AotSlotKind::AnyArray);
+                    return Some(format!("var {ident} []any = {value}"));
+                }
                 if let Some(value) = render_numeric_expr(expr, state) {
                     state.bind_slot(name, ident.clone(), AotSlotKind::Number);
                     return Some(format!("var {ident} float64 = {value}"));
@@ -4657,12 +4670,20 @@ fn render_for_of_stmt(
     body: &[JsStmt],
     state: &AotState,
 ) -> Option<String> {
-    let values = render_string_array_expr(right, state)?;
     let ident = sanitize_go_identifier(left);
-    let mut loop_state = clone_aot_state(state);
-    loop_state.bind_slot(left, ident.clone(), AotSlotKind::String);
-    let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
-    Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"))
+    if let Some(values) = render_string_array_expr(right, state) {
+        let mut loop_state = clone_aot_state(state);
+        loop_state.bind_slot(left, ident.clone(), AotSlotKind::String);
+        let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+        return Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"));
+    }
+    if let Some(values) = render_any_array_expr(right, state) {
+        let mut loop_state = clone_aot_state(state);
+        loop_state.bind_slot(left, ident.clone(), AotSlotKind::Any);
+        let body = indent_lines(&render_stmt_block_with_state(body, &loop_state)?);
+        return Some(format!("for _, {ident} := range {values} {{\n{body}\n}}"));
+    }
+    None
 }
 
 fn render_while_stmt(test: &JsExpr, body: &[JsStmt], state: &AotState) -> Option<String> {
@@ -5033,6 +5054,7 @@ fn mark_string_accumulator_params(
                 );
             }
             JsStmt::For { body, .. }
+            | JsStmt::ForOf { body, .. }
             | JsStmt::While { body, .. }
             | JsStmt::DoWhile { body, .. } => {
                 let mut scoped = string_locals.clone();
@@ -5091,6 +5113,12 @@ fn infer_stmt_param_kinds(
                 infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
             }
         }
+        JsStmt::ForOf { right, body, .. } => {
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
+            for stmt in body {
+                infer_stmt_param_kinds(stmt, param_index, kinds, builtin_aliases);
+            }
+        }
         JsStmt::While { test, body } | JsStmt::DoWhile { test, body } => {
             infer_bool_context_param_kinds(test, param_index, kinds, builtin_aliases);
             for stmt in body {
@@ -5131,6 +5159,11 @@ fn infer_expr_param_kinds(
         JsExpr::Binary { op, left, right } if go_comparison_op(op).is_some() => {
             infer_comparison_param_kind(left, right, param_index, kinds);
             infer_comparison_param_kind(right, left, param_index, kinds);
+            infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
+            infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
+        }
+        JsExpr::Assign { op, left, right } if op == "=" && is_string_result_shape(right) => {
+            mark_ident_param_kind(left, param_index, kinds, AotSlotKind::String);
             infer_expr_param_kinds(left, param_index, kinds, builtin_aliases);
             infer_expr_param_kinds(right, param_index, kinds, builtin_aliases);
         }
@@ -5478,6 +5511,55 @@ fn is_string_literal_like(expr: &JsExpr) -> bool {
             value: JsValue::String { .. },
         } => true,
         JsExpr::Template { quasis, exprs } => exprs.is_empty() && quasis.len() == 1,
+        _ => false,
+    }
+}
+
+fn is_string_result_shape(expr: &JsExpr) -> bool {
+    match expr {
+        expr if is_string_literal_like(expr) => true,
+        JsExpr::Template { .. } => true,
+        JsExpr::Binary { op, left, right } if op == "+" => {
+            is_string_result_shape(left) || is_string_result_shape(right)
+        }
+        JsExpr::Call { callee, args, .. } if is_string_cast_call(callee, args) => true,
+        JsExpr::Call { callee, .. } => matches!(
+            callee.as_ref(),
+            JsExpr::Member {
+                property,
+                property_expr: None,
+                optional: false,
+                ..
+            } if matches!(
+                property.as_str(),
+                "join"
+                    | "replace"
+                    | "slice"
+                    | "substring"
+                    | "substr"
+                    | "trim"
+                    | "trimStart"
+                    | "trimEnd"
+                    | "toLowerCase"
+                    | "toUpperCase"
+                    | "charAt"
+                    | "at"
+            )
+        ),
+        JsExpr::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => is_string_result_shape(consequent) && is_string_result_shape(alternate),
+        _ => false,
+    }
+}
+
+fn is_array_destructure_source_expr(expr: &JsExpr, state: &AotState) -> bool {
+    match expr {
+        JsExpr::Array { .. } => true,
+        JsExpr::Ident { name } if name == "__tsgodown_forof_value" => true,
+        JsExpr::Ident { name } if state.any_array_bindings.contains(name) => true,
         _ => false,
     }
 }
