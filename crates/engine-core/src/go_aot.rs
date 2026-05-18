@@ -830,6 +830,7 @@ fn collect_aot_imports(ir: &IrDocument) -> BTreeSet<&'static str> {
     let mut imports = BTreeSet::new();
     imports.insert("fmt");
     imports.insert("math");
+    imports.insert("reflect");
     imports.insert("strconv");
     imports.insert("strings");
     imports.insert("time");
@@ -1315,6 +1316,7 @@ fn go_import_usage_token(import: &str) -> &'static str {
         "os" => "os.",
         "path" => "path.",
         "path/filepath" => "filepath.",
+        "reflect" => "reflect.",
         "regexp" => "regexp.",
         "sort" => "sort.",
         "strconv" => "strconv.",
@@ -2563,13 +2565,44 @@ func tsgodownObjectFromAny(value any) map[string]any {
 		return map[string]any{}
 	case map[string]any:
 		return value
+	case *tsgodownObject:
+		return value.props
 	case *tsgodownCallableObject:
 		return value.props
 	case tsgodownError:
 		return map[string]any{"name": value.Name, "message": value.Message, "code": value.Code}
 	default:
+		reflected := reflect.ValueOf(value)
+		if reflected.Kind() == reflect.Struct {
+			out := map[string]any{}
+			reflectedType := reflected.Type()
+			for index := 0; index < reflected.NumField(); index++ {
+				field := reflected.Field(index)
+				name := reflectedType.Field(index).Name
+				switch field.Kind() {
+				case reflect.Bool:
+					out[name] = field.Bool()
+				case reflect.Float32, reflect.Float64:
+					out[name] = field.Float()
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+					out[name] = float64(field.Int())
+				case reflect.String:
+					out[name] = field.String()
+				}
+			}
+			return out
+		}
 		return map[string]any{}
 	}
+}
+
+type tsgodownObject struct {
+	props map[string]any
+	proto any
+}
+
+func tsgodownObjectCreate(proto any) *tsgodownObject {
+	return &tsgodownObject{props: map[string]any{}, proto: proto}
 }
 
 func tsgodownObjectAssignKeys(groups ...[]string) []string {
@@ -2590,7 +2623,15 @@ func tsgodownObjectAssignKeys(groups ...[]string) []string {
 func tsgodownObjectProp(value any, key string) any {
 	switch typed := value.(type) {
 	case map[string]any:
-		return typed[key]
+		if value, ok := typed[key]; ok {
+			return value
+		}
+		return nil
+	case *tsgodownObject:
+		if value, ok := typed.props[key]; ok {
+			return value
+		}
+		return tsgodownObjectProp(typed.proto, key)
 	case *tsgodownCallableObject:
 		return typed.props[key]
 	case []any:
@@ -2650,11 +2691,19 @@ func tsgodownOptionalCallMember(value any, key string, args ...any) any {
 }
 
 func tsgodownObjectSetProp(value any, key string, propertyValue any) {
+	if object, ok := value.(*tsgodownObject); ok {
+		object.props[key] = propertyValue
+		return
+	}
 	object := tsgodownObjectFromAny(value)
 	object[key] = propertyValue
 }
 
 func tsgodownObjectDelete(value any, key string) bool {
+	if object, ok := value.(*tsgodownObject); ok {
+		delete(object.props, key)
+		return true
+	}
 	object := tsgodownObjectFromAny(value)
 	delete(object, key)
 	return true
@@ -2667,6 +2716,11 @@ func tsgodownPostIncFloat(target *float64) float64 {
 }
 
 func tsgodownObjectPostInc(value any, key string) float64 {
+	if object, ok := value.(*tsgodownObject); ok {
+		old := tsgodownToFloat64(object.props[key])
+		object.props[key] = old + 1
+		return old
+	}
 	object := tsgodownObjectFromAny(value)
 	old := tsgodownToFloat64(object[key])
 	object[key] = old + 1
@@ -2909,6 +2963,9 @@ func tsgodownCall(value any, args ...any) any {
     if imports.contains("encoding/json") {
         helpers.push(
             r#"func tsgodownJSONStringify(value any) string {
+	if object, ok := value.(*tsgodownObject); ok {
+		value = object.props
+	}
 	bytes, err := json.Marshal(value)
 	if err != nil {
 		return ""
@@ -2916,7 +2973,8 @@ func tsgodownCall(value any, args ...any) any {
 	return string(bytes)
 }
 
-func tsgodownJSONStringifyOrdered(object map[string]any, keys []string) string {
+func tsgodownJSONStringifyOrdered(value any, keys []string) string {
+	object := tsgodownObjectFromAny(value)
 	out := "{"
 	first := true
 	seen := map[string]bool{}
@@ -3498,6 +3556,9 @@ func tsgodownObjectHasOwn(value any, key any) bool {
 	case map[string]any:
 		_, ok := object[name]
 		return ok
+	case *tsgodownObject:
+		_, ok := object.props[name]
+		return ok
 	case []any:
 		if name == "length" {
 			return true
@@ -3525,6 +3586,16 @@ func tsgodownObjectHasOwn(value any, key any) bool {
 	default:
 		return false
 	}
+}
+
+func tsgodownObjectHasProperty(value any, key any) bool {
+	if tsgodownObjectHasOwn(value, key) {
+		return true
+	}
+	if object, ok := value.(*tsgodownObject); ok {
+		return tsgodownObjectHasProperty(object.proto, key)
+	}
+	return false
 }
 
 func tsgodownArrayHasOwn(length int, props map[string]any, key any) bool {
@@ -3734,6 +3805,13 @@ func tsgodownObjectMapKeys(value any) []string {
 		for index := range typed {
 			keys = append(keys, strconv.Itoa(index))
 		}
+		return tsgodownObjectKeys(keys)
+	case *tsgodownObject:
+		keys := make([]string, 0, len(typed.props))
+		for key := range typed.props {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
 		return tsgodownObjectKeys(keys)
 	}
 	object := tsgodownObjectFromAny(value)
@@ -5601,10 +5679,15 @@ fn collect_module_slots(
                 .then(|| render_dynamic_object_init_expr(slot_init, &state))
                 .flatten()
                 .map(|rendered| {
+                    let go_type = if is_object_create_expr(slot_init) {
+                        "any"
+                    } else {
+                        "map[string]any"
+                    };
                     (
                         AotSlotKind::Any,
                         rendered,
-                        Some("map[string]any"),
+                        Some(go_type),
                         None,
                         true,
                         render_dynamic_object_order_init_expr(slot_init, &state),
@@ -7620,8 +7703,13 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                         state.ordered_dynamic_object_bindings.insert(name.clone());
                         let keys = render_dynamic_object_order_init_expr(expr, state)?;
                         let order = dynamic_object_order_ref(name, state);
+                        let go_type = if is_object_create_expr(expr) {
+                            "any"
+                        } else {
+                            "map[string]any"
+                        };
                         return Some(format!(
-                            "var {ident} map[string]any = {value}\nvar {order} []string = {keys}\n_ = {order}"
+                            "var {ident} {go_type} = {value}\nvar {order} []string = {keys}\n_ = {order}"
                         ));
                     }
                 }
@@ -7659,7 +7747,12 @@ fn render_stmt(stmt: &JsStmt, state: &mut AotState) -> Option<String> {
                     state.bindings.insert(name.clone());
                     state.binding_refs.insert(name.clone(), ident.clone());
                     state.dynamic_object_bindings.insert(name.clone());
-                    return Some(format!("var {ident} map[string]any = {value}"));
+                    let go_type = if is_object_create_expr(expr) {
+                        "any"
+                    } else {
+                        "map[string]any"
+                    };
+                    return Some(format!("var {ident} {go_type} = {value}"));
                 }
                 if let Some((value, object)) = render_node_path_parse_object(expr, state) {
                     state.bindings.insert(name.clone());
@@ -12273,7 +12366,7 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
             }
             let key = render_expr(left, state)?;
             let object = render_expr(right, state)?;
-            Some(format!("tsgodownObjectHasOwn({object}, {key})"))
+            Some(format!("tsgodownObjectHasProperty({object}, {key})"))
         }
         JsExpr::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||") => {
             let left = render_bool_expr(left, state)?;
@@ -13760,7 +13853,7 @@ fn render_dynamic_object_assignment_stmt(
     }
     if let Some(order) = order_name {
         return Some(format!(
-            "if _, ok := {object}[{key}]; !ok {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({object}, {key}, {value})"
+            "if !tsgodownObjectHasOwn({object}, {key}) {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({object}, {key}, {value})"
         ));
     }
     Some(format!("tsgodownObjectSetProp({object}, {key}, {value})"))
@@ -15810,6 +15903,12 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Call { callee, args, .. } if is_object_create_null_call(callee, args) => {
             Some("map[string]any{}".to_string())
         }
+        JsExpr::Call { callee, args, .. } if is_object_create_call(callee, args) => {
+            let proto = render_object_map_expr(args.first()?, state)
+                .or_else(|| render_json_value_expr(args.first()?, state))
+                .or_else(|| render_expr(args.first()?, state))?;
+            Some(format!("tsgodownObjectCreate({proto})"))
+        }
         JsExpr::Call { callee, args, .. } if is_object_assign_call(callee, args) => {
             render_object_assign_expr(args, state)
         }
@@ -15849,6 +15948,23 @@ fn render_object_map_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         }
         JsExpr::Ident { name } if state.dynamic_object_bindings.contains(name) => {
             Some(go_binding_ref(name, state))
+        }
+        JsExpr::Ident { name } if state.object_bindings.contains_key(name) => {
+            let object = state.object_bindings.get(name)?;
+            let source = go_binding_ref(name, state);
+            let fields = object
+                .fields
+                .keys()
+                .map(|field| {
+                    format!(
+                        "{}: {}.{}",
+                        go_string_literal(field),
+                        source,
+                        sanitize_go_identifier(field)
+                    )
+                })
+                .collect::<Vec<_>>();
+            Some(format!("map[string]any{{{}}}", fields.join(", ")))
         }
         expr if is_module_exports_member(expr) => state.module_exports_ref.clone(),
         JsExpr::Ident { name } if is_any_binding(name, state) => {
@@ -15985,7 +16101,7 @@ fn render_dynamic_object_order_init_expr(expr: &JsExpr, state: &AotState) -> Opt
                 .collect::<Option<Vec<_>>>()?;
             Some(format!("tsgodownObjectAssignKeys({})", groups.join(", ")))
         }
-        JsExpr::Call { callee, args, .. } if is_object_create_null_call(callee, args) => {
+        JsExpr::Call { callee, args, .. } if is_object_create_call(callee, args) => {
             Some("[]string{}".to_string())
         }
         JsExpr::Object { props } => {
@@ -16068,7 +16184,7 @@ fn render_object_assign_stmt(callee: &JsExpr, args: &[JsExpr], state: &AotState)
     for arg in args.iter().skip(1) {
         let source = render_json_value_expr(arg, state)?;
         statements.push(format!(
-            "for key, value := range tsgodownObjectFromAny({source}) {{ {target}[key] = value }}"
+            "for key, value := range tsgodownObjectFromAny({source}) {{ tsgodownObjectSetProp({target}, key, value) }}"
         ));
     }
     Some(statements.join("\n"))
@@ -17231,7 +17347,7 @@ fn render_ts_enum_member_assignment_stmt(
     let key = render_dynamic_object_property_key_expr(property, property_expr.as_deref(), state)?;
     let value = render_json_value_expr(right, state)?;
     Some(format!(
-        "if _, ok := {target}[{key}]; !ok {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({target}, {key}, {value})"
+        "if !tsgodownObjectHasOwn({target}, {key}) {{ {order} = append({order}, {key}) }}\ntsgodownObjectSetProp({target}, {key}, {value})"
     ))
 }
 
@@ -18873,6 +18989,21 @@ fn object_freeze_arg(expr: &JsExpr) -> Option<&JsExpr> {
 
 fn is_object_create_null_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     args.len() == 1
+        && is_object_create_call(callee, args)
+        && matches!(
+            args.first(),
+            Some(JsExpr::Value {
+                value: JsValue::Null
+            })
+        )
+}
+
+fn is_object_create_expr(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Call { callee, args, .. } if is_object_create_call(callee, args))
+}
+
+fn is_object_create_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1
         && matches!(
             callee,
             JsExpr::Member {
@@ -18882,12 +19013,6 @@ fn is_object_create_null_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
                 optional: false,
             } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
                 && property == "create"
-        )
-        && matches!(
-            args.first(),
-            Some(JsExpr::Value {
-                value: JsValue::Null
-            })
         )
 }
 
@@ -23245,7 +23370,7 @@ fn render_json_value_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
     if matches!(
         expr,
         JsExpr::Call { callee, args, .. }
-            if is_object_create_null_call(callee, args) || is_object_assign_call(callee, args)
+            if is_object_create_call(callee, args) || is_object_assign_call(callee, args)
     ) {
         return render_object_map_expr(expr, state).map(|value| format!("any({value})"));
     }
