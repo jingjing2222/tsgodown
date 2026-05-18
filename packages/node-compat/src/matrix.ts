@@ -1097,11 +1097,12 @@ export const CAPABILITY_MATRIX: Record<CapabilityKey, CapabilityRule> = {
   "es.objects.prototype": {
     key: "es.objects.prototype",
     scope: "language",
-    status: CapabilityStatus.TODO,
+    status: CapabilityStatus.WIP,
     strategy: "ecmascript: Prototype chain",
     backends: backendRules({
-      status: CapabilityStatus.TODO,
-      strategy: "Lookup, mutation, instanceof.",
+      status: CapabilityStatus.WIP,
+      strategy:
+        "`Object.create(proto)` lookup, `in` prototype-chain lookup, `Object.setPrototypeOf(...)`, and `Object.getPrototypeOf(...)` subsets lower without `RunProgram`; full function prototype identity, descriptors, accessors, null-prototype mutation, and `instanceof` edge cases pending.",
     }),
   },
   "es.objects.destructuring": {

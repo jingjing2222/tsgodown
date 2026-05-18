@@ -119,7 +119,7 @@ node scripts/sync-capability-matrix.mjs
 | es.functions.construct | language | WIP | ecmascript: Constructors/new | WIP | new, prototype, return override pending. | TODO | backend not implemented | TODO | backend not implemented |
 | es.classes | language | WIP | ecmascript: Classes | WIP | Private members subset; super/static blocks pending. | TODO | backend not implemented | TODO | backend not implemented |
 | es.objects.properties | language | WIP | ecmascript: Object properties | WIP | Descriptors/getters/setters pending. | TODO | backend not implemented | TODO | backend not implemented |
-| es.objects.prototype | language | TODO | ecmascript: Prototype chain | TODO | Lookup, mutation, instanceof. | TODO | backend not implemented | TODO | backend not implemented |
+| es.objects.prototype | language | WIP | ecmascript: Prototype chain | WIP | `Object.create(proto)` lookup, `in` prototype-chain lookup, `Object.setPrototypeOf(...)`, and `Object.getPrototypeOf(...)` subsets lower without `RunProgram`; full function prototype identity, descriptors, accessors, null-prototype mutation, and `instanceof` edge cases pending. | TODO | backend not implemented | TODO | backend not implemented |
 | es.objects.destructuring | language | WIP | ecmascript: Destructuring | WIP | Defaults/rest/nested patterns pending. | TODO | backend not implemented | TODO | backend not implemented |
 | es.objects.spread_rest | language | WIP | ecmascript: Spread/rest | WIP | Array/object/call spread edge cases pending. | TODO | backend not implemented | TODO | backend not implemented |
 | es.arrays | language | WIP | ecmascript: Array semantics | WIP | Holes, length, iteration, methods pending. | TODO | backend not implemented | TODO | backend not implemented |

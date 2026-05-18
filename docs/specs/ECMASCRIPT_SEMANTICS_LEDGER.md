@@ -18,7 +18,7 @@ fail closed before codegen.
 | es.functions.construct | Constructors/new | WIP | WIP | ES_CONSTRUCT_UNSUPPORTED | corpus subset | new, prototype, return override pending. |
 | es.classes | Classes | WIP | WIP | ES_CLASS_UNSUPPORTED | focused runtime subset | Private members subset; super/static blocks pending. |
 | es.objects.properties | Object properties | WIP | WIP | ES_PROPERTY_UNSUPPORTED | corpus subset | Descriptors/getters/setters pending. |
-| es.objects.prototype | Prototype chain | TODO | TODO | ES_PROTOTYPE_UNSUPPORTED | planned | Lookup, mutation, instanceof. |
+| es.objects.prototype | Prototype chain | WIP | WIP | ES_PROTOTYPE_UNSUPPORTED | focused AOT tests | `Object.create(proto)` lookup, `in` prototype-chain lookup, `Object.setPrototypeOf(...)`, and `Object.getPrototypeOf(...)` subsets lower without `RunProgram`; full function prototype identity, descriptors, accessors, null-prototype mutation, and `instanceof` edge cases pending. |
 | es.objects.destructuring | Destructuring | WIP | WIP | ES_DESTRUCTURING_UNSUPPORTED | corpus subset | Defaults/rest/nested patterns pending. |
 | es.objects.spread_rest | Spread/rest | WIP | WIP | ES_SPREAD_REST_UNSUPPORTED | corpus subset | Array/object/call spread edge cases pending. |
 | es.arrays | Array semantics | WIP | WIP | ES_ARRAY_UNSUPPORTED | corpus subset | Holes, length, iteration, methods pending. |

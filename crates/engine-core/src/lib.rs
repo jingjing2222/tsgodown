@@ -3662,6 +3662,83 @@ console.log("object-create-proto", child.own, child.inherited, child.shadowed, "
     }
 
     #[test]
+    fn emit_go_runs_aot_object_set_get_prototype_subset() {
+        let root = temp_project("engine-core-aot-object-set-get-prototype");
+        write(
+            &root,
+            "src/index.js",
+            r#"
+const first = { label: "one" }
+const second = { label: "two", extra: "ok" }
+const child = Object.create(first)
+console.log("proto-before", child.label, "label" in child, Object.hasOwn(child, "label"))
+Object.setPrototypeOf(child, second)
+console.log("proto-after", child.label, child.extra, "extra" in child, Object.hasOwn(child, "extra"), Object.getPrototypeOf(child).extra, Object.keys(child).join("|"), JSON.stringify(child))
+"#,
+        );
+
+        let response = emit_go(EmitGoRequest {
+            analyze: AnalyzeRequest {
+                manifest: InputManifest {
+                    entry: "src/index.js".to_string(),
+                    framework: None,
+                },
+                cwd: Some(root.to_string_lossy().to_string()),
+                config: aot_default_config(),
+            },
+            package_name: None,
+            module_path: Some("example.com/aot-object-set-get-prototype".to_string()),
+            output_kind: EmitGoOutputKind::Main,
+            ir_snapshot: None,
+        });
+
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics: {:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownObjectSetPrototypeOf"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownObjectGetPrototypeOf"));
+
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        let out_dir = root.join("dist-go");
+        for file in &response.files {
+            write(&out_dir, &file.path, &file.contents);
+        }
+
+        let output = std::process::Command::new("go")
+            .args(["run", "."])
+            .current_dir(&out_dir)
+            .output()
+            .expect("run generated go");
+        assert!(
+            output.status.success(),
+            "go run failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "proto-before one true false\nproto-after two ok true false ok  {}\n"
+        );
+    }
+
+    #[test]
     fn emit_go_runs_aot_object_spread_map_subset() {
         let root = temp_project("engine-core-aot-object-spread");
         write(

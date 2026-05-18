@@ -2474,6 +2474,7 @@ func tsgodownStrictEqual(left any, right any) bool {
 
 type tsgodownCallableObject struct {
 	props map[string]any
+	proto any
 	ctor  string
 	call  func(*tsgodownCallableObject) any
 }
@@ -2605,6 +2606,27 @@ func tsgodownObjectCreate(proto any) *tsgodownObject {
 	return &tsgodownObject{props: map[string]any{}, proto: proto}
 }
 
+func tsgodownObjectSetPrototypeOf(value any, proto any) any {
+	switch object := value.(type) {
+	case *tsgodownObject:
+		object.proto = proto
+	case *tsgodownCallableObject:
+		object.proto = proto
+	}
+	return value
+}
+
+func tsgodownObjectGetPrototypeOf(value any) any {
+	switch object := value.(type) {
+	case *tsgodownObject:
+		return object.proto
+	case *tsgodownCallableObject:
+		return object.proto
+	default:
+		return nil
+	}
+}
+
 func tsgodownObjectAssignKeys(groups ...[]string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -2633,7 +2655,10 @@ func tsgodownObjectProp(value any, key string) any {
 		}
 		return tsgodownObjectProp(typed.proto, key)
 	case *tsgodownCallableObject:
-		return typed.props[key]
+		if value, ok := typed.props[key]; ok {
+			return value
+		}
+		return tsgodownObjectProp(typed.proto, key)
 	case []any:
 		if key == "length" {
 			return float64(len(typed))
@@ -3559,6 +3584,9 @@ func tsgodownObjectHasOwn(value any, key any) bool {
 	case *tsgodownObject:
 		_, ok := object.props[name]
 		return ok
+	case *tsgodownCallableObject:
+		_, ok := object.props[name]
+		return ok
 	case []any:
 		if name == "length" {
 			return true
@@ -3584,7 +3612,9 @@ func tsgodownObjectHasOwn(value any, key any) bool {
 		index, err := strconv.Atoi(name)
 		return err == nil && index >= 0 && index < len(object)
 	default:
-		return false
+		converted := tsgodownObjectFromAny(value)
+		_, ok := converted[name]
+		return ok
 	}
 }
 
@@ -3593,6 +3623,9 @@ func tsgodownObjectHasProperty(value any, key any) bool {
 		return true
 	}
 	if object, ok := value.(*tsgodownObject); ok {
+		return tsgodownObjectHasProperty(object.proto, key)
+	}
+	if object, ok := value.(*tsgodownCallableObject); ok {
 		return tsgodownObjectHasProperty(object.proto, key)
 	}
 	return false
@@ -19016,6 +19049,27 @@ fn is_object_create_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
         )
 }
 
+fn is_object_set_prototype_of_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 2 && is_object_static_call(callee, "setPrototypeOf")
+}
+
+fn is_object_get_prototype_of_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
+    args.len() == 1 && is_object_static_call(callee, "getPrototypeOf")
+}
+
+fn is_object_static_call(callee: &JsExpr, expected: &str) -> bool {
+    matches!(
+        callee,
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+            && property == expected
+    )
+}
+
 fn is_object_assign_call(callee: &JsExpr, args: &[JsExpr]) -> bool {
     !args.is_empty()
         && matches!(
@@ -23074,6 +23128,16 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     }
     if is_object_keys_call(callee, args) {
         return render_object_keys_call(callee, args, state);
+    }
+    if is_object_set_prototype_of_call(callee, args) {
+        let target = render_expr(args.first()?, state)?;
+        let proto = render_json_value_expr(args.get(1)?, state)
+            .or_else(|| render_expr(args.get(1)?, state))?;
+        return Some(format!("tsgodownObjectSetPrototypeOf({target}, {proto})"));
+    }
+    if is_object_get_prototype_of_call(callee, args) {
+        let target = render_expr(args.first()?, state)?;
+        return Some(format!("tsgodownObjectGetPrototypeOf({target})"));
     }
     if is_process_noop_call(callee, args) {
         return Some("func() any { return nil }()".to_string());
