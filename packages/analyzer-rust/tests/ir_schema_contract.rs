@@ -1,6 +1,6 @@
 use analyzer_rust::{
-    DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR, HandlerSemanticsIR, ImportIR,
-    ModuleIR, ProgramIR, RouteIR,
+    DiagnosticIR, DiagnosticSourceIR, ExecutableModuleIR, HandlerIR, HandlerParamIR,
+    HandlerSemanticsIR, ImportIR, JsExprIR, JsStmtIR, JsValueIR, ModuleIR, ProgramIR, RouteIR,
 };
 
 #[test]
@@ -16,19 +16,28 @@ fn program_ir_normalize_applies_v1_deterministic_ordering_contract() {
                         spec: "zod".to_string(),
                         kind: "esm".to_string(),
                         resolved: None,
+                        bindings: vec![],
                     },
                     ImportIR {
                         spec: "@scope/a".to_string(),
                         kind: "cjs".to_string(),
                         resolved: Some("/abs/a".to_string()),
+                        bindings: vec![],
                     },
                 ],
+                executable: Some(ExecutableModuleIR {
+                    stmts: vec![JsStmtIR::VarDecl {
+                        name: "answer".to_string(),
+                        init: Some(JsExprIR::Value(JsValueIR::Number("42".to_string()))),
+                    }],
+                }),
             },
             ModuleIR {
                 id: "a_module".to_string(),
                 source_path: "src/a.ts".to_string(),
                 exports: vec!["index".to_string()],
                 imports: vec![],
+                executable: Some(ExecutableModuleIR { stmts: vec![] }),
             },
         ],
         routes: vec![

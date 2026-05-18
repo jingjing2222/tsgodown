@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR, HandlerSemanticsIR, ImportIR,
-    ModuleIR, ProgramIR, RouteIR,
+    parser::parse_js_module, DiagnosticIR, DiagnosticSourceIR, HandlerIR, HandlerParamIR,
+    HandlerSemanticsIR, ModuleIR, ProgramIR, RouteIR,
 };
 
 const ALLOWED_METHODS: [&str; 5] = ["GET", "POST", "PUT", "DELETE", "PATCH"];
@@ -15,10 +15,13 @@ struct HandlerDef {
 }
 
 pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
-    let mut diagnostics = Vec::new();
+    let parsed = parse_js_module(file, src);
+    let mut diagnostics = parsed.diagnostics;
 
-    let imports = collect_imports(src, &mut diagnostics, file);
-    let exports = collect_exports(src);
+    collect_import_diagnostics(src, &mut diagnostics, file);
+    let imports = parsed.imports;
+    let exports = parsed.exports;
+    let executable = parsed.executable;
     let handler_defs = collect_handler_defs(src);
     let plugin_defs = collect_plugin_defs(src);
     let route_object_defs = collect_route_object_defs(src);
@@ -78,6 +81,7 @@ pub fn build_program_ir(file: &str, src: &str) -> ProgramIR {
             source_path: file.to_string(),
             exports,
             imports,
+            executable: Some(executable),
         }],
         routes,
         handlers,
@@ -122,31 +126,18 @@ fn collect_statements(src: &str) -> Vec<&str> {
     out
 }
 
-fn collect_exports(src: &str) -> Vec<String> {
-    let mut exports = BTreeSet::new();
+fn collect_import_diagnostics(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) {
     for line in src.lines() {
         let trimmed = line.trim();
-        for prefix in [
-            "export const ",
-            "export function ",
-            "export async function ",
-        ] {
-            if let Some(rest) = trimmed.strip_prefix(prefix) {
-                if let Some(name) = take_identifier(rest) {
-                    exports.insert(name.to_string());
-                }
-            }
+        if trimmed.starts_with("//")
+            || trimmed.starts_with("/*")
+            || trimmed.starts_with('*')
+            || trimmed.contains("@type")
+            || trimmed.contains("@typedef")
+        {
+            continue;
         }
-    }
-    exports.into_iter().collect()
-}
-
-fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -> Vec<ImportIR> {
-    let mut imports = Vec::new();
-
-    for line in src.lines() {
-        let trimmed = line.trim();
-        if trimmed.contains("import(") {
+        if trimmed.contains("import(") && !all_dynamic_imports_have_static_spec(trimmed) {
             diagnostics.push(diag(
                 "error",
                 "DYNAMIC_IMPORT_DETECTED",
@@ -154,22 +145,66 @@ fn collect_imports(src: &str, diagnostics: &mut Vec<DiagnosticIR>, file: &str) -
                 file,
             ));
         }
+    }
+}
 
-        if !trimmed.starts_with("import ") {
-            continue;
-        }
+fn all_dynamic_imports_have_static_spec(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(start) = rest.find("import(") {
+        let args = &rest[start + "import(".len()..];
+        let Some(closing_offset) = static_dynamic_import_arg_end(args) else {
+            return false;
+        };
+        rest = &args[closing_offset..];
+    }
+    true
+}
 
-        if let Some(spec) = extract_quoted(trimmed) {
-            imports.push(ImportIR {
-                spec: spec.to_string(),
-                kind: "esm".to_string(),
-                resolved: None,
-            });
-        }
+fn static_dynamic_import_arg_end(args: &str) -> Option<usize> {
+    let leading_ws_len = args.len() - args.trim_start().len();
+    let args = args.trim_start();
+    let quote = args.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
     }
 
-    imports.sort_by(|a, b| a.spec.cmp(&b.spec).then_with(|| a.kind.cmp(&b.kind)));
-    imports
+    let mut escaped = false;
+    let mut spec = String::new();
+    let mut offset_after_quote = None;
+    for (offset, ch) in args.char_indices().skip(1) {
+        if escaped {
+            spec.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            offset_after_quote = Some(offset + ch.len_utf8());
+            break;
+        }
+        spec.push(ch);
+    }
+
+    if spec.is_empty() {
+        return None;
+    }
+
+    let offset_after_quote = offset_after_quote?;
+    let tail = args[offset_after_quote..].trim_start();
+    let next = tail.chars().next()?;
+    if next == ')' || next == ',' {
+        Some(
+            leading_ws_len
+                + offset_after_quote
+                + tail.find(next).unwrap_or_default()
+                + next.len_utf8(),
+        )
+    } else {
+        None
+    }
 }
 
 fn collect_conditional_route_diagnostics(
@@ -213,11 +248,45 @@ fn collect_conditional_route_diagnostics(
 }
 
 fn has_route_invocation(line: &str) -> bool {
-    ALLOWED_METHODS
-        .iter()
-        .map(|method| method.to_ascii_lowercase())
-        .any(|method| line.contains(format!(".{method}(").as_str()))
-        || line.contains(".route(")
+    if line.contains(".route(") {
+        return true;
+    }
+
+    ALLOWED_METHODS.iter().any(|method| {
+        let call = format!(".{}(", method.to_ascii_lowercase());
+        let Some(start) = line.find(call.as_str()) else {
+            return false;
+        };
+        let after_open = &line[start + call.len()..];
+        let first_arg = after_open.trim_start();
+        has_static_path_and_second_arg(first_arg)
+    })
+}
+
+fn has_static_path_and_second_arg(args: &str) -> bool {
+    let Some(quote) = args.chars().next() else {
+        return false;
+    };
+    if quote != '"' && quote != '\'' && quote != '`' {
+        return false;
+    }
+
+    let mut escaped = false;
+    for (idx, ch) in args.char_indices().skip(1) {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            return args[idx + ch.len_utf8()..].trim_start().starts_with(',');
+        }
+    }
+
+    false
 }
 
 fn brace_delta(raw: &str) -> i32 {

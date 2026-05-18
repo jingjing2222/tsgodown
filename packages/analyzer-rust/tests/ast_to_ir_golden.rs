@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use analyzer_rust::{analyze_compiler_entry, ProgramIR};
+use analyzer_rust::{analyze_compiler_entry, JsExprIR, JsStmtIR, JsValueIR, ProgramIR};
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,12 +24,37 @@ fn render_ir(ir: &ProgramIR) -> String {
         }
         out.push_str("    imports:\n");
         for import in &module.imports {
+            let bindings = if import.bindings.is_empty() {
+                "[]".to_string()
+            } else {
+                format!(
+                    "[{}]",
+                    import
+                        .bindings
+                        .iter()
+                        .map(|binding| format!(
+                            "{}:{}:{}",
+                            binding.local,
+                            binding.imported.as_deref().unwrap_or("<none>"),
+                            binding.kind
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            };
             out.push_str(&format!(
-                "      - spec={} kind={} resolved={}\n",
+                "      - spec={} kind={} resolved={} bindings={}\n",
                 import.spec,
                 import.kind,
                 import.resolved.as_deref().unwrap_or("<none>"),
+                bindings,
             ));
+        }
+        out.push_str("    executable:\n");
+        if let Some(executable) = &module.executable {
+            for stmt in &executable.stmts {
+                out.push_str(&format!("      - {}\n", render_js_stmt(stmt)));
+            }
         }
     }
 
@@ -90,6 +115,375 @@ fn render_ir(ir: &ProgramIR) -> String {
     }
 
     out
+}
+
+fn render_js_stmt(stmt: &JsStmtIR) -> String {
+    match stmt {
+        JsStmtIR::Expr(expr) => format!("expr {}", render_js_expr(expr)),
+        JsStmtIR::FunctionDecl {
+            name,
+            params,
+            r#async,
+            generator,
+            body,
+            ..
+        } => format!(
+            "function {} async={}{} params=[{}] body=[{}]",
+            name,
+            r#async,
+            if *generator { " generator=true" } else { "" },
+            params.join(","),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::ClassDecl {
+            name,
+            super_class,
+            methods,
+        } => format!(
+            "class {} extends={} methods=[{}]",
+            name,
+            super_class
+                .as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            render_class_methods(methods)
+        ),
+        JsStmtIR::If {
+            test,
+            consequent,
+            alternate,
+        } => format!(
+            "if {} then=[{}] else=[{}]",
+            render_js_expr(test),
+            consequent
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            alternate
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::For {
+            init,
+            test,
+            update,
+            body,
+        } => format!(
+            "for init=[{}] test={} update={} body=[{}]",
+            init.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            test.as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            update
+                .as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string()),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::ForOf { left, right, body } => format!(
+            "for-of {} in {} body=[{}]",
+            left,
+            render_js_expr(right),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::While { test, body } => format!(
+            "while {} body=[{}]",
+            render_js_expr(test),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::DoWhile { body, test } => format!(
+            "do-while body=[{}] test={}",
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            render_js_expr(test)
+        ),
+        JsStmtIR::Switch {
+            discriminant,
+            cases,
+        } => format!(
+            "switch {} cases=[{}]",
+            render_js_expr(discriminant),
+            cases
+                .iter()
+                .map(|case| format!(
+                    "{} => [{}]",
+                    case.test
+                        .as_ref()
+                        .map(render_js_expr)
+                        .unwrap_or_else(|| "default".to_string()),
+                    case.consequent
+                        .iter()
+                        .map(render_js_stmt)
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::Try {
+            body,
+            catch_param,
+            catch_body,
+            finally_body,
+        } => format!(
+            "try body=[{}] catch={} body=[{}] finally=[{}]",
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            catch_param.as_deref().unwrap_or("<none>"),
+            catch_body
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; "),
+            finally_body
+                .iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::Label { label, body } => format!(
+            "label {} [{}]",
+            label,
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsStmtIR::Break(label) => format!("break {}", label.as_deref().unwrap_or("<none>")),
+        JsStmtIR::Continue(label) => format!("continue {}", label.as_deref().unwrap_or("<none>")),
+        JsStmtIR::Return(Some(expr)) => format!("return {}", render_js_expr(expr)),
+        JsStmtIR::Return(None) => "return".to_string(),
+        JsStmtIR::Throw(expr) => format!("throw {}", render_js_expr(expr)),
+        JsStmtIR::Yield {
+            value: Some(expr),
+            delegate,
+        } => {
+            if *delegate {
+                format!("yield* {}", render_js_expr(expr))
+            } else {
+                format!("yield {}", render_js_expr(expr))
+            }
+        }
+        JsStmtIR::Yield { value: None, .. } => "yield".to_string(),
+        JsStmtIR::VarDecl { name, init } => format!(
+            "var {} = {}",
+            name,
+            init.as_ref()
+                .map(render_js_expr)
+                .unwrap_or_else(|| "<none>".to_string())
+        ),
+    }
+}
+
+fn render_js_expr(expr: &JsExprIR) -> String {
+    match expr {
+        JsExprIR::Value(value) => render_js_value(value),
+        JsExprIR::Ident(name) => format!("ident({name})"),
+        JsExprIR::This => "this".to_string(),
+        JsExprIR::Super => "super".to_string(),
+        JsExprIR::Array(items) => format!(
+            "array([{}])",
+            items
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::ArraySpread(items) => format!(
+            "array-spread([{}])",
+            items
+                .iter()
+                .map(|item| format!(
+                    "{}{}",
+                    if item.spread { "..." } else { "" },
+                    render_js_expr(&item.value)
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Object(props) => format!(
+            "object({{{}}})",
+            props
+                .iter()
+                .map(|prop| format!("{}: {}", prop.key, render_js_expr(&prop.value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::ObjectRest { object, excluded } => format!(
+            "object-rest({}, [{}])",
+            render_js_expr(object),
+            excluded.join(",")
+        ),
+        JsExprIR::Function {
+            params,
+            r#async,
+            generator,
+            body,
+            ..
+        } => format!(
+            "function-expr async={}{} params=[{}] body=[{}]",
+            r#async,
+            if *generator { " generator=true" } else { "" },
+            params.join(","),
+            body.iter()
+                .map(render_js_stmt)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        JsExprIR::Class {
+            super_class,
+            methods,
+        } => format!(
+            "class-expr extends={} methods=[{}]",
+            super_class
+                .as_ref()
+                .map(|expr| render_js_expr(expr))
+                .unwrap_or_else(|| "<none>".to_string()),
+            render_class_methods(methods)
+        ),
+        JsExprIR::Unary { op, arg } => format!("unary({}, {})", op, render_js_expr(arg)),
+        JsExprIR::Await { arg } => format!("await({})", render_js_expr(arg)),
+        JsExprIR::Binary { op, left, right } => format!(
+            "binary({}, {}, {})",
+            op,
+            render_js_expr(left),
+            render_js_expr(right)
+        ),
+        JsExprIR::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => format!(
+            "conditional({}, {}, {})",
+            render_js_expr(test),
+            render_js_expr(consequent),
+            render_js_expr(alternate)
+        ),
+        JsExprIR::Assign { op, left, right } => format!(
+            "assign({}, {}, {})",
+            op,
+            render_js_expr(left),
+            render_js_expr(right)
+        ),
+        JsExprIR::Update { op, arg, prefix } => {
+            format!("update({}, {}, {})", op, render_js_expr(arg), prefix)
+        }
+        JsExprIR::Call {
+            callee,
+            args,
+            optional,
+        } => format!(
+            "{}call({}, [{}])",
+            if *optional { "optional-" } else { "" },
+            render_js_expr(callee),
+            args.iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Spread { arg } => format!("spread({})", render_js_expr(arg)),
+        JsExprIR::New { callee, args } => format!(
+            "new({}, [{}])",
+            render_js_expr(callee),
+            args.iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Member {
+            object,
+            property,
+            computed,
+            optional,
+        } => match computed {
+            Some(computed) => format!(
+                "{}member({}, [{}])",
+                if *optional { "optional-" } else { "" },
+                render_js_expr(object),
+                render_js_expr(computed)
+            ),
+            None => format!(
+                "{}member({}, {})",
+                if *optional { "optional-" } else { "" },
+                render_js_expr(object),
+                property
+            ),
+        },
+        JsExprIR::Template { quasis, exprs } => format!(
+            "template([{}], [{}])",
+            quasis.join(","),
+            exprs
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsExprIR::Sequence(exprs) => format!(
+            "sequence([{}])",
+            exprs
+                .iter()
+                .map(render_js_expr)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+fn render_class_methods(methods: &[analyzer_rust::JsClassMethodIR]) -> String {
+    methods
+        .iter()
+        .map(|method| {
+            format!(
+                "{} kind={} static={} async={} params=[{}] body=[{}]",
+                method.name,
+                method.kind,
+                method.is_static,
+                method.r#async,
+                method.params.join(","),
+                method
+                    .body
+                    .iter()
+                    .map(render_js_stmt)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn render_js_value(value: &JsValueIR) -> String {
+    match value {
+        JsValueIR::Undefined => "undefined".to_string(),
+        JsValueIR::Null => "null".to_string(),
+        JsValueIR::Bool(value) => format!("bool({value})"),
+        JsValueIR::Number(value) => format!("number({value})"),
+        JsValueIR::String(value) => format!("string({value})"),
+        JsValueIR::BigInt(value) => format!("bigint({value})"),
+        JsValueIR::RegExp { pattern, flags } => format!("regexp({pattern}/{flags})"),
+    }
 }
 
 fn assert_fixture(fixture_name: &str, golden_name: &str) {
@@ -155,4 +549,489 @@ fn single_line_conditional_routes_emit_unsupported_diagnostic() {
         "conditional-route-single-line.ts",
         "conditional-route-single-line.golden.txt",
     );
+}
+
+#[test]
+fn conditional_map_delete_does_not_emit_route_diagnostic() {
+    let source = r#"
+const map = new Map();
+if (map.size > 1) {
+  map.delete("");
+}
+"#;
+    let ir = analyze_compiler_entry("not-a-route.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "ANALYZER_UNSUPPORTED_CONDITIONAL_ROUTE"),
+        "Map.delete(string) must not be mistaken for DELETE route registration"
+    );
+}
+
+#[test]
+fn executable_control_flow_is_lowered_deterministically() {
+    let source = r#"
+function scan(items) {
+  let total = 0;
+  WHILE: while (total < 2) {
+    total++;
+    continue WHILE;
+  }
+  for (let i = 0; i < 3; i++) {
+    switch (i) {
+      case 0:
+        continue;
+      case 1:
+        break;
+      default:
+        total += i;
+    }
+  }
+  try {
+    return total;
+  } catch (err) {
+    throw err;
+  } finally {
+    total++;
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("control-flow.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("for init=[var i = number(0)]"));
+    assert!(rendered.contains("label WHILE [while"));
+    assert!(rendered.contains("while binary(<, ident(total), number(2))"));
+    assert!(rendered.contains("continue WHILE"));
+    assert!(rendered.contains("switch ident(i)"));
+    assert!(rendered.contains("continue <none>"));
+    assert!(rendered.contains("break <none>"));
+    assert!(rendered.contains("try body=[return ident(total)] catch=err"));
+    assert!(rendered.contains("update(++, ident(total), false)"));
+}
+
+#[test]
+fn executable_classes_and_new_expressions_are_lowered_deterministically() {
+    let source = r#"
+class Cache extends BaseCache {
+  constructor(limit) {
+    this.limit = limit;
+  }
+  get(key) {
+    return this.store.get(key);
+  }
+  static create(limit) {
+    return new Cache(limit);
+  }
+}
+const cache = new Cache(2);
+"#;
+    let ir = analyze_compiler_entry("classes.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("class Cache extends=ident(BaseCache)"));
+    assert!(rendered.contains("constructor kind=constructor"));
+    assert!(rendered.contains("get kind=method"));
+    assert!(rendered.contains("create kind=method static=true"));
+    assert!(rendered.contains("new(ident(Cache), [number(2)])"));
+}
+
+#[test]
+fn executable_private_class_members_are_lowered_as_semantic_properties() {
+    let source = r#"
+class Counter {
+  #value = 1;
+  #bump(step = 1) {
+    this.#value += step;
+  }
+  static #seed() {
+    return 4;
+  }
+  constructor(start = 2) {
+    this.#value = start;
+  }
+  next() {
+    this.#bump();
+    return this.#value;
+  }
+  static read() {
+    return this.#seed();
+  }
+  collect(...items) {
+    return items.length;
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("private-class.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("expr assign(=, member(this, #value), number(1))"));
+    assert!(
+        rendered.contains("#bump kind=method static=false async=false params=[__tsgodown_param_0]")
+    );
+    assert!(rendered.contains(
+        "var step = conditional(binary(===, ident(__tsgodown_param_0), undefined), number(1), ident(__tsgodown_param_0))"
+    ));
+    assert!(rendered.contains("#seed kind=method static=true async=false params=[]"));
+    assert!(rendered.contains("call(member(this, #bump), [])"));
+    assert!(rendered.contains("return call(member(this, #seed), [])"));
+    let class_methods = ir.modules[0]
+        .executable
+        .as_ref()
+        .expect("executable")
+        .stmts
+        .iter()
+        .find_map(|stmt| match stmt {
+            JsStmtIR::ClassDecl { methods, .. } => Some(methods),
+            _ => None,
+        })
+        .expect("class methods");
+    assert!(class_methods
+        .iter()
+        .any(|method| method.name == "collect" && method.rest_param.as_deref() == Some("items")));
+}
+
+#[test]
+fn executable_expression_forms_are_lowered_deterministically() {
+    let source = r#"
+const capture = () => this.done;
+async function render(name, count) {
+  const pattern = /node/gi;
+  const big = 10n;
+  const label = `hello ${name}`;
+  const escaped = `^a\\s+${name}$`;
+  const value = count > 0 ? count : 0;
+  const result = await load(label);
+  return (result, this.done(value));
+}
+"#;
+    let ir = analyze_compiler_entry("expressions.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("regexp(node/gi)"));
+    assert!(rendered.contains("bigint(10n)"));
+    assert!(rendered.contains("template([hello ,], [ident(name)])"));
+    assert!(rendered.contains(r"template([^a\s+,$], [ident(name)])"));
+    assert!(ir.modules[0]
+        .executable
+        .as_ref()
+        .expect("executable")
+        .stmts
+        .iter()
+        .any(|stmt| matches!(
+            stmt,
+            JsStmtIR::VarDecl {
+                name,
+                init: Some(JsExprIR::Function {
+                    lexical_this: true,
+                    ..
+                }),
+            } if name == "capture"
+        )));
+    assert!(rendered.contains("conditional(binary(>, ident(count), number(0))"));
+    assert!(rendered.contains("await(call(ident(load), [ident(label)]))"));
+    assert!(
+        rendered.contains("sequence([ident(result), call(member(this, done), [ident(value)])])")
+    );
+}
+
+#[test]
+fn executable_array_spread_is_lowered_deterministically() {
+    let source = r#"
+function copy(items) {
+  return join(0, ...items, 9, ...tail);
+}
+"#;
+    let ir = analyze_compiler_entry("array-spread.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains(
+        "call(ident(join), [number(0), spread(ident(items)), number(9), spread(ident(tail))])"
+    ));
+}
+
+#[test]
+fn executable_optional_member_is_lowered_deterministically() {
+    let source = r#"
+function errorName(result) {
+  return result.error?.name ?? null;
+}
+"#;
+    let ir = analyze_compiler_entry("optional-member.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered
+        .contains("return binary(??, optional-member(member(ident(result), error), name), null)"));
+}
+
+#[test]
+fn executable_array_destructuring_arrow_params_are_lowered() {
+    let source = r#"
+const out = rows.map(([path, pattern, options = {}]) => ({ path, pattern, options }));
+"#;
+    let ir = analyze_compiler_entry("array-destructure-arrow.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains("var __tsgodown_destructure_0 = ident(__tsgodown_param_0)"));
+    assert!(rendered.contains("var path = member(ident(__tsgodown_destructure_0), 0)"));
+    assert!(rendered.contains(
+        "var options = conditional(binary(===, member(ident(__tsgodown_destructure_0), 2), undefined), object({}), member(ident(__tsgodown_destructure_0), 2))"
+    ));
+}
+
+#[test]
+fn executable_object_destructuring_default_params_are_lowered() {
+    let source = r#"
+const out = rows.map(({ dot = false } = {}) => dot);
+"#;
+    let ir = analyze_compiler_entry("object-destructure-default-param.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains(
+        "var __tsgodown_destructure_0 = conditional(binary(===, ident(__tsgodown_param_0), undefined), object({}), ident(__tsgodown_param_0))"
+    ));
+    assert!(rendered.contains(
+        "var dot = conditional(binary(===, member(ident(__tsgodown_destructure_0), dot), undefined), bool(false), member(ident(__tsgodown_destructure_0), dot))"
+    ));
+}
+
+#[test]
+fn executable_object_rest_destructuring_params_are_lowered() {
+    let source = r#"
+const out = rows.map(({ known = 1, ...rest }) => rest);
+"#;
+    let ir = analyze_compiler_entry("object-rest-destructure-param.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("var known = conditional(binary(===, member(ident(__tsgodown_destructure_0), known), undefined), number(1), member(ident(__tsgodown_destructure_0), known))"));
+    assert!(rendered.contains("var rest = object-rest(ident(__tsgodown_destructure_0), [known])"));
+}
+
+#[test]
+fn executable_object_method_props_are_lowered() {
+    let source = r#"
+const handlers = {
+  native() {},
+  transform({ value }) { return value }
+};
+"#;
+    let ir = analyze_compiler_entry("object-method-props.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("native: function-expr async=false params=[] body=[]"));
+    assert!(rendered.contains("transform: function-expr async=false params=[__tsgodown_param_0]"));
+    assert!(rendered.contains("var value = member(ident(__tsgodown_destructure_0), value)"));
+}
+
+#[test]
+fn export_object_destructuring_decl_names_are_collected() {
+    let source = r#"
+const source = { onExit() {}, load() {}, unload() {} };
+export const { onExit, load: start, ...rest } = source;
+"#;
+    let ir = analyze_compiler_entry("export-object-destructure.js", source);
+
+    assert!(ir.modules[0].exports.contains(&"onExit".to_string()));
+    assert!(ir.modules[0].exports.contains(&"start".to_string()));
+    assert!(ir.modules[0].exports.contains(&"rest".to_string()));
+}
+
+#[test]
+fn executable_for_of_destructuring_head_is_lowered() {
+    let source = r#"
+for (const [chunk] of rows) {
+  sink(chunk);
+}
+"#;
+    let ir = analyze_compiler_entry("for-of-destructure.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("for-of __tsgodown_forof_value in ident(rows) body=[var __tsgodown_destructure_0 = ident(__tsgodown_forof_value); var chunk = member(ident(__tsgodown_destructure_0), 0); expr call(ident(sink), [ident(chunk)])]"));
+}
+
+#[test]
+fn executable_yield_delegate_is_preserved() {
+    let source = r#"
+function * flatten(chunks) {
+  for (const chunk of chunks) {
+    yield * transform(chunk);
+  }
+}
+"#;
+    let ir = analyze_compiler_entry("yield-delegate.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("yield* call(ident(transform), [ident(chunk)])"));
+}
+
+#[test]
+fn static_builtin_dynamic_import_is_tracked_without_unsupported_diagnostic() {
+    let source = r#"
+import('node:diagnostics_channel').then((dc) => dc.channel('x')).catch(() => {});
+"#;
+    let ir = analyze_compiler_entry("static-builtin-dynamic-import.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "DYNAMIC_IMPORT_DETECTED"),
+        "static node: builtin dynamic import should not block corpus graph analysis"
+    );
+    assert_eq!(ir.modules[0].imports.len(), 1);
+    assert_eq!(ir.modules[0].imports[0].spec, "node:diagnostics_channel");
+    assert_eq!(ir.modules[0].imports[0].kind, "dynamic");
+}
+
+#[test]
+fn static_package_dynamic_import_is_tracked_without_unsupported_diagnostic() {
+    let source = r#"
+const mod = await import('@scope/pkg');
+console.log(mod.value);
+"#;
+    let ir = analyze_compiler_entry("static-package-dynamic-import.js", source);
+
+    assert!(
+        ir.diagnostics
+            .iter()
+            .all(|diag| diag.code != "DYNAMIC_IMPORT_DETECTED"),
+        "static package dynamic import should be resolved by the module graph"
+    );
+    assert_eq!(ir.modules[0].imports.len(), 1);
+    assert_eq!(ir.modules[0].imports[0].spec, "@scope/pkg");
+    assert_eq!(ir.modules[0].imports[0].kind, "dynamic");
+}
+
+#[test]
+fn expression_dynamic_import_stays_fail_closed_before_codegen() {
+    let source = r#"
+const spec = './dep.js';
+const mod = await import(spec);
+const alsoNotStatic = await import('./dep-' + spec);
+"#;
+    let ir = analyze_compiler_entry("expression-dynamic-import.js", source);
+
+    assert!(ir
+        .diagnostics
+        .iter()
+        .any(|diag| diag.code == "DYNAMIC_IMPORT_DETECTED"));
+}
+
+#[test]
+fn dynamic_import_call_inside_function_is_collected_for_graph() {
+    let source = r#"
+async function load() {
+  return import("./lazy.js");
+}
+"#;
+    let ir = analyze_compiler_entry("nested-dynamic-import.js", source);
+    let imports = &ir.modules[0].imports;
+
+    assert!(imports
+        .iter()
+        .any(|import| import.spec == "./lazy.js" && import.kind == "dynamic"));
+}
+
+#[test]
+fn import_bindings_are_lowered_for_executable_codegen() {
+    let source = r#"
+import parser from "yargs-parser";
+import * as qs from "qs";
+import { parse as parseYaml, dump } from "js-yaml";
+const fs = require("fs-extra");
+const { execa } = require("execa");
+"#;
+    let ir = analyze_compiler_entry("imports.js", source);
+    let imports = &ir.modules[0].imports;
+
+    assert!(imports.iter().any(|import| import.spec == "yargs-parser"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "parser"
+                && binding.imported.as_deref() == Some("default")
+                && binding.kind == "default")));
+    assert!(imports.iter().any(|import| import.spec == "qs"
+        && import.bindings.iter().any(|binding| binding.local == "qs"
+            && binding.imported.as_deref() == Some("*")
+            && binding.kind == "namespace")));
+    assert!(imports.iter().any(|import| import.spec == "js-yaml"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "parseYaml"
+                && binding.imported.as_deref() == Some("parse")
+                && binding.kind == "named")
+        && import.bindings.iter().any(|binding| binding.local == "dump"
+            && binding.imported.as_deref() == Some("dump")
+            && binding.kind == "named")));
+    assert!(imports.iter().any(|import| import.spec == "fs-extra"
+        && import.bindings.iter().any(|binding| binding.local == "fs"
+            && binding.imported.is_none()
+            && binding.kind == "require")));
+    assert!(imports.iter().any(|import| import.spec == "execa"
+        && import
+            .bindings
+            .iter()
+            .any(|binding| binding.local == "execa"
+                && binding.imported.as_deref() == Some("execa")
+                && binding.kind == "destructure")));
+}
+
+#[test]
+fn nested_requires_are_collected_for_executable_module_graph() {
+    let source = r#"
+function loadOne() {
+  return require("./one.js");
+}
+const loadTwo = () => require("./two.js");
+class Loader {
+  load() {
+    return require("./three.js");
+  }
+}
+try {
+  require("./four.js");
+} catch (error) {
+  require("./fallback.js");
+} finally {
+  require("./cleanup.js");
+}
+"#;
+    let ir = analyze_compiler_entry("nested-require.js", source);
+    let imports = &ir.modules[0].imports;
+
+    for spec in ["./one.js", "./three.js", "./two.js"] {
+        assert!(
+            imports
+                .iter()
+                .any(|import| import.spec == spec && import.kind == "cjs"),
+            "missing nested require import {spec}"
+        );
+    }
+    for spec in ["./cleanup.js", "./fallback.js", "./four.js"] {
+        assert!(
+            imports
+                .iter()
+                .any(|import| import.spec == spec && import.kind == "cjs-optional"),
+            "missing optional nested require import {spec}"
+        );
+    }
+}
+
+#[test]
+fn executable_export_default_and_named_aliases_are_bound() {
+    let source = r#"
+const callable = () => "ok";
+callable.extra = true;
+export default callable;
+export { callable as "module.exports" };
+"#;
+    let ir = analyze_compiler_entry("export-default.js", source);
+    let rendered = render_ir(&ir);
+
+    assert!(rendered.contains("var default = ident(callable)"));
+    assert!(rendered.contains("var module.exports = ident(callable)"));
 }

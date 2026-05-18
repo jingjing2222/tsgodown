@@ -1,0 +1,1006 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "socketio-app",
+  "cases": [
+    {
+      "id": "socketio-app-001",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-0",
+      "payload": {
+        "index": 0,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-002",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-1",
+      "payload": {
+        "index": 1,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-003",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-2",
+      "payload": {
+        "index": 2,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-004",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-3",
+      "payload": {
+        "index": 3,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-005",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-4",
+      "payload": {
+        "index": 4,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-006",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-5",
+      "payload": {
+        "index": 5,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-007",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-6",
+      "payload": {
+        "index": 6,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-008",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-7",
+      "payload": {
+        "index": 7,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-009",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-8",
+      "payload": {
+        "index": 8,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-010",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-9",
+      "payload": {
+        "index": 9,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-011",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-10",
+      "payload": {
+        "index": 10,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-012",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-11",
+      "payload": {
+        "index": 11,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-013",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-12",
+      "payload": {
+        "index": 12,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-014",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-13",
+      "payload": {
+        "index": 13,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-015",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-14",
+      "payload": {
+        "index": 14,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-016",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-15",
+      "payload": {
+        "index": 15,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-017",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-16",
+      "payload": {
+        "index": 16,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-018",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-17",
+      "payload": {
+        "index": 17,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-019",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-18",
+      "payload": {
+        "index": 18,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-020",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-19",
+      "payload": {
+        "index": 19,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-021",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-20",
+      "payload": {
+        "index": 20,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-022",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-21",
+      "payload": {
+        "index": 21,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-023",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-22",
+      "payload": {
+        "index": 22,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-024",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-23",
+      "payload": {
+        "index": 23,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-025",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-24",
+      "payload": {
+        "index": 24,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-026",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-25",
+      "payload": {
+        "index": 25,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-027",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-26",
+      "payload": {
+        "index": 26,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-028",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-27",
+      "payload": {
+        "index": 27,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-029",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-28",
+      "payload": {
+        "index": 28,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-030",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-29",
+      "payload": {
+        "index": 29,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-031",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-30",
+      "payload": {
+        "index": 30,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-032",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-31",
+      "payload": {
+        "index": 31,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-033",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-32",
+      "payload": {
+        "index": 32,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-034",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-33",
+      "payload": {
+        "index": 33,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-035",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-34",
+      "payload": {
+        "index": 34,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-036",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-35",
+      "payload": {
+        "index": 35,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-037",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-36",
+      "payload": {
+        "index": 36,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-038",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-37",
+      "payload": {
+        "index": 37,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-039",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-38",
+      "payload": {
+        "index": 38,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-040",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-39",
+      "payload": {
+        "index": 39,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-041",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-40",
+      "payload": {
+        "index": 40,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-042",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-41",
+      "payload": {
+        "index": 41,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-043",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-42",
+      "payload": {
+        "index": 42,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-044",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-43",
+      "payload": {
+        "index": 43,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-045",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-44",
+      "payload": {
+        "index": 44,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-046",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-45",
+      "payload": {
+        "index": 45,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-047",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-46",
+      "payload": {
+        "index": 46,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-048",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-47",
+      "payload": {
+        "index": 47,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-049",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-48",
+      "payload": {
+        "index": 48,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-050",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-49",
+      "payload": {
+        "index": 49,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-051",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-50",
+      "payload": {
+        "index": 50,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-052",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-51",
+      "payload": {
+        "index": 51,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-053",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-52",
+      "payload": {
+        "index": 52,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-054",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-53",
+      "payload": {
+        "index": 53,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-055",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-54",
+      "payload": {
+        "index": 54,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-056",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-55",
+      "payload": {
+        "index": 55,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-057",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-56",
+      "payload": {
+        "index": 56,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-058",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-57",
+      "payload": {
+        "index": 57,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-059",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-58",
+      "payload": {
+        "index": 58,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-060",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-59",
+      "payload": {
+        "index": 59,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-061",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-60",
+      "payload": {
+        "index": 60,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-062",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-61",
+      "payload": {
+        "index": 61,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-063",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-62",
+      "payload": {
+        "index": 62,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-064",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-63",
+      "payload": {
+        "index": 63,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-065",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-64",
+      "payload": {
+        "index": 64,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-066",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-65",
+      "payload": {
+        "index": 65,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-067",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-66",
+      "payload": {
+        "index": 66,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-068",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-67",
+      "payload": {
+        "index": 67,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-069",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-68",
+      "payload": {
+        "index": 68,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-070",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-69",
+      "payload": {
+        "index": 69,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-071",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-70",
+      "payload": {
+        "index": 70,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-072",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-71",
+      "payload": {
+        "index": 71,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-073",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-72",
+      "payload": {
+        "index": 72,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-074",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-73",
+      "payload": {
+        "index": 73,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-075",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-74",
+      "payload": {
+        "index": 74,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-076",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-75",
+      "payload": {
+        "index": 75,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-077",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-76",
+      "payload": {
+        "index": 76,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-078",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-77",
+      "payload": {
+        "index": 77,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-079",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-78",
+      "payload": {
+        "index": 78,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-080",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-79",
+      "payload": {
+        "index": 79,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-081",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-80",
+      "payload": {
+        "index": 80,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-082",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-81",
+      "payload": {
+        "index": 81,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-083",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-82",
+      "payload": {
+        "index": 82,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-084",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-83",
+      "payload": {
+        "index": 83,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-085",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-84",
+      "payload": {
+        "index": 84,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-086",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-85",
+      "payload": {
+        "index": 85,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-087",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-86",
+      "payload": {
+        "index": 86,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-088",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-87",
+      "payload": {
+        "index": 87,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-089",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-88",
+      "payload": {
+        "index": 88,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-090",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-89",
+      "payload": {
+        "index": 89,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-091",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-90",
+      "payload": {
+        "index": 90,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-092",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-91",
+      "payload": {
+        "index": 91,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-093",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-92",
+      "payload": {
+        "index": 92,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-094",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-93",
+      "payload": {
+        "index": 93,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-095",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-94",
+      "payload": {
+        "index": 94,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-096",
+      "op": "ack",
+      "room": "room-0",
+      "event": "event-95",
+      "payload": {
+        "index": 95,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-097",
+      "op": "ack",
+      "room": "room-1",
+      "event": "event-96",
+      "payload": {
+        "index": 96,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-098",
+      "op": "ack",
+      "room": "room-2",
+      "event": "event-97",
+      "payload": {
+        "index": 97,
+        "ok": false
+      }
+    },
+    {
+      "id": "socketio-app-099",
+      "op": "ack",
+      "room": "room-3",
+      "event": "event-98",
+      "payload": {
+        "index": 98,
+        "ok": true
+      }
+    },
+    {
+      "id": "socketio-app-100",
+      "op": "ack",
+      "room": "room-4",
+      "event": "event-99",
+      "payload": {
+        "index": 99,
+        "ok": false
+      }
+    }
+  ]
+}

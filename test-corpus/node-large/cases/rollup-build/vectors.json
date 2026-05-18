@@ -1,0 +1,806 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "rollup-build",
+  "cases": [
+    {
+      "id": "rollup-build-001",
+      "op": "bundle",
+      "inputId": "entry-0.js",
+      "exportName": "value0",
+      "source": "export const value0 = 0; export default value0 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-002",
+      "op": "bundle",
+      "inputId": "entry-1.js",
+      "exportName": "value1",
+      "source": "export const value1 = 1; export default value1 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-003",
+      "op": "bundle",
+      "inputId": "entry-2.js",
+      "exportName": "value2",
+      "source": "export const value2 = 2; export default value2 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-004",
+      "op": "bundle",
+      "inputId": "entry-3.js",
+      "exportName": "value3",
+      "source": "export const value3 = 3; export default value3 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-005",
+      "op": "bundle",
+      "inputId": "entry-4.js",
+      "exportName": "value4",
+      "source": "export const value4 = 4; export default value4 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-006",
+      "op": "bundle",
+      "inputId": "entry-5.js",
+      "exportName": "value5",
+      "source": "export const value5 = 5; export default value5 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-007",
+      "op": "bundle",
+      "inputId": "entry-6.js",
+      "exportName": "value6",
+      "source": "export const value6 = 6; export default value6 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-008",
+      "op": "bundle",
+      "inputId": "entry-7.js",
+      "exportName": "value7",
+      "source": "export const value7 = 7; export default value7 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-009",
+      "op": "bundle",
+      "inputId": "entry-8.js",
+      "exportName": "value8",
+      "source": "export const value8 = 8; export default value8 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-010",
+      "op": "bundle",
+      "inputId": "entry-9.js",
+      "exportName": "value9",
+      "source": "export const value9 = 9; export default value9 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-011",
+      "op": "bundle",
+      "inputId": "entry-10.js",
+      "exportName": "value10",
+      "source": "export const value10 = 10; export default value10 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-012",
+      "op": "bundle",
+      "inputId": "entry-11.js",
+      "exportName": "value11",
+      "source": "export const value11 = 11; export default value11 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-013",
+      "op": "bundle",
+      "inputId": "entry-12.js",
+      "exportName": "value12",
+      "source": "export const value12 = 12; export default value12 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-014",
+      "op": "bundle",
+      "inputId": "entry-13.js",
+      "exportName": "value13",
+      "source": "export const value13 = 13; export default value13 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-015",
+      "op": "bundle",
+      "inputId": "entry-14.js",
+      "exportName": "value14",
+      "source": "export const value14 = 14; export default value14 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-016",
+      "op": "bundle",
+      "inputId": "entry-15.js",
+      "exportName": "value15",
+      "source": "export const value15 = 15; export default value15 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-017",
+      "op": "bundle",
+      "inputId": "entry-16.js",
+      "exportName": "value16",
+      "source": "export const value16 = 16; export default value16 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-018",
+      "op": "bundle",
+      "inputId": "entry-17.js",
+      "exportName": "value17",
+      "source": "export const value17 = 17; export default value17 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-019",
+      "op": "bundle",
+      "inputId": "entry-18.js",
+      "exportName": "value18",
+      "source": "export const value18 = 18; export default value18 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-020",
+      "op": "bundle",
+      "inputId": "entry-19.js",
+      "exportName": "value19",
+      "source": "export const value19 = 19; export default value19 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-021",
+      "op": "bundle",
+      "inputId": "entry-20.js",
+      "exportName": "value20",
+      "source": "export const value20 = 20; export default value20 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-022",
+      "op": "bundle",
+      "inputId": "entry-21.js",
+      "exportName": "value21",
+      "source": "export const value21 = 21; export default value21 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-023",
+      "op": "bundle",
+      "inputId": "entry-22.js",
+      "exportName": "value22",
+      "source": "export const value22 = 22; export default value22 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-024",
+      "op": "bundle",
+      "inputId": "entry-23.js",
+      "exportName": "value23",
+      "source": "export const value23 = 23; export default value23 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-025",
+      "op": "bundle",
+      "inputId": "entry-24.js",
+      "exportName": "value24",
+      "source": "export const value24 = 24; export default value24 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-026",
+      "op": "bundle",
+      "inputId": "entry-25.js",
+      "exportName": "value25",
+      "source": "export const value25 = 25; export default value25 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-027",
+      "op": "bundle",
+      "inputId": "entry-26.js",
+      "exportName": "value26",
+      "source": "export const value26 = 26; export default value26 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-028",
+      "op": "bundle",
+      "inputId": "entry-27.js",
+      "exportName": "value27",
+      "source": "export const value27 = 27; export default value27 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-029",
+      "op": "bundle",
+      "inputId": "entry-28.js",
+      "exportName": "value28",
+      "source": "export const value28 = 28; export default value28 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-030",
+      "op": "bundle",
+      "inputId": "entry-29.js",
+      "exportName": "value29",
+      "source": "export const value29 = 29; export default value29 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-031",
+      "op": "bundle",
+      "inputId": "entry-30.js",
+      "exportName": "value30",
+      "source": "export const value30 = 30; export default value30 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-032",
+      "op": "bundle",
+      "inputId": "entry-31.js",
+      "exportName": "value31",
+      "source": "export const value31 = 31; export default value31 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-033",
+      "op": "bundle",
+      "inputId": "entry-32.js",
+      "exportName": "value32",
+      "source": "export const value32 = 32; export default value32 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-034",
+      "op": "bundle",
+      "inputId": "entry-33.js",
+      "exportName": "value33",
+      "source": "export const value33 = 33; export default value33 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-035",
+      "op": "bundle",
+      "inputId": "entry-34.js",
+      "exportName": "value34",
+      "source": "export const value34 = 34; export default value34 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-036",
+      "op": "bundle",
+      "inputId": "entry-35.js",
+      "exportName": "value35",
+      "source": "export const value35 = 35; export default value35 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-037",
+      "op": "bundle",
+      "inputId": "entry-36.js",
+      "exportName": "value36",
+      "source": "export const value36 = 36; export default value36 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-038",
+      "op": "bundle",
+      "inputId": "entry-37.js",
+      "exportName": "value37",
+      "source": "export const value37 = 37; export default value37 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-039",
+      "op": "bundle",
+      "inputId": "entry-38.js",
+      "exportName": "value38",
+      "source": "export const value38 = 38; export default value38 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-040",
+      "op": "bundle",
+      "inputId": "entry-39.js",
+      "exportName": "value39",
+      "source": "export const value39 = 39; export default value39 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-041",
+      "op": "bundle",
+      "inputId": "entry-40.js",
+      "exportName": "value40",
+      "source": "export const value40 = 40; export default value40 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-042",
+      "op": "bundle",
+      "inputId": "entry-41.js",
+      "exportName": "value41",
+      "source": "export const value41 = 41; export default value41 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-043",
+      "op": "bundle",
+      "inputId": "entry-42.js",
+      "exportName": "value42",
+      "source": "export const value42 = 42; export default value42 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-044",
+      "op": "bundle",
+      "inputId": "entry-43.js",
+      "exportName": "value43",
+      "source": "export const value43 = 43; export default value43 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-045",
+      "op": "bundle",
+      "inputId": "entry-44.js",
+      "exportName": "value44",
+      "source": "export const value44 = 44; export default value44 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-046",
+      "op": "bundle",
+      "inputId": "entry-45.js",
+      "exportName": "value45",
+      "source": "export const value45 = 45; export default value45 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-047",
+      "op": "bundle",
+      "inputId": "entry-46.js",
+      "exportName": "value46",
+      "source": "export const value46 = 46; export default value46 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-048",
+      "op": "bundle",
+      "inputId": "entry-47.js",
+      "exportName": "value47",
+      "source": "export const value47 = 47; export default value47 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-049",
+      "op": "bundle",
+      "inputId": "entry-48.js",
+      "exportName": "value48",
+      "source": "export const value48 = 48; export default value48 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-050",
+      "op": "bundle",
+      "inputId": "entry-49.js",
+      "exportName": "value49",
+      "source": "export const value49 = 49; export default value49 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-051",
+      "op": "bundle",
+      "inputId": "entry-50.js",
+      "exportName": "value50",
+      "source": "export const value50 = 50; export default value50 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-052",
+      "op": "bundle",
+      "inputId": "entry-51.js",
+      "exportName": "value51",
+      "source": "export const value51 = 51; export default value51 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-053",
+      "op": "bundle",
+      "inputId": "entry-52.js",
+      "exportName": "value52",
+      "source": "export const value52 = 52; export default value52 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-054",
+      "op": "bundle",
+      "inputId": "entry-53.js",
+      "exportName": "value53",
+      "source": "export const value53 = 53; export default value53 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-055",
+      "op": "bundle",
+      "inputId": "entry-54.js",
+      "exportName": "value54",
+      "source": "export const value54 = 54; export default value54 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-056",
+      "op": "bundle",
+      "inputId": "entry-55.js",
+      "exportName": "value55",
+      "source": "export const value55 = 55; export default value55 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-057",
+      "op": "bundle",
+      "inputId": "entry-56.js",
+      "exportName": "value56",
+      "source": "export const value56 = 56; export default value56 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-058",
+      "op": "bundle",
+      "inputId": "entry-57.js",
+      "exportName": "value57",
+      "source": "export const value57 = 57; export default value57 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-059",
+      "op": "bundle",
+      "inputId": "entry-58.js",
+      "exportName": "value58",
+      "source": "export const value58 = 58; export default value58 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-060",
+      "op": "bundle",
+      "inputId": "entry-59.js",
+      "exportName": "value59",
+      "source": "export const value59 = 59; export default value59 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-061",
+      "op": "bundle",
+      "inputId": "entry-60.js",
+      "exportName": "value60",
+      "source": "export const value60 = 60; export default value60 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-062",
+      "op": "bundle",
+      "inputId": "entry-61.js",
+      "exportName": "value61",
+      "source": "export const value61 = 61; export default value61 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-063",
+      "op": "bundle",
+      "inputId": "entry-62.js",
+      "exportName": "value62",
+      "source": "export const value62 = 62; export default value62 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-064",
+      "op": "bundle",
+      "inputId": "entry-63.js",
+      "exportName": "value63",
+      "source": "export const value63 = 63; export default value63 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-065",
+      "op": "bundle",
+      "inputId": "entry-64.js",
+      "exportName": "value64",
+      "source": "export const value64 = 64; export default value64 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-066",
+      "op": "bundle",
+      "inputId": "entry-65.js",
+      "exportName": "value65",
+      "source": "export const value65 = 65; export default value65 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-067",
+      "op": "bundle",
+      "inputId": "entry-66.js",
+      "exportName": "value66",
+      "source": "export const value66 = 66; export default value66 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-068",
+      "op": "bundle",
+      "inputId": "entry-67.js",
+      "exportName": "value67",
+      "source": "export const value67 = 67; export default value67 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-069",
+      "op": "bundle",
+      "inputId": "entry-68.js",
+      "exportName": "value68",
+      "source": "export const value68 = 68; export default value68 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-070",
+      "op": "bundle",
+      "inputId": "entry-69.js",
+      "exportName": "value69",
+      "source": "export const value69 = 69; export default value69 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-071",
+      "op": "bundle",
+      "inputId": "entry-70.js",
+      "exportName": "value70",
+      "source": "export const value70 = 70; export default value70 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-072",
+      "op": "bundle",
+      "inputId": "entry-71.js",
+      "exportName": "value71",
+      "source": "export const value71 = 71; export default value71 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-073",
+      "op": "bundle",
+      "inputId": "entry-72.js",
+      "exportName": "value72",
+      "source": "export const value72 = 72; export default value72 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-074",
+      "op": "bundle",
+      "inputId": "entry-73.js",
+      "exportName": "value73",
+      "source": "export const value73 = 73; export default value73 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-075",
+      "op": "bundle",
+      "inputId": "entry-74.js",
+      "exportName": "value74",
+      "source": "export const value74 = 74; export default value74 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-076",
+      "op": "bundle",
+      "inputId": "entry-75.js",
+      "exportName": "value75",
+      "source": "export const value75 = 75; export default value75 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-077",
+      "op": "bundle",
+      "inputId": "entry-76.js",
+      "exportName": "value76",
+      "source": "export const value76 = 76; export default value76 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-078",
+      "op": "bundle",
+      "inputId": "entry-77.js",
+      "exportName": "value77",
+      "source": "export const value77 = 77; export default value77 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-079",
+      "op": "bundle",
+      "inputId": "entry-78.js",
+      "exportName": "value78",
+      "source": "export const value78 = 78; export default value78 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-080",
+      "op": "bundle",
+      "inputId": "entry-79.js",
+      "exportName": "value79",
+      "source": "export const value79 = 79; export default value79 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-081",
+      "op": "bundle",
+      "inputId": "entry-80.js",
+      "exportName": "value80",
+      "source": "export const value80 = 80; export default value80 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-082",
+      "op": "bundle",
+      "inputId": "entry-81.js",
+      "exportName": "value81",
+      "source": "export const value81 = 81; export default value81 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-083",
+      "op": "bundle",
+      "inputId": "entry-82.js",
+      "exportName": "value82",
+      "source": "export const value82 = 82; export default value82 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-084",
+      "op": "bundle",
+      "inputId": "entry-83.js",
+      "exportName": "value83",
+      "source": "export const value83 = 83; export default value83 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-085",
+      "op": "bundle",
+      "inputId": "entry-84.js",
+      "exportName": "value84",
+      "source": "export const value84 = 84; export default value84 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-086",
+      "op": "bundle",
+      "inputId": "entry-85.js",
+      "exportName": "value85",
+      "source": "export const value85 = 85; export default value85 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-087",
+      "op": "bundle",
+      "inputId": "entry-86.js",
+      "exportName": "value86",
+      "source": "export const value86 = 86; export default value86 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-088",
+      "op": "bundle",
+      "inputId": "entry-87.js",
+      "exportName": "value87",
+      "source": "export const value87 = 87; export default value87 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-089",
+      "op": "bundle",
+      "inputId": "entry-88.js",
+      "exportName": "value88",
+      "source": "export const value88 = 88; export default value88 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-090",
+      "op": "bundle",
+      "inputId": "entry-89.js",
+      "exportName": "value89",
+      "source": "export const value89 = 89; export default value89 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-091",
+      "op": "bundle",
+      "inputId": "entry-90.js",
+      "exportName": "value90",
+      "source": "export const value90 = 90; export default value90 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-092",
+      "op": "bundle",
+      "inputId": "entry-91.js",
+      "exportName": "value91",
+      "source": "export const value91 = 91; export default value91 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-093",
+      "op": "bundle",
+      "inputId": "entry-92.js",
+      "exportName": "value92",
+      "source": "export const value92 = 92; export default value92 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-094",
+      "op": "bundle",
+      "inputId": "entry-93.js",
+      "exportName": "value93",
+      "source": "export const value93 = 93; export default value93 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-095",
+      "op": "bundle",
+      "inputId": "entry-94.js",
+      "exportName": "value94",
+      "source": "export const value94 = 94; export default value94 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-096",
+      "op": "bundle",
+      "inputId": "entry-95.js",
+      "exportName": "value95",
+      "source": "export const value95 = 95; export default value95 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-097",
+      "op": "bundle",
+      "inputId": "entry-96.js",
+      "exportName": "value96",
+      "source": "export const value96 = 96; export default value96 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-098",
+      "op": "bundle",
+      "inputId": "entry-97.js",
+      "exportName": "value97",
+      "source": "export const value97 = 97; export default value97 + 1;",
+      "format": "cjs"
+    },
+    {
+      "id": "rollup-build-099",
+      "op": "bundle",
+      "inputId": "entry-98.js",
+      "exportName": "value98",
+      "source": "export const value98 = 98; export default value98 + 1;",
+      "format": "es"
+    },
+    {
+      "id": "rollup-build-100",
+      "op": "bundle",
+      "inputId": "entry-99.js",
+      "exportName": "value99",
+      "source": "export const value99 = 99; export default value99 + 1;",
+      "format": "cjs"
+    }
+  ]
+}

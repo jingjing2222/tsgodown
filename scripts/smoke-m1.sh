@@ -4,13 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE_DIR="${ROOT_DIR}/examples/generic-simple-cli"
 DIST_GO_DIR="${EXAMPLE_DIR}/dist-go"
-PORT="${SMOKE_PORT:-18080}"
-HEALTH_URL="http://127.0.0.1:${PORT}/health"
-EXPECTED_HEALTH_BODY="${SMOKE_EXPECTED_HEALTH_BODY:-\"mode\":\"unknown\"}"
-SERVER_LOG="${ROOT_DIR}/.tmp-smoke-m1-server.log"
-ENGINE_LAUNCHER="${ROOT_DIR}/.tmp-smoke-m1-engine-launcher.sh"
-
-SERVER_PID=""
+RUN_OUTPUT="${ROOT_DIR}/.tmp-smoke-m1-run.out"
+RUN_ERROR="${ROOT_DIR}/.tmp-smoke-m1-run.err"
 
 red() { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -18,12 +13,7 @@ yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 log() { printf "[smoke-m1] %s\n" "$*"; }
 
 teardown() {
-  if [[ -n "${SERVER_PID}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
-    log "stopping server (pid=${SERVER_PID})"
-    kill "${SERVER_PID}" 2>/dev/null || true
-    wait "${SERVER_PID}" 2>/dev/null || true
-  fi
-  rm -f "${ENGINE_LAUNCHER}" "${ROOT_DIR}/.tmp-smoke-m1-rust-launcher.mjs" /tmp/smoke-m1-health.body
+  rm -f "${RUN_OUTPUT}" "${RUN_ERROR}"
 }
 
 failure_diagnostics() {
@@ -32,13 +22,16 @@ failure_diagnostics() {
   printf "  - ROOT_DIR: %s\n" "${ROOT_DIR}"
   printf "  - EXAMPLE_DIR: %s\n" "${EXAMPLE_DIR}"
   printf "  - DIST_GO_DIR: %s\n" "${DIST_GO_DIR}"
-  printf "  - PORT: %s\n" "${PORT}"
-  printf "  - HEALTH_URL: %s\n" "${HEALTH_URL}"
   printf "  - TSGODOWN_RUST_ENGINE_BIN: %s\n" "${TSGODOWN_RUST_ENGINE_BIN:-<unset>}"
 
-  if [[ -f "${SERVER_LOG}" ]]; then
-    yellow "[smoke-m1] server log tail (${SERVER_LOG}):"
-    tail -n 80 "${SERVER_LOG}" || true
+  if [[ -f "${RUN_OUTPUT}" ]]; then
+    yellow "[smoke-m1] binary stdout (${RUN_OUTPUT}):"
+    cat "${RUN_OUTPUT}" || true
+  fi
+
+  if [[ -f "${RUN_ERROR}" ]]; then
+    yellow "[smoke-m1] binary stderr (${RUN_ERROR}):"
+    cat "${RUN_ERROR}" || true
   fi
 
   if [[ -f "${DIST_GO_DIR}/main.go" ]]; then
@@ -70,7 +63,6 @@ require_cmd node
 require_cmd pnpm
 require_cmd cargo
 require_cmd go
-require_cmd curl
 
 log "preflight: versions"
 log "node=$(node -v)"
@@ -92,76 +84,9 @@ log "build: Rust engine-core"
 
 # Required env for current adapter contract:
 # TSGODOWN_RUST_ENGINE_BIN must accept JSON on stdin and print JSON on stdout.
-# If unset, generate a deterministic local smoke launcher.
 if [[ -z "${TSGODOWN_RUST_ENGINE_BIN:-}" ]]; then
-  cat >"${ROOT_DIR}/.tmp-smoke-m1-rust-launcher.mjs" <<'EOF'
-import fs from "node:fs";
-import path from "node:path";
-
-const GO_MAIN = [
-  "package main",
-  "",
-  "import (",
-  "\t\"encoding/json\"",
-  "\t\"fmt\"",
-  "\t\"net/http\"",
-  "\t\"os\"",
-  ")",
-  "",
-  "func main() {",
-  "\tmux := http.NewServeMux()",
-  "\tmux.HandleFunc(\"GET /health\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.Header().Set(\"Content-Type\", \"application/json; charset=utf-8\")",
-  "\t\tw.Header().Set(\"X-TSGoDown-Handler\", \"unknown\")",
-  "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"handler\":\"health\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/health\"})",
-  "\t})",
-  "\tmux.HandleFunc(\"GET /users\", func(w http.ResponseWriter, _ *http.Request) {",
-  "\t\tw.Header().Set(\"Content-Type\", \"application/json; charset=utf-8\")",
-  "\t\tw.Header().Set(\"X-TSGoDown-Handler\", \"unknown\")",
-  "\t\tw.WriteHeader(http.StatusNotImplemented)",
-  "\t\t_ = json.NewEncoder(w).Encode(map[string]any{\"handler\":\"users\",\"method\":\"GET\",\"mode\":\"unknown\",\"path\":\"/users\"})",
-  "\t})",
-  "\taddr := \":18080\"",
-  "\tif port := os.Getenv(\"PORT\"); port != \"\" {",
-  "\t\taddr = \":\" + port",
-  "\t}",
-  "\tfmt.Println(\"tsgodown-smoke-ready\")",
-  "\t_ = http.ListenAndServe(addr, mux)",
-  "}",
-  "",
-].join("\n");
-
-let input = "";
-for await (const chunk of process.stdin) input += chunk.toString();
-const req = JSON.parse(input || "{}");
-if (!req || req.action !== "build" || typeof req.cwd !== "string") {
-  process.stderr.write("invalid request\n");
-  process.exit(1);
-}
-const outDir = path.join(req.cwd, "dist-go");
-fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, "main.go"), GO_MAIN, "utf8");
-process.stdout.write(JSON.stringify({
-  ok: true,
-  diagnostics: ["engine=smoke-stub"],
-  manifest: {
-    buildId: "1122334455667788",
-    entries: ["src/index.ts"],
-    bundles: [{ file: "dist/index.mjs", map: "dist/index.mjs.map", format: "esm", exports: [] }],
-    types: ["dist/index.d.ts"],
-    tsconfigPath: "tsconfig.json"
-  }
-}));
-EOF
-  cat >"${ENGINE_LAUNCHER}" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-exec node "${ROOT_DIR}/.tmp-smoke-m1-rust-launcher.mjs"
-EOF
-  chmod +x "${ENGINE_LAUNCHER}"
-  export TSGODOWN_RUST_ENGINE_BIN="${ENGINE_LAUNCHER}"
-  yellow "[smoke-m1] TSGODOWN_RUST_ENGINE_BIN was unset; generated smoke launcher: ${TSGODOWN_RUST_ENGINE_BIN}"
+  export TSGODOWN_RUST_ENGINE_BIN="${ROOT_DIR}/scripts/rust-engine-launcher.sh"
+  yellow "[smoke-m1] TSGODOWN_RUST_ENGINE_BIN was unset; using local launcher: ${TSGODOWN_RUST_ENGINE_BIN}"
 fi
 
 if [[ ! -x "${TSGODOWN_RUST_ENGINE_BIN}" ]]; then
@@ -181,12 +106,9 @@ if [[ ! -f "${DIST_GO_DIR}/main.go" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${DIST_GO_DIR}/go.mod" ]]; then
-  log "go.mod missing in dist-go; initializing temporary module"
-  (
-    cd "${DIST_GO_DIR}"
-    go mod init example.com/tsgodown-local >/dev/null 2>&1 || true
-  )
+if [[ ! -f "${DIST_GO_DIR}/tsgodownrt/runtime.go" ]]; then
+  red "[smoke-m1] build did not produce ${DIST_GO_DIR}/tsgodownrt/runtime.go"
+  exit 1
 fi
 
 log "build: go binary"
@@ -195,51 +117,28 @@ log "build: go binary"
   go build -o tsgodown-local .
 )
 
-log "run: starting server on PORT=${PORT}"
-: >"${SERVER_LOG}"
+log "run: generated binary fails closed deterministically"
+set +e
 (
   cd "${DIST_GO_DIR}"
-  PORT="${PORT}" ./tsgodown-local >"${SERVER_LOG}" 2>&1
-) &
-SERVER_PID="$!"
+  ./tsgodown-local >"${RUN_OUTPUT}" 2>"${RUN_ERROR}"
+)
+run_status="$?"
+set -e
 
-for _ in {1..50}; do
-  if curl -sS -o /dev/null "${HEALTH_URL}"; then
-    break
-  fi
-  sleep 0.2
-done
+if [[ "${run_status}" -ne 1 ]]; then
+  red "[smoke-m1] expected generated binary exit 1 while fail-closed; got ${run_status}"
+  exit 1
+fi
 
-assert_route() {
-  local method="$1"
-  local path="$2"
-  local expected_status="$3"
-  local expected_body_fragment="$4"
-  local tmp_body
-  tmp_body="$(mktemp /tmp/smoke-m1-route.XXXXXX)"
+if ! grep -q '"unsupported":true' "${RUN_OUTPUT}"; then
+  red "[smoke-m1] fail-closed output missing unsupported=true"
+  exit 1
+fi
 
-  local http_code
-  http_code="$(curl -sS -X "${method}" -o "${tmp_body}" -w "%{http_code}" "http://127.0.0.1:${PORT}${path}")"
-  local body
-  body="$(cat "${tmp_body}")"
-  local body_trimmed
-  body_trimmed="$(printf "%s" "${body}" | tr -d '\r\n')"
-  rm -f "${tmp_body}"
-
-  if [[ "${http_code}" != "${expected_status}" ]]; then
-    red "[smoke-m1] ${method} ${path} status mismatch: expected=${expected_status} got=${http_code}"
-    exit 1
-  fi
-
-  if [[ -n "${expected_body_fragment}" ]] && [[ "${body_trimmed}" != *"${expected_body_fragment}"* ]]; then
-    red "[smoke-m1] ${method} ${path} body mismatch: expected fragment='${expected_body_fragment}' got='${body_trimmed}'"
-    exit 1
-  fi
-
-  log "asserted ${method} ${path} -> ${http_code} '${body_trimmed}'"
-}
-
-assert_route "GET" "/health" "501" "${EXPECTED_HEALTH_BODY}"
-assert_route "GET" "/missing" "404" "404 page not found"
+if ! grep -q 'EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED' "${RUN_OUTPUT}"; then
+  red "[smoke-m1] fail-closed output missing executable JS codegen diagnostic"
+  exit 1
+fi
 
 green "[smoke-m1] PASS"

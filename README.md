@@ -1,25 +1,91 @@
 # tsgodown
 
-## Primary goal (direction lock)
+## What it does
 
-`tsgodown` is a **compiler-mode pipeline** for TypeScript services.
+`tsgodown` aims to compile Node.js projects that `tsdown` can bundle into
+standalone Go projects.
 
-The primary goal is fixed as:
+You give it TypeScript or JavaScript Node.js source. It uses the same kind of
+bundle artifacts you already get from `tsdown`: bundled JavaScript, sourcemaps,
+declaration files, and package metadata. The output should be a Go project that
+passes `go build` and runs without Node.js.
 
-1. **tsdown bundling as compiler input**
-   - input artifact is the tsdown bundle plus `d.ts` and sourcemap metadata
-2. **AST + sourcemap + `d.ts`-driven IR/Go generation**
-   - analysis and lowering are driven by syntax + symbol/type surface + source mapping provenance
-3. **`go build` output**
-   - generated output must compile as a normal Go project/binary using the Go toolchain
-4. **100% behavioral coverage (declared semantic envelope)**
-   - defined as: full behavioral match within the declared semantic envelope, proven by semantics-parity testing (TS runtime vs Go runtime), not by claiming universal JS/TS coverage
+The target user outcome:
 
-This repository remains intentionally strict: when code is outside the declared semantic envelope or cannot be extracted deterministically, the compiler must emit explicit diagnostics and fail closed instead of silently guessing.
+- build a TypeScript/JavaScript package with `tsgodown` instead of `tsdown`
+- get a standalone Go project or binary
+- run that Go binary and observe the same behavior as the original Node.js
+  program
+- use real Node workloads, not framework-specific demos
 
-Core execution path guardrail: framework-name branching/adapters are disallowed in `packages/core/src`, `packages/pipeline/src`, and `packages/cli/src/commands` (check with `pnpm run guard:core-path`).
+Target workloads include CLIs, libraries, HTTP frameworks, build tools,
+compilers, ORMs, GraphQL servers, and full-stack frameworks. Express, NestJS,
+Vite, Rollup, Webpack, Next, Nuxt, Astro, ESLint, Prettier, Babel, TypeScript,
+GraphQL, Apollo, Socket.IO, and ORM packages are validation targets, not
+special cases.
 
-Canonical compiler input contract (framework-agnostic): `tsdown` bundled JS + sourcemap + `d.ts` are the source of truth for analysis and Go emission. Framework fixtures are validation samples, not compiler-mode scope boundaries.
+## Compatibility Target
+
+The runtime baseline is the latest active Node.js LTS line. This repository pins
+that local development environment with `mise`:
+
+```bash
+mise install
+mise exec -- node --version
+mise exec -- pnpm --version
+```
+
+Current pin:
+
+- Node.js `24.15.0`
+- pnpm `10.22.0`
+
+Observable parity means the generated Go output matches the original Node.js
+program for:
+
+- stdout, stderr, and exit code
+- returned JSON/library results
+- environment variables, argv, and cwd
+- filesystem side effects
+- async completion order
+- observed error shape
+
+Generated Go must not embed Node.js, shell out to Node.js, use V8, rely on
+Node-API/N-API, or load native addon fallback paths.
+
+When a source program uses unsupported behavior, `tsgodown` must fail closed
+with deterministic diagnostics instead of generating wrong Go.
+
+`go build` passing is not enough. Generated Go must match Node.js behavior.
+Compiler/runtime/codegen changes must not hardcode corpus packages, fixture
+names, known probe inputs, or precomputed answers just to make compilation pass.
+Corpus tests are evidence for generic Node.js semantics, not templates for
+special-case codegen.
+
+## Status
+
+Current green phase:
+
+- 10 real Node utility/library corpus entries are vendored.
+- Each has 100 Vitest vectors.
+- Node execution, generated Go build/run, and Node/Go vector parity are green
+  for that phase.
+
+Not done yet:
+
+- full latest-LTS Node.js API coverage ledger
+- large package/application corpus
+- complete backend-neutral plugin boundary
+- runtime contract cleanup
+- removal of remaining route-era implementation assumptions
+
+Next corpus tiers:
+
+- `test-corpus/node-real/`: 10 utility/library corpus entries, 100 vectors each.
+- `test-corpus/node-large/`: planned 20 framework/tooling/application corpus
+  entries, 100 vectors each.
+- Every corpus must prove the same thing: original Node.js LTS behavior equals
+  generated standalone Go behavior, with no corpus-specific compiler hacks.
 
 ## Milestone lock (execution sequence)
 
@@ -35,10 +101,11 @@ Documentation and gate execution follow this fixed sequence:
 
 The sequence is locked for planning/reporting consistency and should be used in issue/PR text, roadmap updates, and release evidence.
 
-## Current route-extraction grammar (reference boundary)
+## Legacy route-extraction grammar (current implementation snapshot)
 
-The current extractor supports deterministic route-extraction patterns that are stable for compiler-mode builds.
-These examples describe the present reference boundary, not permanent framework-coupled scope.
+The current extractor still supports deterministic route-extraction patterns
+from the earlier service-focused milestone. These examples describe current
+implementation residue, not the product boundary.
 
 - `fastify.<method>("/literal", handlerRef)` where method is `get|post|put|delete|patch`
 - `fastify.route({ ... })` with inline object literal:

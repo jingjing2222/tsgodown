@@ -1,0 +1,704 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "dotenv",
+  "cases": [
+    {
+      "id": "dotenv-001",
+      "op": "parse",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\""
+    },
+    {
+      "id": "dotenv-002",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-003",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-004",
+      "op": "parse",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced"
+    },
+    {
+      "id": "dotenv-005",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-006",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-007",
+      "op": "parse",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\""
+    },
+    {
+      "id": "dotenv-008",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-009",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-010",
+      "op": "parse",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY="
+    },
+    {
+      "id": "dotenv-011",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-012",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-013",
+      "op": "parse",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported"
+    },
+    {
+      "id": "dotenv-014",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-015",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-016",
+      "op": "parse",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment"
+    },
+    {
+      "id": "dotenv-017",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-018",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-019",
+      "op": "parse",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42"
+    },
+    {
+      "id": "dotenv-020",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-021",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-022",
+      "op": "parse",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value"
+    },
+    {
+      "id": "dotenv-023",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-024",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-025",
+      "op": "parse",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\""
+    },
+    {
+      "id": "dotenv-026",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-027",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-028",
+      "op": "parse",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced"
+    },
+    {
+      "id": "dotenv-029",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-030",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-031",
+      "op": "parse",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\""
+    },
+    {
+      "id": "dotenv-032",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-033",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-034",
+      "op": "parse",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY="
+    },
+    {
+      "id": "dotenv-035",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-036",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-037",
+      "op": "parse",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported"
+    },
+    {
+      "id": "dotenv-038",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-039",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-040",
+      "op": "parse",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment"
+    },
+    {
+      "id": "dotenv-041",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-042",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-043",
+      "op": "parse",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42"
+    },
+    {
+      "id": "dotenv-044",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-045",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-046",
+      "op": "parse",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value"
+    },
+    {
+      "id": "dotenv-047",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-048",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-049",
+      "op": "parse",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\""
+    },
+    {
+      "id": "dotenv-050",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-051",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-052",
+      "op": "parse",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced"
+    },
+    {
+      "id": "dotenv-053",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-054",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-055",
+      "op": "parse",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\""
+    },
+    {
+      "id": "dotenv-056",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-057",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-058",
+      "op": "parse",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY="
+    },
+    {
+      "id": "dotenv-059",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-060",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-061",
+      "op": "parse",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported"
+    },
+    {
+      "id": "dotenv-062",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-063",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-064",
+      "op": "parse",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment"
+    },
+    {
+      "id": "dotenv-065",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-066",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-067",
+      "op": "parse",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42"
+    },
+    {
+      "id": "dotenv-068",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-069",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-070",
+      "op": "parse",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value"
+    },
+    {
+      "id": "dotenv-071",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-072",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-073",
+      "op": "parse",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\""
+    },
+    {
+      "id": "dotenv-074",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-075",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-076",
+      "op": "parse",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced"
+    },
+    {
+      "id": "dotenv-077",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-078",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-079",
+      "op": "parse",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\""
+    },
+    {
+      "id": "dotenv-080",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-081",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-082",
+      "op": "parse",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY="
+    },
+    {
+      "id": "dotenv-083",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-084",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-085",
+      "op": "parse",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported"
+    },
+    {
+      "id": "dotenv-086",
+      "op": "config",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-087",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-088",
+      "op": "parse",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment"
+    },
+    {
+      "id": "dotenv-089",
+      "op": "config",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-090",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-091",
+      "op": "parse",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42"
+    },
+    {
+      "id": "dotenv-092",
+      "op": "config",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-093",
+      "op": "config",
+      "envText": "EMPTY=\nNUM=42\nSPACED = spaced\nEXPORT_ME=exported",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": true
+    },
+    {
+      "id": "dotenv-094",
+      "op": "parse",
+      "envText": "NUM=42\nSPACED = spaced\nEXPORT_ME=exported\nPLAIN=value"
+    },
+    {
+      "id": "dotenv-095",
+      "op": "config",
+      "envText": "SPACED = spaced\nEXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-096",
+      "op": "config",
+      "envText": "EXPORT_ME=exported\nPLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-097",
+      "op": "parse",
+      "envText": "PLAIN=value\nQUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\""
+    },
+    {
+      "id": "dotenv-098",
+      "op": "config",
+      "envText": "QUOTED=\"hello world\"\nCOMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=",
+      "initialEnv": {},
+      "override": false
+    },
+    {
+      "id": "dotenv-099",
+      "op": "config",
+      "envText": "COMMENTED=ok # trailing comment\nESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42",
+      "initialEnv": {
+        "PLAIN": "existing"
+      },
+      "override": false
+    },
+    {
+      "id": "dotenv-100",
+      "op": "parse",
+      "envText": "ESCAPED=\"line\\nnext\"\nEMPTY=\nNUM=42\nSPACED = spaced"
+    }
+  ]
+}

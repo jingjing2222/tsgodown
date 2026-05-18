@@ -17,27 +17,55 @@ test("normalizeUserConfigExport preserves arrays", async () => {
   assert.deepEqual(output, [{ outDir: "dist-a" }, { outDir: "dist-b" }]);
 });
 
-test("normalizeUserConfigExport resolves function with NODE_ENV fallback", async () => {
-  const previous = process.env.NODE_ENV;
-  Reflect.deleteProperty(process.env, "NODE_ENV");
+test("normalizeUserConfigExport resolves tsdown-style config function args", async () => {
+  const previous = process.env.CI;
+  process.env.CI = "true";
 
   try {
-    const output = await normalizeUserConfigExport((env) => ({
-      define: { MODE: JSON.stringify(env.mode) },
-    }));
+    const output = await normalizeUserConfigExport((inlineConfig, context) => [
+      {
+        define: {
+          CI: JSON.stringify(context.ci),
+          INLINE_KEYS: JSON.stringify(Object.keys(inlineConfig)),
+        },
+        target: "node20",
+      },
+    ]);
 
     assert.deepEqual(output, [
       {
         define: {
-          MODE: '"development"',
+          CI: "true",
+          INLINE_KEYS: "[]",
         },
+        target: "node20",
       },
     ]);
   } finally {
     if (previous === undefined) {
-      Reflect.deleteProperty(process.env, "NODE_ENV");
+      Reflect.deleteProperty(process.env, "CI");
     } else {
-      process.env.NODE_ENV = previous;
+      process.env.CI = previous;
     }
   }
+});
+
+test("normalizeUserConfigExport awaits async tsdown-compatible compiler config", async () => {
+  const output = await normalizeUserConfigExport(
+    Promise.resolve({
+      dts: true,
+      format: "esm",
+      sourcemap: true,
+      target: "node20",
+    }),
+  );
+
+  assert.deepEqual(output, [
+    {
+      dts: true,
+      format: "esm",
+      sourcemap: true,
+      target: "node20",
+    },
+  ]);
 });

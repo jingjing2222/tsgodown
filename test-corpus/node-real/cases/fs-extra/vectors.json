@@ -1,0 +1,2406 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "fs-extra",
+  "cases": [
+    {
+      "id": "fs-extra-001",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-0.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 0,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 0
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-002",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-1.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 1,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 2
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-003",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-2.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 2,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 4
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-004",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-3.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 3,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 6
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-005",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-4.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 4,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 8
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-006",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-5.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 5,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 10
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-007",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-6.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 6,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 12
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-008",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-7.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 7,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 14
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-009",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-8.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 8,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 16
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-010",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-9.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 9,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 18
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-011",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-10.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 10,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 20
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-012",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-11.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 11,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 22
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-013",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-12.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 12,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 24
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-014",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-13.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 13,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 26
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-015",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-14.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 14,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 28
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-016",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-15.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 15,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 30
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-017",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-16.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 16,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 32
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-018",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-17.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 17,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 34
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-019",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-18.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 18,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 36
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-020",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-19.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 19,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 38
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-021",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-20.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 20,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 40
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-022",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-21.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 21,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 42
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-023",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-22.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 22,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 44
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-024",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-23.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 23,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 46
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-025",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-24.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 24,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 48
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-026",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-25.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 25,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 50
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-027",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-26.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 26,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 52
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-028",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-27.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 27,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 54
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-029",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-28.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 28,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 56
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-030",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-29.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 29,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 58
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-031",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-30.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 30,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 60
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-032",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-31.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 31,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 62
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-033",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-32.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 32,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 64
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-034",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-33.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 33,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 66
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-035",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-34.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 34,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 68
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-036",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-35.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 35,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 70
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-037",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-36.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 36,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 72
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-038",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-37.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 37,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 74
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-039",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-38.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 38,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 76
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-040",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-39.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 39,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 78
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-041",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-40.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 40,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 80
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-042",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-41.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 41,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 82
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-043",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-42.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 42,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 84
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-044",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-43.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 43,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 86
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-045",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-44.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 44,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 88
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-046",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-45.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 45,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 90
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-047",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-46.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 46,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 92
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-048",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-47.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 47,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 94
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-049",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-48.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 48,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 96
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-050",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-49.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 49,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 98
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-051",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-50.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 50,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 100
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-052",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-51.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 51,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 102
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-053",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-52.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 52,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 104
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-054",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-53.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 53,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 106
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-055",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-54.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 54,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 108
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-056",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-55.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 55,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 110
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-057",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-56.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 56,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 112
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-058",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-57.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 57,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 114
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-059",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-58.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 58,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 116
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-060",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-59.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 59,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 118
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-061",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-60.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 60,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 120
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-062",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-61.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 61,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 122
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-063",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-62.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 62,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 124
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-064",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-63.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 63,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 126
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-065",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-64.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 64,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 128
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-066",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-65.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 65,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 130
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-067",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-66.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 66,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 132
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-068",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-67.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 67,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 134
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-069",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-68.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 68,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 136
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-070",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-69.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 69,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 138
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-071",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-70.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 70,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 140
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-072",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-71.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 71,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 142
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-073",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-72.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 72,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 144
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-074",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-73.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 73,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 146
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-075",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-74.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 74,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 148
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-076",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-75.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 75,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 150
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-077",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-76.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 76,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 152
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-078",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-77.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 77,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 154
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-079",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-78.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 78,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 156
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-080",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-79.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 79,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 158
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-081",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-80.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 80,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 160
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-082",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-81.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 81,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 162
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-083",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-82.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 82,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 164
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-084",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-83.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 83,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 166
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-085",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-84.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 84,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 168
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-086",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-85.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 85,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 170
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-087",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-86.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 86,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 172
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-088",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-87.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 87,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 174
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-089",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-88.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 88,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 176
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-090",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-89.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 89,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 178
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-091",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-90.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 90,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 180
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-092",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-91.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 91,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 182
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-093",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-92.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 92,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 184
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-094",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-93.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 93,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-2.json",
+          "json": {
+            "ok": true,
+            "value": 186
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-095",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-94.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 94,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-3.json",
+          "json": {
+            "ok": true,
+            "value": 188
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-096",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-95.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 95,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-4.json",
+          "json": {
+            "ok": true,
+            "value": 190
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-097",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-96.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 96,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-5.json",
+          "json": {
+            "ok": true,
+            "value": 192
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-098",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-97.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 97,
+            "tags": ["t1", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-6.json",
+          "json": {
+            "ok": true,
+            "value": 194
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    },
+    {
+      "id": "fs-extra-099",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-98.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 98,
+            "tags": ["t2", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-0.json",
+          "json": {
+            "ok": true,
+            "value": 196
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "source"
+    },
+    {
+      "id": "fs-extra-100",
+      "op": "recipe",
+      "files": [
+        {
+          "path": "source/data-99.json",
+          "json": {
+            "name": "tsgodown",
+            "index": 99,
+            "tags": ["t0", "go"]
+          }
+        },
+        {
+          "path": "source/nested/info-1.json",
+          "json": {
+            "ok": true,
+            "value": 198
+          }
+        }
+      ],
+      "copyFrom": "source",
+      "copyTo": "target",
+      "remove": "target"
+    }
+  ]
+}

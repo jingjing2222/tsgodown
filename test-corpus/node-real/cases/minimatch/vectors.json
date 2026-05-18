@@ -1,0 +1,866 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "minimatch",
+  "cases": [
+    {
+      "id": "minimatch-001",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "*.js",
+      "options": {}
+    },
+    {
+      "id": "minimatch-002",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-003",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-004",
+      "op": "match",
+      "path": ".env",
+      "pattern": "*",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-005",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-006",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-007",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-008",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-009",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "*.js",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-010",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-011",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "*",
+      "options": {}
+    },
+    {
+      "id": "minimatch-012",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-013",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-014",
+      "op": "match",
+      "path": ".env",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-015",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-016",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "*.js",
+      "options": {}
+    },
+    {
+      "id": "minimatch-017",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-018",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-019",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "*",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-020",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-021",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-022",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-023",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "*.js",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-024",
+      "op": "match",
+      "path": ".env",
+      "pattern": "*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-025",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-026",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "*",
+      "options": {}
+    },
+    {
+      "id": "minimatch-027",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-028",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-029",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-030",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "**/*.md",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-031",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-032",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-033",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "*",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-034",
+      "op": "match",
+      "path": ".env",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-035",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-036",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-037",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-038",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "*.js",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-039",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-040",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-041",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-042",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-043",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-044",
+      "op": "match",
+      "path": ".env",
+      "pattern": "**/*.md",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-045",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "*.js",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-046",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-047",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-048",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "*",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-049",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-050",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-051",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "**/*.md",
+      "options": {}
+    },
+    {
+      "id": "minimatch-052",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "*.js",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-053",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-054",
+      "op": "match",
+      "path": ".env",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-055",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "*",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-056",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-057",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-058",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-059",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-060",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "*.js",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-061",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "src/**/*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-062",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "*",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-063",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-064",
+      "op": "match",
+      "path": ".env",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-065",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-066",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "**/*.md",
+      "options": {}
+    },
+    {
+      "id": "minimatch-067",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "*.js",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-068",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-069",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-070",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "*",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-071",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-072",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-073",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-074",
+      "op": "match",
+      "path": ".env",
+      "pattern": "*.js",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-075",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-076",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "src/**/*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-077",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "*",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-078",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-079",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-080",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-081",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "*.js",
+      "options": {}
+    },
+    {
+      "id": "minimatch-082",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-083",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-084",
+      "op": "match",
+      "path": ".env",
+      "pattern": "*",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-085",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-086",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {}
+    },
+    {
+      "id": "minimatch-087",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-088",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-089",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "*.js",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-090",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "*.ts",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-091",
+      "op": "match",
+      "path": "index.js",
+      "pattern": "*",
+      "options": {}
+    },
+    {
+      "id": "minimatch-092",
+      "op": "match",
+      "path": "index.ts",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-093",
+      "op": "match",
+      "path": "src/a/b/index.ts",
+      "pattern": "!(dist)/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-094",
+      "op": "match",
+      "path": ".env",
+      "pattern": "src/**/[ai]*.ts",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-095",
+      "op": "match",
+      "path": "src/app.test.ts",
+      "pattern": "**/*.md",
+      "options": {
+        "matchBase": true
+      }
+    },
+    {
+      "id": "minimatch-096",
+      "op": "match",
+      "path": "src/app.spec.ts",
+      "pattern": "*.js",
+      "options": {}
+    },
+    {
+      "id": "minimatch-097",
+      "op": "match",
+      "path": "dist/app.ts",
+      "pattern": "*.ts",
+      "options": {
+        "dot": true
+      }
+    },
+    {
+      "id": "minimatch-098",
+      "op": "match",
+      "path": "src/app.ts",
+      "pattern": "src/**/*.ts",
+      "options": {
+        "nocase": true
+      }
+    },
+    {
+      "id": "minimatch-099",
+      "op": "match",
+      "path": "src\\app.ts",
+      "pattern": "*",
+      "options": {
+        "windowsPathsNoEscape": true
+      }
+    },
+    {
+      "id": "minimatch-100",
+      "op": "match",
+      "path": "README.md",
+      "pattern": "**/*.{test,spec}.ts",
+      "options": {
+        "matchBase": true
+      }
+    }
+  ]
+}

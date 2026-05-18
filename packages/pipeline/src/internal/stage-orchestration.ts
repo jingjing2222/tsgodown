@@ -24,7 +24,10 @@ export interface StageOrchestrationOptions {
   configs: UserConfig[];
   log: (message: string) => void;
   onStage?: (event: PipelineStageEvent) => void;
-  runBuildArtifacts?: (cwd: string) => Promise<RunBuildResult>;
+  runBuildArtifacts?: (
+    cwd: string,
+    config: UserConfig,
+  ) => Promise<RunBuildResult>;
 }
 
 export async function orchestratePipelineStages({
@@ -52,7 +55,7 @@ export async function orchestratePipelineStages({
         "BUILD_ARTIFACTS",
         "[BUILD_ARTIFACTS] collecting build outputs",
       );
-      const buildResult = await runBuildArtifacts(cwd);
+      const buildResult = await runBuildArtifacts(cwd, config);
       assertBuildArtifactContract(buildResult);
 
       stage = "BUILD_IR";
@@ -76,7 +79,9 @@ export async function orchestratePipelineStages({
       );
 
       stage = "ON_SUCCESS";
-      await config.onSuccess?.();
+      if (typeof config.onSuccess === "function") {
+        await (config.onSuccess as () => void | Promise<void>)();
+      }
       emitStage("ON_SUCCESS", `[ON_SUCCESS] completed pipeline for ${entry}`);
     } catch (cause) {
       emitStage("ON_FAILURE", `[ON_FAILURE] ${entry} failed at stage ${stage}`);

@@ -2,6 +2,11 @@ modules:
   - id=template-literal-paths.ts source_path=template-literal-paths.ts
     exports:
     imports:
+    executable:
+      - var health = function-expr async=false params=[] body=[return object({ok: bool(true)})]
+      - var users = function-expr async=false params=[] body=[return array([object({id: string(u1)})])]
+      - expr call(member(ident(app), get), [template([/health], []), ident(health)])
+      - expr call(member(ident(app), get), [template([,/users], [ident(prefix)]), ident(users)])
 routes:
   - method=GET path=/health handler_ref=health
 handlers:

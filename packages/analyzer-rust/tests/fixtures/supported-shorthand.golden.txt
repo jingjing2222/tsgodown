@@ -3,7 +3,12 @@ modules:
     exports:
       - health
     imports:
-      - spec=node:util kind=esm resolved=<none>
+      - spec=node:util kind=esm resolved=<none> bindings=[util:default:default]
+    executable:
+      - var health = function-expr async=false params=[] body=[return object({ok: bool(true)})]
+      - var users = function-expr async=false params=[] body=[return array([object({id: string(u1)})])]
+      - expr call(member(ident(app), get), [string(/users), ident(users)])
+      - expr call(member(ident(app), get), [string(/health), ident(health)])
 routes:
   - method=GET path=/health handler_ref=health
   - method=GET path=/users handler_ref=users

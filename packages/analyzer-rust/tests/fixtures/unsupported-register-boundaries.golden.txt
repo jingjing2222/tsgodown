@@ -2,6 +2,10 @@ modules:
   - id=unsupported-register-boundaries.ts source_path=unsupported-register-boundaries.ts
     exports:
     imports:
+    executable:
+      - var app = object({register: function-expr async=false params=[_plugin,_opts] body=[return ident(undefined)]})
+      - expr call(member(ident(app), register), [call(ident(factoryPlugin), []), object({prefix: string(/v1)})])
+      - expr call(member(ident(app), register), [ident(missingPlugin), object({prefix: string(/v2)})])
 routes:
 handlers:
 diagnostics:

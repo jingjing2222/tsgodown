@@ -1,0 +1,740 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "next-app",
+  "cases": [
+    {
+      "id": "next-app-001",
+      "op": "normalizeConfig",
+      "distDir": ".next-0",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-002",
+      "op": "defaultConfig",
+      "distDir": ".next-1",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-003",
+      "op": "runtime",
+      "distDir": ".next-2",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-004",
+      "op": "postponed",
+      "distDir": ".next-3",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-005",
+      "op": "normalizeConfig",
+      "distDir": ".next-4",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-006",
+      "op": "defaultConfig",
+      "distDir": ".next-5",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-007",
+      "op": "runtime",
+      "distDir": ".next-6",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-008",
+      "op": "postponed",
+      "distDir": ".next-7",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-009",
+      "op": "normalizeConfig",
+      "distDir": ".next-8",
+      "size": "64"
+    },
+    {
+      "id": "next-app-010",
+      "op": "defaultConfig",
+      "distDir": ".next-9",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-011",
+      "op": "runtime",
+      "distDir": ".next-10",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-012",
+      "op": "postponed",
+      "distDir": ".next-11",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-013",
+      "op": "normalizeConfig",
+      "distDir": ".next-12",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-014",
+      "op": "defaultConfig",
+      "distDir": ".next-13",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-015",
+      "op": "runtime",
+      "distDir": ".next-14",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-016",
+      "op": "postponed",
+      "distDir": ".next-15",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-017",
+      "op": "normalizeConfig",
+      "distDir": ".next-16",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-018",
+      "op": "defaultConfig",
+      "distDir": ".next-17",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-019",
+      "op": "runtime",
+      "distDir": ".next-18",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-020",
+      "op": "postponed",
+      "distDir": ".next-19",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-021",
+      "op": "normalizeConfig",
+      "distDir": ".next-20",
+      "size": "64"
+    },
+    {
+      "id": "next-app-022",
+      "op": "defaultConfig",
+      "distDir": ".next-21",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-023",
+      "op": "runtime",
+      "distDir": ".next-22",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-024",
+      "op": "postponed",
+      "distDir": ".next-23",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-025",
+      "op": "normalizeConfig",
+      "distDir": ".next-24",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-026",
+      "op": "defaultConfig",
+      "distDir": ".next-25",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-027",
+      "op": "runtime",
+      "distDir": ".next-26",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-028",
+      "op": "postponed",
+      "distDir": ".next-27",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-029",
+      "op": "normalizeConfig",
+      "distDir": ".next-28",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-030",
+      "op": "defaultConfig",
+      "distDir": ".next-29",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-031",
+      "op": "runtime",
+      "distDir": ".next-30",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-032",
+      "op": "postponed",
+      "distDir": ".next-31",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-033",
+      "op": "normalizeConfig",
+      "distDir": ".next-32",
+      "size": "64"
+    },
+    {
+      "id": "next-app-034",
+      "op": "defaultConfig",
+      "distDir": ".next-33",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-035",
+      "op": "runtime",
+      "distDir": ".next-34",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-036",
+      "op": "postponed",
+      "distDir": ".next-35",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-037",
+      "op": "normalizeConfig",
+      "distDir": ".next-36",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-038",
+      "op": "defaultConfig",
+      "distDir": ".next-37",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-039",
+      "op": "runtime",
+      "distDir": ".next-38",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-040",
+      "op": "postponed",
+      "distDir": ".next-39",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-041",
+      "op": "normalizeConfig",
+      "distDir": ".next-40",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-042",
+      "op": "defaultConfig",
+      "distDir": ".next-41",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-043",
+      "op": "runtime",
+      "distDir": ".next-42",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-044",
+      "op": "postponed",
+      "distDir": ".next-43",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-045",
+      "op": "normalizeConfig",
+      "distDir": ".next-44",
+      "size": "64"
+    },
+    {
+      "id": "next-app-046",
+      "op": "defaultConfig",
+      "distDir": ".next-45",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-047",
+      "op": "runtime",
+      "distDir": ".next-46",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-048",
+      "op": "postponed",
+      "distDir": ".next-47",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-049",
+      "op": "normalizeConfig",
+      "distDir": ".next-48",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-050",
+      "op": "defaultConfig",
+      "distDir": ".next-49",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-051",
+      "op": "runtime",
+      "distDir": ".next-50",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-052",
+      "op": "postponed",
+      "distDir": ".next-51",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-053",
+      "op": "normalizeConfig",
+      "distDir": ".next-52",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-054",
+      "op": "defaultConfig",
+      "distDir": ".next-53",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-055",
+      "op": "runtime",
+      "distDir": ".next-54",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-056",
+      "op": "postponed",
+      "distDir": ".next-55",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-057",
+      "op": "normalizeConfig",
+      "distDir": ".next-56",
+      "size": "64"
+    },
+    {
+      "id": "next-app-058",
+      "op": "defaultConfig",
+      "distDir": ".next-57",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-059",
+      "op": "runtime",
+      "distDir": ".next-58",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-060",
+      "op": "postponed",
+      "distDir": ".next-59",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-061",
+      "op": "normalizeConfig",
+      "distDir": ".next-60",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-062",
+      "op": "defaultConfig",
+      "distDir": ".next-61",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-063",
+      "op": "runtime",
+      "distDir": ".next-62",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-064",
+      "op": "postponed",
+      "distDir": ".next-63",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-065",
+      "op": "normalizeConfig",
+      "distDir": ".next-64",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-066",
+      "op": "defaultConfig",
+      "distDir": ".next-65",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-067",
+      "op": "runtime",
+      "distDir": ".next-66",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-068",
+      "op": "postponed",
+      "distDir": ".next-67",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-069",
+      "op": "normalizeConfig",
+      "distDir": ".next-68",
+      "size": "64"
+    },
+    {
+      "id": "next-app-070",
+      "op": "defaultConfig",
+      "distDir": ".next-69",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-071",
+      "op": "runtime",
+      "distDir": ".next-70",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-072",
+      "op": "postponed",
+      "distDir": ".next-71",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-073",
+      "op": "normalizeConfig",
+      "distDir": ".next-72",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-074",
+      "op": "defaultConfig",
+      "distDir": ".next-73",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-075",
+      "op": "runtime",
+      "distDir": ".next-74",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-076",
+      "op": "postponed",
+      "distDir": ".next-75",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-077",
+      "op": "normalizeConfig",
+      "distDir": ".next-76",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-078",
+      "op": "defaultConfig",
+      "distDir": ".next-77",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-079",
+      "op": "runtime",
+      "distDir": ".next-78",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-080",
+      "op": "postponed",
+      "distDir": ".next-79",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-081",
+      "op": "normalizeConfig",
+      "distDir": ".next-80",
+      "size": "64"
+    },
+    {
+      "id": "next-app-082",
+      "op": "defaultConfig",
+      "distDir": ".next-81",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-083",
+      "op": "runtime",
+      "distDir": ".next-82",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-084",
+      "op": "postponed",
+      "distDir": ".next-83",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-085",
+      "op": "normalizeConfig",
+      "distDir": ".next-84",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-086",
+      "op": "defaultConfig",
+      "distDir": ".next-85",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-087",
+      "op": "runtime",
+      "distDir": ".next-86",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-088",
+      "op": "postponed",
+      "distDir": ".next-87",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-089",
+      "op": "normalizeConfig",
+      "distDir": ".next-88",
+      "output": "export",
+      "runtime": "edge",
+      "size": "64"
+    },
+    {
+      "id": "next-app-090",
+      "op": "defaultConfig",
+      "distDir": ".next-89",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-091",
+      "op": "runtime",
+      "distDir": ".next-90",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-092",
+      "op": "postponed",
+      "distDir": ".next-91",
+      "output": "export",
+      "runtime": "edge",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-093",
+      "op": "normalizeConfig",
+      "distDir": ".next-92",
+      "size": "64"
+    },
+    {
+      "id": "next-app-094",
+      "op": "defaultConfig",
+      "distDir": ".next-93",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-095",
+      "op": "runtime",
+      "distDir": ".next-94",
+      "output": "export",
+      "runtime": "edge",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-096",
+      "op": "postponed",
+      "distDir": ".next-95",
+      "size": "bad"
+    },
+    {
+      "id": "next-app-097",
+      "op": "normalizeConfig",
+      "distDir": ".next-96",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "64"
+    },
+    {
+      "id": "next-app-098",
+      "op": "defaultConfig",
+      "distDir": ".next-97",
+      "output": "export",
+      "runtime": "edge",
+      "size": "128k"
+    },
+    {
+      "id": "next-app-099",
+      "op": "runtime",
+      "distDir": ".next-98",
+      "size": "2mb"
+    },
+    {
+      "id": "next-app-100",
+      "op": "postponed",
+      "distDir": ".next-99",
+      "output": "standalone",
+      "runtime": "nodejs",
+      "size": "bad"
+    }
+  ]
+}

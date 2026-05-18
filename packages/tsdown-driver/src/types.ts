@@ -1,3 +1,5 @@
+import type { UserConfig } from "@tsgodown/config";
+
 export type BundleFormat = "esm" | "cjs";
 
 export interface ArtifactBundle {
@@ -31,6 +33,7 @@ export interface RustEngineRequest {
   action: "build";
   cwd: string;
   configPath?: string;
+  config?: Record<string, unknown>;
 }
 
 export type RustEngineResponse =
@@ -79,6 +82,7 @@ export interface RunBuildResult {
 }
 
 export interface RunBuildOptions {
+  tsdownConfig?: UserConfig;
   executeRustEngine?: (
     request: RustEngineRequest,
   ) => Promise<RustEngineResponse>;

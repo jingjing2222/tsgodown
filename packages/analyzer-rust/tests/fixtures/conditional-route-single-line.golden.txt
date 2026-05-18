@@ -2,7 +2,11 @@ modules:
   - id=conditional-route-single-line.ts source_path=conditional-route-single-line.ts
     exports:
     imports:
-      - spec=fastify kind=esm resolved=<none>
+      - spec=fastify kind=esm resolved=<none> bindings=[Fastify:default:default]
+    executable:
+      - var app = call(ident(Fastify), [])
+      - function expHandler async=false params=[] body=[return object({ok: bool(true)})]
+      - if binary(===, member(member(ident(process), env), EXPERIMENTAL), string(1)) then=[expr call(member(ident(app), get), [string(/exp), ident(expHandler)])] else=[]
 routes:
 handlers:
 diagnostics:

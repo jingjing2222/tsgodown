@@ -10,6 +10,15 @@ const PROGRAM_IR_V1_SAMPLE = {
       sourcePath: "src/health.ts",
       exports: ["healthHandler"],
       imports: [{ spec: "fastify", kind: "esm" }],
+      executable: {
+        stmts: [
+          {
+            kind: "var-decl",
+            name: "answer",
+            init: { kind: "value", value: { kind: "number", value: "42" } },
+          },
+        ],
+      },
     },
   ],
   routes: [
@@ -61,4 +70,8 @@ test("ProgramIR v1 schema contract: canonical sample remains type-valid", () => 
     "response-object",
   );
   assert.equal(PROGRAM_IR_V1_SAMPLE.diagnostics[0]?.source?.viaSourceMap, true);
+  assert.equal(
+    PROGRAM_IR_V1_SAMPLE.modules[0]?.executable?.stmts[0]?.kind,
+    "var-decl",
+  );
 });

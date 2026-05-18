@@ -1,0 +1,3506 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "lru-cache",
+  "cases": [
+    {
+      "id": "lru-cache-001",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 0
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 1
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 2
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-002",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 1
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 2
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 3
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-003",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 2
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 3
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 4
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-004",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 3
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 4
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 5
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-005",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 4
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 5
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 6
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-006",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 5
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 6
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 7
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-007",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 6
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 7
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 8
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-008",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 7
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 8
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 9
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-009",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 8
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 9
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 10
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-010",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 9
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 10
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 11
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-011",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 10
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 11
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 12
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-012",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 11
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 12
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 13
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-013",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 12
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 13
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 14
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-014",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 13
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 14
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 15
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-015",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 14
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 15
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 16
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-016",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 15
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 16
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 17
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-017",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 16
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 17
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 18
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-018",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 17
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 18
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 19
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-019",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 18
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 19
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 20
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-020",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 19
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 20
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 21
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-021",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 20
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 21
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 22
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-022",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 21
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 22
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 23
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-023",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 22
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 23
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 24
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-024",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 23
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 24
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 25
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-025",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 24
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 25
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 26
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-026",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 25
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 26
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 27
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-027",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 26
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 27
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 28
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-028",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 27
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 28
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 29
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-029",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 28
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 29
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 30
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-030",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 29
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 30
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 31
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-031",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 30
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 31
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 32
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-032",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 31
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 32
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 33
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-033",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 32
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 33
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 34
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-034",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 33
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 34
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 35
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-035",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 34
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 35
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 36
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-036",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 35
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 36
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 37
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-037",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 36
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 37
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 38
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-038",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 37
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 38
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 39
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-039",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 38
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 39
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 40
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-040",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 39
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 40
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 41
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-041",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 40
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 41
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 42
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-042",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 41
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 42
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 43
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-043",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 42
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 43
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 44
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-044",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 43
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 44
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 45
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-045",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 44
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 45
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 46
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-046",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 45
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 46
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 47
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-047",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 46
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 47
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 48
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-048",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 47
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 48
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 49
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-049",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 48
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 49
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 50
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-050",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 49
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 50
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 51
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-051",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 50
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 51
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 52
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-052",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 51
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 52
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 53
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-053",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 52
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 53
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 54
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-054",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 53
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 54
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 55
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-055",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 54
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 55
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 56
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-056",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 55
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 56
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 57
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-057",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 56
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 57
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 58
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-058",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 57
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 58
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 59
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-059",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 58
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 59
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 60
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-060",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 59
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 60
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 61
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-061",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 60
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 61
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 62
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-062",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 61
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 62
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 63
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-063",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 62
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 63
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 64
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-064",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 63
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 64
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 65
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-065",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 64
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 65
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 66
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-066",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 65
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 66
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 67
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-067",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 66
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 67
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 68
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-068",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 67
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 68
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 69
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-069",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 68
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 69
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 70
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-070",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 69
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 70
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 71
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-071",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 70
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 71
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 72
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-072",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 71
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 72
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 73
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-073",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 72
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 73
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 74
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-074",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 73
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 74
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 75
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-075",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 74
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 75
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 76
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-076",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 75
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 76
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 77
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-077",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 76
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 77
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 78
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-078",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 77
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 78
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 79
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-079",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 78
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 79
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 80
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-080",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 79
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 80
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 81
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-081",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 80
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 81
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 82
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-082",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 81
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 82
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 83
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-083",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 82
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 83
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 84
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-084",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 83
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 84
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 85
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-085",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 84
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 85
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 86
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-086",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 85
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 86
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 87
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-087",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 86
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 87
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 88
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-088",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 87
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 88
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 89
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-089",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 88
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 89
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 90
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-090",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 89
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 90
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 91
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-091",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 90
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 91
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 92
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-092",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 91
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 92
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 93
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-093",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 92
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 93
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 94
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-094",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 93
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 94
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 95
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-095",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 94
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 95
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 96
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-096",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 95
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 96
+        },
+        {
+          "op": "get",
+          "key": "k0"
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 97
+        },
+        {
+          "op": "has",
+          "key": "k1"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-097",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 96
+        },
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 97
+        },
+        {
+          "op": "get",
+          "key": "k1"
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 98
+        },
+        {
+          "op": "has",
+          "key": "k2"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-098",
+      "op": "sequence",
+      "options": {
+        "max": 3
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k2",
+          "value": 97
+        },
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 98
+        },
+        {
+          "op": "get",
+          "key": "k2"
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 99
+        },
+        {
+          "op": "has",
+          "key": "k3"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-099",
+      "op": "sequence",
+      "options": {
+        "max": 4
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k3",
+          "value": 98
+        },
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 99
+        },
+        {
+          "op": "get",
+          "key": "k3"
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 100
+        },
+        {
+          "op": "has",
+          "key": "k4"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    },
+    {
+      "id": "lru-cache-100",
+      "op": "sequence",
+      "options": {
+        "max": 2
+      },
+      "steps": [
+        {
+          "op": "set",
+          "key": "k4",
+          "value": 99
+        },
+        {
+          "op": "set",
+          "key": "k0",
+          "value": 100
+        },
+        {
+          "op": "get",
+          "key": "k4"
+        },
+        {
+          "op": "set",
+          "key": "k1",
+          "value": 101
+        },
+        {
+          "op": "has",
+          "key": "k0"
+        },
+        {
+          "op": "entries"
+        }
+      ]
+    }
+  ]
+}

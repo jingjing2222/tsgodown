@@ -32,7 +32,7 @@ M1 release gate is fixed to the **single canonical path** below.
 - Canonical reference: [`M1_RELEASE_GATE.md`](M1_RELEASE_GATE.md)
 - Script entrypoint: [`scripts/m1-release-gate.sh`](../../scripts/m1-release-gate.sh)
 - Test location: `packages/cli/test/commands.e2e.test.ts`
-- Canonical gate intent: `CLI build reference fixture -> dist-go/main.go -> go build (if available)`
+- Canonical gate intent: `CLI build reference fixture -> dist-go/main.go + tsgodownrt -> go build (if available)`
 - Current test id: `M1 release gate: CLI build fastify-scaffold-real fixture -> dist-go/main.go -> go build (if available)`
 - Command: `pnpm run gate:m1`
 
@@ -41,8 +41,9 @@ Verification items:
 2. Execution: run CLI `build` through the Rust adapter path
 3. Output: confirm `dist-go/main.go` generation
 4. Assertions:
-   - Go scaffold shape (`package main`, `func main()`, `GET /health` route binding)
+   - Go target shape (`package main`, `func main()`, `go.mod`, `tsgodownrt/runtime.go`)
    - if the Go toolchain exists, `go build ./...` succeeds
+   - generated binary fails closed with deterministic unsupported-codegen diagnostics until executable JS lowering is implemented
 
 Note: the gate is limited to execution-path verification and does not cover internal implementation details of `analyzer-rust` / `emitter-go`.
 
@@ -71,7 +72,7 @@ Note: the gate is limited to execution-path verification and does not cover inte
   - method-aware route checks (`GET`, `POST`, `PUT`)
   - scaffold TODO body checks for named handlers
   - negative path behavior (`405 Method Not Allowed`, `404 page not found`)
-- `scripts/smoke-m1.sh` must validate deterministic route behavior (`/health`, `/users`, `/missing`) instead of single-endpoint liveness only.
+- `scripts/smoke-m1.sh` validates the current fail-closed executable path: Rust launcher emits Go target files, `go build` succeeds, and the binary exits `1` with deterministic unsupported-codegen JSON until runtime semantics are implemented.
 
 ## analyzer-rust boundary contract (M1)
 - Keep `packages/analyzer-rust/tests/contract_parity_regression.rs` as the fixed SSoT contract test for analyzer-rust.

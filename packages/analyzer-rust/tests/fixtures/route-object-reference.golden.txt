@@ -2,6 +2,10 @@ modules:
   - id=route-object-reference.ts source_path=route-object-reference.ts
     exports:
     imports:
+    executable:
+      - var health = function-expr async=false params=[] body=[return object({ok: bool(true)})]
+      - var routeDef = object({method: string(GET), url: string(/health), handler: ident(health)})
+      - expr call(member(ident(app), route), [ident(routeDef)])
 routes:
   - method=GET path=/health handler_ref=health
 handlers:

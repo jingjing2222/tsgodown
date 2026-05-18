@@ -13,7 +13,7 @@ Use one primary category per incident. Add secondary tags only when needed.
 
 | Category | Signal / Symptom | Typical Root Cause | First Action |
 | --- | --- | --- | --- |
-| `ENV-TOOLCHAIN` | command not found, wrong version, setup mismatch | missing Node/pnpm/Rust/Go/curl, incompatible runtime | run preflight and verify versions/paths |
+| `ENV-TOOLCHAIN` | command not found, wrong version, setup mismatch | missing Node/pnpm/Rust/Go, incompatible runtime | run preflight and verify versions/paths |
 | `JS-QUALITY` | `pnpm run lint` / `pnpm run format:check` fails | code style, formatting drift | run reported command locally and apply fixes |
 | `TS-BUILD` | `pnpm run build` fails | TS compile/type/config regression | capture first compiler error + owning package |
 | `JS-TEST` | `pnpm run test` fails | unit/integration behavior regression | rerun failing test with focused command |
@@ -21,7 +21,7 @@ Use one primary category per incident. Add secondary tags only when needed.
 | `RUST-CLIPPY` | `cargo clippy ... -D warnings` fails | lint warning promoted to error | fix warnings, avoid allow-by-default bypass |
 | `RUST-TEST` | `cargo test --workspace --all-targets` fails | behavior/panic/contract mismatch | rerun failing crate/test with full output |
 | `SMOKE-BUILD` | smoke script fails before process starts | launcher/env/build artifact issue | inspect script diagnostics + build output |
-| `SMOKE-RUNTIME` | binary starts but `/health` check fails | runtime port/route/body mismatch or startup crash | inspect server log + `dist-go/main.go` snippet |
+| `SMOKE-RUNTIME` | binary exit/status/output differs from fail-closed contract | runtime contract mismatch or startup crash | inspect captured stdout/stderr + `dist-go/main.go` snippet |
 | `CI-INFRA` | flaky network/cache/action runner issue | transient GitHub Actions problem | retry once, then isolate from product regressions |
 
 ## 2) Triage Flow (Required)
@@ -77,13 +77,12 @@ cargo test --workspace --all-targets
 ### B. `smoke-executable` job
 - Re-run `./scripts/smoke-m1.sh` locally.
 - Use built-in diagnostics:
-  - `.tmp-smoke-m1-server.log` tail (runtime failures)
-  - `examples/fastify-scaffold-real/dist-go/main.go` head (emission sanity)
-  - printed env summary (`TSGODOWN_RUST_ENGINE_BIN`, ports, paths)
+  - `.tmp-smoke-m1-run.out` and `.tmp-smoke-m1-run.err` when present
+  - `examples/generic-simple-cli/dist-go/main.go` head (emission sanity)
+  - printed env summary (`TSGODOWN_RUST_ENGINE_BIN`, paths)
 - Confirm launcher executable:
   - `test -x ./scripts/rust-engine-launcher.sh`
-- If port conflict is suspected locally:
-  - `SMOKE_PORT=18081 ./scripts/smoke-m1.sh`
+- Smoke no longer opens an HTTP port while executable JS lowering is fail-closed.
 
 ## 5) Smoke-Specific Failure Recipes
 
@@ -97,16 +96,16 @@ Checklist:
 4. Re-run smoke script and read first failing block.
 
 ### `SMOKE-RUNTIME`
-Symptoms: non-200 health code, body mismatch, server exits early.
+Symptoms: generated binary does not exit `1`, omits `"unsupported":true`, or omits `EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED`.
 
 Checklist:
-1. `tail -n 120 .tmp-smoke-m1-server.log`
-2. Inspect generated Go: `sed -n '1,160p' examples/fastify-scaffold-real/dist-go/main.go`
+1. `cat .tmp-smoke-m1-run.out .tmp-smoke-m1-run.err`
+2. Inspect generated Go: `sed -n '1,160p' examples/generic-simple-cli/dist-go/main.go`
 3. Build/run manually:
-   - `cd examples/fastify-scaffold-real/dist-go`
+   - `cd examples/generic-simple-cli/dist-go`
    - `go build -o tsgodown-local .`
-   - `PORT=18080 ./tsgodown-local`
-4. Validate endpoint: `curl -i http://127.0.0.1:18080/health`
+   - `./tsgodown-local`
+4. Validate stdout contains deterministic fail-closed JSON.
 
 ## 6) Escalation Rules
 - If classified as `CI-INFRA` and reproducibility is absent locally, retry once.

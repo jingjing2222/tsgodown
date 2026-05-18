@@ -2,10 +2,17 @@ modules:
   - id=unsupported-dynamic.ts source_path=unsupported-dynamic.ts
     exports:
     imports:
+      - spec=./lazy kind=dynamic resolved=<none> bindings=[]
+    executable:
+      - var handler = function-expr async=false params=[] body=[return object({ok: bool(true)})]
+      - var dynamicPath = string(/users/:id)
+      - expr call(ident(import), [string(./lazy)])
+      - expr call(member(ident(app), get), [ident(dynamicPath), ident(handler)])
+      - expr call(member(ident(app), post), [string(/inline), function-expr async=true params=[] body=[return object({ok: bool(true)})]])
+      - expr call(member(ident(app), route), [object({method: array([string(GET)]), url: string(/x), handler: ident(handler)})])
 routes:
 handlers:
 diagnostics:
   - level=error code=ANALYZER_UNSUPPORTED_DYNAMIC_PATH message=route path must be a string literal source=unsupported-dynamic.ts
   - level=error code=ANALYZER_UNSUPPORTED_INLINE_HANDLER message=route handler must be a named reference source=unsupported-dynamic.ts
   - level=error code=ANALYZER_UNSUPPORTED_INLINE_HANDLER message=route handler must be a named reference source=unsupported-dynamic.ts
-  - level=error code=DYNAMIC_IMPORT_DETECTED message=dynamic import(...) is unsupported in compiler mode source=unsupported-dynamic.ts

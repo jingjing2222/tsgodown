@@ -1,0 +1,857 @@
+{
+  "version": "node-corpus-vectors.v1",
+  "corpus": "qs",
+  "cases": [
+    {
+      "id": "qs-001",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-002",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-003",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-004",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-005",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-006",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-007",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-008",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-009",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-010",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-011",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-012",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-013",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-014",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-015",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-016",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-017",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-018",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-019",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-020",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-021",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-022",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-023",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-024",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-025",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-026",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-027",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-028",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-029",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-030",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-031",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-032",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-033",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-034",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-035",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-036",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-037",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-038",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-039",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-040",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-041",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-042",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-043",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-044",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-045",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-046",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-047",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-048",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-049",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-050",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-051",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-052",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-053",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-054",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-055",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-056",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-057",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-058",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-059",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-060",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-061",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-062",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-063",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-064",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-065",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-066",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-067",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-068",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-069",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-070",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-071",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-072",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-073",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-074",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-075",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-076",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-077",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-078",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-079",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-080",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-081",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-082",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-083",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-084",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-085",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-086",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-087",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-088",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-089",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-090",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-091",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-092",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-093",
+      "op": "parse",
+      "query": "arr[0]=zero&arr[2]=two"
+    },
+    {
+      "id": "qs-094",
+      "op": "stringify",
+      "value": {
+        "empty": "",
+        "bool": true,
+        "num": 42
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-095",
+      "op": "parse",
+      "query": "encoded=%ED%95%9C%EA%B8%80"
+    },
+    {
+      "id": "qs-096",
+      "op": "stringify",
+      "value": {
+        "semi": "a;b",
+        "plus": "a+b"
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    },
+    {
+      "id": "qs-097",
+      "op": "parse",
+      "query": "user[name]=kim&user[roles][]=admin&user[roles][]=ops"
+    },
+    {
+      "id": "qs-098",
+      "op": "stringify",
+      "value": {
+        "tag": ["a", "b", "c"]
+      },
+      "options": {
+        "encodeValuesOnly": true
+      }
+    },
+    {
+      "id": "qs-099",
+      "op": "parse",
+      "query": "space=a%20b&reserved=%5Bvalue%5D"
+    },
+    {
+      "id": "qs-100",
+      "op": "stringify",
+      "value": {
+        "a": {
+          "b": {
+            "c": 1,
+            "d": 2
+          }
+        }
+      },
+      "options": {
+        "arrayFormat": "indices"
+      }
+    }
+  ]
+}

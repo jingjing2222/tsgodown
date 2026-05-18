@@ -1,0 +1,1606 @@
+{
+  "version": "node-large-corpus-vectors.v1",
+  "corpus": "nuxt-app",
+  "cases": [
+    {
+      "id": "nuxt-app-001",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-0": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-0"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-002",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-1": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-1"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-003",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-2": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-2"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-004",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-3": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-3"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-005",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-4": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-4"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-006",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-5": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-5"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-007",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-6": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-6"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-008",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-7": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-7"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-009",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-8": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-8"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-010",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-9": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-9"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-011",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-10": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-10"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-012",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-11": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-11"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-013",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-12": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-12"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-014",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-13": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-13"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-015",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-14": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-14"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-016",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-15": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-15"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-017",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-16": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-16"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-018",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-17": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-17"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-019",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-18": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-18"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-020",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-19": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-19"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-021",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-20": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-20"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-022",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-21": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-21"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-023",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-22": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-22"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-024",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-23": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-23"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-025",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-24": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-24"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-026",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-25": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-25"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-027",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-26": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-26"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-028",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-27": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-27"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-029",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-28": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-28"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-030",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-29": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-29"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-031",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-30": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-30"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-032",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-31": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-31"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-033",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-32": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-32"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-034",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-33": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-33"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-035",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-34": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-34"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-036",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-35": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-35"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-037",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-36": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-36"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-038",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-37": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-37"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-039",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-38": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-38"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-040",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-39": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-39"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-041",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-40": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-40"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-042",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-41": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-41"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-043",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-42": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-42"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-044",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-43": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-43"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-045",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-44": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-44"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-046",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-45": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-45"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-047",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-46": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-46"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-048",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-47": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-47"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-049",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-48": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-48"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-050",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-49": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-49"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-051",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-50": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-50"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-052",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-51": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-51"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-053",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-52": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-52"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-054",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-53": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-53"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-055",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-54": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-54"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-056",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-55": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-55"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-057",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-56": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-56"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-058",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-57": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-57"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-059",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-58": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-58"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-060",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-59": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-59"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-061",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-60": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-60"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-062",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-61": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-61"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-063",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-62": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-62"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-064",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-63": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-63"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-065",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-64": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-64"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-066",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-65": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-65"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-067",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-66": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-66"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-068",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-67": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-67"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-069",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-68": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-68"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-070",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-69": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-69"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-071",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-70": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-70"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-072",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-71": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-71"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-073",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-72": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-72"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-074",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-73": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-73"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-075",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-74": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-74"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-076",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-75": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-75"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-077",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-76": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-76"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-078",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-77": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-77"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-079",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-78": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-78"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-080",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-79": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-79"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-081",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-80": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-80"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-082",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-81": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-81"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-083",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-82": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-82"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-084",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-83": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-83"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-085",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-84": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-84"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-086",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-85": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-85"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-087",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-86": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-86"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-088",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-87": {
+          "prerender": true,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-87"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-089",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-88": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-88"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-090",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-89": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-89"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-091",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-90": {
+          "prerender": true,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-90"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-092",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-91": {
+          "prerender": false,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-91"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-093",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-92": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-92"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-094",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-93": {
+          "prerender": true,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-93"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-095",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-94": {
+          "prerender": false,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-94"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-096",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-95": {
+          "prerender": false,
+          "swr": 0
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-95"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-097",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-96": {
+          "prerender": true,
+          "swr": 1
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-96"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-098",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-97": {
+          "prerender": false,
+          "swr": 2
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-97"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-099",
+      "op": "defineConfig",
+      "ssr": true,
+      "routeRules": {
+        "/item-98": {
+          "prerender": false,
+          "swr": 3
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-98"
+        }
+      }
+    },
+    {
+      "id": "nuxt-app-100",
+      "op": "defineConfig",
+      "ssr": false,
+      "routeRules": {
+        "/item-99": {
+          "prerender": true,
+          "swr": 4
+        }
+      },
+      "runtimeConfig": {
+        "public": {
+          "value": "nuxt-99"
+        }
+      }
+    }
+  ]
+}

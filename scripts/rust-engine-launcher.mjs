@@ -14,116 +14,7 @@ const defaultEngineCoreBin = path.join(
   "debug",
   "engine-core",
 );
-
-function toGoPattern(routePath) {
-  return routePath.replace(/:([A-Za-z_][\w]*)/g, "{$1}");
-}
-
-function extractPathParamNames(routePath) {
-  return [...routePath.matchAll(/:([A-Za-z_][\w]*)/g)].map((m) => m[1]);
-}
-
-function toGoBindingName(name, index) {
-  const base = name.replace(/[^A-Za-z0-9_]/g, "_");
-  const normalized = /^[A-Za-z_]/.test(base) ? base : `param_${base}`;
-  return index === 0 ? normalized : `${normalized}${index + 1}`;
-}
-
-function renderGoMainScaffold(routes) {
-  return [
-    "package main",
-    "",
-    "import (",
-    '\t"encoding/json"',
-    '\t"fmt"',
-    '\t"net/http"',
-    '\t"os"',
-    ")",
-    "",
-    "func resolveListenAddr() string {",
-    '\tport := os.Getenv("PORT")',
-    '\tif port == "" {',
-    '\t\tport = "8080"',
-    "\t}",
-    '\treturn ":" + port',
-    "}",
-    "",
-    "func main() {",
-    '\tfmt.Println("tsgodown-runtime-ready")',
-    "\tmux := http.NewServeMux()",
-    ...routes.flatMap((route) => {
-      const pathParams = extractPathParamNames(route.path);
-      const pathParamBindings = pathParams.flatMap((name, index) => {
-        const bindingName = toGoBindingName(name, index);
-        return [
-          `\t\t${bindingName} := req.PathValue(${JSON.stringify(name)})`,
-          `\t\t_ = ${bindingName}`,
-        ];
-      });
-
-      return [
-        `\tmux.HandleFunc("${route.method} ${route.goPattern}", func(w http.ResponseWriter, req *http.Request) {`,
-        ...pathParamBindings,
-        '\t\tw.Header().Set("Content-Type", "application/json; charset=utf-8")',
-        '\t\tw.Header().Set("X-TSGoDown-Handler", "unknown")',
-        "\t\tw.WriteHeader(http.StatusNotImplemented)",
-        "\t\tif err := json.NewEncoder(w).Encode(map[string]any{",
-        `\t\t\t\"handler\": ${JSON.stringify(route.handler)},`,
-        `\t\t\t\"method\": ${JSON.stringify(route.method)},`,
-        '\t\t\t"mode": "unknown",',
-        `\t\t\t\"path\": ${JSON.stringify(route.path)},`,
-        "\t\t}); err != nil {",
-        '\t\t\thttp.Error(w, "json encode failed", http.StatusInternalServerError)',
-        "\t\t}",
-        "\t})",
-      ];
-    }),
-    "\t_ = http.ListenAndServe(resolveListenAddr(), mux)",
-    "}",
-    "",
-  ].join("\n");
-}
-
-function normalizeRoutesFromAnalyzeResponse(analyzeJson) {
-  const routes = Array.isArray(analyzeJson?.ir?.routes)
-    ? analyzeJson.ir.routes
-        .map((route) => {
-          const method =
-            route && typeof route.method === "string"
-              ? route.method.toUpperCase()
-              : undefined;
-          const path =
-            route && typeof route.path === "string" ? route.path : undefined;
-
-          if (!method || !path) {
-            return null;
-          }
-
-          return {
-            method,
-            path,
-            goPattern: toGoPattern(path),
-            handler: "TODO_COMPILER_MODE_HANDLER",
-          };
-        })
-        .filter(Boolean)
-    : [];
-
-  if (routes.length > 0) {
-    return routes;
-  }
-
-  // TODO(compiler-mode): remove this scaffold fallback once engine-core emits
-  // concrete compiler-mode routes.
-  return [
-    {
-      method: "GET",
-      path: "/health",
-      goPattern: "/health",
-      handler: "TODO_COMPILER_MODE_HANDLER",
-    },
-  ];
-}
+const generatedModulePath = "example.com/tsgodown-generated";
 
 function fail(message, details, fixHint) {
   process.stderr.write(`[rust-engine-launcher] cause: ${message}\n`);
@@ -195,53 +86,59 @@ const engineCoreBin =
   process.env.TSGODOWN_ENGINE_CORE_BIN || defaultEngineCoreBin;
 ensureExecutable(engineCoreBin, "engine-core binary");
 
-const analyzeRequest = {
-  manifest: {
-    entry: "src/index.ts",
-  },
-  config: {},
-};
-
-const analyze = spawnSync(engineCoreBin, ["analyze"], {
-  input: JSON.stringify(analyzeRequest),
+const emit = spawnSync(engineCoreBin, ["emit-go"], {
+  input: JSON.stringify({
+    analyze: {
+      manifest: {
+        entry: "src/index.ts",
+      },
+      cwd: request.cwd,
+      config: {},
+    },
+    packageName: "main",
+    modulePath: generatedModulePath,
+    outputKind: "main",
+  }),
   encoding: "utf8",
+  maxBuffer: 64 * 1024 * 1024,
 });
 
-if (analyze.status !== 0) {
+if (emit.status !== 0) {
   fail(
-    `engine-core analyze failed (exit=${analyze.status ?? "null"})`,
-    analyze.stderr?.trim() ||
-      analyze.stdout?.trim() ||
+    `engine-core emit-go failed (exit=${emit.status ?? "null"})`,
+    emit.stderr?.trim() ||
+      emit.stdout?.trim() ||
       "No error output from engine-core",
-    "Run cargo build -p engine-core, then retry. If it still fails, run the same command manually to inspect analyzer diagnostics",
+    "Run cargo build -p engine-core, then retry. If it still fails, run the same command manually to inspect emitter diagnostics",
   );
 }
 
-let analyzeJson;
+let emitJson;
 try {
-  analyzeJson = JSON.parse(analyze.stdout || "{}");
+  emitJson = JSON.parse(emit.stdout || "{}");
 } catch (error) {
   fail(
-    "engine-core analyze stdout is not valid JSON",
+    "engine-core emit-go stdout is not valid JSON",
     error instanceof Error ? error.message : String(error),
-    "Verify engine-core analyze prints JSON to stdout and logs diagnostics to stderr",
+    "Verify engine-core emit-go prints JSON to stdout and logs diagnostics to stderr",
   );
 }
 
 const outDir = path.join(request.cwd, "dist-go");
 fs.mkdirSync(outDir, { recursive: true });
-const routes = normalizeRoutesFromAnalyzeResponse(analyzeJson);
-
-fs.writeFileSync(
-  path.join(outDir, "main.go"),
-  `${renderGoMainScaffold(routes)}\n`,
-  "utf8",
-);
+for (const file of emitJson?.files ?? []) {
+  if (typeof file?.path !== "string" || typeof file?.contents !== "string") {
+    continue;
+  }
+  const outputPath = path.join(outDir, file.path);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, file.contents, "utf8");
+}
 
 const diagnostics = [
   "engine=rust-engine-core",
-  ...(Array.isArray(analyzeJson?.diagnostics)
-    ? analyzeJson.diagnostics
+  ...(Array.isArray(emitJson?.diagnostics)
+    ? emitJson.diagnostics
         .map((entry) =>
           entry && typeof entry.code === "string"
             ? `engine-core:${entry.code}`

@@ -1,29 +1,26 @@
+import type {
+  InlineConfig as TsdownInlineConfig,
+  UserConfig as TsdownUserConfig,
+} from "tsdown";
+
 export type Arrayable<T> = T | T[];
 
-export type UserConfigFn = (env: { mode: string }) =>
-  | UserConfig
-  | Promise<UserConfig>;
-export type UserConfigExport = UserConfig | UserConfig[] | UserConfigFn;
+type Awaitable<T> = T | Promise<T>;
 
-export interface UserConfig {
-  entry?: string | string[] | Record<string, string>;
-  outDir?: string;
-  platform?: "node" | "browser" | "neutral";
-  treeshake?: boolean | { moduleSideEffects?: boolean };
-  define?: Record<string, string>;
-  alias?: Record<string, string>;
-  plugins?: Arrayable<unknown>;
-  onSuccess?: () => void | Promise<void>;
+export interface GoConfig {
+  package?: string;
+  module?: string;
+  port?: number;
+  strictSemantics?: boolean;
+}
 
-  // tsgodown extensions
-  go?: {
-    package?: string;
-    module?: string;
-    port?: number;
-    strictSemantics?: boolean;
-  };
-  fastify?: {
-    detectPlugins?: boolean;
-    routeMode?: "direct" | "register-aware";
-  };
+export type UserConfigFn = (
+  inlineConfig: TsdownInlineConfig,
+  context: { ci: boolean },
+) => Awaitable<Arrayable<UserConfig>>;
+
+export type UserConfigExport = Awaitable<Arrayable<UserConfig> | UserConfigFn>;
+
+export interface UserConfig extends TsdownUserConfig {
+  go?: GoConfig;
 }

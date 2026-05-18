@@ -4,8 +4,8 @@ Use `scripts/rust-engine-launcher.sh` to run the CLI against a local Rust engine
 
 ## What it does
 - Reads the Rust adapter request JSON from stdin (`{ action: "build", cwd, configPath? }`)
-- Runs `target/debug/engine-core analyze`
-- Emits `dist-go/main.go` scaffold under the requested `cwd`
+- Runs `target/debug/engine-core emit-go`
+- Writes the Rust-emitted Go target files under `dist-go/`
 - Prints a valid Rust adapter JSON response to stdout
 - Fails with actionable stderr messages when setup is invalid
 
