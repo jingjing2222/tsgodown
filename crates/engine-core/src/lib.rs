@@ -12315,7 +12315,6 @@ console.log("json-module", data.name, data.nested.ok, data.items.length)
     }
 
     #[test]
-    #[ignore = "pending typed AOT lowering after IR interpreter removal"]
     fn emit_go_runs_function_constructor_subset() {
         let root = temp_project("engine-core-function-constructor");
         write(
@@ -12354,10 +12353,19 @@ console.log("ctor", box.value, typeof factory, factory(), factory instanceof Fac
             ir_snapshot: None,
         });
 
-        assert!(!response
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"));
+        assert!(
+            !response
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "EXECUTABLE_JS_CODEGEN_NOT_IMPLEMENTED"),
+            "diagnostics={:?}",
+            response.diagnostics
+        );
+        assert!(!response.files[0].contents.contains("tsgodownrt.RunProgram"));
+        assert!(response.files[0]
+            .contents
+            .contains("tsgodownCallableObject"));
+        assert!(response.files[0].contents.contains("new_Factory"));
 
         if std::process::Command::new("go")
             .arg("version")

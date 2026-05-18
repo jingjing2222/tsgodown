@@ -2470,6 +2470,21 @@ func tsgodownStrictEqual(left any, right any) bool {
 	}
 }
 
+type tsgodownCallableObject struct {
+	props map[string]any
+	ctor  string
+	call  func(*tsgodownCallableObject) any
+}
+
+func tsgodownNewCallableObject(ctor string) *tsgodownCallableObject {
+	return &tsgodownCallableObject{props: map[string]any{}, ctor: ctor}
+}
+
+func tsgodownCallableInstanceOf(value any, ctor string) bool {
+	callable, ok := value.(*tsgodownCallableObject)
+	return ok && callable.ctor == ctor
+}
+
 func tsgodownSameValueStrict(left any, right any) bool {
 	switch leftValue := left.(type) {
 	case nil:
@@ -2548,6 +2563,8 @@ func tsgodownObjectFromAny(value any) map[string]any {
 		return map[string]any{}
 	case map[string]any:
 		return value
+	case *tsgodownCallableObject:
+		return value.props
 	case tsgodownError:
 		return map[string]any{"name": value.Name, "message": value.Message, "code": value.Code}
 	default:
@@ -2574,6 +2591,8 @@ func tsgodownObjectProp(value any, key string) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		return typed[key]
+	case *tsgodownCallableObject:
+		return typed.props[key]
 	case []any:
 		if key == "length" {
 			return float64(len(typed))
@@ -2851,6 +2870,11 @@ func tsgodownIteratorFirstValue(values []any) any {
 
 func tsgodownCall(value any, args ...any) any {
 	switch fn := value.(type) {
+	case *tsgodownCallableObject:
+		if fn.call == nil {
+			return nil
+		}
+		return fn.call(fn)
 	case func(...any) any:
 		return fn(args...)
 	case func() any:
@@ -4851,6 +4875,7 @@ fn collect_class(module: &Module, entry: &Module, stmt: &JsStmt) -> Option<AotCl
         methods: class_methods,
         getters: class_getters,
         super_error_name,
+        callable_constructor: None,
     })
 }
 
@@ -4878,6 +4903,20 @@ fn collect_function_constructor_class(
     } else {
         module_member_go_name(module, name)
     };
+    if let Some(callable_constructor) = collect_callable_constructor_body(body) {
+        return Some(AotClass {
+            name: name.clone(),
+            go_name,
+            fields: BTreeMap::new(),
+            constructor_params: params.clone(),
+            constructor_values: Vec::new(),
+            constructor_body: Vec::new(),
+            methods: BTreeMap::new(),
+            getters: BTreeMap::new(),
+            super_error_name: None,
+            callable_constructor: Some(callable_constructor),
+        });
+    }
     let mut fields = BTreeMap::new();
     let mut constructor_values = Vec::new();
     for stmt in body {
@@ -4917,7 +4956,139 @@ fn collect_function_constructor_class(
         methods: BTreeMap::new(),
         getters: BTreeMap::new(),
         super_error_name: None,
+        callable_constructor: None,
     })
+}
+
+fn collect_callable_constructor_body(body: &[JsStmt]) -> Option<AotCallableConstructor> {
+    let mut local_name = None::<String>;
+    let mut returned_property = None::<String>;
+    let mut property_assignments = Vec::new();
+    let mut saw_return = false;
+    for stmt in body {
+        if let Some((name, property)) = callable_local_function_return_property(stmt) {
+            local_name = Some(name.to_string());
+            returned_property = Some(property.to_string());
+            continue;
+        }
+        let local = local_name.as_deref()?;
+        if is_object_set_prototype_to_this_call(stmt, local) {
+            continue;
+        }
+        if let Some((property, value)) = callable_local_property_assignment(stmt, local) {
+            property_assignments.push((property.to_string(), value.clone()));
+            continue;
+        }
+        if is_return_ident_stmt(stmt, local) {
+            saw_return = true;
+            continue;
+        }
+        return None;
+    }
+    let _ = local_name?;
+    Some(AotCallableConstructor {
+        returned_property: returned_property?,
+        property_assignments,
+    })
+    .filter(|_| saw_return)
+}
+
+fn callable_local_function_return_property(stmt: &JsStmt) -> Option<(&str, &str)> {
+    let JsStmt::FunctionDecl {
+        name,
+        params,
+        rest_param: None,
+        r#async: false,
+        generator: false,
+        body,
+    } = stmt
+    else {
+        return None;
+    };
+    if !params.is_empty() {
+        return None;
+    }
+    let [JsStmt::Return {
+        value:
+            Some(JsExpr::Member {
+                object,
+                property,
+                property_expr: None,
+                optional: false,
+            }),
+    }] = body.as_slice()
+    else {
+        return None;
+    };
+    if !matches!(object.as_ref(), JsExpr::Ident { name: object_name } if object_name == name) {
+        return None;
+    }
+    Some((name, property))
+}
+
+fn is_object_set_prototype_to_this_call(stmt: &JsStmt, local: &str) -> bool {
+    let JsStmt::Expr {
+        expr:
+            JsExpr::Call {
+                callee,
+                args,
+                optional: false,
+            },
+    } = stmt
+    else {
+        return false;
+    };
+    if args.len() != 2 {
+        return false;
+    }
+    matches!(
+        callee.as_ref(),
+        JsExpr::Member {
+            object,
+            property,
+            property_expr: None,
+            optional: false,
+        } if property == "setPrototypeOf"
+            && matches!(object.as_ref(), JsExpr::Ident { name } if name == "Object")
+    ) && matches!(args.first(), Some(JsExpr::Ident { name }) if name == local)
+        && matches!(args.get(1), Some(JsExpr::This))
+}
+
+fn callable_local_property_assignment<'a>(
+    stmt: &'a JsStmt,
+    local: &str,
+) -> Option<(&'a str, &'a JsExpr)> {
+    let JsStmt::Expr {
+        expr: JsExpr::Assign { op, left, right },
+    } = stmt
+    else {
+        return None;
+    };
+    if op != "=" {
+        return None;
+    }
+    let JsExpr::Member {
+        object,
+        property,
+        property_expr: None,
+        optional: false,
+    } = left.as_ref()
+    else {
+        return None;
+    };
+    if !matches!(object.as_ref(), JsExpr::Ident { name } if name == local) {
+        return None;
+    }
+    Some((property, right))
+}
+
+fn is_return_ident_stmt(stmt: &JsStmt, ident: &str) -> bool {
+    matches!(
+        stmt,
+        JsStmt::Return {
+            value: Some(JsExpr::Ident { name })
+        } if name == ident
+    )
 }
 
 fn collect_module_default_exports(
@@ -7125,12 +7296,19 @@ struct AotClass {
     methods: BTreeMap<String, AotMethod>,
     getters: BTreeMap<String, AotMethod>,
     super_error_name: Option<String>,
+    callable_constructor: Option<AotCallableConstructor>,
 }
 
 #[derive(Clone)]
 struct AotMethod {
     params: Vec<String>,
     return_expr: JsExpr,
+}
+
+#[derive(Clone)]
+struct AotCallableConstructor {
+    returned_property: String,
+    property_assignments: Vec<(String, JsExpr)>,
 }
 
 #[derive(Clone)]
@@ -8223,6 +8401,9 @@ fn render_stmt_block_with_state(stmts: &[JsStmt], state: &AotState) -> Option<St
 }
 
 fn render_class_decl(class: &AotClass) -> Option<String> {
+    if class.callable_constructor.is_some() {
+        return render_callable_constructor_decl(class);
+    }
     if let Some(super_error_name) = &class.super_error_name {
         return render_error_subclass_decl(class, super_error_name);
     }
@@ -8282,6 +8463,41 @@ fn render_class_decl(class: &AotClass) -> Option<String> {
         out.push(render_class_method_decl(class, getter_name, getter)?);
     }
     Some(out.join("\n\n"))
+}
+
+fn render_callable_constructor_decl(class: &AotClass) -> Option<String> {
+    let callable = class.callable_constructor.as_ref()?;
+    let mut state = AotState::default();
+    for param in &class.constructor_params {
+        state.bind_slot(param, sanitize_go_identifier(param), AotSlotKind::Any);
+    }
+    let params = class
+        .constructor_params
+        .iter()
+        .map(|param| format!("{} any", sanitize_go_identifier(param)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut body = vec![format!(
+        "__tsgodownCallable := tsgodownNewCallableObject({})",
+        go_string_literal(&class.name)
+    )];
+    for (property, value) in &callable.property_assignments {
+        let value = render_json_value_expr(value, &state).or_else(|| render_expr(value, &state))?;
+        body.push(format!(
+            "__tsgodownCallable.props[{}] = {value}",
+            go_string_literal(property)
+        ));
+    }
+    body.push(format!(
+        "__tsgodownCallable.call = func(self *tsgodownCallableObject) any {{ return self.props[{}] }}",
+        go_string_literal(&callable.returned_property)
+    ));
+    body.push("return __tsgodownCallable".to_string());
+    Some(format!(
+        "func new_{}({params}) *tsgodownCallableObject {{\n{}\n}}",
+        class.go_name,
+        indent_lines(&body.join("\n"))
+    ))
 }
 
 fn render_error_subclass_decl(class: &AotClass, super_error_name: &str) -> Option<String> {
@@ -12079,6 +12295,9 @@ fn render_bool_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
                 go_string_literal(constructor)
             ))
         }
+        JsExpr::Binary { op, left, right } if op == "instanceof" => {
+            render_class_instanceof_expr(left, right, state)
+        }
         JsExpr::Unary { op, arg } if op == "!" => {
             let arg = render_bool_test_expr(arg, state)?;
             Some(format!("(!{arg})"))
@@ -15356,7 +15575,7 @@ fn render_typeof_expr(expr: &JsExpr, state: &AotState) -> Option<String> {
         JsExpr::Ident { name } if state.bindings.contains(name) => {
             let value = go_binding_ref(name, state);
             Some(format!(
-                "func() string {{ switch any({value}).(type) {{ case nil: return \"undefined\"; case bool: return \"boolean\"; case float64, int, int64: return \"number\"; case string: return \"string\"; case tsgodownSymbol: return \"symbol\"; default: return \"object\" }} }}()"
+                "func() string {{ switch any({value}).(type) {{ case nil: return \"undefined\"; case bool: return \"boolean\"; case float64, int, int64: return \"number\"; case string: return \"string\"; case tsgodownSymbol: return \"symbol\"; case *tsgodownCallableObject: return \"function\"; default: return \"object\" }} }}()"
             ))
         }
         expr if is_process_function_ref(expr).is_some() => Some("\"function\"".to_string()),
@@ -17497,6 +17716,26 @@ fn render_date_instanceof_expr(expr: &JsExpr, state: &AotState) -> Option<String
         }
         _ => None,
     }
+}
+
+fn render_class_instanceof_expr(left: &JsExpr, right: &JsExpr, state: &AotState) -> Option<String> {
+    let JsExpr::Ident { name: class_name } = right else {
+        return None;
+    };
+    let class = state.classes.get(class_name)?;
+    if let JsExpr::Ident { name } = left {
+        if let Some(bound_class) = state.class_instance_bindings.get(name) {
+            return Some((bound_class == class_name).to_string());
+        }
+    }
+    if class.callable_constructor.is_some() {
+        let value = render_expr(left, state)?;
+        return Some(format!(
+            "tsgodownCallableInstanceOf({value}, {})",
+            go_string_literal(class_name)
+        ));
+    }
+    None
 }
 
 fn render_regexp_new_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Option<String> {
@@ -22778,6 +23017,23 @@ fn render_call_expr(callee: &JsExpr, args: &[JsExpr], state: &AotState) -> Optio
     let JsExpr::Ident { name } = callee else {
         return None;
     };
+    if let Some(class_name) = state.class_instance_bindings.get(name) {
+        if state
+            .classes
+            .get(class_name)
+            .is_some_and(|class| class.callable_constructor.is_some())
+        {
+            let function = go_binding_ref(name, state);
+            let args = args
+                .iter()
+                .map(|arg| render_expr(arg, state))
+                .collect::<Option<Vec<_>>>()?;
+            if args.is_empty() {
+                return Some(format!("tsgodownCall({function})"));
+            }
+            return Some(format!("tsgodownCall({function}, {})", args.join(", ")));
+        }
+    }
     if is_any_binding(name, state) {
         let function = go_binding_ref(name, state);
         let args = args
